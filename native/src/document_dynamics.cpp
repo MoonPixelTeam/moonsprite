@@ -21,7 +21,7 @@ void Document::dynamicStamp(BrushPathPoint sample){
   else if(direct)value=imageBrushDirectPixel(source,coverage,b.opacity);
   else if(sample.gradient&&!(source>>24))value=current;
   else {const auto destination=b.ink==InkMode::LockAlpha?before:transparentGradient||b.ink==InkMode::CopyAlphaColor?current:before;value=inkBrushComposite(destination,source,b.opacity,b.ink,coverage);}
-  if(maskStrokeBefore_)value=timeline::normalizedMaskPixel(value);if(current==value)return;if(found<0){pending_.push_back({index,current,value});pendingLookup_[index]=int(pending_.size()-1);}else pending_[found].after=value;strokePixel(index)=value;change_.include(x,y);
+  if(maskStroke_)value=timeline::normalizedMaskPixel(value);if(current==value)return;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(x,y);
  };
  if(image){for(const auto& offset:image->samples)for(auto q:strokeSymmetryPoints({sample.x-image->width/2+offset.x,sample.y-image->height/2+offset.y}))paint(q.x,q.y,offset.coverage,offset.color);}
  else for(const auto& row:footprint.spans)for(int x=sample.x-footprint.width/2+row.left;x<=sample.x-footprint.width/2+row.right;++x)for(auto q:strokeSymmetryPoints({x,sample.y-footprint.height/2+row.y}))paint(q.x,q.y,255,{});

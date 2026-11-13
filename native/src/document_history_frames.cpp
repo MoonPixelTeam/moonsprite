@@ -1,0 +1,24 @@
+#include "document.h"
+#include "document_history_frame_validation.h"
+#include <algorithm>
+#include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
+
+namespace moon {
+void Document::captureFrameOrder(Edit& e,bool after) const {if(!after&&!e.beforeAnimationSelection)e.beforeAnimationSelection=captureAnimationSelection();if(after)e.maskHistory.afterMasks=timeline_.state().masks;else e.maskHistory.beforeMasks=timeline_.state().masks;auto& order=after?e.frameHistory.afterFrames:e.frameHistory.beforeFrames;for(const auto& f:timeline_.state().frames)order.push_back(f.id);(after?e.afterFrame:e.beforeFrame)=activeFrameId_;(after?e.afterFrameAnchor:e.beforeFrameAnchor)=frameAnchor_;(after?e.afterTimelineSelection:e.beforeTimelineSelection)=timelineSelection_;(after?e.afterActive:e.beforeActive)=activeLayerId_;}
+
+void Document::applyFrameEdit(const Edit& e,bool redo) {
+ history_frames::validateReplay(timeline_,e,redo);
+ if(e.frameHistory.beforeScriptDurations){const auto& values=*(redo?e.frameHistory.afterScriptDurations:e.frameHistory.beforeScriptDurations);for(std::size_t i=0;i<values.size();++i)timeline_.state_.frames[i].duration=values[i].second;}
+ for(const auto& [id,disabled]:redo?e.frameHistory.afterDisabled:e.frameHistory.beforeDisabled){auto it=std::find_if(timeline_.state_.frames.begin(),timeline_.state_.frames.end(),[&](const auto& f){return f.id==id;});if(it!=timeline_.state_.frames.end())it->disabled=disabled;}
+ const auto& order=redo?e.frameHistory.afterFrames:e.frameHistory.beforeFrames;auto& frames=timeline_.state_.frames;auto& cels=timeline_.state_.cels;
+ if(!order.empty()){if(e.frameHistory.detachedFrame){const auto& id=e.frameHistory.detachedFrame->id;const bool want=std::find(order.begin(),order.end(),id)!=order.end();auto it=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==id;});if(want && it==frames.end()){frames.push_back(*e.frameHistory.detachedFrame);cels.insert(cels.end(),e.contentHistory.detachedCels.begin(),e.contentHistory.detachedCels.end());}else if(!want && it!=frames.end()){frames.erase(it);cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.frameId==id;}),cels.end());}}if(!e.frameHistory.detachedFrames.empty()){std::unordered_set<std::string> inserted;for(const auto& f:e.frameHistory.detachedFrames)inserted.insert(f.id);const bool want=std::find(order.begin(),order.end(),e.frameHistory.detachedFrames.front().id)!=order.end();if(want){std::unordered_set<std::string> frameIds,celIds;frameIds.reserve(frames.size()+e.frameHistory.detachedFrames.size());celIds.reserve(cels.size()+e.contentHistory.detachedCels.size());for(const auto& f:frames)frameIds.insert(f.id);for(const auto& c:cels)celIds.insert(c.id);for(const auto& f:e.frameHistory.detachedFrames)if(frameIds.insert(f.id).second)frames.push_back(f);for(const auto& c:e.contentHistory.detachedCels)if(celIds.insert(c.id).second)cels.push_back(c);}else{frames.erase(std::remove_if(frames.begin(),frames.end(),[&](const auto& f){return inserted.count(f.id);}),frames.end());cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return inserted.count(c.frameId);}),cels.end());}std::unordered_map<std::string,std::size_t> orderIndex;for(std::size_t i=0;i<order.size();++i)orderIndex.emplace(order[i],i);std::sort(frames.begin(),frames.end(),[&](const auto& a,const auto& b){return orderIndex.at(a.id)<orderIndex.at(b.id);});}else std::sort(frames.begin(),frames.end(),[&](const auto& a,const auto& b){return std::find(order.begin(),order.end(),a.id)<std::find(order.begin(),order.end(),b.id);});timeline_.buildIndex();activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
+ const auto& loops=redo?e.frameHistory.afterLoops:e.frameHistory.beforeLoops;if(loops)timeline_.state_.loopSections=*loops;const auto& selection=redo?e.afterSelection:e.beforeSelection;if(selection)selectedFrames_=*selection;
+ if(!e.frameHistory.targetFrameId.empty()){auto it=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==e.frameHistory.targetFrameId;});if(it==frames.end())throw std::logic_error("Missing history frame");it->duration=*(redo?e.frameHistory.afterDuration:e.frameHistory.beforeDuration);}
+}
+
+std::size_t Document::FrameHistory::durationBytes()const{std::size_t durationBytes=0;for(const auto* values:{&beforeScriptDurations,&afterScriptDurations})if(*values)for(const auto& [id,duration]:**values)durationBytes+=sizeof(std::pair<std::string,int>)+id.size();return durationBytes;}
+std::size_t Document::FrameHistory::loopBytes()const{std::size_t size=0;for(const auto* loops:{&beforeLoops,&afterLoops})if(*loops)size+=(*loops)->size()*256;return size;}
+std::size_t Document::FrameHistory::frameBytes()const{std::size_t size=0;size+=(beforeFrames.size()+afterFrames.size()+beforeDisabled.size()+afterDisabled.size()+detachedFrames.size())*64;return size;}
+}

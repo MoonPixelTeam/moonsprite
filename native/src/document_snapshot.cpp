@@ -15,13 +15,21 @@ DocumentSnapshot::DocumentSnapshot(const Document& d,std::string newProjectId)
 }
 bool DocumentSnapshot::matches(const Document& d)const{for(const auto& layer:d.timeline().state().layers){const auto found=layerGeometry_.find(layer.id);if(found==layerGeometry_.end()||found->second!=d.displayedLayerGeometry(layer.id))return false;}const auto center=d.symmetryCenter();return !d.active() && identity_==d.identity() && revision_==d.revision() && contentRevision_==d.contentRevision() && symmetry_.x==center.x && symmetry_.y==center.y && loop_==d.animationLoop() && showPixelGrid_==d.showPixelGrid() && showCustomGrid_==d.showCustomGrid() && customGrid_==d.customGrid() && panel_==d.layerPanelState() && raster_.matches(d.timeline().state());}
 bool DocumentSnapshot::advance(const Document& d,std::chrono::steady_clock::time_point deadline){
-  if(!matches(d))throw std::logic_error("Document changed during snapshot");
-  if(complete_)return true;
+  const auto progress=advanceChecked(d,deadline);
+  if(progress==Progress::SourceChanged)throw std::logic_error("Document changed during snapshot");
+  return progress==Progress::Complete;
+}
+DocumentSnapshot::Progress DocumentSnapshot::advanceChecked(const Document& d,std::chrono::steady_clock::time_point deadline){
+  const bool allowProgress=std::chrono::steady_clock::now()<deadline;
+  if(!matches(d))return Progress::SourceChanged;
+  if(complete_)return Progress::Complete;
   const auto before=raster_.copiedPixels();
-  if(!raster_.advance(d.timeline().state(),deadline))return false;
+  if(!raster_.advanceValidated(d.timeline().state(),deadline,RasterSnapshot::tickPixels,allowProgress))return Progress::Pending;
   auto remaining=(RasterSnapshot::tickPixels-(raster_.copiedPixels()-before))*sizeof(Pixel);
+  bool allowBrushProgress=allowProgress&&raster_.copiedPixels()==before;
   while(brush_<brushes_.size()){
-    if(!remaining || std::chrono::steady_clock::now()>=deadline)return false;
+    if(!remaining || (std::chrono::steady_clock::now()>=deadline&&!allowBrushProgress))return Progress::Pending;
+    allowBrushProgress=false;
     auto& target=brushes_[brush_].brush;const auto& source=d.projectBrushes().at(brush_).brush;
     auto copy=[&](auto& dest,const auto& values){
       using Value=typename std::decay_t<decltype(dest)>::value_type;
@@ -33,7 +41,7 @@ bool DocumentSnapshot::advance(const Document& d,std::chrono::steady_clock::time
     if(part_==0)copy(target.coverage,source.coverage);else if(part_==1)copy(target.colors,source.colors);else copy(target.paintColors,source.paintColors);
     if(part_==3){part_=0;++brush_;}
   }
-  complete_=true;return true;
+  complete_=true;return Progress::Complete;
 }
 Document DocumentSnapshot::finish(){
   if(!complete_)throw std::logic_error("Document snapshot incomplete");

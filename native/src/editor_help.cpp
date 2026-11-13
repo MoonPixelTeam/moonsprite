@@ -1,5 +1,5 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "ui_frame_capture.h"
 namespace moon::editor {
 void Editor::showHelp(bool tips,bool verify){
  if(pending_!=Pending::None)return;
@@ -18,5 +18,5 @@ void Editor::showHelp(bool tips,bool verify){
  requestFocus();refresh();if(failure)std::rethrow_exception(failure);
  if(popup.requestedAction()==1)showShortcutSettings();else if(popup.requestedAction()==2)menuCommands_.invoke("diagnostics");
 }
-void Editor::smokeHelp(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("userGuide")||!menuCommands_.connected("tips"))throw std::runtime_error("Help actual menu bindings");const auto before=document.historyPosition();helpVerify_=true;menuCommands_.invoke("userGuide");menuCommands_.invoke("tips");helpVerify_=false;if(document.historyPosition()!=before)throw std::runtime_error("Help viewing must preserve document history");}
+void Editor::smokeHelp(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("userGuide")||!menuCommands_.connected("tips"))throw std::runtime_error("Help actual menu bindings");const auto before=currentDocument().historyPosition();helpVerify_=true;menuCommands_.invoke("userGuide");menuCommands_.invoke("tips");helpVerify_=false;if(currentDocument().historyPosition()!=before)throw std::runtime_error("Help viewing must preserve document history");}
 }

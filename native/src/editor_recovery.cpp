@@ -5,7 +5,37 @@
 #include <windows.h>
 #include <codecvt>
 #include <locale>
+#include <memory>
 namespace moon::editor {
+RecoverySession::Result RecoverySession::scheduleSavedCleanup(const std::filesystem::path& directory,std::uint64_t documentIdentity,const CleanupExecutor& executor){
+ if(ownedIdentity!=documentIdentity||ownedId.empty())return {};
+ std::shared_ptr<std::future<void>> previous;
+ try{
+  const auto id=ownedId;
+  auto nextCleanup=std::make_pair(documentIdentity,id);
+  auto outcome=std::make_shared<CleanupOutcome>();
+  // Keep a recoverable owner until dispatch succeeds. std::async can reject
+  // thread creation after the old future has been captured by its callable.
+  previous=std::make_shared<std::future<void>>(std::move(worker));
+  auto operation=[previous,outcome,directory,id]()mutable{
+   // Legacy RecoveryService.enqueue uses then(task, task): a preceding
+   // autosave rejection must not prevent cleanup after an exact file save.
+   if(previous->valid())try{previous->get();}
+   catch(const std::exception& error){outcome->predecessorFailed=true;outcome->predecessorError=error.what();}
+   catch(...){outcome->predecessorFailed=true;outcome->predecessorError="Unknown previous recovery failure";}
+   project::removeOwnedRecovery(directory,id);
+  };
+  auto next=executor?executor(std::move(operation)):std::async(std::launch::async,std::move(operation));
+  if(!next.valid())throw std::logic_error("Recovery cleanup executor returned no task");
+  worker=std::move(next);
+  snapshot.reset();cleanup=std::move(nextCleanup);cleanupOutcome=std::move(outcome);cleanupError.reset();
+ }catch(const std::exception& error){
+  if(previous)worker=std::move(*previous);
+  Result result{error.what(),true};cleanupError=std::make_pair(documentIdentity,result.error);return result;
+ }catch(...){if(previous)worker=std::move(*previous);throw;}
+ return {};
+}
+
 RecoverySession::Result RecoverySession::tick(Document& document,const recovery::Preferences& preferences,const std::filesystem::path& directory,bool force){
   Result result;
   if(auto recording=document.recordingSession()){recording->poll(document);if(recording->pendingCount()){result.error=recording->error;return result;}}
@@ -14,12 +44,15 @@ RecoverySession::Result RecoverySession::tick(Document& document,const recovery:
       if(worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return result;
 
       bool success=true;try{worker.get();}catch(const std::exception&e){success=false;result.error=e.what();result.cleanupFailure=cleanup.has_value();}
+      const bool predecessorFailed=cleanupOutcome&&cleanupOutcome->predecessorFailed;
+      if(predecessorFailed){if(!result.error.empty())result.error+="; previous recovery: ";result.error+=cleanupOutcome->predecessorError;}
 
       if(success && cleanup && ownedIdentity==cleanup->first && ownedId==cleanup->second){if(originId==ownedId)originId.clear();ownedId.clear();}
 
+      if(!success&&cleanup)cleanupError=std::make_pair(cleanup->first,result.error);
       cleanup.reset();
 
-      if(ticket)queue.complete(*ticket,success);ticket.reset();
+      if(ticket)queue.complete(*ticket,success&&!predecessorFailed);ticket.reset();cleanupOutcome.reset();
 
     }
 
@@ -50,13 +83,15 @@ RecoverySession::Result RecoverySession::tick(Document& document,const recovery:
 
     }
 
-    if(document.active() || !document.dirty() || document.identity()!=identity || document.revision()!=ticket->target.revision || document.contentRevision()!=ticket->target.contentRevision || !snapshot->matches(document)) {
+    if(document.active() || !document.dirty() || document.identity()!=identity || document.revision()!=ticket->target.revision || document.contentRevision()!=ticket->target.contentRevision) {
 
       queue.complete(*ticket,false);ticket.reset();snapshot.reset();return result;
 
     }
 
-    if(!snapshot->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return result;
+    const auto progress=snapshot->advanceChecked(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2));
+    if(progress==DocumentSnapshot::Progress::SourceChanged){queue.complete(*ticket,false);ticket.reset();snapshot.reset();return result;}
+    if(progress==DocumentSnapshot::Progress::Pending)return result;
 
     auto captured=std::move(*snapshot);snapshot.reset();
 

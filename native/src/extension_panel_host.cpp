@@ -1,8 +1,21 @@
-#include "editor_implementation.h"
 #include "extension_panel_host.h"
+#include "extension_contributions.h"
+#include "ui_frame_capture.h"
+#include "ui/display.h"
+#include "ui/manager.h"
+#include "ui/message.h"
+#include "ui/resize_event.h"
+#include "ui/tooltips.h"
 #include "extension_form_files.h"
 #include "panel_docking.h"
 #include "lua_script_service.h"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <iterator>
+#include <stdexcept>
+#include <thread>
 namespace moon::editor { namespace {
 using namespace winrt::Windows::Data::Json;
 std::u32string panelFit(const PixelFont& font,const std::u32string& text,int width){

@@ -9,15 +9,19 @@ bool Timeline::hasLinkedLayers()const{return std::any_of(state_.layers.begin(),s
 void Timeline::synchronizeLinkedLayers(const std::string& preferredOwner){
  if(!hasLinkedLayers()){linkedDirtyOwner_.clear();return;}
  const auto preferred=preferredOwner.empty()?linkedDirtyOwner_:preferredOwner;
+ struct Install{std::size_t index,source;int x,y;};
+ std::vector<Install> plan;plan.reserve(state_.cels.size());
  std::map<std::string,std::vector<std::string>> groups;for(const auto& layer:state_.layers){if(layer.linkedContentId.empty())continue;if(!layer.kind.empty()||layer.background)throw std::invalid_argument("Special/background layers cannot share linked raster content");groups[layer.linkedContentId].push_back(layer.id);}
  for(const auto& group:groups){if(group.second.size()<2)continue;std::map<std::string,std::string> parent;std::map<std::string,std::size_t> nodes;auto find=[&](std::string id){while(parent.at(id)!=id)id=parent.at(id);return id;};
   for(const auto& frame:state_.frames){std::string first;for(const auto& layer:group.second){const auto* slot=findCel(layer,frame.id);if(!slot)continue;const auto resolved=resolveSurface(slot->id);if(resolved.issue!=LinkIssue::None||!resolved.source||!resolved.surface)continue;const auto& id=resolved.source->id;parent.emplace(id,id);nodes.emplace(id,cels_.at(id));if(first.empty())first=id;else{const auto a=find(first),b=find(id);if(a!=b)parent[b]=a;}}}
   std::map<std::string,std::vector<std::size_t>> components;for(const auto& node:nodes)components[find(node.first)].push_back(node.second);
   for(const auto& component:components){auto sourceIndex=component.second.front();for(auto index:component.second)if(state_.cels[index].surface->pixels.revision()>state_.cels[sourceIndex].surface->pixels.revision())sourceIndex=index;for(auto index:component.second)if(state_.cels[index].id==preferred){sourceIndex=index;break;}const auto& source=*state_.cels[sourceIndex].surface;
-   struct Install{std::size_t index;int x,y;};std::vector<Install> plan;for(auto index:component.second){const auto& target=*state_.cels[index].surface;const auto x=std::int64_t(target.offsetX)-target.storageOriginX.value_or(0)+source.storageOriginX.value_or(0),y=std::int64_t(target.offsetY)-target.storageOriginY.value_or(0)+source.storageOriginY.value_or(0);if(x<std::numeric_limits<int>::min()||x>std::numeric_limits<int>::max()||y<std::numeric_limits<int>::min()||y>std::numeric_limits<int>::max())throw std::overflow_error("Linked raster anchor exceeds coordinates");plan.push_back({index,int(x),int(y)});}
-   for(const auto& install:plan){auto& target=*state_.cels[install.index].surface;target.width=source.width;target.height=source.height;target.offsetX=install.x;target.offsetY=install.y;target.storageOriginX=source.storageOriginX;target.storageOriginY=source.storageOriginY;target.pixels.share(source.pixels);selectionContent_.erase(state_.cels[install.index].id);visibleContent_.erase(state_.cels[install.index].id);}
+   for(auto index:component.second){const auto& target=*state_.cels[index].surface;const auto x=std::int64_t(target.offsetX)-target.storageOriginX.value_or(0)+source.storageOriginX.value_or(0),y=std::int64_t(target.offsetY)-target.storageOriginY.value_or(0)+source.storageOriginY.value_or(0);if(x<std::numeric_limits<int>::min()||x>std::numeric_limits<int>::max()||y<std::numeric_limits<int>::min()||y>std::numeric_limits<int>::max())throw std::overflow_error("Linked raster anchor exceeds coordinates");plan.push_back({index,sourceIndex,int(x),int(y)});}
   }
  }
+ // All components, including later groups and their coordinate checks, must be
+ // prepared before sharing the first live buffer. No pixel copies are needed.
+ for(const auto& install:plan){const auto& source=*state_.cels[install.source].surface;auto& target=*state_.cels[install.index].surface;target.width=source.width;target.height=source.height;target.offsetX=install.x;target.offsetY=install.y;target.storageOriginX=source.storageOriginX;target.storageOriginY=source.storageOriginY;target.pixels.share(source.pixels);selectionContent_.erase(state_.cels[install.index].id);visibleContent_.erase(state_.cels[install.index].id);}
  linkedDirtyOwner_.clear();
 }
 }

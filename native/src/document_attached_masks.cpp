@@ -17,7 +17,7 @@ bool Document::canCreateLayerMasksForLayer(const std::string& owner)const{
  }
  return false;
 }
-bool Document::createLayerMasksForLayer(const std::string& owner){
+bool Document::createLayerMasksForLayer(const std::string& owner){auto selectionHistory=trackAnimationSelectionHistory(true);
  if(!canCreateLayerMasksForLayer(owner)||layerEffectivelyLocked(timeline_.state().layers[timeline_.layerIndex(owner)]))return false;
  commitFloatingPaste();cancelGradient();cancelStroke();if(active())return false;
  auto masks=timeline_.state().masks;
@@ -60,14 +60,14 @@ bool Document::copyAttachedMasks(const std::vector<MaskSlotKey>& keys,std::uint3
 Document::MaskTransferResult Document::moveAttachedMasks(const std::vector<MaskSlotKey>& keys,const MaskSlotKey& anchor,const MaskSlotKey& target){
  std::vector<timeline::MaskSlot> sources;std::vector<MaskSlotKey> independent;std::set<MaskSlotKey> seen;bool linked=false;
  for(const auto& key:keys)if(seen.insert(key).second)if(const auto* direct=timeline::directMask(timeline_.state(),key.first,key.second)){if(!direct->mask.linkedMaskId.empty())linked=true;else{sources.push_back(*direct);independent.push_back(key);}}
- if(linked){maskSelectionHistory_.slots=std::move(independent);maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;return MaskTransferResult::LinkedSelection;}
+ if(linked){maskSelectionHistory_.slots=std::move(independent);maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;animationChangeBinding_.publish(*this,{AnimationChange::Kind::MaskSelectionChanged});return MaskTransferResult::LinkedSelection;}
  return transferAttachedMasks(sources,keys,anchor,target,true);
 }
 Document::MaskTransferResult Document::pasteAttachedMasks(const std::vector<MaskSlotKey>& selection,const MaskSlotKey& target){
  if(maskClipboard_.empty())return MaskTransferResult::NoChange;
  const MaskSlotKey anchor{maskClipboard_.front().ownerId,maskClipboard_.front().frameId};return transferAttachedMasks(maskClipboard_,selection,anchor,target,false);
 }
-Document::MaskTransferResult Document::transferAttachedMasks(const std::vector<timeline::MaskSlot>& sources,const std::vector<MaskSlotKey>& selection,const MaskSlotKey& anchor,const MaskSlotKey& target,bool move){
+Document::MaskTransferResult Document::transferAttachedMasks(const std::vector<timeline::MaskSlot>& sources,const std::vector<MaskSlotKey>& selection,const MaskSlotKey& anchor,const MaskSlotKey& target,bool move){auto selectionHistory=trackAnimationSelectionHistory(true);
  using R=MaskTransferResult;if(sources.empty())return R::NoChange;
  std::vector<MaskSlotKey> keys;for(const auto& source:sources)keys.push_back({source.ownerId,source.frameId});const auto placements=mapAttachedMaskBlock(keys,anchor,target);if(placements.empty())return R::Invalid;
  if(move&&std::all_of(placements.begin(),placements.end(),[](const auto& p){return p.source==p.target;}))return R::NoChange;
@@ -87,11 +87,11 @@ Document::MaskTransferResult Document::transferAttachedMasks(const std::vector<t
  std::set<std::string> ids;for(const auto& m:after)ids.insert(m.mask.id);
  for(auto& m:after)if(!m.mask.linkedMaskId.empty()&&!ids.count(m.mask.linkedMaskId)){if(const auto* resolved=timeline::resolvedMask(original,m.ownerId,m.frameId)){const auto id=m.mask.id;m.mask=*resolved;m.mask.id=id;m.mask.linkedMaskId.clear();}}
  timeline::State validation;validation.layers=original.layers;validation.groups=original.groups;validation.frames=original.frames;validation.masks=after;timeline::validateMasks(validation);
- Edit edit{{},state_,nextState_};edit.beforeMasks=original.masks;edit.afterMasks=after;edit.beforeMaskSelection=selection;edit.afterMaskSelection=std::vector<MaskSlotKey>{};for(const auto& p:placements)edit.afterMaskSelection->push_back(p.target);
+ Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=original.masks;edit.maskHistory.afterMasks=after;edit.maskHistory.beforeMaskSelection=selection;edit.maskHistory.afterMaskSelection=std::vector<MaskSlotKey>{};for(const auto& p:placements)edit.maskHistory.afterMaskSelection->push_back(p.target);
  edit.beforeFrame=activeFrameId_;edit.afterFrame=move?target.second:activeFrameId_;edit.beforeActive=activeLayerId_;edit.afterActive=move&&timeline_.hasLayer(target.first)?target.first:activeLayerId_;
- std::string nextActive=move&&ids.count(activeMaskId_)?activeMaskId_:std::string{};edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,nextActive,maskIsolated_,!nextActive.empty()&&maskIsolated_});
+ std::string nextActive=move&&ids.count(activeMaskId_)?activeMaskId_:std::string{};edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,nextActive,maskIsolated_,!nextActive.empty()&&maskIsolated_});
  reserveHistoryEntries();timeline_.state_.masks=std::move(after);nextLayerId_=nextId;activeFrameId_=edit.afterFrame;activeLayerId_=edit.afterActive;activeMaskId_=std::move(nextActive);if(activeMaskId_.empty())maskIsolated_=false;
- maskSelectionHistory_.slots=*edit.afterMaskSelection;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;pushEdit(std::move(edit),move?U"移动图层蒙版单元格":U"粘贴图层蒙版单元格");change_={0,0,width_,height_};publishChange();return R::Done;
+ maskSelectionHistory_.slots=*edit.maskHistory.afterMaskSelection;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;pushEdit(std::move(edit),move?U"移动图层蒙版单元格":U"粘贴图层蒙版单元格");change_={0,0,width_,height_};publishChange();return R::Done;
 }
 bool Document::setMaskMoveWithOwner(const std::string& owner,const std::string& frame,bool enabled){
  // Legacy animationMaskAt resolves linked masks before changing this property.
@@ -106,14 +106,63 @@ const timeline::AttachedMask* Document::maskPreview()const{if(gradient_&&gradien
 std::vector<Pixel> Document::maskDisplayRegion(PixelRegion r)const{std::vector<Pixel> out(std::size_t(r.w)*r.h,0xffffffff);const timeline::AttachedMask* mask=nullptr;for(const auto& m:timeline_.state().masks)if(m.mask.id==activeMaskId_)mask=&m.mask;if(const auto* preview=maskPreview())mask=preview;if(!mask)return out;for(int y=0;y<r.h;++y)for(int x=0;x<r.w;++x){const auto n=timeline::maskCoverage(raster::readWorld(mask->surface,r.x+x,r.y+y));out[std::size_t(y)*r.w+x]=0xff000000|n|(n<<8)|(n<<16);}return out;}
 
 timeline::AttachedMask* Document::mutableActiveMask(){for(auto& v:timeline_.state_.masks)if(v.mask.id==activeMaskId_)return &v.mask;return nullptr;}
+void Document::prepareMaskStroke(bool expand){
+ auto* mask=mutableActiveMask();if(!mask)throw std::logic_error("Missing mask stroke owner");
+ MaskStrokeBaseline baseline{mask->id,MaskRasterGeometry::capture(mask->surface),{}};
+ std::optional<timeline::Surface> expanded;
+ if(expand&&!raster::fullCanvas(mask->surface,width_,height_))expanded=raster::expanded(mask->surface,{0,0,width_,height_},256*1024*1024);
+ if(expanded)baseline.original.emplace(std::move(mask->surface));
+ maskStroke_.emplace(std::move(baseline));
+ if(expanded)mask->surface=std::move(*expanded);
+}
+void Document::rollbackMaskStroke(){
+ if(!maskStroke_)return;
+ if(maskStroke_->original)for(auto& slot:timeline_.state_.masks)if(slot.mask.id==maskStroke_->maskId){slot.mask.surface=std::move(*maskStroke_->original);break;}
+ maskStroke_.reset();
+}
+bool Document::commitMaskStroke(){
+ if(!maskStroke_)return false;
+ auto* mask=mutableActiveMask();if(!mask||mask->id!=maskStroke_->maskId)throw std::logic_error("Mask stroke owner changed");
+ auto history=std::make_shared<MaskRasterHistory>(MaskRasterHistory{mask->id,maskStroke_->geometry,MaskRasterGeometry::capture(mask->surface),width_,{}});
+ history->pixels.reserve(pending_.size());for(const auto& delta:pending_)if(delta.before!=delta.after)history->pixels.push_back(delta);
+ if(history->pixels.empty()){rollbackMaskStroke();active_=false;strokePixels_=nullptr;clearPendingStroke();return false;}
+ raster::validate(mask->surface);
+ Edit edit{{},state_,nextState_};edit.terminalHistory=MaskRasterReplay{std::move(history)};
+ const auto revision=revision_;auto finish=[&]{maskStroke_.reset();active_=false;strokePixels_=nullptr;clearPendingStroke();};
+ try{pushEdit(std::move(edit),U"绘制蒙版");}catch(...){if(revision_!=revision)finish();throw;}
+ finish();projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));
+ return true;
+}
+void Document::applyMaskRasterHistory(const MaskRasterHistory& edit,bool forward){
+ auto found=std::find_if(timeline_.state_.masks.begin(),timeline_.state_.masks.end(),[&](const auto& slot){return slot.mask.id==edit.maskId;});
+ if(found==timeline_.state_.masks.end())throw std::logic_error("Missing mask raster history owner");
+ auto& source=found->mask.surface;const auto& geometry=forward?edit.after:edit.before;
+ raster::validate(source);
+ if(edit.canvasWidth<1||geometry.width<1||geometry.height<1)throw std::logic_error("Invalid mask raster history geometry");
+ // Geometry changes are prepared off to the side before any live pixel write.
+ std::optional<timeline::Surface> replacement;
+ if(!geometry.matches(source)){
+  replacement.emplace();auto& target=*replacement;target.width=geometry.width;target.height=geometry.height;target.offsetX=geometry.offsetX;target.offsetY=geometry.offsetY;target.storageOriginX=geometry.storageOriginX;target.storageOriginY=geometry.storageOriginY;
+  target.pixels.resize(std::size_t(target.width)*target.height);
+  const auto left=std::max<std::int64_t>(source.offsetX,target.offsetX),top=std::max<std::int64_t>(source.offsetY,target.offsetY),right=std::min(std::int64_t(source.offsetX)+source.width,std::int64_t(target.offsetX)+target.width),bottom=std::min(std::int64_t(source.offsetY)+source.height,std::int64_t(target.offsetY)+target.height);
+  if(right>left)for(auto y=top;y<bottom;++y)std::copy_n(source.pixels.begin()+std::size_t(y-source.offsetY)*source.width+std::size_t(left-source.offsetX),std::size_t(right-left),target.pixels.begin()+std::size_t(y-target.offsetY)*target.width+std::size_t(left-target.offsetX));
+ }
+ auto& target=replacement?*replacement:source;
+ for(const auto& delta:edit.pixels){
+  const auto x=std::int64_t(delta.index%std::size_t(edit.canvasWidth))-target.offsetX,y=std::int64_t(delta.index/std::size_t(edit.canvasWidth))-target.offsetY;
+  if(x>=0&&y>=0&&x<target.width&&y<target.height)target.pixels[std::size_t(y)*target.width+std::size_t(x)]=forward?delta.after:delta.before;
+ }
+ if(replacement)source=std::move(*replacement);
+ change_={0,0,width_,height_};
+}
 bool Document::maskBrushAvailable()const{for(const auto& v:timeline_.state().masks)if(v.mask.id==activeMaskId_){if(v.mask.locked)return false;if(v.group){for(const auto& g:timeline_.state().groups)if(g.id==v.ownerId)return timeline::isGroupEffectivelyVisible(timeline_.state(),g)&&!timeline::isGroupEffectivelyLocked(timeline_.state(),g);}else if(timeline_.hasLayer(v.ownerId)){const auto& l=timeline_.state().layers[timeline_.layerIndex(v.ownerId)];return layerEffectivelyVisible(l)&&!layerEffectivelyLocked(l);}}return false;}
 void Document::exitAttachedMask(){commitFloatingPaste();cancelGradient();cancelStroke();activeMaskId_.clear();maskIsolated_=false;change_={0,0,width_,height_};publishChange();}
 bool Document::selectAttachedMask(const std::string& owner,const std::string& frame,bool isolated){commitFloatingPaste();cancelGradient();cancelStroke();const auto* m=timeline::resolvedMask(timeline_.state(),owner,frame);if(!m||!timeline_.hasFrame(frame))return false;if(timeline_.hasLayer(owner))activeLayerId_=owner;activeFrameId_=frame;activeMaskId_=m->id;maskIsolated_=isolated;change_={0,0,width_,height_};publishChange();return true;}
-bool Document::commitMasks(std::vector<timeline::MaskSlot> before,const std::u32string& label){timeline::validateMasks(timeline_.state());Edit e{{},state_,nextState_};if(!activeMaskId_.empty()&&std::none_of(before.begin(),before.end(),[&](const auto& slot){return slot.mask.id==activeMaskId_;}))e.maskToActivateOnRedo=activeMaskId_;e.beforeMasks=std::move(before);e.afterMasks=timeline_.state().masks;pushEdit(std::move(e),label);change_={0,0,width_,height_};publishChange();return true;}
-bool Document::createAttachedMask(const std::string& owner,const std::string& frame,bool group){commitFloatingPaste();cancelGradient();cancelStroke();if(active()||!timeline_.hasFrame(frame))return false;bool valid=false;if(group){for(const auto& g:timeline_.state().groups)if(g.id==owner)valid=!timeline::isGroupEffectivelyLocked(timeline_.state(),g);}else if(timeline_.hasLayer(owner)){const auto& l=timeline_.state().layers[timeline_.layerIndex(owner)];valid=!layerEffectivelyLocked(l);const auto* c=timeline_.findCel(owner,frame);valid=valid&&c&&timeline_.hasVisiblePixels(c->id);}if(!valid)return false;if(timeline::directMask(timeline_.state(),owner,frame))return selectAttachedMask(owner,frame);std::size_t bytes=std::size_t(width_)*height_*4;for(const auto& m:timeline_.state().masks)bytes+=m.mask.surface.pixels.size()*4;if(bytes>256*1024*1024)return false;auto before=timeline_.state().masks;timeline::MaskSlot v;v.ownerId=owner;v.frameId=frame;v.group=group;v.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);v.mask.surface.width=width_;v.mask.surface.height=height_;v.mask.surface.pixels.resize(std::size_t(width_)*height_);timeline_.state_.masks.push_back(std::move(v));selectAttachedMask(owner,frame,false);return commitMasks(std::move(before),group?U"新建图层组蒙版":U"新建图层蒙版");}
+bool Document::commitMasks(std::vector<timeline::MaskSlot> before,const std::u32string& label){timeline::validateMasks(timeline_.state());Edit e{{},state_,nextState_};if(!activeMaskId_.empty()&&std::none_of(before.begin(),before.end(),[&](const auto& slot){return slot.mask.id==activeMaskId_;}))e.maskHistory.maskToActivateOnRedo=activeMaskId_;e.maskHistory.beforeMasks=std::move(before);e.maskHistory.afterMasks=timeline_.state().masks;pushEdit(std::move(e),label);change_={0,0,width_,height_};publishChange();return true;}
+bool Document::createAttachedMask(const std::string& owner,const std::string& frame,bool group){auto selectionHistory=trackAnimationSelectionHistory(true);commitFloatingPaste();cancelGradient();cancelStroke();if(active()||!timeline_.hasFrame(frame))return false;bool valid=false;if(group){for(const auto& g:timeline_.state().groups)if(g.id==owner)valid=!timeline::isGroupEffectivelyLocked(timeline_.state(),g);}else if(timeline_.hasLayer(owner)){const auto& l=timeline_.state().layers[timeline_.layerIndex(owner)];valid=!layerEffectivelyLocked(l);const auto* c=timeline_.findCel(owner,frame);valid=valid&&c&&timeline_.hasVisiblePixels(c->id);}if(!valid)return false;if(timeline::directMask(timeline_.state(),owner,frame))return selectAttachedMask(owner,frame);std::size_t bytes=std::size_t(width_)*height_*4;for(const auto& m:timeline_.state().masks)bytes+=m.mask.surface.pixels.size()*4;if(bytes>256*1024*1024)return false;auto before=timeline_.state().masks;timeline::MaskSlot v;v.ownerId=owner;v.frameId=frame;v.group=group;v.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);v.mask.surface.width=width_;v.mask.surface.height=height_;v.mask.surface.pixels.resize(std::size_t(width_)*height_);timeline_.state_.masks.push_back(std::move(v));selectAttachedMask(owner,frame,false);return commitMasks(std::move(before),group?U"新建图层组蒙版":U"新建图层蒙版");}
 bool Document::deleteAttachedMask(const std::string& owner,const std::string& frame){return removeAttachedMasks({{owner,frame}},false);}
 bool Document::deleteAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots){return removeAttachedMasks(slots,true);}
-bool Document::removeAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots,bool selected){
+bool Document::removeAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots,bool selected){auto selectionHistory=trackAnimationSelectionHistory(true);
  std::set<std::string> removed;std::vector<std::pair<std::string,std::string>> targets;bool group=false;
  auto keys=slots;
  if(selected)for(const auto& slot:timeline_.state().masks)if(std::find(timelineSelection_.maskRows.begin(),timelineSelection_.maskRows.end(),slot.ownerId)!=timelineSelection_.maskRows.end())keys.emplace_back(slot.ownerId,slot.frameId);
@@ -134,36 +183,36 @@ bool Document::removeAttachedMasks(const std::vector<std::pair<std::string,std::
  }
  after.erase(std::remove_if(after.begin(),after.end(),[&](const auto& slot){return removed.count(slot.mask.id);}),after.end());
  timeline::State validation;validation.layers=timeline_.state().layers;validation.groups=timeline_.state().groups;validation.frames=timeline_.state().frames;validation.masks=after;timeline::validateMasks(validation);
- Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=after;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeActive=edit.afterActive=activeLayerId_;
- if(removed.count(activeMaskId_))edit.maskEditingOnUndo=std::make_pair(activeMaskId_,maskIsolated_);
- if(selected)edit.beforeMaskSelection=targets;
+ Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=after;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeActive=edit.afterActive=activeLayerId_;
+ if(removed.count(activeMaskId_))edit.maskHistory.maskEditingOnUndo=std::make_pair(activeMaskId_,maskIsolated_);
+ if(selected)edit.maskHistory.beforeMaskSelection=targets;
  if(selected&&!timelineSelection_.maskRows.empty()){
-  edit.beforeMaskSelection=slots;edit.beforeTimelineSelection=timelineSelection_;
+  edit.maskHistory.beforeMaskSelection=slots;edit.beforeTimelineSelection=timelineSelection_;
   auto selection=timelineSelection_;selection.maskRows.clear();edit.afterTimelineSelection=selection;
  }
  reserveHistoryEntries();timeline_.state_.masks=std::move(after);
- if(edit.maskEditingOnUndo){activeMaskId_.clear();maskIsolated_=false;}
+ if(edit.maskHistory.maskEditingOnUndo){activeMaskId_.clear();maskIsolated_=false;}
  if(selected){maskSelectionHistory_.slots.clear();maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;}
  if(edit.afterTimelineSelection)timelineSelection_=*edit.afterTimelineSelection;
  pushEdit(std::move(edit),!selected&&group?U"删除图层组蒙版":U"删除图层蒙版");
  change_={0,0,width_,height_};publishChange();return true;
 }
-bool Document::setAttachedMaskFlags(const std::string& owner,const std::string& frame,bool visible,bool locked,bool move,bool autoLink,const std::vector<MaskSlotKey>* selection){
+bool Document::setAttachedMaskFlags(const std::string& owner,const std::string& frame,bool visible,bool locked,bool move,bool autoLink,const std::vector<MaskSlotKey>* selection){auto selectionHistory=trackAnimationSelectionHistory(false);
  const auto* resolved=timeline::resolvedMask(timeline_.state(),owner,frame);if(!resolved)return false;
  if(resolved->visible==visible&&resolved->locked==locked&&resolved->moveWithOwner==move&&resolved->autoLinkAnimationCels==autoLink)return false;
  const auto id=resolved->id;const bool wasLocked=resolved->locked;cancelGradient();cancelStroke();auto after=timeline_.state().masks;
  auto it=std::find_if(after.begin(),after.end(),[&](const auto& slot){return slot.mask.id==id;});if(it==after.end())return false;
  it->mask.visible=visible;it->mask.locked=locked;it->mask.moveWithOwner=move;it->mask.autoLinkAnimationCels=autoLink;
- Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=after;
+ Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=after;
  const bool exitEditing=locked&&!wasLocked&&activeMaskId_==id;
- if(locked!=wasLocked||exitEditing){edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeActive=edit.afterActive=activeLayerId_;if(selection)edit.beforeMaskSelection=edit.afterMaskSelection=*selection;}
- if(exitEditing)edit.maskEditingOnUndo=std::make_pair(activeMaskId_,maskIsolated_);
+ if(locked!=wasLocked||exitEditing){edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeActive=edit.afterActive=activeLayerId_;if(selection)edit.maskHistory.beforeMaskSelection=edit.maskHistory.afterMaskSelection=*selection;}
+ if(exitEditing)edit.maskHistory.maskEditingOnUndo=std::make_pair(activeMaskId_,maskIsolated_);
 
- if(locked!=wasLocked)edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,exitEditing?std::string{}:activeMaskId_,maskIsolated_,exitEditing?false:maskIsolated_});
+ if(locked!=wasLocked)edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,exitEditing?std::string{}:activeMaskId_,maskIsolated_,exitEditing?false:maskIsolated_});
  reserveHistoryEntries();timeline_.state_.masks=std::move(after);if(exitEditing){activeMaskId_.clear();maskIsolated_=false;}
  pushEdit(std::move(edit),U"蒙版属性");change_={0,0,width_,height_};publishChange();return true;
 }
-bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots,bool detach){
+bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots,bool detach){auto selectionHistory=trackAnimationSelectionHistory(false);
  cancelGradient();cancelStroke();
  const auto& original=timeline_.state();
  std::vector<std::pair<std::string,std::string>> selected;std::set<std::pair<std::string,std::string>> unique;
@@ -191,12 +240,12 @@ bool Document::linkAttachedMasks(const std::vector<std::pair<std::string,std::st
  }
  if(!changed)return false;
  timeline::State validation;validation.layers=original.layers;validation.groups=original.groups;validation.frames=original.frames;validation.masks=after;timeline::validateMasks(validation);
- Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=after;edit.beforeMaskSelection=edit.afterMaskSelection=selected;
+ Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=after;edit.maskHistory.beforeMaskSelection=edit.maskHistory.afterMaskSelection=selected;
  edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeActive=edit.afterActive=activeLayerId_;
  std::string editOwner=selectedGroupId_.value_or(activeLayerId_);const auto* edited=timeline::resolvedMask(timeline_.state(),editOwner,activeFrameId_);
  if(!edited||edited->id!=activeMaskId_){editOwner.clear();for(const auto& slot:original.masks)if(slot.mask.id==activeMaskId_){editOwner=slot.ownerId;break;}}
  std::string afterActive=activeMaskId_;if(!activeMaskId_.empty()&&!editOwner.empty())if(const auto* m=timeline::resolvedMask(validation,editOwner,activeFrameId_))afterActive=m->id;
- edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,afterActive,maskIsolated_,maskIsolated_});
+ edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,afterActive,maskIsolated_,maskIsolated_});
  reserveHistoryEntries();timeline_.state_.masks=std::move(after);activeMaskId_=afterActive;
  maskSelectionHistory_.slots=selected;maskSelectionHistory_.anchor.reset();++maskSelectionHistory_.serial;
  pushEdit(std::move(edit),detach?U"断开蒙版链接":U"连接所选蒙版");change_={0,0,width_,height_};publishChange();return true;

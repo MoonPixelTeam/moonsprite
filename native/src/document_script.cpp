@@ -32,15 +32,19 @@ struct ScriptDocumentBuilder {
  static void orderedWorkspace(std::uint64_t identity,const std::function<Document*(std::uint64_t)>& find,const std::u32string& label,const std::function<void()>& apply){
   auto* initial=find(identity);if(!initial)throw std::logic_error("Lua source session missing");
   if(initial->groupingHistory_){apply();return;}
-  const auto start=initial->position_;const auto selected=initial->selectedFrames_;initial->groupingHistory_=true;
+  {
+  auto batchSelectionProjection=initial->animationChangeBinding_.deferSelectionPreview();
+  const auto start=initial->history_.position();const auto selected=initial->selectedFrames_;initial->groupingHistory_=true;
   try{apply();}catch(...){if(auto* live=find(identity))live->groupingHistory_=false;throw;}
   auto* live=find(identity);if(!live)throw std::logic_error("Lua source session missing");auto& d=*live;
-  if(d.position_>start){bool content=false;for(auto i=start;i<d.position_;++i)content|=d.history_[i].documentChanged;
-   d.groupEdits(start,selected);d.historyBytes_-=d.history_.back().bytes();d.history_.back().label=label;d.history_.back().documentChanged=content;d.historyBytes_+=d.history_.back().bytes();
+  if(d.history_.position()>start){bool content=false;for(auto i=start;i<d.history_.position();++i)content|=d.history_.at(i).documentChanged;
+   d.groupEdits(start,selected);d.history_.updateLatest([&](auto& edit){edit.label=label;edit.documentChanged=content;});
    d.groupingHistory_=false;if(d.pendingGroupedProjectOperation_){d.projectInformation_.operation();d.pendingGroupedProjectOperation_=false;}
-   const auto discarded=start+1-d.position_;
-   d.notifyHistoryChange(HistoryStackChange::Kind::Push,d.history_.back().label,discarded);if(content)d.notifyRecording();
+   const auto discarded=start+1-d.history_.position();
+   d.notifyHistoryChange(HistoryStackChange::Kind::Push,d.history_.latest().label,discarded);if(content)d.notifyRecording();
   }else d.groupingHistory_=false;
+  }
+  if(auto* settled=find(identity))settled->animationChangeBinding_.publish(*settled,{AnimationChange::Kind::SelectionPreviewChanged});
  }
  static void orderedBrushes(Document& d,const std::u32string& label,const std::function<void()>& apply){orderedWorkspace(d.identity_,[&](auto){return &d;},label,apply);}
  static std::function<void()> brushRollback(Document& d,const std::function<Document*(std::uint64_t)>& find){
@@ -49,7 +53,7 @@ struct ScriptDocumentBuilder {
   auto before=std::make_shared<Document>(d);
   return [original=&d,identity=d.identity_,find,before]{
    auto* live=find?find(identity):original;if(!live)throw std::logic_error("Lua source session missing");auto& d=*live;
-   auto recording=std::move(d.recordingBinding_);auto changes=std::move(d.historyChangeBinding_);
+   auto recording=std::move(d.recordingBinding_);auto changes=std::move(d.historyChangeBinding_);auto animation=std::move(d.animationChangeBinding_);
    // Legacy non-history resource deletion survives a later operation error;
    // its batch revision/dirty baseline is restored by lua-script-service.
    auto resources=std::move(d.projectBrushes_);const auto resourceRevision=d.projectBrushRevision_;
@@ -60,12 +64,13 @@ struct ScriptDocumentBuilder {
    d=std::move(*before);d.projectBrushes_=std::move(resources);d.projectBrushRevision_=resourceRevision;
    d.projectId_=std::move(projectId);d.sourceArchive_=std::move(archive);
    d.sourceFilePath_=std::move(path);d.name_=std::move(name);
-   d.recordingBinding_=std::move(recording);d.historyChangeBinding_=std::move(changes);
+   d.recordingBinding_=std::move(recording);d.historyChangeBinding_=std::move(changes);d.animationChangeBinding_=std::move(animation);
   };
  }
  static void withFloating(Document& d,const std::function<void()>& apply){
   // MSE writes stable pixels while deferred selection previews retain their
   // captured source. Do not route an unchanged target through selectLayer.
+  auto selectionProjection=d.animationChangeBinding_.deferSelectionPreview(bool(d.floating_));
   auto floating=std::move(d.floating_);d.floating_.reset();
   try{apply();}catch(...){d.floating_=std::move(floating);throw;}
   d.floating_=std::move(floating);
@@ -100,7 +105,7 @@ LayerStructureUi captureLayerStructureUi(const Document& d){return ScriptDocumen
 void restoreLayerStructureUi(Document& d,const LayerStructureUi& u){ScriptDocumentBuilder::restore(d,u);}
 bool planLayerStructure(const Document& d,timeline::Timeline& t,std::unordered_map<std::string,std::array<int,4>>& g,LayerStructureUi& u,const std::string& op,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){return ScriptDocumentBuilder::structure(d,t,g,u,op,id,name,opacity);}
 Document buildCreatedDocument(const CreatedDocument& value){return ScriptDocumentBuilder::build(value);}}
-void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u32string label){
+void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u32string label){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(active())throw std::logic_error("Finish active edit before script layer creation");
  const auto& s=value.surface;
  if(value.id.empty()||value.name.empty()||timeline_.hasLayer(value.id)||value.opacity<0||value.opacity>255||(value.stackIndex&&!*value.stackIndex)||!std::isfinite(value.frameNumber)||value.frameNumber<1||std::floor(value.frameNumber)!=value.frameNumber||!s.pixels||s.width<1||s.height<1||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua created layer");
@@ -119,8 +124,8 @@ void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u
  DocumentLayer layer;layer.id=value.id;layer.name=value.name;layer.opacity=value.opacity/255.;layer.visible=value.visible;layer.locked=value.locked;layer.groupId=value.parentGroupId;
  timeline::Surface surface;surface.width=s.width;surface.height=s.height;surface.offsetX=s.x;surface.offsetY=s.y;surface.storageOriginX=surface.storageOriginY=0;surface.pixels=*s.pixels;
  DocumentCel c;c.id="cel-"+value.id+"-"+frameId;for(std::size_t suffix=1;timeline_.findCelById(c.id);++suffix)c.id="cel-"+value.id+"-"+frameId+"-"+std::to_string(suffix);c.layerId=layer.id;c.frameId=frameId;c.opacity=layer.opacity;c.surface=std::move(surface);
- Edit edit{{},state_,nextState_};edit.beforeFrame=activeFrameId_;edit.afterFrame=frameId;edit.beforeActive=activeLayerId_;edit.afterActive=layer.id;for(const auto& l:timeline_.state().layers)edit.beforeOrder.push_back(l.id);edit.afterOrder=edit.beforeOrder;edit.afterOrder.insert(edit.afterOrder.begin()+index,layer.id);edit.detachedLayer=layer;edit.detachedCels.push_back(c);
- edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{{},collapsedGroupIds_,{}};
+ Edit edit{{},state_,nextState_};edit.beforeFrame=activeFrameId_;edit.afterFrame=frameId;edit.beforeActive=activeLayerId_;edit.afterActive=layer.id;for(const auto& l:timeline_.state().layers)edit.layerHistory.beforeOrder.push_back(l.id);edit.layerHistory.afterOrder=edit.layerHistory.beforeOrder;edit.layerHistory.afterOrder.insert(edit.layerHistory.afterOrder.begin()+index,layer.id);edit.layerHistory.detachedLayer=layer;edit.contentHistory.detachedCels.push_back(c);
+ edit.layerHistory.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.layerHistory.afterGroupUi=GroupUiSnapshot{{},collapsedGroupIds_,{}};
  edit.beforeTimelineSelection=timelineSelection_;auto selected=timelineSelection_;selected.layers={layer.id};selected.layerAnchor=layer.id;edit.afterTimelineSelection=selected;
  auto next=timeline_.state();next.layers.insert(next.layers.begin()+index,std::move(layer));next.cels.push_back(std::move(c));timeline::Timeline prepared(std::move(next));
  reserveHistoryEntries();auto beforeLayer=activeLayerId_,beforeFrame=activeFrameId_;auto oldSelection=timelineSelection_;auto oldGroups=selectedGroupIds_;auto oldGroup=selectedGroupId_;auto nextLayer=edit.afterActive,nextFrame=edit.afterFrame;std::swap(timeline_,prepared);activeLayerId_=std::move(nextLayer);activeFrameId_=std::move(nextFrame);selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_=std::move(selected);
@@ -129,7 +134,7 @@ void Document::commitScriptCreatedLayer(const script::CreatedLayer& value,std::u
  catch(...){if(revision_==oldRevision){std::swap(timeline_,prepared);activeLayerId_=std::move(beforeLayer);activeFrameId_=std::move(beforeFrame);timelineSelection_=std::move(oldSelection);selectedGroupIds_=std::move(oldGroups);selectedGroupId_=std::move(oldGroup);}change_={0,0,width_,height_};publishChange();throw;}
  change_={0,0,width_,height_};publishChange();
 }
-bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
+bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(active()||!activeMaskId_.empty()||(!layer().kind.empty()&&!batch.operationsOnly)||layerEffectivelyLocked(layer()))throw std::logic_error("Lua raster target is not editable");
  if(batch.operationsOnly&&!batch.changes.empty())throw std::invalid_argument("Operation-only Lua adapter cannot write raster pixels");
  const auto& expected=batch.before;
@@ -147,42 +152,42 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // mutation, retaining native Timeline authority for text/tiles/shared Cels.
   timeline::Timeline prepared(*batch.layerUpdateTimeline);
   if(prepared.state().frames.size()!=timeline_.state().frames.size()||!prepared.hasLayer(batch.layerStructureUi?batch.layerStructureUi->activeLayer:layer().id)||!prepared.hasFrame(frame().id)||!prepared.diagnoseLinks().empty()||!batch.layerUpdateGeometry)throw std::invalid_argument("Invalid Lua layer update candidate");
-  if(batch.layerStructureUi){const auto& u=*batch.layerStructureUi;edit.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.afterFreeTileSelection=FreeTileSelectionSnapshot{u.freeSelected,u.freePrimary,u.freeAnchor,u.freeFrame,u.freeView};edit.beforeTileSelection=tileSelection_;edit.afterTileSelection=u.tiles;edit.afterActive=u.activeLayer;edit.afterFrame=u.activeFrame;edit.beforeTimelineSelection=timelineSelection_;edit.afterTimelineSelection=u.selection;edit.beforeSelection=selectedFrames_;edit.afterSelection=u.frames;edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor=u.frameAnchor;edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{u.groups,u.collapsed,u.group};}
-  edit.beforeTimeline=timeline_.state();edit.beforeScriptGeometry=displayedLayerGeometry_;edit.afterScriptGeometry=*batch.layerUpdateGeometry;
+  if(batch.layerStructureUi){const auto& u=*batch.layerStructureUi;edit.tileHistory.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.tileHistory.afterFreeTileSelection=FreeTileSelectionSnapshot{u.freeSelected,u.freePrimary,u.freeAnchor,u.freeFrame,u.freeView};edit.tileHistory.beforeTileSelection=tileSelection_;edit.tileHistory.afterTileSelection=u.tiles;edit.afterActive=u.activeLayer;edit.afterFrame=u.activeFrame;edit.beforeTimelineSelection=timelineSelection_;edit.afterTimelineSelection=u.selection;edit.beforeSelection=selectedFrames_;edit.afterSelection=u.frames;edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor=u.frameAnchor;edit.layerHistory.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.layerHistory.afterGroupUi=GroupUiSnapshot{u.groups,u.collapsed,u.group};}
+  edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.beforeScriptGeometry=std::make_shared<const SnapshotHistory::ScriptGeometry>(displayedLayerGeometry_);edit.snapshotHistory.afterScriptGeometry=std::make_shared<const SnapshotHistory::ScriptGeometry>(*batch.layerUpdateGeometry);
   auto geometry=*batch.layerUpdateGeometry;auto nextSlices=batch.slices;auto nextPalette=batch.palette;auto nextSelection=batch.selection;
-  if(nextSlices){edit.beforeSlices=sliceState_;edit.afterSlices=*nextSlices;}
-  if(nextPalette){edit.paletteKind=12;edit.beforePalette=palette_;edit.afterPalette=*nextPalette;}
-  if(nextSelection){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=*nextSelection;}
+  if(nextSlices){edit.sliceHistory.beforeSlices=sliceState_;edit.sliceHistory.afterSlices=*nextSlices;}
+  if(nextPalette){edit.paletteHistory.paletteKind=12;edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=*nextPalette;}
+  if(nextSelection){edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=*nextSelection;}
   if(batch.durations){if(batch.durations->size()!=prepared.state().frames.size())throw std::invalid_argument("Invalid Lua duration count");for(std::size_t i=0;i<batch.durations->size();++i){const auto& [id,duration]=(*batch.durations)[i];if(id!=prepared.state_.frames[i].id||duration<1||duration>60000)throw std::invalid_argument("Invalid Lua duration");prepared.state_.frames[i].duration=duration;}}
   if(batch.loops)prepared.state_.loopSections=*batch.loops;
   edit.documentChanged=batch.structureDocumentChanged;if(!edit.documentChanged)edit.afterState=state_;
-  edit.afterTimeline=prepared.state();reserveHistoryEntries();
+  edit.snapshotHistory.afterTimeline=prepared.state();reserveHistoryEntries();
   const auto oldUi=ScriptDocumentBuilder::ui(*this);
-  std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);
+  std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)swapSelectionValue(*nextSelection);
   if(batch.layerStructureUi)ScriptDocumentBuilder::restore(*this,*batch.layerStructureUi);
-  const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){ScriptDocumentBuilder::restore(*this,oldUi);std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)std::swap(selection_,*nextSelection);}throw;}
+  const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){ScriptDocumentBuilder::restore(*this,oldUi);std::swap(timeline_,prepared);std::swap(displayedLayerGeometry_,geometry);if(nextSlices)std::swap(sliceState_,*nextSlices);if(nextPalette)std::swap(palette_,*nextPalette);if(nextSelection)swapSelectionValue(*nextSelection);}throw;}
   projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();return true;
  }
  std::vector<timeline::Surface*> synchronizedTargets;std::vector<timeline::Surface> synchronizedReplacements;std::unordered_set<std::string> synchronizedIds;
- std::size_t synchronizedBytes=0;for(const auto& o:batch.synchronizedOwners){const auto bytes=(o.before.pixels.size()+o.after.pixels.size())*sizeof(Pixel)*2ull;if(bytes>256ull*1024*1024-synchronizedBytes)throw std::length_error("Lua synchronized history exceeds native budget");synchronizedBytes+=bytes;auto r=timeline_.resolveSurface(o.ownerId);if(!r.source||!r.surface||r.source->id!=o.ownerId||!synchronizedIds.insert(o.ownerId).second||(resolved.source&&resolved.source->id==o.ownerId)||r.surface->width!=o.before.width||r.surface->height!=o.before.height||r.surface->offsetX!=o.before.offsetX||r.surface->offsetY!=o.before.offsetY||r.surface->pixels!=o.before.pixels)throw std::logic_error("Lua synchronized owner baseline changed");raster::validate(o.after);edit.surfaceChanges.push_back({o.ownerId,o.before,o.after});synchronizedReplacements.push_back(o.after);}
+ std::size_t synchronizedBytes=0;for(const auto& o:batch.synchronizedOwners){const auto bytes=(o.before.pixels.size()+o.after.pixels.size())*sizeof(Pixel)*2ull;if(bytes>256ull*1024*1024-synchronizedBytes)throw std::length_error("Lua synchronized history exceeds native budget");synchronizedBytes+=bytes;auto r=timeline_.resolveSurface(o.ownerId);if(!r.source||!r.surface||r.source->id!=o.ownerId||!synchronizedIds.insert(o.ownerId).second||(resolved.source&&resolved.source->id==o.ownerId)||r.surface->width!=o.before.width||r.surface->height!=o.before.height||r.surface->offsetX!=o.before.offsetX||r.surface->offsetY!=o.before.offsetY||r.surface->pixels!=o.before.pixels)throw std::logic_error("Lua synchronized owner baseline changed");raster::validate(o.after);edit.contentHistory.surfaceChanges.push_back({o.ownerId,o.before,o.after});synchronizedReplacements.push_back(o.after);}
  std::vector<std::optional<timeline::ColorOverlayStyle>*> styleTargets;auto styleValues=batch.styles;std::unordered_set<std::string> styleIds;
- if(!styleValues.empty()){captureGroupEdit(edit,false);captureGroupEdit(edit,true);for(const auto& [id,value]:styleValues){if(!timeline_.hasLayer(id)||!styleIds.insert(id).second)throw std::invalid_argument("Invalid Lua style target");auto& layer=timeline_.state_.layers[timeline_.layerIndex(id)];if(layer.kind=="adjustment")throw std::invalid_argument("Invalid Lua adjustment style target");styleTargets.push_back(&layer.layerStyles);for(auto& l:edit.afterLayerStructure->layers)if(l.id==id)l.layerStyles=value;}}
+ if(!styleValues.empty()){captureGroupEdit(edit,false);captureGroupEdit(edit,true);for(const auto& [id,value]:styleValues){if(!timeline_.hasLayer(id)||!styleIds.insert(id).second)throw std::invalid_argument("Invalid Lua style target");auto& layer=timeline_.state_.layers[timeline_.layerIndex(id)];if(layer.kind=="adjustment")throw std::invalid_argument("Invalid Lua adjustment style target");styleTargets.push_back(&layer.layerStyles);for(auto& l:edit.layerHistory.afterLayerStructure->layers)if(l.id==id)l.layerStyles=value;}}
  auto swapStyles=[&]{for(std::size_t i=0;i<styleTargets.size();++i)std::swap(*styleTargets[i],styleValues[i].second);};
  std::size_t changed=0;
  const bool animationChanged=batch.durations.has_value()||batch.loops.has_value();
  std::vector<int> nextDurations;auto nextLoops=batch.loops; // Allocate replacements before installing any data.
- if(batch.durations){std::vector<std::pair<std::string,int>> before;for(const auto& f:timeline_.state().frames)before.emplace_back(f.id,f.duration);if(before.size()!=batch.durations->size())throw std::invalid_argument("Lua duration frame count changed");for(std::size_t i=0;i<before.size();++i){const auto& f=(*batch.durations)[i];if(f.first!=before[i].first||f.second<1||f.second>60000)throw std::invalid_argument("Invalid Lua duration");nextDurations.push_back(f.second);}edit.beforeScriptDurations=std::move(before);edit.afterScriptDurations=*batch.durations;}
- if(batch.loops){edit.beforeLoops=timeline_.state().loopSections;edit.afterLoops=*batch.loops;for(const auto& loop:*batch.loops)if(!timeline_.hasFrame(loop.startFrameId)||!timeline_.hasFrame(loop.endFrameId))throw std::invalid_argument("Invalid Lua loop frames");}
+ if(batch.durations){std::vector<std::pair<std::string,int>> before;for(const auto& f:timeline_.state().frames)before.emplace_back(f.id,f.duration);if(before.size()!=batch.durations->size())throw std::invalid_argument("Lua duration frame count changed");for(std::size_t i=0;i<before.size();++i){const auto& f=(*batch.durations)[i];if(f.first!=before[i].first||f.second<1||f.second>60000)throw std::invalid_argument("Invalid Lua duration");nextDurations.push_back(f.second);}edit.frameHistory.beforeScriptDurations=std::move(before);edit.frameHistory.afterScriptDurations=*batch.durations;}
+ if(batch.loops){edit.frameHistory.beforeLoops=timeline_.state().loopSections;edit.frameHistory.afterLoops=*batch.loops;for(const auto& loop:*batch.loops)if(!timeline_.hasFrame(loop.startFrameId)||!timeline_.hasFrame(loop.endFrameId))throw std::invalid_argument("Invalid Lua loop frames");}
  auto swapAnimation=[&]{if(batch.durations)for(std::size_t i=0;i<nextDurations.size();++i)std::swap(timeline_.state_.frames[i].duration,nextDurations[i]);if(nextLoops)std::swap(timeline_.state_.loopSections,*nextLoops);};
  const bool slicesChanged=batch.slices.has_value();
  const bool selectionChanged=batch.selection.has_value();const bool paletteChanged=batch.palette.has_value();
- if(paletteChanged){edit.paletteKind=12;edit.beforePalette=palette_;edit.afterPalette=*batch.palette;}
- if(slicesChanged){edit.beforeSlices=sliceState_;edit.afterSlices=*batch.slices;}
- if(selectionChanged){edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=*batch.selection;}
+ if(paletteChanged){edit.paletteHistory.paletteKind=12;edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=*batch.palette;}
+ if(slicesChanged){edit.sliceHistory.beforeSlices=sliceState_;edit.sliceHistory.afterSlices=*batch.slices;}
+ if(selectionChanged){edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=*batch.selection;}
  if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged&&!animationChanged&&batch.styles.empty()&&batch.synchronizedOwners.empty())return false;}
  // Slice-only batches reuse the same history entry without materializing an
  // absent raster Cel or copying the document's pixel storage.
- if(!batch.after&&!changed){for(const auto& o:batch.synchronizedOwners){auto* target=timeline_.mutableOwnedSurface(o.ownerId);if(!target)throw std::logic_error("Missing Lua secondary owner");synchronizedTargets.push_back(target);}edit.documentChanged=!batch.styles.empty()||slicesChanged||paletteChanged||animationChanged||!batch.synchronizedOwners.empty();edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);swapAnimation();swapStyles();for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);swapAnimation();swapStyles();if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)std::swap(selection_,selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
+ if(!batch.after&&!changed){for(const auto& o:batch.synchronizedOwners){auto* target=timeline_.mutableOwnedSurface(o.ownerId);if(!target)throw std::logic_error("Missing Lua secondary owner");synchronizedTargets.push_back(target);}edit.documentChanged=!batch.styles.empty()||slicesChanged||paletteChanged||animationChanged||!batch.synchronizedOwners.empty();edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)swapSelectionValue(selectionReplacement);swapAnimation();swapStyles();for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);swapAnimation();swapStyles();if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)swapSelectionValue(selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
  // Admission before history/owner copies. Match existing surface-edit working
  // budget and deduplicate linked storage; do not copy an entire project.
  constexpr std::size_t limit=256*1024*1024;std::size_t used=synchronizedBytes;std::set<std::string> seen;
@@ -204,8 +209,8 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  }else ownerId=resolved.source->id;
  auto& targetTimeline=prepared?*prepared:timeline_;const auto owner=targetTimeline.resolveSurface(ownerId);const auto& before=*owner.surface;
  std::optional<timeline::Surface> replacement;
- if(batch.after){edit.surfaceChanges.push_back({ownerId,batch.historyBefore?makeSurface(*batch.historyBefore):before,makeSurface(*batch.after)});replacement=edit.surfaceChanges.back().after;}
- else{edit.targetCelId=slot?slot->id:ownerId;edit.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
+ if(batch.after){edit.contentHistory.surfaceChanges.push_back({ownerId,batch.historyBefore?makeSurface(*batch.historyBefore):before,makeSurface(*batch.after)});replacement=edit.contentHistory.surfaceChanges.back().after;}
+ else{edit.contentHistory.targetCelId=slot?slot->id:ownerId;edit.contentHistory.pixelAddress=PixelAddressSpace{before.width,before.height,before.storageOriginX.value_or(0),before.storageOriginY.value_or(0)};}
  std::optional<SliceState> previousSlices;if(slicesChanged)previousSlices=*batch.slices;
  auto previousPalette=paletteChanged?*batch.palette:PaletteState{};auto previousSelection=selectionChanged?*batch.selection:std::optional<SelectionMask>{};
  // All history payloads and replacement pixels are prepared before installation.
@@ -216,7 +221,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
  for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
  if(prepared){std::swap(timeline_,*prepared);styleTargets.clear();for(const auto& [id,value]:styleValues)styleTargets.push_back(&timeline_.state_.layers[timeline_.layerIndex(id)].layerStyles);}
  if(previousSlices)std::swap(sliceState_,*previousSlices);
- if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);swapAnimation();swapStyles();
+ if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)swapSelectionValue(previousSelection);swapAnimation();swapStyles();
  const auto beforeRevision=revision_;
  try{pushEdit(std::move(edit),batch.label.empty()?U"脚本":batch.label);}
  catch(...){
@@ -226,7 +231,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){
   // committed history and its pixels consistent, then propagate the error.
   if(revision_!=beforeRevision){change_={0,0,width_,height_};publishChange();throw;}
   swapAnimation();swapStyles();if(previousSlices)std::swap(sliceState_,*previousSlices);
-  if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)std::swap(selection_,previousSelection);
+  if(paletteChanged)std::swap(palette_,previousPalette);if(selectionChanged)swapSelectionValue(previousSelection);
   for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);
   if(prepared)std::swap(timeline_,*prepared);
   else if(batch.after)std::swap(*live,*replacement);

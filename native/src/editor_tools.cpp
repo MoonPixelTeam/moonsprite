@@ -1,6 +1,16 @@
-#include "home_banner_pane.h"
-#include "editor_implementation.h"
 #include "editor.h"
+#include "recent_export_paths.h"
+#include "palette_layout.h"
+#include "legacy_tools.h"
+#include "background_preset_library.h"
+#include "selection_pattern_brush.h"
+#include "home_banner_pane.h"
+#include "tool_property_popup.h"
+#include "preview_panel.h"
+#include "floating_column_surface.h"
+#include "dialog_background.h"
+#include "gradient_stops_track.h"
+#include "interaction_profile.h"
 #include "brush_library_delete_dialog.h"
 #include "fill_pattern_settings_dialog.h"
 #include "latest_task_queue.h"
@@ -46,10 +56,10 @@ bool Editor::isToolAvailableForSession(const char* id) const {
   if(s=="move"||s=="selection"||s=="shape"||s=="line"||s=="fill") {
     // Rail child ids are canonicalized before applying the legacy session matrix.
   }
-  std::vector<std::string> selected=document.selectedDirectLayerIds();
-  if(selected.empty() && !document.layer().id.empty()) selected.push_back(document.layer().id);
+  std::vector<std::string> selected=currentDocument().selectedDirectLayerIds();
+  if(selected.empty() && !currentDocument().layer().id.empty()) selected.push_back(currentDocument().layer().id);
   bool special=false,text=false,tilemap=false,freeTile=false;
-  for(const auto& layer:document.timeline().state().layers) {
+  for(const auto& layer:currentDocument().timeline().state().layers) {
     if(std::find(selected.begin(),selected.end(),layer.id)==selected.end()) continue;
     if(!layer.kind.empty()) special=true;
     if(layer.kind=="text") text=true;
@@ -57,89 +67,89 @@ bool Editor::isToolAvailableForSession(const char* id) const {
     if(layer.kind=="free-tile") freeTile=true;
   }
   if(s=="magic-eraser" && special) return false;
-  if(!document.activeMaskId().empty()) return true;
-  if(document.hasSelectedGroups()) return s=="move"||s=="hand"||s=="zoom"||s=="rotate";
+  if(!currentDocument().activeMaskId().empty()) return true;
+  if(currentDocument().hasSelectedGroups()) return s=="move"||s=="hand"||s=="zoom"||s=="rotate";
   if(text) return s=="text"||s=="move"||s=="eyedropper"||s=="hand"||s=="zoom"||s=="rotate";
-  if(tilemap && document.tilemapMode()==tiles::Mode::Paint)
+  if(tilemap && currentDocument().tilemapMode()==tiles::Mode::Paint)
     return s=="pencil"||s=="eraser"||s=="selection"||s=="move"||s=="eyedropper"||s=="hand"||s=="zoom"||s=="rotate";
-  if(freeTile) return (s=="selection"&&!document.freeTilePaintMode())||((raw=="fill"||raw=="fill.bucket"||raw=="fill.gradient"||s=="shape"||s=="line"||s=="airbrush")&&!document.freeTilePaintMode()&&document.layer().freeTiles&&!document.layer().freeTiles->sources.empty())||s=="hand"||s=="zoom"||s=="rotate"||s=="eyedropper"||((raw=="move"||raw=="move.move")&&document.freeTileInstanceView())||((document.freeTilePaintMode()||(document.layer().freeTiles&&!document.layer().freeTiles->sources.empty()))&&(s=="pencil"||s=="eraser"));
+  if(freeTile) return (s=="selection"&&!currentDocument().freeTilePaintMode())||((raw=="fill"||raw=="fill.bucket"||raw=="fill.gradient"||s=="shape"||s=="line"||s=="airbrush")&&!currentDocument().freeTilePaintMode()&&currentDocument().layer().freeTiles&&!currentDocument().layer().freeTiles->sources.empty())||s=="hand"||s=="zoom"||s=="rotate"||s=="eyedropper"||((raw=="move"||raw=="move.move")&&currentDocument().freeTileInstanceView())||((currentDocument().freeTilePaintMode()||(currentDocument().layer().freeTiles&&!currentDocument().layer().freeTiles->sources.empty()))&&(s=="pencil"||s=="eraser"));
   if(special) return true;
   if(s=="eyedropper") return true;
-  return document.rasterToolsAvailable()||s=="zoom"||s=="move"||s=="hand"||s=="rotate";
+  return currentDocument().rasterToolsAvailable()||s=="zoom"||s=="move"||s=="hand"||s=="rotate";
 }void Editor::loadMagicEraserPreferences(){waitBrushWrites(this);
- const auto path=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream in(path/"magic-eraser-options.txt");int contiguous,tolerance,gap,threshold;if(in>>contiguous>>tolerance>>gap>>threshold){magicEraserContiguous_=contiguous!=0;wandOptions_.tolerance=std::clamp(tolerance,0,255);wandOptions_.gapClosing=gap!=0;wandOptions_.gapThreshold=std::clamp(threshold,1,16);}
+ const auto path=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream in(path/"magic-eraser-options.txt");int contiguous,tolerance,gap,threshold;if(in>>contiguous>>tolerance>>gap>>threshold){currentTools().magicEraserContiguous=contiguous!=0;currentTools().wandOptions.tolerance=std::clamp(tolerance,0,255);currentTools().wandOptions.gapClosing=gap!=0;currentTools().wandOptions.gapThreshold=std::clamp(threshold,1,16);}
 }
 void Editor::smokeFillPatternSettings(){
- smoke_=true;homeOpen_=false;documentOpen_=true;document=Document(8,8);pending_=Pending::None;useFillTool();const auto original=fillPattern_;const auto originalDirectory=workspacePresetTestDirectory_;const auto testDirectory=assets_.parent_path()/"pattern-dialog-test-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(testDirectory);workspacePresetTestDirectory_=testDirectory;
- struct Restore{std::function<void()> fn;~Restore(){fn();}}restore{[&]{fillPattern_=original;workspacePresetTestDirectory_=originalDirectory;refresh();}};
+ smoke_=true;homeOpen_=false;documentOpen_=true;replaceDocumentForSmoke(Document(8,8));pending_=Pending::None;useFillTool();const auto original=currentTools().fillPattern;const auto originalDirectory=workspacePresetTestDirectory_;const auto testDirectory=assets_.parent_path()/"pattern-dialog-test-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(testDirectory);workspacePresetTestDirectory_=testDirectory;
+ struct Restore{std::function<void()> fn;~Restore(){fn();}}restore{[&]{currentTools().fillPattern=original;workspacePresetTestDirectory_=originalDirectory;refresh();}};
  auto require=[](bool value,const char* reason){if(!value)throw std::runtime_error(reason);};auto values=[](const PatternSettings& s){return std::array<int,9>{s.randomDensity,s.randomCount,s.randomSpacing,int(s.randomOverlap),s.regularCount,s.regularSpacingX,s.regularSpacingY,int(s.regularOverlap),s.regularRowOffset};};
- fillPattern_.mode=PatternMode::Random;fillPattern_.paintMode=PatternPaintMode::Source;fillPattern_.settings={};fillPattern_.settings.regularCount=8;fillPattern_.settings.regularSpacingX=7;fillPattern_.settings.regularSpacingY=9;fillPattern_.settings.regularOverlap=true;fillPattern_.settings.regularRowOffset=11;const auto baseline=fillPattern_.settings;const auto pixels=document.canvasPixels();const auto history=document.historyPosition();
- for(int cancel:{0,6,7,10}){showFillPatternSettings(cancel);require(values(fillPattern_.settings)==values(baseline)&&!std::filesystem::exists(testDirectory/"fill-pattern-options.txt"),"Pattern Cancel Escape header-close discard draft and do not persist");}
- showFillPatternSettings(8);require(fillPattern_.settings.randomDensity==37&&fillPattern_.settings.randomCount==0&&fillPattern_.settings.regularCount==8&&fillPattern_.settings.regularRowOffset==11,"Pattern Enter commits only active random fields");const auto saved=fillPattern_.settings;fillPattern_.settings={};fillPattern_.mode=PatternMode::Default;fillPattern_.paintMode=PatternPaintMode::Paint;loadFillPatternPreferences();require(values(fillPattern_.settings)==values(saved)&&fillPattern_.mode==PatternMode::Random&&fillPattern_.paintMode==PatternPaintMode::Source,"Pattern accepted settings/mode/sampling restore from isolated preferences");
- showFillPatternSettings(2);require(fillPattern_.settings.randomCount==17&&fillPattern_.settings.randomDensity==37,"Pattern target count toggles preserve dormant density/count");fillPattern_.settings.randomSpacing=12;fillPattern_.settings.randomOverlap=true;showFillPatternSettings(3);require(fillPattern_.settings.randomOverlap&&fillPattern_.settings.randomSpacing==0,"Pattern random overlap conflict normalization and zero gap apply");const auto randomBeforeRegular=values(fillPattern_.settings);
- fillPattern_.mode=PatternMode::Regular;fillPattern_.settings.regularOverlap=true;fillPattern_.settings.regularSpacingX=-8;fillPattern_.settings.regularSpacingY=-3;showFillPatternSettings(4);require(!fillPattern_.settings.regularOverlap&&fillPattern_.settings.regularSpacingX==0&&fillPattern_.settings.regularSpacingY==0&&fillPattern_.settings.regularRowOffset==0&&fillPattern_.settings.randomCount==randomBeforeRegular[1],"Pattern disabling regular overlap clears negatives/row offset without random changes");showFillPatternSettings(5);require(fillPattern_.settings.regularCount==0&&fillPattern_.settings.regularSpacingX==0&&fillPattern_.settings.regularSpacingY==0&&fillPattern_.settings.randomDensity==randomBeforeRegular[0]&&fillPattern_.settings.randomCount==randomBeforeRegular[1],"Pattern Reset applies current mode only and restores automatic count");showFillPatternSettings(9);require(fillPattern_.settings.regularSpacingX==13,"Pattern Enter commits current unblurred arithmetic spacing field before redisplay");
+ currentTools().fillPattern.mode=PatternMode::Random;currentTools().fillPattern.paintMode=PatternPaintMode::Source;currentTools().fillPattern.settings={};currentTools().fillPattern.settings.regularCount=8;currentTools().fillPattern.settings.regularSpacingX=7;currentTools().fillPattern.settings.regularSpacingY=9;currentTools().fillPattern.settings.regularOverlap=true;currentTools().fillPattern.settings.regularRowOffset=11;const auto baseline=currentTools().fillPattern.settings;const auto pixels=currentDocument().canvasPixels();const auto history=currentDocument().historyPosition();
+ for(int cancel:{0,6,7,10}){showFillPatternSettings(cancel);require(values(currentTools().fillPattern.settings)==values(baseline)&&!std::filesystem::exists(testDirectory/"fill-pattern-options.txt"),"Pattern Cancel Escape header-close discard draft and do not persist");}
+ showFillPatternSettings(8);require(currentTools().fillPattern.settings.randomDensity==37&&currentTools().fillPattern.settings.randomCount==0&&currentTools().fillPattern.settings.regularCount==8&&currentTools().fillPattern.settings.regularRowOffset==11,"Pattern Enter commits only active random fields");const auto saved=currentTools().fillPattern.settings;currentTools().fillPattern.settings={};currentTools().fillPattern.mode=PatternMode::Default;currentTools().fillPattern.paintMode=PatternPaintMode::Paint;loadFillPatternPreferences();require(values(currentTools().fillPattern.settings)==values(saved)&&currentTools().fillPattern.mode==PatternMode::Random&&currentTools().fillPattern.paintMode==PatternPaintMode::Source,"Pattern accepted settings/mode/sampling restore from isolated preferences");
+ showFillPatternSettings(2);require(currentTools().fillPattern.settings.randomCount==17&&currentTools().fillPattern.settings.randomDensity==37,"Pattern target count toggles preserve dormant density/count");currentTools().fillPattern.settings.randomSpacing=12;currentTools().fillPattern.settings.randomOverlap=true;showFillPatternSettings(3);require(currentTools().fillPattern.settings.randomOverlap&&currentTools().fillPattern.settings.randomSpacing==0,"Pattern random overlap conflict normalization and zero gap apply");const auto randomBeforeRegular=values(currentTools().fillPattern.settings);
+ currentTools().fillPattern.mode=PatternMode::Regular;currentTools().fillPattern.settings.regularOverlap=true;currentTools().fillPattern.settings.regularSpacingX=-8;currentTools().fillPattern.settings.regularSpacingY=-3;showFillPatternSettings(4);require(!currentTools().fillPattern.settings.regularOverlap&&currentTools().fillPattern.settings.regularSpacingX==0&&currentTools().fillPattern.settings.regularSpacingY==0&&currentTools().fillPattern.settings.regularRowOffset==0&&currentTools().fillPattern.settings.randomCount==randomBeforeRegular[1],"Pattern disabling regular overlap clears negatives/row offset without random changes");showFillPatternSettings(5);require(currentTools().fillPattern.settings.regularCount==0&&currentTools().fillPattern.settings.regularSpacingX==0&&currentTools().fillPattern.settings.regularSpacingY==0&&currentTools().fillPattern.settings.randomDensity==randomBeforeRegular[0]&&currentTools().fillPattern.settings.randomCount==randomBeforeRegular[1],"Pattern Reset applies current mode only and restores automatic count");showFillPatternSettings(9);require(currentTools().fillPattern.settings.regularSpacingX==13,"Pattern Enter commits current unblurred arithmetic spacing field before redisplay");
 
- const auto beforePresets=values(fillPattern_.settings);const FillPatternPresetStore presets(testDirectory);showFillPatternSettings(11);require(values(fillPattern_.settings)==beforePresets&&presets.load().size()==1,"Pattern library saves immediately while parent cancellation discards parameter draft");showFillPatternSettings(12);require(values(fillPattern_.settings)==beforePresets&&presets.load().empty(),"Pattern preset update and confirmed deletion persist independently of parent cancellation");
- const std::string future="{\"version\":2,\"presets\":[]}";{std::ofstream out(presets.path(),std::ios::binary);out<<future;}showFillPatternSettings(13);auto readPresetFile=[&]{std::ifstream in(presets.path(),std::ios::binary);std::ostringstream text;text<<in.rdbuf();return text.str();};require(readPresetFile()==future&&values(fillPattern_.settings)==beforePresets,"Pattern unreadable library survives failed UI save and parent cancellation");bool refused=false;try{presets.remove("missing");}catch(const std::exception&){refused=true;}require(refused&&readPresetFile()==future,"Pattern unreadable library cannot be overwritten through delete");
- require(document.canvasPixels()==pixels&&document.historyPosition()==history&&!document.dirty(),"Pattern property transactions do not edit image or history");
- {std::ofstream invalid(testDirectory/"fill-pattern-options.txt");invalid<<"1 1 0 37 broken";}const auto beforeBad=fillPattern_.settings;loadFillPatternPreferences();require(values(fillPattern_.settings)==values(beforeBad)&&fillPattern_.mode==PatternMode::Regular,"Malformed pattern preferences cannot partially change live parameters");
+ const auto beforePresets=values(currentTools().fillPattern.settings);const FillPatternPresetStore presets(testDirectory);showFillPatternSettings(11);require(values(currentTools().fillPattern.settings)==beforePresets&&presets.load().size()==1,"Pattern library saves immediately while parent cancellation discards parameter draft");showFillPatternSettings(12);require(values(currentTools().fillPattern.settings)==beforePresets&&presets.load().empty(),"Pattern preset update and confirmed deletion persist independently of parent cancellation");
+ const std::string future="{\"version\":2,\"presets\":[]}";{std::ofstream out(presets.path(),std::ios::binary);out<<future;}showFillPatternSettings(13);auto readPresetFile=[&]{std::ifstream in(presets.path(),std::ios::binary);std::ostringstream text;text<<in.rdbuf();return text.str();};require(readPresetFile()==future&&values(currentTools().fillPattern.settings)==beforePresets,"Pattern unreadable library survives failed UI save and parent cancellation");bool refused=false;try{presets.remove("missing");}catch(const std::exception&){refused=true;}require(refused&&readPresetFile()==future,"Pattern unreadable library cannot be overwritten through delete");
+ require(currentDocument().canvasPixels()==pixels&&currentDocument().historyPosition()==history&&!currentDocument().dirty(),"Pattern property transactions do not edit image or history");
+ {std::ofstream invalid(testDirectory/"fill-pattern-options.txt");invalid<<"1 1 0 37 broken";}const auto beforeBad=currentTools().fillPattern.settings;loadFillPatternPreferences();require(values(currentTools().fillPattern.settings)==values(beforeBad)&&currentTools().fillPattern.mode==PatternMode::Regular,"Malformed pattern preferences cannot partially change live parameters");
 }
 void Editor::loadFillPatternPreferences(){waitBrushWrites(this);
- {const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream modes(directory/"image-brush-modes.txt");if(modes){int version,pencil,eraser;if((modes>>version>>pencil>>eraser)&&version==1&&pencil>=0&&pencil<=2&&eraser>=0&&eraser<=2&&(modes>>std::ws).eof()){brushFeedback_.brushProfiles_[0].imagePaintMode=PatternPaintMode(pencil);brushFeedback_.brushProfiles_[1].imagePaintMode=PatternPaintMode(eraser);}else status_=U"图像笔刷模式偏好读取失败，保留当前模式";}}
+ {const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream modes(directory/"image-brush-modes.txt");if(modes){int version,pencil,eraser;if((modes>>version>>pencil>>eraser)&&version==1&&pencil>=0&&pencil<=2&&eraser>=0&&eraser<=2&&(modes>>std::ws).eof()){currentTools().brushProfiles[0].imagePaintMode=PatternPaintMode(pencil);currentTools().brushProfiles[1].imagePaintMode=PatternPaintMode(eraser);}else status_=U"图像笔刷模式偏好读取失败，保留当前模式";}}
 
  const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();std::ifstream in(directory/"fill-pattern-options.txt");int version,mode,paint,randomOverlap,regularOverlap;PatternSettings settings;
  if(!(in>>version>>mode>>paint>>settings.randomDensity>>settings.randomCount>>settings.randomSpacing>>randomOverlap>>settings.regularCount>>settings.regularSpacingX>>settings.regularSpacingY>>regularOverlap>>settings.regularRowOffset)||version!=1)return;
- settings.randomDensity=std::clamp(settings.randomDensity,0,1000);settings.randomCount=std::clamp(settings.randomCount,0,100000);settings.randomSpacing=std::clamp(settings.randomSpacing,0,4096);settings.randomOverlap=randomOverlap!=0;settings.regularCount=std::clamp(settings.regularCount,0,100000);settings.regularSpacingX=std::clamp(settings.regularSpacingX,-4096,4096);settings.regularSpacingY=std::clamp(settings.regularSpacingY,-4096,4096);settings.regularOverlap=regularOverlap!=0;settings.regularRowOffset=std::clamp(settings.regularRowOffset,0,100);fillPattern_.settings=settings;fillPattern_.mode=PatternMode(std::clamp(mode,0,2));fillPattern_.paintMode=PatternPaintMode(std::clamp(paint,0,2));
+ settings.randomDensity=std::clamp(settings.randomDensity,0,1000);settings.randomCount=std::clamp(settings.randomCount,0,100000);settings.randomSpacing=std::clamp(settings.randomSpacing,0,4096);settings.randomOverlap=randomOverlap!=0;settings.regularCount=std::clamp(settings.regularCount,0,100000);settings.regularSpacingX=std::clamp(settings.regularSpacingX,-4096,4096);settings.regularSpacingY=std::clamp(settings.regularSpacingY,-4096,4096);settings.regularOverlap=regularOverlap!=0;settings.regularRowOffset=std::clamp(settings.regularRowOffset,0,100);currentTools().fillPattern.settings=settings;currentTools().fillPattern.mode=PatternMode(std::clamp(mode,0,2));currentTools().fillPattern.paintMode=PatternPaintMode(std::clamp(paint,0,2));
 }
 void Editor::showFillPatternSettings(int verify){
- if(fillPattern_.mode==PatternMode::Default||document.active())return;
- const auto identity=document.identity();const auto mode=fillPattern_.mode;PixelEntry* rangeOwner=nullptr;FillPatternSettingsDialog* owner=nullptr;
+ if(currentTools().fillPattern.mode==PatternMode::Default||currentDocument().active())return;
+ const auto identity=currentDocument().identity();const auto mode=currentTools().fillPattern.mode;PixelEntry* rangeOwner=nullptr;FillPatternSettingsDialog* owner=nullptr;
  auto updateHotRegion=[&]{if(!owner||!owner->display())return;gfx::Region hot;auto add=[&](const gfx::Rect& area){hot|=gfx::Region(gfx::Rect(display()->nativeWindow()->pointToScreen(area.origin()),area.size()));};add(owner->bounds());if(propertyRangePopup_&&propertyRangePopup_->isVisible())add(propertyRangePopup_->bounds());owner->setClickBehavior(ui::PopupWindow::ClickBehavior::CloseOnClickOutsideHotRegion);owner->setHotRegion(hot);};
  auto closeRange=[&]{if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}propertyRangeSlider_=nullptr;rangeOwner=nullptr;updateHotRegion();};
  auto visibleRange=[&]{return propertyRangePopup_&&propertyRangePopup_->isVisible();};
  auto syncRange=[&](PixelEntry* entry,int low,int high){if(rangeOwner!=entry||!visibleRange()||!propertyRangeSlider_)return;auto range=propertyRangeSlider_;range->minimum=low;range->maximum=high;range->percentage=entry->suffix==U"%";try{range->value=std::clamp(int(std::stod(entry->text())),low,high);}catch(const std::exception&){}range->invalidate();};
  auto openRange=[&](PixelEntry* entry,int low,int high){if(rangeOwner!=entry||!visibleRange()){showPropertyRange(entry,low,high);rangeOwner=entry;}syncRange(entry,low,high);updateHotRegion();};
  auto ownsRangeFocus=[&](ui::Widget* target){return target&&propertyRangePopup_&&target->window()==propertyRangePopup_.get();};
- closeRange();FillPatternSettingsDialog popup(font_,skin_,toolIcons_,mode,fillPattern_.settings,(smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path()),openRange,syncRange,closeRange,visibleRange,ownsRangeFocus);owner=&popup;popup.setDisplay(display(),false);const auto size=popup.minimumDialogSize(320*uiScale);popup.setBounds({bounds().center().x-160*uiScale,bounds().center().y-size.h/2,320*uiScale,size.h});updateHotRegion();
+ closeRange();FillPatternSettingsDialog popup(font_,skin_,toolIcons_,mode,currentTools().fillPattern.settings,(smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path()),openRange,syncRange,closeRange,visibleRange,ownsRangeFocus);owner=&popup;popup.setDisplay(display(),false);const auto size=popup.minimumDialogSize(320*uiScale);popup.setBounds({bounds().center().x-160*uiScale,bounds().center().y-size.h/2,320*uiScale,size.h});updateHotRegion();
  struct RangeLifetime{std::function<void()> close;~RangeLifetime(){close();}}rangeLifetime{closeRange};
  ui::Timer timer(30,&popup);if(verify>=0){timer.Tick.connect([&]{timer.stop();popup.smoke(verify);});timer.start();}popup.openWindowInForeground();timer.stop();closeRange();
- if(popup.accepted()&&document.identity()==identity&&fillPattern_.mode==mode){const auto value=popup.result();auto& target=fillPattern_.settings;if(mode==PatternMode::Random){target.randomDensity=value.randomDensity;target.randomCount=value.randomCount;target.randomSpacing=value.randomSpacing;target.randomOverlap=value.randomOverlap;}else{target.regularCount=value.regularCount;target.regularSpacingX=value.regularSpacingX;target.regularSpacingY=value.regularSpacingY;target.regularOverlap=value.regularOverlap;target.regularRowOffset=value.regularRowOffset;}saveBrushPreferences();}
+ if(popup.accepted()&&currentDocument().identity()==identity&&currentTools().fillPattern.mode==mode){const auto value=popup.result();auto& target=currentTools().fillPattern.settings;if(mode==PatternMode::Random){target.randomDensity=value.randomDensity;target.randomCount=value.randomCount;target.randomSpacing=value.randomSpacing;target.randomOverlap=value.randomOverlap;}else{target.regularCount=value.regularCount;target.regularSpacingX=value.regularSpacingX;target.regularSpacingY=value.regularSpacingY;target.regularOverlap=value.regularOverlap;target.regularRowOffset=value.regularRowOffset;}saveBrushPreferences();}
  requestFocus();refresh();
 }
 
 void Editor::useMagicEraserTool(){
- if(document.active()||selectionDragging_||floatingDragging_||gradientPending_)return;
- if(!document.layer().kind.empty()){status_=U"魔术橡皮擦仅支持普通像素图层及其蒙版";refresh();return;}
- useFillTool();rotateTool_=false;magicEraserTool_=true;toolRowScroll_=0;refresh();
+ if(currentDocument().active()||selectionDragging_||floatingDragging_||gradientPending_)return;
+ if(!currentDocument().layer().kind.empty()){status_=U"魔术橡皮擦仅支持普通像素图层及其蒙版";refresh();return;}
+ useFillTool();currentTools().rotateTool=false;currentTools().magicEraserTool=true;toolRowScroll_=0;refresh();
 }
 bool Editor::processMagicEraserInput(ui::Message* msg){
- if(!(fillTool_&&magicEraserTool_))return false;
+ if(!(currentTools().fillTool&&currentTools().magicEraserTool))return false;
  if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage&&msg->type()!=ui::kMouseUpMessage)return false;
  auto mouse=static_cast<ui::MouseMessage*>(msg);
  if(magicEraserDragging_){
   if(mouse->right()){cancelStroke();return true;}
-  if(msg->type()==ui::kMouseUpMessage&&mouse->button()==strokeButton_){magicEraserDragging_=false;Document::HistoryLabelScope label(document,U"魔术橡皮擦");document.commitStroke();if(hasCapture())releaseMouse();refresh();}return true;
+  if(msg->type()==ui::kMouseUpMessage&&mouse->button()==strokeButton_){magicEraserDragging_=false;Document::HistoryLabelScope label(currentDocument(),U"魔术橡皮擦");currentDocument().commitStroke();if(hasCapture())releaseMouse();refresh();}return true;
  }
- if(spaceHeld_||handTool_||eyedropperHeld_)return false;
+ if(spaceHeld_||currentTools().handTool||eyedropperHeld_)return false;
  if(msg->type()==ui::kMouseDownMessage&&canvasViewport().contains(mouse->position())){
   if(!mouse->left()||!canvasDocumentContains(mouse->position()))return true;
-  hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();auto options=wandOptions_;options.contiguous=magicEraserContiguous_;options.gapClosing=options.contiguous&&options.gapClosing;
-  try{auto point=canvasPoint(mouse->position());if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(point.x),double(point.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return true;point={int(mapped->local.x),int(mapped->local.y)};}magicEraserDragging_=document.eraseMatchingColor(point,options,true);if(magicEraserDragging_)captureMouse();}catch(const std::exception& e){document.cancelStroke();status_=U"魔术橡皮擦失败："+unicodeText(e.what());}refresh();return true;
+  hideTimelineSelectionGuides();paletteFocused_=false;currentDocument().clearPaletteSelection();requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();auto options=currentTools().wandOptions;options.contiguous=currentTools().magicEraserContiguous;options.gapClosing=options.contiguous&&options.gapClosing;
+  try{auto point=canvasPoint(mouse->position());if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(point.x),double(point.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return true;point={int(mapped->local.x),int(mapped->local.y)};}magicEraserDragging_=currentDocument().eraseMatchingColor(point,options,true);if(magicEraserDragging_)captureMouse();}catch(const std::exception& e){currentDocument().cancelStroke();status_=U"魔术橡皮擦失败："+unicodeText(e.what());}refresh();return true;
  }return canvasViewport().contains(mouse->position());
 }
 namespace { int ditherSmokeChoice=-1; }
 
-void Editor::useAirbrushTool(){if((document.active()&&!document.floating())||selectionDragging_||floatingDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=smoothTool_=false;liquifyResetPosition_.reset();rotateTool_=textTool_=moveTool_=selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;airbrushTool_=true;toolRowScroll_=0;refresh();}
-void Editor::saveAirbrushPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto path=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"airbrush-options.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::badbit|std::ios::failbit);const auto& s=airbrushSettings_;out<<s.particleRadius<<' '<<int(s.shape)<<' '<<s.angle<<' '<<s.scatterRadius<<' '<<s.density<<' '<<s.intervalMs<<'\n';}catch(...){status_=U"喷枪参数已调整，但偏好保存失败";}}
-void Editor::sprayAirbrush(){if(!airbrushDragging_||!document.strokeActive())return;std::vector<SelectionPoint> particles;generateAirbrushParticles(airbrushCenter_,airbrushSettings_,[this]{return std::generate_canonical<double,53>(airbrushRandom_);},[&](auto p){particles.push_back(p);});BrushOptions b;b.size=airbrushSettings_.particleRadius*2-1;b.shape=airbrushSettings_.shape;const auto revision=document.contentRevision();document.sprayStroke(particles,b,b.shape==BrushShape::Round?0:airbrushSettings_.angle);invalidateStrokePixels(revision);}
+void Editor::useAirbrushTool(){if((currentDocument().active()&&!currentDocument().floating())||selectionDragging_||floatingDragging_)return;currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=currentTools().smoothTool=false;liquifyResetPosition_.reset();currentTools().rotateTool=currentTools().textTool=currentTools().moveTool=currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;currentTools().airbrushTool=true;toolRowScroll_=0;refresh();}
+void Editor::saveAirbrushPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto path=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"airbrush-options.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::badbit|std::ios::failbit);const auto& s=currentTools().airbrushSettings;out<<s.particleRadius<<' '<<int(s.shape)<<' '<<s.angle<<' '<<s.scatterRadius<<' '<<s.density<<' '<<s.intervalMs<<'\n';}catch(...){status_=U"喷枪参数已调整，但偏好保存失败";}}
+void Editor::sprayAirbrush(){if(!airbrushDragging_||!currentDocument().strokeActive())return;std::vector<SelectionPoint> particles;generateAirbrushParticles(airbrushCenter_,currentTools().airbrushSettings,[this]{return std::generate_canonical<double,53>(airbrushRandom_);},[&](auto p){particles.push_back(p);});BrushOptions b;b.size=currentTools().airbrushSettings.particleRadius*2-1;b.shape=currentTools().airbrushSettings.shape;const auto revision=currentDocument().contentRevision();currentDocument().sprayStroke(particles,b,b.shape==BrushShape::Round?0:currentTools().airbrushSettings.angle);invalidateStrokePixels(revision);}
 void Editor::createAirbrushOptions(){
 
- auto shape=button(U"",[this]{PixelMenu menu(skin_);const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,i==0?U"圆形":i==1?U"方形":U"线形");row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(airbrushSettings_.shape)==i;};row->Click.connect([this,i]{airbrushSettings_.shape=BrushShape(i);saveAirbrushPreferences();layoutToolOptions();});menu.addChild(row);}menu.showPopup({airbrushShapeButton_->bounds().x,airbrushShapeButton_->bounds().y2()},display());requestFocus();});shape->iconSkin=&toolIcons_;airbrushShapeButton_=shape;airbrushControls_.push_back({shape,19});
+ auto shape=button(U"",[this]{PixelMenu menu(skin_);const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,i==0?U"圆形":i==1?U"方形":U"线形");row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(currentTools().airbrushSettings.shape)==i;};row->Click.connect([this,i]{currentTools().airbrushSettings.shape=BrushShape(i);saveAirbrushPreferences();layoutToolOptions();});menu.addChild(row);}menu.showPopup({airbrushShapeButton_->bounds().x,airbrushShapeButton_->bounds().y2()},display());requestFocus();});shape->iconSkin=&toolIcons_;airbrushShapeButton_=shape;airbrushControls_.push_back({shape,19});
  const char32_t* labels[]={U"散布",U"粒子",U"角度",U"密度",U"间隔"};const int lo[]={1,1,-180,1,16},hi[]={64,16,180,128,1000};
- for(int i=0;i<5;++i){auto label=button(labels[i],[]{});label->labelOnly=true;label->setEnabled(false);airbrushControls_.push_back({label,font_.measure(labels[i])});auto entry=new PixelEntry(font_,skin_);entry->numeric=true;entry->deferredNumeric=true;entry->numericMounted=[this,i]{return airbrushTool_&&(i!=2||airbrushSettings_.shape!=BrushShape::Round);};entry->numericMinimum=lo[i];entry->numericMaximum=hi[i];entry->numericValue=[this,i]{const auto& s=airbrushSettings_;const int values[]={s.scatterRadius,s.particleRadius,s.angle,s.density,s.intervalMs};return double(values[i]);};entry->suffix=i<2?U"px":i==2?U"°":i==4?U"ms":U"";addChild(entry);entry->setFixedContentWidth(entry->widthForValue(i==2?U"-180":i==4?U"1000":U"128"));airbrushFields_[i]=entry;airbrushControls_.push_back({entry,entry->contentWidth()});auto commit=[this,entry,i,low=lo[i],high=hi[i]]{try{std::size_t used;double value=std::stod(entry->text(),&used);if(used!=entry->text().size()||!std::isfinite(value))return;auto& s=airbrushSettings_;int* fields[]={&s.scatterRadius,&s.particleRadius,&s.angle,&s.density,&s.intervalMs};*fields[i]=int(std::floor(std::clamp(value,double(low),double(high))+.5));saveAirbrushPreferences();}catch(...){}layoutToolOptions();invalidateRect(canvasViewport());};entry->deferredCommit=commit;entry->Change.connect(commit);entry->blur=commit;entry->accept=[this,commit]{commit();closeParameterRange();requestFocus();};entry->cancel=[this]{closeParameterRange();};entry->focus=[this,entry,low=lo[i],high=hi[i]]{openParameterRange(entry,low,high);};}
- airbrushTimer_.Tick.connect([this]{if(!airbrushDragging_||!document.strokeActive()||!hasCapture()||homeOpen_||pending_!=Pending::None){airbrushTimer_.stop();if(airbrushDragging_)cancelStroke();return;}auto now=[] {return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();};try{nextAirbrushAt_=advanceAirbrushClock(nextAirbrushAt_,now(),airbrushSettings_.intervalMs,[this]{sprayAirbrush();},now);}catch(const std::exception& e){cancelStroke();status_=unicodeText(e.what());}});
+ for(int i=0;i<5;++i){auto label=button(labels[i],[]{});label->labelOnly=true;label->setEnabled(false);airbrushControls_.push_back({label,font_.measure(labels[i])});auto entry=new PixelEntry(font_,skin_);entry->numeric=true;entry->deferredNumeric=true;entry->numericMounted=[this,i]{return currentTools().airbrushTool&&(i!=2||currentTools().airbrushSettings.shape!=BrushShape::Round);};entry->numericMinimum=lo[i];entry->numericMaximum=hi[i];entry->numericValue=[this,i]{const auto& s=currentTools().airbrushSettings;const int values[]={s.scatterRadius,s.particleRadius,s.angle,s.density,s.intervalMs};return double(values[i]);};entry->suffix=i<2?U"px":i==2?U"°":i==4?U"ms":U"";addChild(entry);entry->setFixedContentWidth(entry->widthForValue(i==2?U"-180":i==4?U"1000":U"128"));airbrushFields_[i]=entry;airbrushControls_.push_back({entry,entry->contentWidth()});auto commit=[this,entry,i,low=lo[i],high=hi[i]]{try{std::size_t used;double value=std::stod(entry->text(),&used);if(used!=entry->text().size()||!std::isfinite(value))return;auto& s=currentTools().airbrushSettings;int* fields[]={&s.scatterRadius,&s.particleRadius,&s.angle,&s.density,&s.intervalMs};*fields[i]=int(std::floor(std::clamp(value,double(low),double(high))+.5));saveAirbrushPreferences();}catch(...){}layoutToolOptions();invalidateRect(canvasViewport());};entry->deferredCommit=commit;entry->Change.connect(commit);entry->blur=commit;entry->accept=[this,commit]{commit();closeParameterRange();requestFocus();};entry->cancel=[this]{closeParameterRange();};entry->focus=[this,entry,low=lo[i],high=hi[i]]{openParameterRange(entry,low,high);};}
+ airbrushTimer_.Tick.connect([this]{if(!airbrushDragging_||!currentDocument().strokeActive()||!hasCapture()||homeOpen_||pending_!=Pending::None){airbrushTimer_.stop();if(airbrushDragging_)cancelStroke();return;}auto now=[] {return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();};try{nextAirbrushAt_=advanceAirbrushClock(nextAirbrushAt_,now(),currentTools().airbrushSettings.intervalMs,[this]{sprayAirbrush();},now);}catch(const std::exception& e){cancelStroke();status_=unicodeText(e.what());}});
 }
-void Editor::layoutAirbrushOptions(){const auto& s=airbrushSettings_;const int values[]={s.scatterRadius,s.particleRadius,s.angle,s.density,s.intervalMs};const char* icons[]={"brush-round","brush-square","brush-line"};airbrushShapeButton_->icon=icons[int(s.shape)];int x=uiLogical(bounds()).x+workspaceLayout(uiLogical(bounds())).workX;for(std::size_t i=0;i<airbrushControls_.size();++i){auto& c=airbrushControls_[i];const bool visible=airbrushTool_&&!(s.shape==BrushShape::Round&&(i==5||i==6));c.first->setVisible(visible);c.first->setEnabled(pending_==Pending::None&&!document.active());if(visible){placePropertyControl(c.first,x,c.second);x+=propertyControlWidth(c.first,c.second)+uiGap;}}for(int i=0;i<5;++i)if(!airbrushFields_[i]->hasFocus()&&airbrushFields_[i]->text()!=std::to_string(values[i]))airbrushFields_[i]->setText(std::to_string(values[i]));}
+void Editor::layoutAirbrushOptions(){const auto& s=currentTools().airbrushSettings;const int values[]={s.scatterRadius,s.particleRadius,s.angle,s.density,s.intervalMs};const char* icons[]={"brush-round","brush-square","brush-line"};airbrushShapeButton_->icon=icons[int(s.shape)];int x=uiLogical(bounds()).x+workspaceLayout(uiLogical(bounds())).workX;for(std::size_t i=0;i<airbrushControls_.size();++i){auto& c=airbrushControls_[i];const bool visible=currentTools().airbrushTool&&!(s.shape==BrushShape::Round&&(i==5||i==6));c.first->setVisible(visible);c.first->setEnabled(pending_==Pending::None&&!currentDocument().active());if(visible){placePropertyControl(c.first,x,c.second);x+=propertyControlWidth(c.first,c.second)+uiGap;}}for(int i=0;i<5;++i)if(!airbrushFields_[i]->hasFocus()&&airbrushFields_[i]->text()!=std::to_string(values[i]))airbrushFields_[i]->setText(std::to_string(values[i]));}
 
 std::filesystem::path Editor::recentExportPathsPath()const{return recentExportPathsPathOverride_.empty()?palettePreferencePath().parent_path()/"recent-export-paths-v1.txt":recentExportPathsPathOverride_;}
 
@@ -173,13 +183,13 @@ std::filesystem::path Editor::exportMemoryPath()const{return exportMemoryPathOve
 
 std::string Editor::exportMemoryIdentity()const{
 
-    auto path=documentPath_.empty()?document.sourceFilePath():documentPath_;
+    auto path=currentPath().empty()?currentDocument().sourceFilePath():currentPath();
 
     if(!path.empty()){auto value=path.generic_wstring();CharLowerBuffW(value.data(),DWORD(value.size()));return "path:"+std::filesystem::path(value).generic_u8string();}
 
     static const auto session=std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64());
 
-    return "id:"+session+"-"+std::to_string(document.identity());
+    return "id:"+session+"-"+std::to_string(currentDocument().identity());
 
   }
 
@@ -235,9 +245,9 @@ bool Editor::restoreExportMemory(bool frames){
 
     auto entries=readExportMemory();auto it=std::find_if(entries.begin(),entries.end(),[&](const auto& r){return r.identity==exportMemoryIdentity();});if(it==entries.end())return false;
 
-    auto p=it->settings;if(frames){if(p.kind==1||p.format>6)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;p.animation.frameEnd=int(document.timeline().state().frames.size());}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;p.slices=false;p.sliceId.clear();}
+    auto p=it->settings;if(frames){if(p.kind==1||p.format>6)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;p.animation.frameEnd=int(currentDocument().timeline().state().frames.size());}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;p.slices=false;p.sliceId.clear();}
 
-    else if(p.kind==2&&document.timeline().state().frames.size()<=1){p.kind=0;p.image.scalePercent=p.animation.scalePercent;p.image.trim=p.animation.trim;p.image.trimCommon=p.animation.trimCommon;p.image.automatic=p.format==4;p.image.selection=false;p.image.layerId.clear();}
+    else if(p.kind==2&&currentDocument().timeline().state().frames.size()<=1){p.kind=0;p.image.scalePercent=p.animation.scalePercent;p.image.trim=p.animation.trim;p.image.trimCommon=p.animation.trimCommon;p.image.automatic=p.format==4;p.image.selection=false;p.image.layerId.clear();}
 
     restoringExportMemory_=true;try{applyExportPreset(p);}catch(...){restoringExportMemory_=false;throw;}restoringExportMemory_=false;
 
@@ -251,9 +261,9 @@ bool Editor::restoreExportMemory(bool frames){
 
 void Editor::restoreSaveControls(){for(auto state:savingControlStates_)state.first->setEnabled(state.second);savingControlStates_.clear();}
 
-void Editor::syncSelectionOutlineView(){if(selectionOutlineIdentity_!=document.identity()){showSelectionOutline_=true;selectionOutlineIdentity_=document.identity();}}
+void Editor::setRelativeLuminance(bool enabled){currentView().relativeLuminance=enabled;renderer_.setRelativeLuminance(enabled);currentDocument().setDeferredFloatingDisplaySupported(!enabled);}
 
-void Editor::toggleSelectionOutline(){syncSelectionOutlineView();showSelectionOutline_=!showSelectionOutline_;if(!showSelectionOutline_)antsTimer_.stop();invalidateRect(canvasViewport());}
+void Editor::toggleSelectionOutline(){currentView().showSelectionOutline=!currentView().showSelectionOutline;if(!currentView().showSelectionOutline)antsTimer_.stop();invalidateRect(canvasViewport());}
 
 bool Editor::advancedActive()const{return advancedMode_!=0;}
 
@@ -289,7 +299,7 @@ void Editor::applyAdvancedVisibility(){
 void Editor::changeAdvancedMode(int next){
     const auto oldView=canvasViewport();
     restoreAdvancedVisibility();advancedMode_=next;
-    const auto delta=canvasViewport().center()-oldView.center();canvas_.offset(delta);
+    const auto delta=canvasViewport().center()-oldView.center();currentView().canvas.offset(delta);
     if(navigation_.pan_.active){navigation_.pan_.origin.x+=delta.x;navigation_.pan_.origin.y+=delta.y;}
     ui::ResizeEvent resize(this,bounds());onResize(resize);refresh();
   }
@@ -365,25 +375,25 @@ void Editor::readWorkspaceSizes(std::istream& in) {
 
   }
 
-void Editor::saveSelectionPreferences(){if(smoke_)return;try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"selection-options.txt");out<<selectionRounded_<<' '<<selectionCornerRadius_<<' '<<selectionMode_<<' '<<selectionPivotVisible_<<'\n';}catch(...){status_=U"选区偏好保存失败";}}
+void Editor::saveSelectionPreferences(){if(smoke_)return;try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"selection-options.txt");out<<currentTools().selectionRounded<<' '<<currentTools().selectionCornerRadius<<' '<<currentTools().selectionMode<<' '<<currentView().selectionPivotVisible<<'\n';}catch(...){status_=U"选区偏好保存失败";}}
 
-int Editor::inkProfileIndex()const{return eraser_?3:fillTool_||gradientTool_?4:shapeTool_?((shapeSpec_.kind==ShapeKind::Line||shapeSpec_.kind==ShapeKind::Curve)?5:6):0;}
-InkMode Editor::currentInkMode()const{return inkProfiles_[inkProfileIndex()];}
-BrushOptions Editor::activeStrokeBrush()const{auto b=brushFeedback_.brushProfiles_[eraser_?1:0];b.ink=eraser_?InkMode::Simple:currentInkMode();return b;}
+int Editor::inkProfileIndex()const{return currentTools().eraser?3:currentTools().fillTool||currentTools().gradientTool?4:currentTools().shapeTool?((currentTools().shapeKind==ShapeKind::Line||currentTools().shapeKind==ShapeKind::Curve)?5:6):0;}
+InkMode Editor::currentInkMode()const{return currentTools().inkProfiles[inkProfileIndex()];}
+BrushOptions Editor::activeStrokeBrush()const{auto b=currentTools().brushProfiles[currentTools().eraser?1:0];b.ink=currentTools().eraser?InkMode::Simple:currentInkMode();return b;}
 std::filesystem::path Editor::inkModesPath()const{return inkPreferenceOverride_.empty()?palettePreferencePath().parent_path()/"ink-modes.txt":inkPreferenceOverride_;}
-void Editor::loadInkPreferences(){try{const auto path=inkModesPath();if(!std::filesystem::exists(path))return;std::ifstream in(path);std::string h;int sync;std::array<InkMode,8> modes{};if(!(in>>h>>sync)||h!="ink-v1"||(sync!=0&&sync!=1))throw std::runtime_error("Invalid ink preferences");for(auto& mode:modes){int v;if(!(in>>v)||v<0||v>2)throw std::runtime_error("Invalid ink mode");mode=InkMode(v);}if(!(in>>std::ws).eof())throw std::runtime_error("Trailing ink preferences");inkProfiles_=modes;syncInkAcrossTools_=sync!=0;}catch(const std::exception&){status_=U"墨水偏好读取失败，使用有效默认值";}}
-void Editor::saveInkPreferences(){if(smoke_&&inkPreferenceOverride_.empty())return;try{std::filesystem::create_directories(inkModesPath().parent_path());std::ostringstream o;o<<"ink-v1 "<<syncInkAcrossTools_;for(auto m:inkProfiles_)o<<' '<<int(m);o<<'\n';auto t=o.str();writeExportBytesAtomic(inkModesPath(),{t.begin(),t.end()});}catch(...){status_=U"墨水模式已调整，但偏好保存失败";}}
-void Editor::chooseInkMode(InkMode mode){inkProfiles_[inkProfileIndex()]=mode;if(syncInkAcrossTools_)inkProfiles_.fill(mode);saveInkPreferences();layoutToolOptions();invalidateRect(canvasViewport());}
+void Editor::loadInkPreferences(){try{const auto path=inkModesPath();if(!std::filesystem::exists(path))return;std::ifstream in(path);std::string h;int sync;std::array<InkMode,8> modes{};if(!(in>>h>>sync)||h!="ink-v1"||(sync!=0&&sync!=1))throw std::runtime_error("Invalid ink preferences");for(auto& mode:modes){int v;if(!(in>>v)||v<0||v>2)throw std::runtime_error("Invalid ink mode");mode=InkMode(v);}if(!(in>>std::ws).eof())throw std::runtime_error("Trailing ink preferences");currentTools().inkProfiles=modes;currentTools().syncInkAcrossTools=sync!=0;}catch(const std::exception&){status_=U"墨水偏好读取失败，使用有效默认值";}}
+void Editor::saveInkPreferences(){if(smoke_&&inkPreferenceOverride_.empty())return;try{std::filesystem::create_directories(inkModesPath().parent_path());std::ostringstream o;o<<"ink-v1 "<<currentTools().syncInkAcrossTools;for(auto m:currentTools().inkProfiles)o<<' '<<int(m);o<<'\n';auto t=o.str();writeExportBytesAtomic(inkModesPath(),{t.begin(),t.end()});}catch(...){status_=U"墨水模式已调整，但偏好保存失败";}}
+void Editor::chooseInkMode(InkMode mode){currentTools().inkProfiles[inkProfileIndex()]=mode;if(currentTools().syncInkAcrossTools)currentTools().inkProfiles.fill(mode);saveInkPreferences();layoutToolOptions();invalidateRect(canvasViewport());}
 void Editor::smokeInkModes(){
- auto require=[](bool v,const char* m){if(!v)throw std::runtime_error(m);};const auto savedModes=inkProfiles_;const bool savedSync=syncInkAcrossTools_;const auto savedOverride=inkPreferenceOverride_;const auto savedPending=pending_;
- struct Restore{std::function<void()> f;~Restore(){f();}} restore{[&]{inkProfiles_=savedModes;syncInkAcrossTools_=savedSync;inkPreferenceOverride_=savedOverride;pending_=savedPending;layoutToolOptions();}};
+ auto require=[](bool v,const char* m){if(!v)throw std::runtime_error(m);};const auto savedModes=currentTools().inkProfiles;const bool savedSync=currentTools().syncInkAcrossTools;const auto savedOverride=inkPreferenceOverride_;const auto savedPending=pending_;
+ struct Restore{std::function<void()> f;~Restore(){f();}} restore{[&]{currentTools().inkProfiles=savedModes;currentTools().syncInkAcrossTools=savedSync;inkPreferenceOverride_=savedOverride;pending_=savedPending;layoutToolOptions();}};
  require(workspacePresetTestDirectory_.has_value(),"Ink isolated fixture"); pending_=Pending::None;
- const auto savedImage=pencilImageBrush_;const auto savedImageId=pencilImageBrushId_;
- const auto savedPencil=brushFeedback_.brushProfiles_[0],savedEraser=brushFeedback_.brushProfiles_[1];const auto savedStep=runtimePreferences_.index("tools.lineDirectionStep.Number");auto savedRuntimeValues=runtimePreferences_.values;
- struct RestoreBrush{std::function<void()> f;~RestoreBrush(){f();}} restoreBrush{[&]{pencilImageBrush_=savedImage;pencilImageBrushId_=savedImageId;brushFeedback_.brushProfiles_[0]=savedPencil;brushFeedback_.brushProfiles_[1]=savedEraser;runtimePreferences_.values.swap(savedRuntimeValues);ditherSmokeChoice=-1;layoutToolOptions();}};
+ const auto savedImage=currentTools().pencilImageBrush;const auto savedImageId=currentTools().pencilImageBrushId;
+ const auto savedPencil=currentTools().brushProfiles[0],savedEraser=currentTools().brushProfiles[1];const auto savedStep=runtimePreferences_.index("tools.lineDirectionStep.Number");auto savedRuntimeValues=runtimePreferences_.values;
+ struct RestoreBrush{std::function<void()> f;~RestoreBrush(){f();}} restoreBrush{[&]{currentTools().pencilImageBrush=savedImage;currentTools().pencilImageBrushId=savedImageId;currentTools().brushProfiles[0]=savedPencil;currentTools().brushProfiles[1]=savedEraser;runtimePreferences_.values.swap(savedRuntimeValues);ditherSmokeChoice=-1;layoutToolOptions();}};
  if(std::wstring(GetCommandLineW()).find(L"--brush-write-queue-only")!=std::wstring::npos){
-  const auto identity=document.identity();const auto pixels=document.canvasPixels();const auto history=document.historySize(),revision=document.revision();const auto dirty=document.dirty();
-  for(int i=0;i<40;++i){brushFeedback_.brushProfiles_[0].size=i+1;brushFeedback_.brushProfiles_[0].opacity=i;saveBrushPreferences();}
+  const auto identity=currentDocument().identity();const auto pixels=currentDocument().canvasPixels();const auto history=currentDocument().historySize(),revision=currentDocument().revision();const auto dirty=currentDocument().dirty();
+  for(int i=0;i<40;++i){currentTools().brushProfiles[0].size=i+1;currentTools().brushProfiles[0].opacity=i;saveBrushPreferences();}
   waitBrushWrites(this);const auto root=*workspacePresetTestDirectory_;auto read=[](const auto& path){std::ifstream in(path,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};
   std::istringstream profile(read(root/"brush-profiles.txt"));int size=0,opacity=0;require(bool(profile>>size>>opacity)&&size==40&&opacity==39,"Brush queue lost latest parameters");
   const auto reportRoot=_wgetenv(L"MOONSPRITE_BRUSH_SAVE_REPORT_ROOT");const auto output=reportRoot?std::filesystem::path(reportRoot):std::filesystem::path("build/test-tmp/brush-save-result");std::filesystem::create_directories(output);
@@ -393,23 +403,23 @@ void Editor::smokeInkModes(){
   {BrushWrites writes(this,[&]{++errors;});auto bad=value;bad.root=blocked;writes.enqueue(bad);writes.poll(true);require(errors==1,"Brush queue write failure not reported");writes.enqueue(value);writes.poll(true);for(int i=0;i<7;++i)require(read(value.root/brushFiles[i])==value.text[i],"Brush queue failed recovery batch");}
   {BrushWrites writes(this,{});value.root=root/"closed";for(int i=0;i<40;++i){value.text.fill(std::to_string(i));writes.enqueue(value);}}
   for(auto name:brushFiles)require(read(value.root/name)=="39","Brush writer destructor failed final batch");
-  require(document.identity()==identity&&document.canvasPixels()==pixels&&document.historySize()==history&&document.revision()==revision&&document.dirty()==dirty,"Brush settings queue modified document");std::ofstream(output/"check.txt")<<"latest_six_files=pass\nfailure_recovery=pass\ndestructor_batch=pass\nartwork_history=pass\n";return;
+  require(currentDocument().identity()==identity&&currentDocument().canvasPixels()==pixels&&currentDocument().historySize()==history&&currentDocument().revision()==revision&&currentDocument().dirty()==dirty,"Brush settings queue modified document");std::ofstream(output/"check.txt")<<"latest_six_files=pass\nfailure_recovery=pass\ndestructor_batch=pass\nartwork_history=pass\n";return;
  }
  lineStepInput_->setText("99");lineStepInput_->Change();require(runtimePreferences_.index("tools.lineDirectionStep.Number")==16,"Stair actual numeric control clamps max");lineStepInput_->setText("0");lineStepInput_->Change();require(runtimePreferences_.index("tools.lineDirectionStep.Number")==1,"Stair actual numeric control clamps min");
- const bool perfectBefore=brushFeedback_.brushProfiles_[0].perfectPixels;perfectPixelsButton_->Click();require(brushFeedback_.brushProfiles_[0].perfectPixels!=perfectBefore&&brushFeedback_.brushProfiles_[1].perfectPixels!=perfectBefore,"Perfect actual checkbox applies session setting");
- pencilImageBrush_.reset();brushFeedback_.brushProfiles_[eraser_?1:0].dither=false;ditherSmokeChoice=5;showBrushDitherPopup();ditherSmokeChoice=-1;const auto& testedDither=brushFeedback_.brushProfiles_[eraser_?1:0];require(testedDither.dither&&testedDither.ditherTemplate==BrushDitherTemplate::Bayer2,"Dither actual popup selects template");
+ const bool perfectBefore=currentTools().brushProfiles[0].perfectPixels;perfectPixelsButton_->Click();require(currentTools().brushProfiles[0].perfectPixels!=perfectBefore&&currentTools().brushProfiles[1].perfectPixels!=perfectBefore,"Perfect actual checkbox applies session setting");
+ currentTools().pencilImageBrush.reset();currentTools().brushProfiles[currentTools().eraser?1:0].dither=false;ditherSmokeChoice=5;showBrushDitherPopup();ditherSmokeChoice=-1;const auto& testedDither=currentTools().brushProfiles[currentTools().eraser?1:0];require(testedDither.dither&&testedDither.ditherTemplate==BrushDitherTemplate::Bayer2,"Dither actual popup selects template");
  waitBrushWrites(this);
  {std::ifstream in(*workspacePresetTestDirectory_/"pixel-stroke-options.txt");int perfect=-1,step=-1;require(bool(in>>perfect>>step)&&perfect==int(!perfectBefore)&&step==1,"Pixel stroke isolated preferences persist");}
- {std::ifstream in(*workspacePresetTestDirectory_/"brush-dither-options.txt");int enabled,t,stage;for(int i=0;i<2;++i){require(bool(in>>enabled>>t>>stage),"Dither isolated profiles stored");if(i==(eraser_?1:0))require(enabled&&t==5,"Dither selected profile persists");}}
+ {std::ifstream in(*workspacePresetTestDirectory_/"brush-dither-options.txt");int enabled,t,stage;for(int i=0;i<2;++i){require(bool(in>>enabled>>t>>stage),"Dither isolated profiles stored");if(i==(currentTools().eraser?1:0))require(enabled&&t==5,"Dither selected profile persists");}}
 inkPreferenceOverride_=*workspacePresetTestDirectory_/"ink-modes.txt";pending_=Pending::None;
  for(int i=0;i<3;++i){showInkMenu(i);require(currentInkMode()==InkMode(i),"Ink actual menu row selection");}
- showInkMenu(1);showInkMenu(3);require(syncInkAcrossTools_&&std::all_of(inkProfiles_.begin(),inkProfiles_.end(),[](auto m){return m==InkMode::CopyAlphaColor;}),"Ink sync all profiles");
- inkProfiles_.fill(InkMode::Simple);syncInkAcrossTools_=false;loadInkPreferences();require(syncInkAcrossTools_&&currentInkMode()==InkMode::CopyAlphaColor,"Ink persisted state");const auto before=inkProfiles_;writeExportBytesAtomic(inkPreferenceOverride_,{'b','a','d'});loadInkPreferences();require(inkProfiles_==before&&syncInkAcrossTools_,"Malformed ink preferences preserve valid state");
+ showInkMenu(1);showInkMenu(3);require(currentTools().syncInkAcrossTools&&std::all_of(currentTools().inkProfiles.begin(),currentTools().inkProfiles.end(),[](auto m){return m==InkMode::CopyAlphaColor;}),"Ink sync all profiles");
+ currentTools().inkProfiles.fill(InkMode::Simple);currentTools().syncInkAcrossTools=false;loadInkPreferences();require(currentTools().syncInkAcrossTools&&currentInkMode()==InkMode::CopyAlphaColor,"Ink persisted state");const auto before=currentTools().inkProfiles;writeExportBytesAtomic(inkPreferenceOverride_,{'b','a','d'});loadInkPreferences();require(currentTools().inkProfiles==before&&currentTools().syncInkAcrossTools,"Malformed ink preferences preserve valid state");
 }
-void Editor::showInkMenu(int smokeChoice){if(pending_!=Pending::None||document.active())return;PixelMenu menu(skin_);const char32_t* labels[]={U"普通",U"复制 Alpha 与颜色",U"锁定 Alpha"};const char* icons[]={"ink-simple","ink-copy-alpha-color","ink-lock-alpha"};std::vector<PixelMenuItem*> rows;for(int i=0;i<3;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->iconSkin=&toolIcons_;item->icon=icons[i];item->checked=[this,i]{return int(currentInkMode())==i;};item->Click.connect([this,i]{chooseInkMode(InkMode(i));});menu.addChild(item);rows.push_back(item);}auto sync=new PixelMenuItem(font_,skin_,U"同步所有工具");sync->checked=[this]{return syncInkAcrossTools_;};sync->Click.connect([this]{syncInkAcrossTools_=!syncInkAcrossTools_;if(syncInkAcrossTools_)inkProfiles_.fill(currentInkMode());saveInkPreferences();layoutToolOptions();});menu.addChild(sync);rows.push_back(sync);ui::Timer timer(40,&menu);if(smokeChoice>=0){timer.Tick.connect([&]{timer.stop();rows.at(smokeChoice)->Click();menu.closeWindow();});timer.start();}menu.showPopup({inkButton_->bounds().x,inkButton_->bounds().y2()+uiGap*uiScale},display());timer.stop();requestFocus();}
+void Editor::showInkMenu(int smokeChoice){if(pending_!=Pending::None||currentDocument().active())return;PixelMenu menu(skin_);const char32_t* labels[]={U"普通",U"复制 Alpha 与颜色",U"锁定 Alpha"};const char* icons[]={"ink-simple","ink-copy-alpha-color","ink-lock-alpha"};std::vector<PixelMenuItem*> rows;for(int i=0;i<3;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->iconSkin=&toolIcons_;item->icon=icons[i];item->checked=[this,i]{return int(currentInkMode())==i;};item->Click.connect([this,i]{chooseInkMode(InkMode(i));});menu.addChild(item);rows.push_back(item);}auto sync=new PixelMenuItem(font_,skin_,U"同步所有工具");sync->checked=[this]{return currentTools().syncInkAcrossTools;};sync->Click.connect([this]{currentTools().syncInkAcrossTools=!currentTools().syncInkAcrossTools;if(currentTools().syncInkAcrossTools)currentTools().inkProfiles.fill(currentInkMode());saveInkPreferences();layoutToolOptions();});menu.addChild(sync);rows.push_back(sync);ui::Timer timer(40,&menu);if(smokeChoice>=0){timer.Tick.connect([&]{timer.stop();rows.at(smokeChoice)->Click();menu.closeWindow();});timer.start();}menu.showPopup({inkButton_->bounds().x,inkButton_->bounds().y2()+uiGap*uiScale},display());timer.stop();requestFocus();}
 
 void Editor::saveBrushPreferences() {
-    drawingAnchorDefaults_=drawingAnchor_;drawingAnchorDefaultEnabled_=drawFromCanvasCenter_;drawingAnchorDefaultVisible_=drawingAnchorVisible_;
+    drawingAnchorDefaults_=currentView().drawingAnchor;drawingAnchorDefaultEnabled_=currentView().drawFromCanvasCenter;drawingAnchorDefaultVisible_=currentView().drawingAnchorVisible;
 
     brushFeedback_.brushPreferencesPending_=false;++brushFeedback_.brushPreferenceWrites_;
 
@@ -420,17 +430,17 @@ void Editor::saveBrushPreferences() {
 
       const auto path=smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();BrushWrite value;value.root=path;
 
-      {std::ostringstream modes;modes<<1<<' '<<int(brushFeedback_.brushProfiles_[0].imagePaintMode)<<' '<<int(brushFeedback_.brushProfiles_[1].imagePaintMode);value.text[0]=modes.str();}
-      std::ostringstream pixelStroke;pixelStroke<<brushFeedback_.brushProfiles_[0].perfectPixels<<' '<<std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)<<'\n';
-      {const auto& settings=fillPattern_.settings;std::ostringstream patternOut;patternOut<<1<<' '<<int(fillPattern_.mode)<<' '<<int(fillPattern_.paintMode)<<' '<<settings.randomDensity<<' '<<settings.randomCount<<' '<<settings.randomSpacing<<' '<<settings.randomOverlap<<' '<<settings.regularCount<<' '<<settings.regularSpacingX<<' '<<settings.regularSpacingY<<' '<<settings.regularOverlap<<' '<<settings.regularRowOffset;value.text[2]=patternOut.str();}
-      std::ostringstream ditherOut;for(const auto& b:brushFeedback_.brushProfiles_)ditherOut<<b.dither<<' '<<int(b.ditherTemplate)<<' '<<b.ditherStage<<'\n';
-      std::ostringstream magicOut;magicOut<<magicEraserContiguous_<<' '<<wandOptions_.tolerance<<' '<<wandOptions_.gapClosing<<' '<<wandOptions_.gapThreshold<<'\n';
+      {std::ostringstream modes;modes<<1<<' '<<int(currentTools().brushProfiles[0].imagePaintMode)<<' '<<int(currentTools().brushProfiles[1].imagePaintMode);value.text[0]=modes.str();}
+      std::ostringstream pixelStroke;pixelStroke<<currentTools().brushProfiles[0].perfectPixels<<' '<<std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)<<'\n';
+      {const auto& settings=currentTools().fillPattern.settings;std::ostringstream patternOut;patternOut<<1<<' '<<int(currentTools().fillPattern.mode)<<' '<<int(currentTools().fillPattern.paintMode)<<' '<<settings.randomDensity<<' '<<settings.randomCount<<' '<<settings.randomSpacing<<' '<<settings.randomOverlap<<' '<<settings.regularCount<<' '<<settings.regularSpacingX<<' '<<settings.regularSpacingY<<' '<<settings.regularOverlap<<' '<<settings.regularRowOffset;value.text[2]=patternOut.str();}
+      std::ostringstream ditherOut;for(const auto& b:currentTools().brushProfiles)ditherOut<<b.dither<<' '<<int(b.ditherTemplate)<<' '<<b.ditherStage<<'\n';
+      std::ostringstream magicOut;magicOut<<currentTools().magicEraserContiguous<<' '<<currentTools().wandOptions.tolerance<<' '<<currentTools().wandOptions.gapClosing<<' '<<currentTools().wandOptions.gapThreshold<<'\n';
       std::ostringstream out;
 
-      for(const auto& brush:brushFeedback_.brushProfiles_) out<<brush.size<<' '<<brush.opacity<<' '<<int(brush.shape)<<'\n';
+      for(const auto& brush:currentTools().brushProfiles) out<<brush.size<<' '<<brush.opacity<<' '<<int(brush.shape)<<'\n';
 
-      out<<selectionBrushAngle_<<' '<<selectionRotSprite_<<'\n';out<<fillOptions_.tolerance<<' '<<fillOptions_.contiguous<<' '<<fillOptions_.gapClosing<<' '<<fillOptions_.gapThreshold<<' '<<fillOptions_.visibleLayers<<' '<<fillOptions_.connectivity<<'\n';out<<gradientSpec_.radial<<' '<<gradientSpec_.dither<<' '<<gradientOptions_.tolerance<<' '<<gradientOptions_.contiguous<<' '<<gradientConfirm_<<' '<<gradientFreeform_<<' '<<gradientStops_.size()<<'\n';for(const auto& stop:gradientStops_)out<<stop.position<<' '<<stop.color<<'\n';out<<int(shapeSpec_.kind)<<' '<<shapeRounded_<<' '<<shapeRadius_<<' '<<shapeRatio_<<' '<<shapeRatioWidth_<<' '<<shapeRatioHeight_<<'\n';out<<int(fillPattern_.texture)<<' '<<fillPattern_.textureScale<<'\n';out<<curveAnchorCount_<<'\n';out<<drawFromCanvasCenter_<<' '<<drawingAnchorVisible_<<' '<<std::setprecision(17)<<drawingAnchor_.x<<' '<<drawingAnchor_.y<<'\n';value.text[1]=pixelStroke.str();value.text[3]=ditherOut.str();value.text[4]=magicOut.str();value.text[5]=out.str();
-      {std::ostringstream image;image<<"image-brush-v1 "<<std::quoted(temporaryBrushActive_||temporaryBrushCapture_?std::string{}:pencilImageBrushId_)<<' '<<std::setprecision(17)<<pencilImageBrushAngle_;value.text[6]=image.str();}
+      out<<currentTools().selectionBrushAngle<<' '<<currentTools().selectionRotSprite<<'\n';out<<currentTools().fillOptions.tolerance<<' '<<currentTools().fillOptions.contiguous<<' '<<currentTools().fillOptions.gapClosing<<' '<<currentTools().fillOptions.gapThreshold<<' '<<currentTools().fillOptions.visibleLayers<<' '<<currentTools().fillOptions.connectivity<<'\n';out<<currentTools().gradientRadial<<' '<<currentTools().gradientDither<<' '<<currentTools().gradientOptions.tolerance<<' '<<currentTools().gradientOptions.contiguous<<' '<<currentTools().gradientConfirm<<' '<<currentTools().gradientFreeform<<' '<<currentTools().gradientStops.size()<<'\n';for(const auto& stop:currentTools().gradientStops)out<<stop.position<<' '<<stop.color<<'\n';out<<int(currentTools().shapeKind)<<' '<<currentTools().shapeRounded<<' '<<currentTools().shapeRadius<<' '<<currentTools().shapeRatio<<' '<<currentTools().shapeRatioWidth<<' '<<currentTools().shapeRatioHeight<<'\n';out<<int(currentTools().fillPattern.texture)<<' '<<currentTools().fillPattern.textureScale<<'\n';out<<currentTools().curveAnchorCount<<'\n';out<<currentView().drawFromCanvasCenter<<' '<<currentView().drawingAnchorVisible<<' '<<std::setprecision(17)<<currentView().drawingAnchor.x<<' '<<currentView().drawingAnchor.y<<'\n';value.text[1]=pixelStroke.str();value.text[3]=ditherOut.str();value.text[4]=magicOut.str();value.text[5]=out.str();
+      {std::ostringstream image;image<<"image-brush-v1 "<<std::quoted(currentTools().temporaryBrushActive||currentTools().temporaryBrushCapture?std::string{}:currentTools().pencilImageBrushId)<<' '<<std::setprecision(17)<<currentTools().pencilImageBrushAngle;value.text[6]=image.str();}
       if(_wgetenv(L"MOONSPRITE_BRUSH_SAVE_SYNC_REFERENCE")){waitBrushWrites(this);writeBrushBatch(value);}
       else{auto writes=std::dynamic_pointer_cast<BrushWrites>(getProperty("moonsprite.brush-writes"));if(!writes){writes=std::make_shared<BrushWrites>(this,[this]{status_=U"笔刷参数已调整，但偏好保存失败";invalidateRect(statusBounds());});setProperty(writes);}writes->enqueue(std::move(value));}
 
@@ -440,7 +450,7 @@ void Editor::saveBrushPreferences() {
 
 void Editor::commitBrushField(bool opacity) {
 
-    if(updatingBrushFields_ || handTool_ || pending_!=Pending::None) return;
+    if(updatingBrushFields_ || currentTools().handTool || pending_!=Pending::None) return;
 
     auto input=opacity?brushOpacityInput_:brushSizeInput_;
 
@@ -450,7 +460,7 @@ void Editor::commitBrushField(bool opacity) {
 
       if(end!=input->text().size() || !std::isfinite(value)) return;
 
-      auto& brush=brushFeedback_.brushProfiles_[eraser_?1:0];
+      auto& brush=currentTools().brushProfiles[currentTools().eraser?1:0];
 
       const int next=int(std::floor(std::clamp(value,opacity?0.0:1.0,opacity?100.0:64.0)+0.5));
 
@@ -464,15 +474,15 @@ void Editor::commitBrushField(bool opacity) {
 
 void Editor::brushShapeMenu() {
 
-    if(pending_!=Pending::None || document.active()) return;
+    if(pending_!=Pending::None || currentDocument().active()) return;
 
     PixelMenu menu(skin_);const char32_t* labels[]={U"圆形",U"方形",U"线形"};const char* icons[]={"brush-round","brush-square","brush-line"};
 
     for(int i=0;i<3;++i) {auto item=new PixelMenuItem(font_,skin_,labels[i]);item->iconSkin=&toolIcons_;item->icon=icons[i];
 
-      item->checked=[this,i]{return int(brushFeedback_.brushProfiles_[eraser_?1:0].shape)==i;};
+      item->checked=[this,i]{return int(currentTools().brushProfiles[currentTools().eraser?1:0].shape)==i;};
 
-      item->Click.connect([this,i]{brushFeedback_.brushProfiles_[eraser_?1:0].shape=BrushShape(i);saveBrushPreferences();refresh();});menu.addChild(item);}
+      item->Click.connect([this,i]{currentTools().brushProfiles[currentTools().eraser?1:0].shape=BrushShape(i);saveBrushPreferences();refresh();});menu.addChild(item);}
 
     menu.showPopup(gfx::Point(brushShapeButton_->bounds().x,brushShapeButton_->bounds().y2()+uiGap*uiScale),display());requestFocus();
 
@@ -488,7 +498,7 @@ gfx::Rect Editor::toolPopupBounds(ui::Widget* trigger,int width,int height){
 
 void Editor::showPropertyRange(PixelEntry* entry,int minimum,int maximum){
 
-    if(!entry->isEnabled() || entry->hasFlags(ui::HIDDEN) || pending_!=Pending::None)return;
+    if(!isVisible() || !entry->isEnabled() || !entry->isVisible() || pending_!=Pending::None)return;
 
     closeParameterRange();
     if(propertyRangePopup_)propertyRangePopup_->closeWindow(nullptr);
@@ -521,7 +531,7 @@ void Editor::showPropertyRange(PixelEntry* entry,int minimum,int maximum){
 
 void Editor::showBrushRange(bool opacity) {
 
-    if(handTool_ || pending_!=Pending::None)return;
+    if(currentTools().handTool || pending_!=Pending::None)return;
 
     showPropertyRange(opacity?brushOpacityInput_:brushSizeInput_,opacity?0:1,opacity?100:64);
 
@@ -616,10 +626,10 @@ void Editor::showHome(bool open) {
 
     if(open&&colorEditorPopup_&&colorEditorPopup_->isVisible())colorEditorPopup_->closeWindow(nullptr);
 
-    if(pending_!=Pending::None || document.active())return;
+    if(pending_!=Pending::None || currentDocument().active())return;
 
     if(open && advancedActive())changeAdvancedMode(0);
-    playing_=false;
+    currentPlayback().playing=false;
 
     if(open && !homeOpen_){homeVisibility_.clear();for(auto child:children())homeVisibility_.push_back({child,!child->hasFlags(ui::HIDDEN)});loadHomeSection();if(homeBannerPane_&&(homeBannerInitialized_||!recentSettingsOverride_.empty())&&(!smoke_||!recentSettingsOverride_.empty()))homeBannerPane_->start(galleryDirectory(),true);}
 
@@ -747,16 +757,16 @@ void Editor::paintHome(ui::Graphics& g) {
   }
 
 void Editor::showBrushDitherPopup(){
- if(pencilImageBrush_||document.active())return;
+ if(currentTools().pencilImageBrush||currentDocument().active())return;
  ToolPropertyPopup popup(skin_,font_,U"笔刷抖动");popup.setDisplay(display(),false);popup.setWantFocus(true);popup.setBounds(toolPopupBounds(toolControls_[1].first,178,163));
  const char32_t* names[]={U"棋盘",U"左斜线",U"右斜线",U"横向",U"纵向",U"Bayer 2",U"Bayer 4",U"Bayer 8"};
  std::array<PixelButton*,8> choices{};PixelButton *previous=nullptr,*following=nullptr,*stageLabel=nullptr;
- auto sync=[&]{const auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];for(int i=0;i<8;++i){choices[i]->active=b.dither&&int(b.ditherTemplate)==i;choices[i]->invalidate();}previous->setEnabled(b.dither);following->setEnabled(b.dither);stageLabel->caption=unicodeText(std::to_string(b.ditherStage)+"/"+std::to_string(brushDitherStageCount(b.ditherTemplate)));stageLabel->invalidate();};
+ auto sync=[&]{const auto& b=currentTools().brushProfiles[currentTools().eraser?1:0];for(int i=0;i<8;++i){choices[i]->active=b.dither&&int(b.ditherTemplate)==i;choices[i]->invalidate();}previous->setEnabled(b.dither);following->setEnabled(b.dither);stageLabel->caption=unicodeText(std::to_string(b.ditherStage)+"/"+std::to_string(brushDitherStageCount(b.ditherTemplate)));stageLabel->invalidate();};
  auto changed=[&]{saveBrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());sync();};
- for(int i=0;i<8;++i){choices[i]=new PixelButton(font_,skin_,names[i],[&,i]{auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];const auto t=BrushDitherTemplate(i);if(b.dither&&b.ditherTemplate==t)b.dither=false;else{const int old=brushDitherStageCount(b.ditherTemplate),next=brushDitherStageCount(t);b.ditherStage=std::clamp(int(std::lround(double(b.ditherStage)/old*next)),1,next);b.ditherTemplate=t;b.dither=true;}changed();});popup.place(choices[i],{6+(i%2)*84,DialogLayout::bodyTop+(i/2)*22,80,20});}
- previous=new PixelButton(font_,skin_,U"",[&]{auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];b.ditherStage=std::max(1,b.ditherStage-1);changed();});previous->icon="playback-previous";previous->iconSkin=&toolIcons_;popup.place(previous,{6,DialogLayout::bodyTop+94,15,15});
+ for(int i=0;i<8;++i){choices[i]=new PixelButton(font_,skin_,names[i],[&,i]{auto& b=currentTools().brushProfiles[currentTools().eraser?1:0];const auto t=BrushDitherTemplate(i);if(b.dither&&b.ditherTemplate==t)b.dither=false;else{const int old=brushDitherStageCount(b.ditherTemplate),next=brushDitherStageCount(t);b.ditherStage=std::clamp(int(std::lround(double(b.ditherStage)/old*next)),1,next);b.ditherTemplate=t;b.dither=true;}changed();});popup.place(choices[i],{6+(i%2)*84,DialogLayout::bodyTop+(i/2)*22,80,20});}
+ previous=new PixelButton(font_,skin_,U"",[&]{auto& b=currentTools().brushProfiles[currentTools().eraser?1:0];b.ditherStage=std::max(1,b.ditherStage-1);changed();});previous->icon="playback-previous";previous->iconSkin=&toolIcons_;popup.place(previous,{6,DialogLayout::bodyTop+94,15,15});
  stageLabel=new PixelButton(font_,skin_,U"",[]{});stageLabel->labelOnly=true;stageLabel->setEnabled(false);popup.place(stageLabel,{23,DialogLayout::bodyTop+92,126,20});
- following=new PixelButton(font_,skin_,U"",[&]{auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];b.ditherStage=std::min(brushDitherStageCount(b.ditherTemplate),b.ditherStage+1);changed();});following->icon="playback-next";following->iconSkin=&toolIcons_;popup.place(following,{151,DialogLayout::bodyTop+94,15,15});
+ following=new PixelButton(font_,skin_,U"",[&]{auto& b=currentTools().brushProfiles[currentTools().eraser?1:0];b.ditherStage=std::min(brushDitherStageCount(b.ditherTemplate),b.ditherStage+1);changed();});following->icon="playback-next";following->iconSkin=&toolIcons_;popup.place(following,{151,DialogLayout::bodyTop+94,15,15});
  sync();ui::Timer timer(40,&popup);if(ditherSmokeChoice>=0){timer.Tick.connect([&]{timer.stop();choices.at(ditherSmokeChoice)->Click();popup.closeWindow(nullptr);});timer.start();}popup.openWindowInForeground();timer.stop();requestFocus();
 }
 // Legacy createSession/loadToolSettings: load values without creating controls.
@@ -764,19 +774,19 @@ void Editor::loadSessionToolPreferences(bool reset){
  waitBrushWrites(this);
  const auto directory=smoke_&&workspacePresetTestDirectory_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path();
  if(reset){
-  drawingAnchor_={.5,.5};drawingAnchorVisible_=true;drawFromCanvasCenter_=false;
-  for(auto& brush:brushFeedback_.brushProfiles_)brush={};
-  selectionMode_=selectionKind_=selectionBrushAngle_=0;selectionRounded_=selectionRotSprite_=false;selectionCornerRadius_=4;selectionPivotVisible_=true;wandOptions_={};
-  shapeSpec_={};shapeRounded_=shapeRatio_=false;shapeRadius_=4;shapeRatioWidth_=shapeRatioHeight_=1;curveAnchorCount_=2;
-  fillOptions_={};fillPattern_={};fillLibrarySelection_={};fillImageName_.clear();rememberGradientTool_=false;gradientSpec_={};gradientOptions_={};gradientStops_.clear();gradientConfirm_=gradientFreeform_=false;
-  inkProfiles_={};syncInkAcrossTools_=false;pencilImageBrush_.reset();pencilImageBrushId_.clear();pencilImageBrushAngle_=0;
-  brushDynamics_={};airbrushSettings_={};liquifyOptions_={};smoothStrength_=50;smoothAngle_=0;smoothBrush_={};moveAutoSelect_=true;eyedropperSource_=EyedropperSource::Composite;magicEraserContiguous_=false;
+  currentView().drawingAnchor={.5,.5};currentView().drawingAnchorVisible=true;currentView().drawFromCanvasCenter=false;
+  for(auto& brush:currentTools().brushProfiles)brush={};
+  currentTools().selectionMode=currentTools().selectionKind=currentTools().selectionBrushAngle=0;currentTools().selectionRounded=currentTools().selectionRotSprite=false;currentTools().selectionCornerRadius=4;currentView().selectionPivotVisible=true;currentTools().wandOptions={};
+  shapeSpec_={};currentTools().shapeKind=ShapeKind::Rectangle;currentTools().shapeRounded=currentTools().shapeRatio=false;currentTools().shapeRadius=4;currentTools().shapeRatioWidth=currentTools().shapeRatioHeight=1;currentTools().curveAnchorCount=2;
+  currentTools().fillOptions={};currentTools().fillPattern={};currentTools().fillLibrarySelection={};currentTools().fillImageName.clear();currentTools().rememberGradientTool=false;gradientSpec_={};currentTools().gradientRadial=false;currentTools().gradientDither=0;currentTools().gradientOptions={};currentTools().gradientStops.clear();currentTools().gradientConfirm=currentTools().gradientFreeform=false;
+  currentTools().inkProfiles={};currentTools().syncInkAcrossTools=false;currentTools().pencilImageBrush.reset();currentTools().pencilImageBrushId.clear();currentTools().pencilImageBrushAngle=0;
+  currentTools().brushDynamics={};currentTools().airbrushSettings={};currentTools().liquifyOptions={};currentTools().smoothStrength=50;currentTools().smoothAngle=0;currentTools().smoothBrush={};currentTools().moveAutoSelect=true;currentTools().eyedropperSource=EyedropperSource::Composite;currentTools().magicEraserContiguous=false;
  }
- try{std::ifstream in(directory/"airbrush-options.txt");AirbrushSettings s;int shape;if(in>>s.particleRadius>>shape>>s.angle>>s.scatterRadius>>s.density>>s.intervalMs){s.particleRadius=std::clamp(s.particleRadius,1,16);s.shape=BrushShape(std::clamp(shape,0,2));s.angle=std::clamp(s.angle,-180,180);s.scatterRadius=std::clamp(s.scatterRadius,1,64);s.density=std::clamp(s.density,1,128);s.intervalMs=std::clamp(s.intervalMs,16,1000);airbrushSettings_=s;}}catch(...){}
- try{std::ifstream in(directory/"smooth-brush-v1.txt");std::string tag;int s,a,size,shape;if(in>>tag>>s>>a>>size>>shape&&tag=="smooth-v1"){smoothStrength_=std::clamp(s,0,100);smoothAngle_=std::clamp(a,-180,180);smoothBrush_.size=std::clamp(size,1,64);smoothBrush_.shape=BrushShape(std::clamp(shape,0,2));}}catch(...){}
+ try{std::ifstream in(directory/"airbrush-options.txt");AirbrushSettings s;int shape;if(in>>s.particleRadius>>shape>>s.angle>>s.scatterRadius>>s.density>>s.intervalMs){s.particleRadius=std::clamp(s.particleRadius,1,16);s.shape=BrushShape(std::clamp(shape,0,2));s.angle=std::clamp(s.angle,-180,180);s.scatterRadius=std::clamp(s.scatterRadius,1,64);s.density=std::clamp(s.density,1,128);s.intervalMs=std::clamp(s.intervalMs,16,1000);currentTools().airbrushSettings=s;}}catch(...){}
+ try{std::ifstream in(directory/"smooth-brush-v1.txt");std::string tag;int s,a,size,shape;if(in>>tag>>s>>a>>size>>shape&&tag=="smooth-v1"){currentTools().smoothStrength=std::clamp(s,0,100);currentTools().smoothAngle=std::clamp(a,-180,180);currentTools().smoothBrush.size=std::clamp(size,1,64);currentTools().smoothBrush.shape=BrushShape(std::clamp(shape,0,2));}}catch(...){}
     try {
 
-      {std::ifstream selectionSettings(directory/"selection-options.txt");int rounded,radius,mode,pivot;if(selectionSettings>>rounded>>radius>>mode>>pivot){selectionRounded_=rounded!=0;selectionCornerRadius_=std::clamp(radius,0,256);selectionMode_=std::clamp(mode,0,3);selectionPivotVisible_=pivot!=0;}}
+      {std::ifstream selectionSettings(directory/"selection-options.txt");int rounded,radius,mode,pivot;if(selectionSettings>>rounded>>radius>>mode>>pivot){currentTools().selectionRounded=rounded!=0;currentTools().selectionCornerRadius=std::clamp(radius,0,256);currentTools().selectionMode=std::clamp(mode,0,3);currentView().selectionPivotVisible=pivot!=0;}}
 
       const auto path=directory/"brush-profiles.txt";
 
@@ -784,9 +794,9 @@ void Editor::loadSessionToolPreferences(bool reset){
 
         std::ifstream in(path);int size,opacity,shape;
 
-        for(auto& brush:brushFeedback_.brushProfiles_) {if(!(in>>size>>opacity>>shape)) throw std::runtime_error("Invalid brush preferences");
+        for(auto& brush:currentTools().brushProfiles) {if(!(in>>size>>opacity>>shape)) throw std::runtime_error("Invalid brush preferences");
 
-          brush={std::clamp(size,1,64),std::clamp(opacity,0,100),BrushShape(std::clamp(shape,0,2))};}int angle;if(in>>angle)selectionBrushAngle_=std::clamp(angle,-180,180);int algorithm;if(in>>algorithm)selectionRotSprite_=algorithm==1;int tolerance,contiguous,gap,threshold,reference,connectivity;if(in>>tolerance>>contiguous>>gap>>threshold>>reference>>connectivity)fillOptions_={std::clamp(tolerance,0,255),connectivity==8?8:4,std::clamp(threshold,1,16),contiguous!=0,gap!=0,reference!=0};int radial,dither,gt,gc,confirm,freeform;std::size_t stops;if(in>>radial>>dither>>gt>>gc>>confirm>>freeform>>stops){gradientSpec_.radial=radial!=0;gradientSpec_.dither=std::clamp(dither,0,8);gradientOptions_.tolerance=std::clamp(gt,0,255);gradientOptions_.contiguous=gc!=0;gradientConfirm_=confirm!=0;gradientFreeform_=freeform!=0;if(stops<=4096)for(std::size_t i=0;i<stops;++i){GradientStop stop;if(!(in>>stop.position>>stop.color))break;if(std::isfinite(stop.position)){stop.position=std::clamp(stop.position,0.0,1.0);gradientStops_.push_back(stop);}}std::stable_sort(gradientStops_.begin(),gradientStops_.end(),[](auto a,auto b){return a.position<b.position;});}int kind,rounded,radius,ratio;double rw,rh;if(in>>kind>>rounded>>radius>>ratio>>rw>>rh){shapeSpec_.kind=ShapeKind(std::clamp(kind,0,7));shapeRounded_=rounded!=0;shapeRadius_=std::clamp(radius,0,256);shapeRatio_=ratio!=0;if(std::isfinite(rw))shapeRatioWidth_=std::clamp(rw,.1,100.0);if(std::isfinite(rh))shapeRatioHeight_=std::clamp(rh,.1,100.0);}int texture,textureScale;if(in>>texture>>textureScale){fillPattern_.texture=FillTexture(std::clamp(texture,0,3));fillPattern_.textureScale=std::clamp(textureScale,1,16);}int anchors;if(in>>anchors)curveAnchorCount_=std::clamp(anchors,1,8);int enabled,visible;double anchorX,anchorY;if(in>>enabled>>visible>>anchorX>>anchorY){drawFromCanvasCenter_=enabled!=0;drawingAnchorVisible_=visible!=0;if(std::isfinite(anchorX)&&std::isfinite(anchorY))drawingAnchor_={anchorX,anchorY};}drawingAnchorDefaults_=drawingAnchor_;drawingAnchorDefaultEnabled_=drawFromCanvasCenter_;drawingAnchorDefaultVisible_=drawingAnchorVisible_;
+          brush={std::clamp(size,1,64),std::clamp(opacity,0,100),BrushShape(std::clamp(shape,0,2))};}int angle;if(in>>angle)currentTools().selectionBrushAngle=std::clamp(angle,-180,180);int algorithm;if(in>>algorithm)currentTools().selectionRotSprite=algorithm==1;int tolerance,contiguous,gap,threshold,reference,connectivity;if(in>>tolerance>>contiguous>>gap>>threshold>>reference>>connectivity)currentTools().fillOptions={std::clamp(tolerance,0,255),connectivity==8?8:4,std::clamp(threshold,1,16),contiguous!=0,gap!=0,reference!=0};int radial,dither,gt,gc,confirm,freeform;std::size_t stops;if(in>>radial>>dither>>gt>>gc>>confirm>>freeform>>stops){currentTools().gradientRadial=radial!=0;currentTools().gradientDither=std::clamp(dither,0,8);currentTools().gradientOptions.tolerance=std::clamp(gt,0,255);currentTools().gradientOptions.contiguous=gc!=0;currentTools().gradientConfirm=confirm!=0;currentTools().gradientFreeform=freeform!=0;if(stops<=4096)for(std::size_t i=0;i<stops;++i){GradientStop stop;if(!(in>>stop.position>>stop.color))break;if(std::isfinite(stop.position)){stop.position=std::clamp(stop.position,0.0,1.0);currentTools().gradientStops.push_back(stop);}}std::stable_sort(currentTools().gradientStops.begin(),currentTools().gradientStops.end(),[](auto a,auto b){return a.position<b.position;});}int kind,rounded,radius,ratio;double rw,rh;if(in>>kind>>rounded>>radius>>ratio>>rw>>rh){currentTools().shapeKind=ShapeKind(std::clamp(kind,0,7));currentTools().shapeRounded=rounded!=0;currentTools().shapeRadius=std::clamp(radius,0,256);currentTools().shapeRatio=ratio!=0;if(std::isfinite(rw))currentTools().shapeRatioWidth=std::clamp(rw,.1,100.0);if(std::isfinite(rh))currentTools().shapeRatioHeight=std::clamp(rh,.1,100.0);}int texture,textureScale;if(in>>texture>>textureScale){currentTools().fillPattern.texture=FillTexture(std::clamp(texture,0,3));currentTools().fillPattern.textureScale=std::clamp(textureScale,1,16);}int anchors;if(in>>anchors)currentTools().curveAnchorCount=std::clamp(anchors,1,8);int enabled,visible;double anchorX,anchorY;if(in>>enabled>>visible>>anchorX>>anchorY){currentView().drawFromCanvasCenter=enabled!=0;currentView().drawingAnchorVisible=visible!=0;if(std::isfinite(anchorX)&&std::isfinite(anchorY))currentView().drawingAnchor={anchorX,anchorY};}drawingAnchorDefaults_=currentView().drawingAnchor;drawingAnchorDefaultEnabled_=currentView().drawFromCanvasCenter;drawingAnchorDefaultVisible_=currentView().drawingAnchorVisible;
 
       }
 
@@ -795,9 +805,9 @@ void Editor::loadSessionToolPreferences(bool reset){
     loadMagicEraserPreferences();
     loadFillPatternPreferences();
 
-    {std::ifstream in(directory/"brush-dither-options.txt");for(auto& b:brushFeedback_.brushProfiles_){int enabled,t,stage;if(!(in>>enabled>>t>>stage))break;b.dither=enabled!=0;b.ditherTemplate=BrushDitherTemplate(std::clamp(t,0,7));b.ditherStage=std::clamp(stage,1,brushDitherStageCount(b.ditherTemplate));}}
-    {std::ifstream in(directory/"pixel-stroke-options.txt");int perfect=0,step=1;if(in>>perfect>>step){for(auto& b:brushFeedback_.brushProfiles_)b.perfectPixels=perfect!=0;runtimePreferences_.set("tools.lineDirectionStep.Number",std::to_string(std::clamp(step,1,16)));}}
-    wandOptions_.connectivity=fillOptions_.connectivity;wandOptions_.visibleLayers=fillOptions_.visibleLayers;
+    {std::ifstream in(directory/"brush-dither-options.txt");for(auto& b:currentTools().brushProfiles){int enabled,t,stage;if(!(in>>enabled>>t>>stage))break;b.dither=enabled!=0;b.ditherTemplate=BrushDitherTemplate(std::clamp(t,0,7));b.ditherStage=std::clamp(stage,1,brushDitherStageCount(b.ditherTemplate));}}
+    {std::ifstream in(directory/"pixel-stroke-options.txt");int perfect=0,step=1;if(in>>perfect>>step){for(auto& b:currentTools().brushProfiles)b.perfectPixels=perfect!=0;runtimePreferences_.set("tools.lineDirectionStep.Number",std::to_string(std::clamp(step,1,16)));}}
+    currentTools().wandOptions.connectivity=currentTools().fillOptions.connectivity;currentTools().wandOptions.visibleLayers=currentTools().fillOptions.visibleLayers;
 
 
  // Existing adapters retain their validation and file format; test roots never
@@ -806,9 +816,9 @@ void Editor::loadSessionToolPreferences(bool reset){
  if(smoke_&&workspacePresetTestDirectory_){inkPreferenceOverride_=directory/"ink-modes.txt";dynamicsPreferenceOverride_=directory/"brush-dynamics-v6.txt";liquifyPreferenceOverride_=directory/"liquify-options.txt";}
  loadInkPreferences();loadDynamicsPreferences();loadLiquifyPreferences();
  inkPreferenceOverride_=oldInk;dynamicsPreferenceOverride_=oldDynamics;liquifyPreferenceOverride_=oldLiquify;
- {std::ifstream in(directory/"image-brush-selection-v1.txt");std::string version,id;double angle;if(in>>version>>std::quoted(id)>>angle&&version=="image-brush-v1"&&id.size()<=4096&&std::isfinite(angle)&&(in>>std::ws).eof()){pencilImageBrushId_=id;pencilImageBrushAngle_=std::clamp(angle,-180.,180.);resolvePencilImageBrush();}}
- {std::ifstream in(directory/"eyedropper-source.txt");std::string value;if(in>>value)eyedropperSource_=value=="current-layer"?EyedropperSource::CurrentLayer:EyedropperSource::Composite;}
- {std::ifstream in(directory/"move-tool-v1.txt");std::string tag;int value;if(in>>tag>>value&&tag=="move-tool-v1"&&(value==0||value==1))moveAutoSelect_=value!=0;}
+ {std::ifstream in(directory/"image-brush-selection-v1.txt");std::string version,id;double angle;if(in>>version>>std::quoted(id)>>angle&&version=="image-brush-v1"&&id.size()<=4096&&std::isfinite(angle)&&(in>>std::ws).eof()){currentTools().pencilImageBrushId=id;currentTools().pencilImageBrushAngle=std::clamp(angle,-180.,180.);resolvePencilImageBrush();}}
+ {std::ifstream in(directory/"eyedropper-source.txt");std::string value;if(in>>value)currentTools().eyedropperSource=value=="current-layer"?EyedropperSource::CurrentLayer:EyedropperSource::Composite;}
+ {std::ifstream in(directory/"move-tool-v1.txt");std::string tag;int value;if(in>>tag>>value&&tag=="move-tool-v1"&&(value==0||value==1))currentTools().moveAutoSelect=value!=0;}
 }
 
 void Editor::createToolOptions() {waitBrushWrites(this);
@@ -840,7 +850,7 @@ void Editor::createToolOptions() {waitBrushWrites(this);
 
       auto control=new PixelEntry(font_,skin_);addChild(control);control->numeric=true;control->deferredNumeric=true;
       control->numericMinimum=opacity?0:1;control->numericMaximum=opacity?100:64;
-      control->numericValue=[this,opacity]{const auto& b=brushFeedback_.brushProfiles_[eraser_?1:0];return double(opacity?b.opacity:b.size);};
+      control->numericValue=[this,opacity]{const auto& b=currentTools().brushProfiles[currentTools().eraser?1:0];return double(opacity?b.opacity:b.size);};
       control->suffix=opacity?U"%":U"px";
 
       const int width=control->widthForValue(opacity?U"100":U"64");
@@ -861,7 +871,7 @@ void Editor::createToolOptions() {waitBrushWrites(this);
 
       control->cancel=[this]{requestFocus();layoutToolOptions();};
 
-      control->wheel=[this,opacity,control](int delta){auto& value=opacity?brushFeedback_.brushProfiles_[eraser_?1:0].opacity:brushFeedback_.brushProfiles_[eraser_?1:0].size;
+      control->wheel=[this,opacity,control](int delta){auto& value=opacity?currentTools().brushProfiles[currentTools().eraser?1:0].opacity:currentTools().brushProfiles[currentTools().eraser?1:0].size;
 
         value=std::clamp(value+delta,opacity?0:1,opacity?100:64);control->setText(std::to_string(value));saveBrushPreferences();layoutToolOptions();invalidate();};
 
@@ -878,7 +888,7 @@ void Editor::createToolOptions() {waitBrushWrites(this);
     lineStepInput_=new PixelEntry(font_,skin_);auto step=lineStepInput_;addChild(step);step->setText(std::to_string(std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)));step->setEnabled(true);step->hover=[this]{status_=U"斜向直线阶梯比例（1–16）；Shift 直线或 Ctrl+Shift 连接线";invalidate();};toolControls_.push_back({step,22,uiGap,true});
     auto commitStep=[this]{try{int v=std::clamp(std::stoi(lineStepInput_->text()),1,16);runtimePreferences_.set("tools.lineDirectionStep.Number",std::to_string(v));lineStepInput_->setText(std::to_string(v));saveBrushPreferences();}catch(...){lineStepInput_->setText(std::to_string(std::clamp(runtimePreferences_.index("tools.lineDirectionStep.Number"),1,16)));}};
     step->Change.connect(commitStep);step->accept=[this,commitStep]{commitStep();requestFocus();};step->blur=commitStep;
-    perfectPixelsButton_=icon("checkboxUnchecked",U"完美像素：移除笔画转角的多余像素",true);auto perfect=perfectPixelsButton_;perfect->Click.connect([this]{const bool enabled=!brushFeedback_.brushProfiles_[0].perfectPixels;for(auto& b:brushFeedback_.brushProfiles_)b.perfectPixels=enabled;saveBrushPreferences();layoutToolOptions();invalidate();});perfect->caption=U"完美像素";perfect->bareIconWithCaption=true;toolControls_.back().second=11+uiGap+font_.measure(perfect->caption);
+    perfectPixelsButton_=icon("checkboxUnchecked",U"完美像素：移除笔画转角的多余像素",true);auto perfect=perfectPixelsButton_;perfect->Click.connect([this]{const bool enabled=!currentTools().brushProfiles[0].perfectPixels;for(auto& b:currentTools().brushProfiles)b.perfectPixels=enabled;saveBrushPreferences();layoutToolOptions();invalidate();});perfect->caption=U"完美像素";perfect->bareIconWithCaption=true;toolControls_.back().second=11+uiGap+font_.measure(perfect->caption);
 
     inkButton_=icon("ink-simple",U"墨水模式",true);inkButton_->Click.connect([this]{showInkMenu();});dynamicsButton_=icon("pressure-dynamics",U"压力与速度动态",true);dynamicsButton_->Click.connect([this]{showDynamicsOptions();});loadDynamicsPreferences();
 
@@ -902,67 +912,67 @@ void Editor::createToolOptions() {waitBrushWrites(this);
 
     const char32_t* modeNames[]{U"替换选区",U"添加选区",U"减去选区",U"相交选区"};
 
-    for(int i=0;i<4;++i){auto b=new PixelButton(font_,skin_,U"",[this,i]{selectionMode_=i;saveSelectionPreferences();layoutToolOptions();invalidateRect(canvasViewport());});b->icon=modeIcons[i];b->iconSkin=&toolIcons_;b->skinStyle="icon_button";b->iconGroupIndex=i;b->iconGroupCount=4;b->hover=[this,i,modeNames]{status_=modeNames[i];invalidate();};modeGroup->addChild(b);selectionModeButtons_[i]=b;}
+    for(int i=0;i<4;++i){auto b=new PixelButton(font_,skin_,U"",[this,i]{currentTools().selectionMode=i;saveSelectionPreferences();layoutToolOptions();invalidateRect(canvasViewport());});b->icon=modeIcons[i];b->iconSkin=&toolIcons_;b->skinStyle="icon_button";b->iconGroupIndex=i;b->iconGroupCount=4;b->hover=[this,i,modeNames]{status_=modeNames[i];invalidate();};modeGroup->addChild(b);selectionModeButtons_[i]=b;}
 
-    auto wandNumber=[&](bool gap){auto entry=new PixelEntry(font_,skin_);entry->numeric=true;addChild(entry);selectionControls_.push_back({entry,gap?30:32});auto commit=[this,entry,gap]{try{std::size_t used=0;const double raw=std::stod(entry->text(),&used);if(used!=entry->text().size() || !std::isfinite(raw))return;const int value=int(std::floor(std::clamp(raw,-1000.0,1000.0)+.5));if(gap)wandOptions_.gapThreshold=std::clamp(value,1,16);else wandOptions_.tolerance=std::clamp(value,0,255);}catch(...){ }saveBrushPreferences();layoutToolOptions();};entry->Change.connect(commit);entry->accept=[this,commit]{commit();requestFocus();};entry->blur=commit;entry->cancel=[this]{requestFocus();layoutToolOptions();};entry->wheel=[this,gap,entry](int delta){if(gap)wandOptions_.gapThreshold=std::clamp(wandOptions_.gapThreshold+delta,1,16);else wandOptions_.tolerance=std::clamp(wandOptions_.tolerance+delta,0,255);entry->setText(std::to_string(gap?wandOptions_.gapThreshold:wandOptions_.tolerance));saveBrushPreferences();layoutToolOptions();invalidate();};return entry;};
+    auto wandNumber=[&](bool gap){auto entry=new PixelEntry(font_,skin_);entry->numeric=true;addChild(entry);selectionControls_.push_back({entry,gap?30:32});auto commit=[this,entry,gap]{try{std::size_t used=0;const double raw=std::stod(entry->text(),&used);if(used!=entry->text().size() || !std::isfinite(raw))return;const int value=int(std::floor(std::clamp(raw,-1000.0,1000.0)+.5));if(gap)currentTools().wandOptions.gapThreshold=std::clamp(value,1,16);else currentTools().wandOptions.tolerance=std::clamp(value,0,255);}catch(...){ }saveBrushPreferences();layoutToolOptions();};entry->Change.connect(commit);entry->accept=[this,commit]{commit();requestFocus();};entry->blur=commit;entry->cancel=[this]{requestFocus();layoutToolOptions();};entry->wheel=[this,gap,entry](int delta){if(gap)currentTools().wandOptions.gapThreshold=std::clamp(currentTools().wandOptions.gapThreshold+delta,1,16);else currentTools().wandOptions.tolerance=std::clamp(currentTools().wandOptions.tolerance+delta,0,255);entry->setText(std::to_string(gap?currentTools().wandOptions.gapThreshold:currentTools().wandOptions.tolerance));saveBrushPreferences();layoutToolOptions();invalidate();};return entry;};
 
     option(U"容差",28,[]{})->labelOnly=true;wandToleranceInput_=wandNumber(false);
 
-    wandContiguousButton_=option(U"连续",45,[this]{if(fillTool_&&magicEraserTool_)magicEraserContiguous_=!magicEraserContiguous_;else wandOptions_.contiguous=!wandOptions_.contiguous;saveBrushPreferences();layoutToolOptions();invalidate();});
+    wandContiguousButton_=option(U"连续",45,[this]{if(currentTools().fillTool&&currentTools().magicEraserTool)currentTools().magicEraserContiguous=!currentTools().magicEraserContiguous;else currentTools().wandOptions.contiguous=!currentTools().wandOptions.contiguous;saveBrushPreferences();layoutToolOptions();invalidate();});
 
-    wandGapButton_=option(U"智能闭合",65,[this]{wandOptions_.gapClosing=!wandOptions_.gapClosing;saveBrushPreferences();layoutToolOptions();invalidate();});wandGapInput_=wandNumber(true);
+    wandGapButton_=option(U"智能闭合",65,[this]{currentTools().wandOptions.gapClosing=!currentTools().wandOptions.gapClosing;saveBrushPreferences();layoutToolOptions();invalidate();});wandGapInput_=wandNumber(true);
 
     for(auto b:{wandContiguousButton_,wandGapButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
 
-    wandConnectivityButton_=option(U"4 方连接",57,[this]{wandOptions_.connectivity=wandOptions_.connectivity==4?8:4;fillOptions_.connectivity=wandOptions_.connectivity;saveBrushPreferences();layoutToolOptions();invalidate();});
+    wandConnectivityButton_=option(U"4 方连接",57,[this]{currentTools().wandOptions.connectivity=currentTools().wandOptions.connectivity==4?8:4;currentTools().fillOptions.connectivity=currentTools().wandOptions.connectivity;saveBrushPreferences();layoutToolOptions();invalidate();});
 
     wandReferenceButton_=option(U"",15,[this]{showFillSettings(wandReferenceButton_);});wandReferenceButton_->icon="properties";wandReferenceButton_->iconSkin=&toolIcons_;
 
-    selectionBrushAngleInput_=new PixelEntry(font_,skin_);selectionBrushAngleInput_->numeric=true;selectionBrushAngleInput_->suffix=U"°";addChild(selectionBrushAngleInput_);selectionControls_.push_back({selectionBrushAngleInput_,42});auto angleCommit=[this]{try{std::size_t used=0;const double value=std::stod(selectionBrushAngleInput_->text(),&used);if(used==selectionBrushAngleInput_->text().size() && std::isfinite(value))selectionBrushAngle_=std::clamp(int(std::floor(std::clamp(value,-180.0,180.0)+.5)),-180,180);}catch(...){}saveBrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());};selectionBrushAngleInput_->Change.connect(angleCommit);selectionBrushAngleInput_->blur=angleCommit;selectionBrushAngleInput_->accept=[this,angleCommit]{angleCommit();requestFocus();};selectionBrushAngleInput_->cancel=[this]{requestFocus();layoutToolOptions();};selectionBrushAngleInput_->wheel=[this](int delta){selectionBrushAngle_=std::clamp(selectionBrushAngle_+delta,-180,180);selectionBrushAngleInput_->setText(std::to_string(selectionBrushAngle_));saveBrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());};
+    selectionBrushAngleInput_=new PixelEntry(font_,skin_);selectionBrushAngleInput_->numeric=true;selectionBrushAngleInput_->suffix=U"°";addChild(selectionBrushAngleInput_);selectionControls_.push_back({selectionBrushAngleInput_,42});auto angleCommit=[this]{try{std::size_t used=0;const double value=std::stod(selectionBrushAngleInput_->text(),&used);if(used==selectionBrushAngleInput_->text().size() && std::isfinite(value))currentTools().selectionBrushAngle=std::clamp(int(std::floor(std::clamp(value,-180.0,180.0)+.5)),-180,180);}catch(...){}saveBrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());};selectionBrushAngleInput_->Change.connect(angleCommit);selectionBrushAngleInput_->blur=angleCommit;selectionBrushAngleInput_->accept=[this,angleCommit]{angleCommit();requestFocus();};selectionBrushAngleInput_->cancel=[this]{requestFocus();layoutToolOptions();};selectionBrushAngleInput_->wheel=[this](int delta){currentTools().selectionBrushAngle=std::clamp(currentTools().selectionBrushAngle+delta,-180,180);selectionBrushAngleInput_->setText(std::to_string(currentTools().selectionBrushAngle));saveBrushPreferences();layoutToolOptions();invalidateRect(canvasViewport());};
 
-    selectionAlgorithmButton_=option(U"快速旋转",70,[this]{if(selectionDragging_ || floatingDragging_)return;selectionRotSprite_=!selectionRotSprite_;saveBrushPreferences();if(auto target=document.floatingTransform())document.transformFloatingPaste(*target,selectionRotSprite_);layoutToolOptions();invalidateRect(canvasViewport());});
+    selectionAlgorithmButton_=option(U"快速旋转",70,[this]{if(selectionDragging_ || floatingDragging_)return;currentTools().selectionRotSprite=!currentTools().selectionRotSprite;saveBrushPreferences();if(auto target=currentDocument().floatingTransform())currentDocument().transformFloatingPaste(*target,currentTools().selectionRotSprite);layoutToolOptions();invalidateRect(canvasViewport());});
 
     const char32_t* fieldSuffix[]{U"X",U"Y",U"宽",U"高",U"°"};
 
-    for(int index=0;index<5;++index){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->deferredNumeric=true;input->numericMinimum=index==4?-180:-1000000000;input->numericMaximum=index==4?180:1000000000;input->numericValue=[this,index]{if(auto t=selectionTransformTarget()){if(index==0)return t->x;if(index==1)return t->y;if(index==2)return t->width*(t->flipHorizontal?-1:1);if(index==3)return t->height*(t->flipVertical?-1:1);return t->angle;}return 0.0;};input->suffix=fieldSuffix[index];addChild(input);input->focus=[this,input,index]{openParameterRange(input,index==4?-180:-1000000000,index==4?180:1000000000);};selectionTransformFields_[index]=input;selectionControls_.push_back({input,48});auto commit=[this,input,index]{if(selectionDragging_ || floatingDragging_)return;try{std::size_t used=0;const double value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value) || !document.selection())return;auto target=*selectionTransformTarget();if(index==0 || index==1){const double next=std::floor(value+.5);auto& coordinate=index==0?target.x:target.y;auto& origin=index==0?target.flipOriginX:target.flipOriginY;if(origin)*origin+=next-coordinate;coordinate=next;}else if(index==4)target.angle=std::floor(value*10+.5)/10;else{const double magnitude=std::max(1.0,std::floor(std::abs(value)+.5)),old=index==2?target.width:target.height;const bool oldFlip=index==2?target.flipHorizontal:target.flipVertical;const double factor=(value<0?-magnitude:magnitude)/(old*(oldFlip?-1:1));const double radians=target.angle*3.141592653589793/180,dx=index==2?(factor-1)*old/2:0,dy=index==3?(factor-1)*old/2:0;const auto previous=target;target=resizeSelectionTransform(target,{dx*std::cos(radians)-dy*std::sin(radians),dx*std::sin(radians)+dy*std::cos(radians)},index==2?"e":"s",false,false,true);if(factor>0 && oldFlip){auto& origin=index==2?target.flipOriginX:target.flipOriginY;const auto& original=index==2?previous.flipOriginX:previous.flipOriginY;if(original)origin=(index==2?target.x:target.y)+(*original-(index==2?previous.x:previous.y))/old*magnitude;}}if(!document.beginSelectionContentMove(false,frameSelectionExplicit_))return;document.transformFloatingPaste(target,selectionRotSprite_);selectionPropertiesActive_=true;layoutToolOptions();invalidateRect(canvasViewport());}catch(...){}};input->deferredCommit=commit;input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();closeParameterRange();requestFocus();layoutToolOptions();};input->cancel=[this]{closeParameterRange();requestFocus();layoutToolOptions();};}
+    for(int index=0;index<5;++index){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->deferredNumeric=true;input->numericMinimum=index==4?-180:-1000000000;input->numericMaximum=index==4?180:1000000000;input->numericValue=[this,index]{if(auto t=selectionTransformTarget()){if(index==0)return t->x;if(index==1)return t->y;if(index==2)return t->width*(t->flipHorizontal?-1:1);if(index==3)return t->height*(t->flipVertical?-1:1);return t->angle;}return 0.0;};input->suffix=fieldSuffix[index];addChild(input);input->focus=[this,input,index]{openParameterRange(input,index==4?-180:-1000000000,index==4?180:1000000000);};selectionTransformFields_[index]=input;selectionControls_.push_back({input,48});auto commit=[this,input,index]{if(selectionDragging_ || floatingDragging_)return;try{std::size_t used=0;const double value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value) || !currentDocument().selection())return;auto target=*selectionTransformTarget();if(index==0 || index==1){const double next=std::floor(value+.5);auto& coordinate=index==0?target.x:target.y;auto& origin=index==0?target.flipOriginX:target.flipOriginY;if(origin)*origin+=next-coordinate;coordinate=next;}else if(index==4)target.angle=std::floor(value*10+.5)/10;else{const double magnitude=std::max(1.0,std::floor(std::abs(value)+.5)),old=index==2?target.width:target.height;const bool oldFlip=index==2?target.flipHorizontal:target.flipVertical;const double factor=(value<0?-magnitude:magnitude)/(old*(oldFlip?-1:1));const double radians=target.angle*3.141592653589793/180,dx=index==2?(factor-1)*old/2:0,dy=index==3?(factor-1)*old/2:0;const auto previous=target;target=resizeSelectionTransform(target,{dx*std::cos(radians)-dy*std::sin(radians),dx*std::sin(radians)+dy*std::cos(radians)},index==2?"e":"s",false,false,true);if(factor>0 && oldFlip){auto& origin=index==2?target.flipOriginX:target.flipOriginY;const auto& original=index==2?previous.flipOriginX:previous.flipOriginY;if(original)origin=(index==2?target.x:target.y)+(*original-(index==2?previous.x:previous.y))/old*magnitude;}}if(!currentDocument().beginSelectionContentMove(false,currentView().frameSelection))return;currentDocument().transformFloatingPaste(target,currentTools().selectionRotSprite);selectionPropertiesActive_=true;layoutToolOptions();invalidateRect(canvasViewport());}catch(...){}};input->deferredCommit=commit;input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();closeParameterRange();requestFocus();layoutToolOptions();};input->cancel=[this]{closeParameterRange();requestFocus();layoutToolOptions();};}
 
     auto fillButton=[&](const char32_t* caption,int width,std::function<void()> action){auto b=button(caption,[this,action]{action();saveBrushPreferences();layoutToolOptions();invalidate();});fillControls_.push_back({b,width});return b;};
 
-    auto fillNumber=[&](bool gap){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->deferredNumeric=true;input->numericMounted=[this,gap]{return fillTool_&&( !gap || fillOptions_.gapClosing);};input->numericMinimum=gap?1:0;input->numericMaximum=gap?16:255;input->numericValue=[this,gap]{return double(gap?fillOptions_.gapThreshold:fillOptions_.tolerance);};addChild(input);fillControls_.push_back({input,34});auto commit=[this,input,gap]{try{std::size_t used=0;double value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value))return;const int next=int(std::floor(std::clamp(value,gap?1.0:0.0,gap?16.0:255.0)+.5));if(gap)fillOptions_.gapThreshold=next;else fillOptions_.tolerance=next;saveBrushPreferences();}catch(...){}layoutToolOptions();};input->deferredCommit=commit;input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();closeParameterRange();requestFocus();};input->cancel=[this]{closeParameterRange();requestFocus();};input->focus=[this,input,gap]{openParameterRange(input,gap?1:0,gap?16:255);};return input;};
+    auto fillNumber=[&](bool gap){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->deferredNumeric=true;input->numericMounted=[this,gap]{return currentTools().fillTool&&( !gap || currentTools().fillOptions.gapClosing);};input->numericMinimum=gap?1:0;input->numericMaximum=gap?16:255;input->numericValue=[this,gap]{return double(gap?currentTools().fillOptions.gapThreshold:currentTools().fillOptions.tolerance);};addChild(input);fillControls_.push_back({input,34});auto commit=[this,input,gap]{try{std::size_t used=0;double value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value))return;const int next=int(std::floor(std::clamp(value,gap?1.0:0.0,gap?16.0:255.0)+.5));if(gap)currentTools().fillOptions.gapThreshold=next;else currentTools().fillOptions.tolerance=next;saveBrushPreferences();}catch(...){}layoutToolOptions();};input->deferredCommit=commit;input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();closeParameterRange();requestFocus();};input->cancel=[this]{closeParameterRange();requestFocus();};input->focus=[this,input,gap]{openParameterRange(input,gap?1:0,gap?16:255);};return input;};
 
     fillButton(U"容差",28,[]{})->labelOnly=true;fillToleranceInput_=fillNumber(false);
 
-    fillContiguousButton_=fillButton(U"连续",45,[this]{fillOptions_.contiguous=!fillOptions_.contiguous;});
+    fillContiguousButton_=fillButton(U"连续",45,[this]{currentTools().fillOptions.contiguous=!currentTools().fillOptions.contiguous;});
 
-    fillGapButton_=fillButton(U"智能闭合",65,[this]{fillOptions_.gapClosing=!fillOptions_.gapClosing;});fillGapInput_=fillNumber(true);
+    fillGapButton_=fillButton(U"智能闭合",65,[this]{currentTools().fillOptions.gapClosing=!currentTools().fillOptions.gapClosing;});fillGapInput_=fillNumber(true);
 
     for(auto b:{fillContiguousButton_,fillGapButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
 
-    fillConnectivityButton_=fillButton(U"4 方连接",57,[this]{fillOptions_.connectivity=fillOptions_.connectivity==4?8:4;wandOptions_.connectivity=fillOptions_.connectivity;});
+    fillConnectivityButton_=fillButton(U"4 方连接",57,[this]{currentTools().fillOptions.connectivity=currentTools().fillOptions.connectivity==4?8:4;currentTools().wandOptions.connectivity=currentTools().fillOptions.connectivity;});
 
     fillReferenceButton_=fillButton(U"",15,[this]{showFillSettings(fillReferenceButton_);});fillReferenceButton_->icon="properties";fillReferenceButton_->iconSkin=&toolIcons_;auto pivotButton=option(U"",15,[this]{showSelectionPivotPopup();});pivotButton->icon="selection-pivot-preset-4";pivotButton->iconSkin=&toolIcons_;pivotButton->iconGroupCount=1;
 
     auto shrinkButton=option(U"",15,[this]{shrinkSelectionToContent();});shrinkButton->icon="selection-shrink";shrinkButton->iconSkin=&toolIcons_;shrinkButton->iconGroupCount=1;shrinkButton->hover=[this]{status_=U"收缩选区至内容";invalidate();};
 
-    selectionRoundedButton_=option(U"圆角",43,[this]{selectionRounded_=!selectionRounded_;saveSelectionPreferences();layoutToolOptions();invalidate();});selectionRoundedButton_->iconSkin=&toolIcons_;selectionRoundedButton_->bareIconWithCaption=true;
+    selectionRoundedButton_=option(U"圆角",43,[this]{currentTools().selectionRounded=!currentTools().selectionRounded;saveSelectionPreferences();layoutToolOptions();invalidate();});selectionRoundedButton_->iconSkin=&toolIcons_;selectionRoundedButton_->bareIconWithCaption=true;
 
-    selectionCornerRadiusInput_=new PixelEntry(font_,skin_);selectionCornerRadiusInput_->numeric=true;selectionCornerRadiusInput_->suffix=U"px";addChild(selectionCornerRadiusInput_);selectionControls_.push_back({selectionCornerRadiusInput_,44});auto radiusCommit=[this]{try{std::size_t used=0;double value=std::stod(selectionCornerRadiusInput_->text(),&used);if(used==selectionCornerRadiusInput_->text().size() && std::isfinite(value)){selectionCornerRadius_=int(std::floor(std::clamp(value,0.0,256.0)+.5));saveSelectionPreferences();}}catch(...){}layoutToolOptions();};selectionCornerRadiusInput_->Change.connect(radiusCommit);selectionCornerRadiusInput_->blur=radiusCommit;selectionCornerRadiusInput_->accept=[this,radiusCommit]{radiusCommit();requestFocus();};selectionCornerRadiusInput_->cancel=[this]{requestFocus();layoutToolOptions();};
+    selectionCornerRadiusInput_=new PixelEntry(font_,skin_);selectionCornerRadiusInput_->numeric=true;selectionCornerRadiusInput_->suffix=U"px";addChild(selectionCornerRadiusInput_);selectionControls_.push_back({selectionCornerRadiusInput_,44});auto radiusCommit=[this]{try{std::size_t used=0;double value=std::stod(selectionCornerRadiusInput_->text(),&used);if(used==selectionCornerRadiusInput_->text().size() && std::isfinite(value)){currentTools().selectionCornerRadius=int(std::floor(std::clamp(value,0.0,256.0)+.5));saveSelectionPreferences();}}catch(...){}layoutToolOptions();};selectionCornerRadiusInput_->Change.connect(radiusCommit);selectionCornerRadiusInput_->blur=radiusCommit;selectionCornerRadiusInput_->accept=[this,radiusCommit]{radiusCommit();requestFocus();};selectionCornerRadiusInput_->cancel=[this]{requestFocus();layoutToolOptions();};
 
   }
 
 void Editor::showFillSettings(PixelButton* trigger,bool gradient){
 
-    PixelMenu menu(skin_);const bool wand=trigger==wandReferenceButton_;const bool visible=gradient?gradientOptions_.visibleLayers:wand?wandOptions_.visibleLayers:fillOptions_.visibleLayers;const int connectivity=gradient?gradientOptions_.connectivity:wand?wandOptions_.connectivity:fillOptions_.connectivity;
+    PixelMenu menu(skin_);const bool wand=trigger==wandReferenceButton_;const bool visible=gradient?currentTools().gradientOptions.visibleLayers:wand?currentTools().wandOptions.visibleLayers:currentTools().fillOptions.visibleLayers;const int connectivity=gradient?currentTools().gradientOptions.connectivity:wand?currentTools().wandOptions.connectivity:currentTools().fillOptions.connectivity;
 
     auto heading=[&](const char32_t* text){auto item=new PixelMenuItem(font_,skin_,text);item->setEnabled(false);menu.addChild(item);};
 
     heading(U"\u53c2\u8003\u56fe\u5c42");
 
-    for(int i=0;i<2;++i){auto item=new PixelMenuItem(font_,skin_,i?U"\u53ef\u89c1\u56fe\u5c42":U"\u5f53\u524d\u56fe\u5c42");item->checked=[visible,i]{return visible==(i!=0);};item->Click.connect([this,i,gradient]{fillOptions_.visibleLayers=wandOptions_.visibleLayers=gradientOptions_.visibleLayers=i!=0;if(gradient)gradientChanged();else{saveBrushPreferences();refresh();}});menu.addChild(item);}
+    for(int i=0;i<2;++i){auto item=new PixelMenuItem(font_,skin_,i?U"\u53ef\u89c1\u56fe\u5c42":U"\u5f53\u524d\u56fe\u5c42");item->checked=[visible,i]{return visible==(i!=0);};item->Click.connect([this,i,gradient]{currentTools().fillOptions.visibleLayers=currentTools().wandOptions.visibleLayers=currentTools().gradientOptions.visibleLayers=i!=0;if(gradient)gradientChanged();else{saveBrushPreferences();refresh();}});menu.addChild(item);}
 
     menu.addChild(new PixelMenuSeparator(skin_));heading(U"\u8fde\u63a5\u65b9\u5f0f");
 
-    for(int n:{4,8}){auto item=new PixelMenuItem(font_,skin_,unicodeText(std::to_string(n))+U" \u65b9\u8fde\u63a5");item->checked=[connectivity,n]{return connectivity==n;};item->Click.connect([this,n,gradient]{fillOptions_.connectivity=wandOptions_.connectivity=gradientOptions_.connectivity=n;if(gradient)gradientChanged();else{saveBrushPreferences();refresh();}});menu.addChild(item);}
+    for(int n:{4,8}){auto item=new PixelMenuItem(font_,skin_,unicodeText(std::to_string(n))+U" \u65b9\u8fde\u63a5");item->checked=[connectivity,n]{return connectivity==n;};item->Click.connect([this,n,gradient]{currentTools().fillOptions.connectivity=currentTools().wandOptions.connectivity=currentTools().gradientOptions.connectivity=n;if(gradient)gradientChanged();else{saveBrushPreferences();refresh();}});menu.addChild(item);}
 
     const auto at=trigger->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();
 
@@ -971,11 +981,11 @@ void Editor::showFillSettings(PixelButton* trigger,bool gradient){
 void Editor::showGradientStopsMenu(bool verify){
     const bool samplingPendingAtOpen=gradientPending_;
 
-    gradientFreeform_=true;if(gradientStops_.size()<2)gradientStops_={{0,ink_},{1,document.palette().secondary}};
+    currentTools().gradientFreeform=true;if(currentTools().gradientStops.size()<2)currentTools().gradientStops={{0,ink_},{1,currentDocument().palette().secondary}};
 
     ToolPropertyPopup popup(skin_,font_,U"自由色标");popup.setDisplay(display(),false);popup.setWantFocus(true);popup.setBounds(toolPopupBounds(gradientFreeformButton_,244,133));
 
-    auto track=new GradientStopsTrack(toolIcons_);track->stops=&gradientStops_;track->selected=&gradientStop_;popup.place(track,{6,DialogLayout::bodyTop,232,22});
+    auto track=new GradientStopsTrack(toolIcons_);track->stops=&currentTools().gradientStops;track->selected=&gradientStop_;popup.place(track,{6,DialogLayout::bodyTop,232,22});
 
     auto position=new PixelEntry(font_,skin_);position->numeric=true;position->suffix=U"%";popup.place(position,{6,55,60,textControlHeight});
 
@@ -993,12 +1003,12 @@ void Editor::showGradientStopsMenu(bool verify){
         gradientStopsColorFocusOwner_=stopColorEditor.get();
         stopColorEditor->Close.connect([&](ui::CloseEvent&){if(!closingStops){popup.setClickBehavior(ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow);popup.requestFocus();}});
       }
-      std::vector<Pixel> colors;for(const auto& entry:document.palette().entries)if(entry.id)colors.push_back(entry.color);
+      std::vector<Pixel> colors;for(const auto& entry:currentDocument().palette().entries)if(entry.id)colors.push_back(entry.color);
       popup.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
-      stopColorEditor->open(colorValue->bounds(),bounds(),gradientStops_[gradientStop_].color,U"渐变色标",colors,[&,this](Pixel next){
-        if(closingStops || gradientStops_.empty())return;
-        gradientStop_=std::clamp(gradientStop_,0,int(gradientStops_.size())-1);
-        gradientStops_[gradientStop_].color=next;colorValue->swatch=next;
+      stopColorEditor->open(colorValue->bounds(),bounds(),currentTools().gradientStops[gradientStop_].color,U"渐变色标",colors,[&,this](Pixel next){
+        if(closingStops || currentTools().gradientStops.empty())return;
+        gradientStop_=std::clamp(gradientStop_,0,int(currentTools().gradientStops.size())-1);
+        currentTools().gradientStops[gradientStop_].color=next;colorValue->swatch=next;
         if(!color->hasFocus())color->setText(paletteHex(next));
         colorValue->invalidate();track->invalidate();gradientChanged();
       },[&,this](bool active){setColorEditorSampling(active,stopColorEditor.get());});
@@ -1011,57 +1021,57 @@ void Editor::showGradientStopsMenu(bool verify){
     popup.place(colorValue,{166,55,72,textControlHeight});
     popup.Close.connect([&](ui::CloseEvent&){closingStops=true;if(stopColorEditor)stopColorEditor->closeWindow(nullptr);});
 
-    auto sync=[&]{if(stopColorEditor && stopColorEditor->isVisible()){closingStops=true;stopColorEditor->closeWindow(nullptr);closingStops=false;}gradientStop_=std::clamp(gradientStop_,0,int(gradientStops_.size())-1);if(!position->hasFocus())position->setText(std::to_string(gradientRound(gradientStops_[gradientStop_].position*100)));if(!color->hasFocus())color->setText(paletteHex(gradientStops_[gradientStop_].color));colorValue->swatch=gradientStops_[gradientStop_].color;colorValue->invalidate();track->invalidate();};sync();
+    auto sync=[&]{if(stopColorEditor && stopColorEditor->isVisible()){closingStops=true;stopColorEditor->closeWindow(nullptr);closingStops=false;}gradientStop_=std::clamp(gradientStop_,0,int(currentTools().gradientStops.size())-1);if(!position->hasFocus())position->setText(std::to_string(gradientRound(currentTools().gradientStops[gradientStop_].position*100)));if(!color->hasFocus())color->setText(paletteHex(currentTools().gradientStops[gradientStop_].color));colorValue->swatch=currentTools().gradientStops[gradientStop_].color;colorValue->invalidate();track->invalidate();};sync();
 
     track->changed=[&,this]{sync();gradientChanged();};
     track->activateColor=[&]{colorValue->Click();};
 
-    position->Change.connect([&,this]{try{auto stop=gradientStops_[gradientStop_];const double next=std::stod(position->text())/100;if(!std::isfinite(next))return;const double previous=stop.position;stop.position=std::clamp(next,0.0,1.0);if(stop.position==0 || stop.position==1)for(int i=0;i<int(gradientStops_.size());++i)if(i!=gradientStop_ && gradientStops_[i].position==stop.position)gradientStops_[i].position=previous;gradientStops_[gradientStop_]=stop;sortGradientStops(stop);sync();}catch(...){} });
+    position->Change.connect([&,this]{try{auto stop=currentTools().gradientStops[gradientStop_];const double next=std::stod(position->text())/100;if(!std::isfinite(next))return;const double previous=stop.position;stop.position=std::clamp(next,0.0,1.0);if(stop.position==0 || stop.position==1)for(int i=0;i<int(currentTools().gradientStops.size());++i)if(i!=gradientStop_ && currentTools().gradientStops[i].position==stop.position)currentTools().gradientStops[i].position=previous;currentTools().gradientStops[gradientStop_]=stop;sortGradientStops(stop);sync();}catch(...){} });
 
-    color->Change.connect([&,this]{Pixel next;if(parsePaletteHex(color->text(),next)){gradientStops_[gradientStop_].color=next;gradientChanged();colorValue->swatch=next;colorValue->invalidate();track->invalidate();}});
+    color->Change.connect([&,this]{Pixel next;if(parsePaletteHex(color->text(),next)){currentTools().gradientStops[gradientStop_].color=next;gradientChanged();colorValue->swatch=next;colorValue->invalidate();track->invalidate();}});
 
     for(int index:{14,15,16,17}){auto source=static_cast<PixelButton*>(gradientControls_[index].first);auto action=new PixelButton(font_,skin_,source->caption,[&,source]{source->Click();sync();});popup.place(action,{6+(index-14)*58,77,56,textControlHeight});}
 
     auto close=new PixelButton(font_,skin_,U"关闭",[&]{popup.closeWindow(nullptr);});popup.place(close,{182,107,56,textControlHeight});
 
-    ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{if(gradientPending_!=samplingPendingAtOpen || (samplingPendingAtOpen&&!document.gradientActive()))throw std::runtime_error("Opening gradient color windows cancelled pending gradient");if(track->parent()!=&popup || position->parent()!=&popup || color->parent()!=&popup)throw std::runtime_error("Gradient editor controls must belong to dialog");for(auto widget:{static_cast<ui::Widget*>(track),static_cast<ui::Widget*>(position),static_cast<ui::Widget*>(color),static_cast<ui::Widget*>(colorValue),static_cast<ui::Widget*>(close)}){const auto point=popup.display()->nativeWindow()->pointToScreen(widget->bounds().center());if(manager()->pickFromScreenPos(point)!=widget || !manager()->isWidgetClickable(widget))throw std::runtime_error("Property dialog click blocked: target="+std::to_string(widget==track?0:widget==position?1:widget==color?2:3)+" bounds="+std::to_string(widget->bounds().x)+","+std::to_string(widget->bounds().y)+" popup="+std::to_string(popup.bounds().x)+","+std::to_string(popup.bounds().y)+" picked="+std::to_string(manager()->pickFromScreenPos(point)==&popup)+" clickable="+std::to_string(manager()->isWidgetClickable(widget)));ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,widget->bounds().center());down.setDisplay(popup.display());down.setFromFilter(true);if(manager()->sendMessage(&down))throw std::runtime_error("Background global filter swallowed popup click");}const auto beforeColor=gradientStops_[gradientStop_].color;const auto beforeHistory=document.historySize();const auto beforePixels=document.pixels();
+    ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{if(gradientPending_!=samplingPendingAtOpen || (samplingPendingAtOpen&&!currentDocument().gradientActive()))throw std::runtime_error("Opening gradient color windows cancelled pending gradient");if(track->parent()!=&popup || position->parent()!=&popup || color->parent()!=&popup)throw std::runtime_error("Gradient editor controls must belong to dialog");for(auto widget:{static_cast<ui::Widget*>(track),static_cast<ui::Widget*>(position),static_cast<ui::Widget*>(color),static_cast<ui::Widget*>(colorValue),static_cast<ui::Widget*>(close)}){const auto point=popup.display()->nativeWindow()->pointToScreen(widget->bounds().center());if(manager()->pickFromScreenPos(point)!=widget || !manager()->isWidgetClickable(widget))throw std::runtime_error("Property dialog click blocked: target="+std::to_string(widget==track?0:widget==position?1:widget==color?2:3)+" bounds="+std::to_string(widget->bounds().x)+","+std::to_string(widget->bounds().y)+" popup="+std::to_string(popup.bounds().x)+","+std::to_string(popup.bounds().y)+" picked="+std::to_string(manager()->pickFromScreenPos(point)==&popup)+" clickable="+std::to_string(manager()->isWidgetClickable(widget)));ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,widget->bounds().center());down.setDisplay(popup.display());down.setFromFilter(true);if(manager()->sendMessage(&down))throw std::runtime_error("Background global filter swallowed popup click");}const auto beforeColor=currentTools().gradientStops[gradientStop_].color;const auto beforeHistory=currentDocument().historySize();const auto beforePixels=currentDocument().pixels();
       if(std::wstring(GetCommandLineW()).find(L"--linked-gradient-cancel-only")!=std::wstring::npos){
-       const auto savedStops=gradientStops_;const int savedStop=gradientStop_;const auto h=document.historyPosition();const auto pixels=document.pixels();
-       gradientStops_={{0,0xff123456},{.5,0xffabcdef},{1,0xff778899}};gradientStop_=1;
+       const auto savedStops=currentTools().gradientStops;const int savedStop=gradientStop_;const auto h=currentDocument().historyPosition();const auto pixels=currentDocument().pixels();
+       currentTools().gradientStops={{0,0xff123456},{.5,0xffabcdef},{1,0xff778899}};gradientStop_=1;
        const auto r=track->bounds();const int startX=r.x+5*uiScale+(r.w-11*uiScale)/2;const int y=r.y+10*uiScale;const int toX=startX+24*uiScale;
        auto pointer=[&](ui::MessageType type,int x,int py,ui::MouseButton button){ui::MouseMessage event(type,os::PointerType::Mouse,button,ui::kKeyNoneModifier,{x,py});event.setDisplay(popup.display());track->onProcessMessage(&event);if(type==ui::kMouseDownMessage)track->enableFlags(ui::HAS_CAPTURE);};
-       auto unchanged=[&]{return gradientStops_.size()==3&&gradientStops_[1].position==.5;};
+       auto unchanged=[&]{return currentTools().gradientStops.size()==3&&currentTools().gradientStops[1].position==.5;};
        pointer(ui::kMouseDownMessage,startX,y,ui::kButtonLeft);pointer(ui::kMouseMoveMessage,toX,y,ui::kButtonNone);pointer(ui::kMouseUpMessage,toX,y,ui::kButtonLeft);
        if(!unchanged()||track->hasCapture())throw std::runtime_error("Gradient late unpressed move after click must cancel without changing stop");
-       pointer(ui::kMouseDownMessage,startX,y,ui::kButtonLeft);pointer(ui::kMouseMoveMessage,toX,y,ui::kButtonLeft);const double moved=gradientStops_[1].position;
+       pointer(ui::kMouseDownMessage,startX,y,ui::kButtonLeft);pointer(ui::kMouseMoveMessage,toX,y,ui::kButtonLeft);const double moved=currentTools().gradientStops[1].position;
        if(!(moved>.5))throw std::runtime_error("Gradient pressed move still updates selected stop");
        pointer(ui::kMouseMoveMessage,toX,r.y2()+25*uiScale,ui::kButtonLeft);pointer(ui::kMouseMoveMessage,toX+30*uiScale,y,ui::kButtonNone);pointer(ui::kMouseUpMessage,toX+30*uiScale,y,ui::kButtonLeft);
-       if(gradientStops_.size()!=3||gradientStops_[1].position!=moved||track->hasCapture())throw std::runtime_error("Gradient unpressed move clears pending deletion while preserving already moved value");
-       pointer(ui::kMouseMoveMessage,startX,y,ui::kButtonLeft);if(gradientStops_[1].position!=moved)throw std::runtime_error("Gradient cancelled drag must ignore later pressed move");
+       if(currentTools().gradientStops.size()!=3||currentTools().gradientStops[1].position!=moved||track->hasCapture())throw std::runtime_error("Gradient unpressed move clears pending deletion while preserving already moved value");
+       pointer(ui::kMouseMoveMessage,startX,y,ui::kButtonLeft);if(currentTools().gradientStops[1].position!=moved)throw std::runtime_error("Gradient cancelled drag must ignore later pressed move");
        pointer(ui::kMouseDownMessage,toX,y,ui::kButtonLeft);pointer(ui::kMouseMoveMessage,toX,r.y2()+25*uiScale,ui::kButtonLeft);pointer(ui::kMouseUpMessage,toX,r.y2()+25*uiScale,ui::kButtonLeft);
-       if(gradientStops_.size()!=2||track->hasCapture()||document.historyPosition()!=h||document.pixels()!=pixels)throw std::runtime_error("Gradient normal pressed removal keeps two endpoints and document pixels history unchanged");
-       gradientStops_=savedStops;gradientStop_=savedStop;track->changed();track->invalidate();
+       if(currentTools().gradientStops.size()!=2||track->hasCapture()||currentDocument().historyPosition()!=h||currentDocument().pixels()!=pixels)throw std::runtime_error("Gradient normal pressed removal keeps two endpoints and document pixels history unchanged");
+       currentTools().gradientStops=savedStops;gradientStop_=savedStop;track->changed();track->invalidate();
       }
-      const auto stopsBeforeDouble=gradientStops_;const int originalStop=gradientStop_;
-      auto doubleStop=[&](int index,ui::MouseButton button){const auto r=track->bounds();const int x=r.x+gradientRound(gradientStops_[index].position*(r.w/uiScale-11))*uiScale+5*uiScale;ui::MouseMessage event(ui::kDoubleClickMessage,os::PointerType::Mouse,button,ui::kKeyNoneModifier,{x,r.y+10*uiScale});event.setDisplay(popup.display());track->onProcessMessage(&event);};
-      const int activatedStop=gradientStop_==0?int(gradientStops_.size())-1:0;
+      const auto stopsBeforeDouble=currentTools().gradientStops;const int originalStop=gradientStop_;
+      auto doubleStop=[&](int index,ui::MouseButton button){const auto r=track->bounds();const int x=r.x+gradientRound(currentTools().gradientStops[index].position*(r.w/uiScale-11))*uiScale+5*uiScale;ui::MouseMessage event(ui::kDoubleClickMessage,os::PointerType::Mouse,button,ui::kKeyNoneModifier,{x,r.y+10*uiScale});event.setDisplay(popup.display());track->onProcessMessage(&event);};
+      const int activatedStop=gradientStop_==0?int(currentTools().gradientStops.size())-1:0;
       doubleStop(activatedStop,ui::kButtonRight);
       if(stopColorEditor && stopColorEditor->isVisible())throw std::runtime_error("Gradient right double click opened color editor");
       doubleStop(activatedStop,ui::kButtonLeft);
-      if(!stopColorEditor || !stopColorEditor->isVisible() || gradientStop_!=activatedStop || stopColorEditor->color()!=gradientStops_[activatedStop].color || !std::equal(gradientStops_.begin(),gradientStops_.end(),stopsBeforeDouble.begin(),stopsBeforeDouble.end(),[](const auto& a,const auto& b){return a.position==b.position&&a.color==b.color;}) || track->hasCapture())throw std::runtime_error("Gradient stop double click selects exact stop and opens owned color editor without mutation");
+      if(!stopColorEditor || !stopColorEditor->isVisible() || gradientStop_!=activatedStop || stopColorEditor->color()!=currentTools().gradientStops[activatedStop].color || !std::equal(currentTools().gradientStops.begin(),currentTools().gradientStops.end(),stopsBeforeDouble.begin(),stopsBeforeDouble.end(),[](const auto& a,const auto& b){return a.position==b.position&&a.color==b.color;}) || track->hasCapture())throw std::runtime_error("Gradient stop double click selects exact stop and opens owned color editor without mutation");
       doubleStop(originalStop,ui::kButtonLeft);
       if(gradientStop_!=originalStop || !stopColorEditor->isVisible() || stopColorEditor->color()!=beforeColor)throw std::runtime_error("Gradient double click switches owned editor to selected stop");
       {ui::MouseMessage blank(ui::kDoubleClickMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{track->bounds().center().x,track->bounds().y});blank.setDisplay(popup.display());track->onProcessMessage(&blank);}
-      if(gradientStop_!=originalStop || gradientStops_.size()!=stopsBeforeDouble.size() || !stopColorEditor->isVisible())throw std::runtime_error("Gradient empty ramp double click leaves stop and editor unchanged");
+      if(gradientStop_!=originalStop || currentTools().gradientStops.size()!=stopsBeforeDouble.size() || !stopColorEditor->isVisible())throw std::runtime_error("Gradient empty ramp double click leaves stop and editor unchanged");
       if(!stopColorEditor || !stopColorEditor->isVisible())throw std::runtime_error("Gradient selected color editor entry");
       stopColorEditor->sampled(0x40112233);
-      if(gradientStops_[gradientStop_].color!=0x40112233 || colorValue->swatch!=0x40112233 || color->text()!=paletteHex(0x40112233))throw std::runtime_error("Gradient selected color live alpha/HEX sync");
-      if(document.historySize()!=beforeHistory || document.pixels()!=beforePixels)throw std::runtime_error("Gradient color editor changed committed pixels/history");
+      if(currentTools().gradientStops[gradientStop_].color!=0x40112233 || colorValue->swatch!=0x40112233 || color->text()!=paletteHex(0x40112233))throw std::runtime_error("Gradient selected color live alpha/HEX sync");
+      if(currentDocument().historySize()!=beforeHistory || currentDocument().pixels()!=beforePixels)throw std::runtime_error("Gradient color editor changed committed pixels/history");
       if(gradientPending_!=samplingPendingAtOpen)throw std::runtime_error("Gradient popup lost pending transaction before sampling");
-      const bool pendingBefore=gradientPending_;const auto primaryBefore=document.palette().primary,secondaryBefore=document.palette().secondary;
-      const bool gradientToolBefore=gradientTool_;
+      const bool pendingBefore=gradientPending_;const auto primaryBefore=currentDocument().palette().primary,secondaryBefore=currentDocument().palette().secondary;
+      const bool gradientToolBefore=currentTools().gradientTool;
       stopColorEditor->testSampling();
-      if(!colorEditorSampling_||colorEditorSamplingTarget_!=stopColorEditor.get()||!eyedropperTool_||gradientPending_!=pendingBefore)throw std::runtime_error("Gradient stop sampling begins preserving transaction");
+      if(!colorEditorSampling_||colorEditorSamplingTarget_!=stopColorEditor.get()||!currentTools().eyedropperTool||gradientPending_!=pendingBefore)throw std::runtime_error("Gradient stop sampling begins preserving transaction");
       std::optional<gfx::Point> samplePoint;
       const auto viewport=canvasViewport();
       for(int y=viewport.y+1;y<viewport.y2()&&!samplePoint;y+=std::max(1,viewport.h/12))for(int x=viewport.x+1;x<viewport.x2();x+=std::max(1,viewport.w/12)){
@@ -1069,10 +1079,10 @@ void Editor::showGradientStopsMenu(bool verify){
       }
       if(!samplePoint)throw std::runtime_error("Gradient sampling fixture needs visible canvas outside popups");
       auto sampleMouse=[&](ui::MessageType type){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,*samplePoint);event.setDisplay(display());event.setFromFilter(true);return stopColorEditor->onProcessMessage(&event);};
-      const auto pixel=transformCanvasPoint(*samplePoint);const auto expected=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),int(std::floor(pixel.x)),int(std::floor(pixel.y)),eyedropperSource_);
-      if(!sampleMouse(ui::kMouseDownMessage)||gradientStops_[gradientStop_].color!=expected)throw std::runtime_error("Gradient stop samples canvas RGBA");
+      const auto pixel=transformCanvasPoint(*samplePoint);const auto expected=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),int(std::floor(pixel.x)),int(std::floor(pixel.y)),currentTools().eyedropperSource);
+      if(!sampleMouse(ui::kMouseDownMessage)||currentTools().gradientStops[gradientStop_].color!=expected)throw std::runtime_error("Gradient stop samples canvas RGBA");
       sampleMouse(ui::kMouseMoveMessage);sampleMouse(ui::kMouseUpMessage);
-      if(colorEditorSampling_||colorEditorSamplingTarget_||eyedropperGesture_.active()||gradientTool_!=gradientToolBefore||gradientPending_!=pendingBefore||document.palette().primary!=primaryBefore||document.palette().secondary!=secondaryBefore||document.historySize()!=beforeHistory||document.pixels()!=beforePixels)throw std::runtime_error("Gradient sample release restores tool without role/history/pixel changes");
+      if(colorEditorSampling_||colorEditorSamplingTarget_||eyedropperGesture_.active()||currentTools().gradientTool!=gradientToolBefore||gradientPending_!=pendingBefore||currentDocument().palette().primary!=primaryBefore||currentDocument().palette().secondary!=secondaryBefore||currentDocument().historySize()!=beforeHistory||currentDocument().pixels()!=beforePixels)throw std::runtime_error("Gradient sample release restores tool without role/history/pixel changes");
       stopColorEditor->testSampling();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);stopColorEditor->onProcessMessage(&escape);
       if(colorEditorSampling_||colorEditorSamplingTarget_||!stopColorEditor->isVisible()||gradientPending_!=pendingBefore)throw std::runtime_error("Gradient sampling Escape ends only sample");
       stopColorEditor->sampled(beforeColor);stopColorEditor->closeWindow(nullptr);
@@ -1083,7 +1093,7 @@ void Editor::showGradientStopsMenu(bool verify){
       if(stopColorEditor->isVisible())throw std::runtime_error("Gradient parent close left color editor open");
     });timer.start();}
 
-    popup.openWindowInForeground();closingStops=true;if(stopColorEditor)stopColorEditor->closeWindow(nullptr);requestFocus();gradientChanged();if(verify&&(gradientPending_!=samplingPendingAtOpen || (samplingPendingAtOpen&&!document.gradientActive())))throw std::runtime_error("Closing gradient color windows cancelled pending gradient");
+    popup.openWindowInForeground();closingStops=true;if(stopColorEditor)stopColorEditor->closeWindow(nullptr);requestFocus();gradientChanged();if(verify&&(gradientPending_!=samplingPendingAtOpen || (samplingPendingAtOpen&&!currentDocument().gradientActive())))throw std::runtime_error("Closing gradient color windows cancelled pending gradient");
 
   }
 
@@ -1091,13 +1101,13 @@ void Editor::showFillTexturePopup(bool verify){
 
     ToolPropertyPopup popup(skin_,font_,U"填充纹理");popup.setDisplay(display(),false);popup.setWantFocus(true);popup.setBounds(toolPopupBounds(fillTextureButton_,150,125));
 
-    auto range=new PixelSlider(font_,skin_);range->minimum=1;range->maximum=16;range->value=fillPattern_.textureScale;range->percentage=false;popup.place(range,{6,99,138,textControlHeight});range->setVisible(fillPattern_.texture!=FillTexture::Solid);
+    auto range=new PixelSlider(font_,skin_);range->minimum=1;range->maximum=16;range->value=currentTools().fillPattern.textureScale;range->percentage=false;popup.place(range,{6,99,138,textControlHeight});range->setVisible(currentTools().fillPattern.texture!=FillTexture::Solid);
 
-    range->changed=[this](int value){fillPattern_.textureScale=value;saveBrushPreferences();refresh();};
+    range->changed=[this](int value){currentTools().fillPattern.textureScale=value;saveBrushPreferences();refresh();};
 
     std::array<PixelButton*,4> choices{};const char32_t* names[]{U"纯色",U"裂纹",U"木纹",U"颗粒"};
 
-    for(int i=0;i<4;++i){auto choice=new PixelButton(font_,skin_,names[i],[&,i]{fillPattern_.texture=FillTexture(i);range->setVisible(i!=0);for(int j=0;j<4;++j){choices[j]->active=j==i;choices[j]->invalidate();}saveBrushPreferences();refresh();});choices[i]=choice;choice->active=int(fillPattern_.texture)==i;popup.place(choice,{6+(i%2)*70,DialogLayout::bodyTop+(i/2)*22,68,textControlHeight});}
+    for(int i=0;i<4;++i){auto choice=new PixelButton(font_,skin_,names[i],[&,i]{currentTools().fillPattern.texture=FillTexture(i);range->setVisible(i!=0);for(int j=0;j<4;++j){choices[j]->active=j==i;choices[j]->invalidate();}saveBrushPreferences();refresh();});choices[i]=choice;choice->active=int(currentTools().fillPattern.texture)==i;popup.place(choice,{6+(i%2)*70,DialogLayout::bodyTop+(i/2)*22,68,textControlHeight});}
 
     auto close=new PixelButton(font_,skin_,U"关闭",[&]{popup.closeWindow(nullptr);});popup.place(close,{6,73,138,textControlHeight});
 
@@ -1111,39 +1121,39 @@ void Editor::createGradientOptions(){
 
     auto control=[&](const char32_t* name,int width,std::function<void()> action){auto b=button(name,[this,action]{action();gradientChanged();});gradientControls_.push_back({b,width});return b;};
 
-    gradientType_=control(U"线性",47,[this]{gradientSpec_.radial=false;gradientSpec_.geometry.reset();gradientGeometry_={};});gradientType_->caption.clear();gradientType_->iconSkin=&toolIcons_;gradientType_->icon="gradient-linear";gradientType_->iconGroupCount=2;
+    gradientType_=control(U"线性",47,[this]{currentTools().gradientRadial=false;gradientSpec_.geometry.reset();gradientGeometry_={};});gradientType_->caption.clear();gradientType_->iconSkin=&toolIcons_;gradientType_->icon="gradient-linear";gradientType_->iconGroupCount=2;
 
-    gradientRadialButton_=button(U"",[this]{gradientSpec_.radial=true;gradientSpec_.geometry.reset();gradientGeometry_={};gradientChanged();});gradientRadialButton_->iconSkin=&toolIcons_;gradientRadialButton_->icon="gradient-radial";gradientRadialButton_->iconGroupCount=2;gradientRadialButton_->iconGroupIndex=1;
+    gradientRadialButton_=button(U"",[this]{currentTools().gradientRadial=true;gradientSpec_.geometry.reset();gradientGeometry_={};gradientChanged();});gradientRadialButton_->iconSkin=&toolIcons_;gradientRadialButton_->icon="gradient-radial";gradientRadialButton_->iconGroupCount=2;gradientRadialButton_->iconGroupIndex=1;
 
     control(U"容差",28,[]{})->labelOnly=true;
 
-    gradientTolerance_=new PixelEntry(font_,skin_);gradientTolerance_->numeric=true;addChild(gradientTolerance_);gradientControls_.push_back({gradientTolerance_,32});auto tolerance=[this]{try{std::size_t used=0;const auto n=std::stod(gradientTolerance_->text(),&used);if(used==gradientTolerance_->text().size() && std::isfinite(n))gradientOptions_.tolerance=gradientRound(std::clamp(n,0.0,255.0));}catch(...){}gradientChanged();};gradientTolerance_->Change.connect(tolerance);gradientTolerance_->blur=tolerance;gradientTolerance_->accept=[this,tolerance]{tolerance();requestFocus();};
+    gradientTolerance_=new PixelEntry(font_,skin_);gradientTolerance_->numeric=true;addChild(gradientTolerance_);gradientControls_.push_back({gradientTolerance_,32});auto tolerance=[this]{try{std::size_t used=0;const auto n=std::stod(gradientTolerance_->text(),&used);if(used==gradientTolerance_->text().size() && std::isfinite(n))currentTools().gradientOptions.tolerance=gradientRound(std::clamp(n,0.0,255.0));}catch(...){}gradientChanged();};gradientTolerance_->Change.connect(tolerance);gradientTolerance_->blur=tolerance;gradientTolerance_->accept=[this,tolerance]{tolerance();requestFocus();};
 
-    gradientContiguous_=control(U"连续",45,[this]{gradientOptions_.contiguous=!gradientOptions_.contiguous;});gradientContiguous_->iconSkin=&toolIcons_;gradientContiguous_->bareIconWithCaption=true;
+    gradientContiguous_=control(U"连续",45,[this]{currentTools().gradientOptions.contiguous=!currentTools().gradientOptions.contiguous;});gradientContiguous_->iconSkin=&toolIcons_;gradientContiguous_->bareIconWithCaption=true;
 
     gradientReference_=control(U"",15,[this]{showFillSettings(gradientReference_,true);});gradientReference_->icon="properties";gradientReference_->iconSkin=&toolIcons_;
 
-    gradientConnectivity_=control(U"4 方连接",57,[this]{fillOptions_.connectivity=wandOptions_.connectivity=gradientOptions_.connectivity=gradientOptions_.connectivity==4?8:4;});
+    gradientConnectivity_=control(U"4 方连接",57,[this]{currentTools().fillOptions.connectivity=currentTools().wandOptions.connectivity=currentTools().gradientOptions.connectivity=currentTools().gradientOptions.connectivity==4?8:4;});
 
-    gradientDither_=control(U"无抖动",92,[this]{PixelMenu menu(skin_);const char32_t* names[]{U"无抖动",U"Bayer 2×2",U"Bayer 4×4",U"Bayer 8×8",U"棋盘",U"对角线",U"反向对角线",U"水平线",U"垂直线"};for(int i=0;i<9;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->checked=[this,i]{return gradientSpec_.dither==i;};item->Click.connect([this,i]{gradientSpec_.dither=i;gradientChanged();});menu.addChild(item);}menu.showPopup(gfx::Point(gradientDither_->bounds().x,gradientDither_->bounds().y2()),display());});gradientDither_->iconSkin=&toolIcons_;gradientDither_->icon="dither";gradientDither_->iconWithCaption=true;
+    gradientDither_=control(U"无抖动",92,[this]{PixelMenu menu(skin_);const char32_t* names[]{U"无抖动",U"Bayer 2×2",U"Bayer 4×4",U"Bayer 8×8",U"棋盘",U"对角线",U"反向对角线",U"水平线",U"垂直线"};for(int i=0;i<9;++i){auto item=new PixelMenuItem(font_,skin_,names[i]);item->checked=[this,i]{return currentTools().gradientDither==i;};item->Click.connect([this,i]{currentTools().gradientDither=i;gradientChanged();});menu.addChild(item);}menu.showPopup(gfx::Point(gradientDither_->bounds().x,gradientDither_->bounds().y2()),display());});gradientDither_->iconSkin=&toolIcons_;gradientDither_->icon="dither";gradientDither_->iconWithCaption=true;
 
     gradientFreeformButton_=control(U"自由色标",65,[this]{showGradientStopsMenu();});gradientFreeformButton_->iconSkin=&toolIcons_;gradientFreeformButton_->bareIconWithCaption=false;
 
-    gradientMode_=control(U"即时应用",65,[this]{gradientConfirm_=!gradientConfirm_;});
+    gradientMode_=control(U"即时应用",65,[this]{currentTools().gradientConfirm=!currentTools().gradientConfirm;});
 
     control(U"应用",40,[this]{applyGradientGesture();});control(U"取消",40,[this]{cancelGradientGesture();});
 
-    control(U"色标",40,[this]{PixelMenu menu(skin_);for(int i=0;i<int(gradientStops_.size());++i){auto item=new PixelMenuItem(font_,skin_,unicodeText(std::to_string(gradientRound(gradientStops_[i].position*100)))+U"% "+unicodeText(paletteHex(gradientStops_[i].color)));item->checked=[this,i]{return gradientStop_==i;};item->Click.connect([this,i]{gradientStop_=i;layoutToolOptions();invalidate();});menu.addChild(item);}auto anchor=gradientControls_[11].first->bounds();menu.showPopup(gfx::Point(anchor.x,anchor.y2()),display());});
+    control(U"色标",40,[this]{PixelMenu menu(skin_);for(int i=0;i<int(currentTools().gradientStops.size());++i){auto item=new PixelMenuItem(font_,skin_,unicodeText(std::to_string(gradientRound(currentTools().gradientStops[i].position*100)))+U"% "+unicodeText(paletteHex(currentTools().gradientStops[i].color)));item->checked=[this,i]{return gradientStop_==i;};item->Click.connect([this,i]{gradientStop_=i;layoutToolOptions();invalidate();});menu.addChild(item);}auto anchor=gradientControls_[11].first->bounds();menu.showPopup(gfx::Point(anchor.x,anchor.y2()),display());});
 
-    gradientStopPosition_=new PixelEntry(font_,skin_);gradientStopPosition_->numeric=true;gradientStopPosition_->suffix=U"%";addChild(gradientStopPosition_);gradientControls_.push_back({gradientStopPosition_,48});auto position=[this]{if(gradientStops_.empty())return;try{std::size_t used=0;const auto n=std::stod(gradientStopPosition_->text(),&used);if(used!=gradientStopPosition_->text().size() || !std::isfinite(n))return;auto& stop=gradientStops_[gradientStop_];const double old=stop.position,next=std::clamp(n/100,0.0,1.0);if(next!=old && (next==0 || next==1))for(int i=0;i<int(gradientStops_.size());++i)if(i!=gradientStop_ && gradientStops_[i].position==next)gradientStops_[i].position=old;stop.position=next;sortGradientStops(stop);}catch(...){} };gradientStopPosition_->Change.connect(position);gradientStopPosition_->blur=position;gradientStopPosition_->accept=[this,position]{position();requestFocus();};
+    gradientStopPosition_=new PixelEntry(font_,skin_);gradientStopPosition_->numeric=true;gradientStopPosition_->suffix=U"%";addChild(gradientStopPosition_);gradientControls_.push_back({gradientStopPosition_,48});auto position=[this]{if(currentTools().gradientStops.empty())return;try{std::size_t used=0;const auto n=std::stod(gradientStopPosition_->text(),&used);if(used!=gradientStopPosition_->text().size() || !std::isfinite(n))return;auto& stop=currentTools().gradientStops[gradientStop_];const double old=stop.position,next=std::clamp(n/100,0.0,1.0);if(next!=old && (next==0 || next==1))for(int i=0;i<int(currentTools().gradientStops.size());++i)if(i!=gradientStop_ && currentTools().gradientStops[i].position==next)currentTools().gradientStops[i].position=old;stop.position=next;sortGradientStops(stop);}catch(...){} };gradientStopPosition_->Change.connect(position);gradientStopPosition_->blur=position;gradientStopPosition_->accept=[this,position]{position();requestFocus();};
 
-    gradientStopColor_=new PixelEntry(font_,skin_);addChild(gradientStopColor_);gradientControls_.push_back({gradientStopColor_,80});auto color=[this]{if(gradientStops_.empty())return;Pixel next;if(parsePaletteHex(gradientStopColor_->text(),next)){gradientStops_[gradientStop_].color=next;gradientChanged();}};gradientStopColor_->Change.connect(color);gradientStopColor_->blur=color;gradientStopColor_->accept=[this,color]{color();requestFocus();};
+    gradientStopColor_=new PixelEntry(font_,skin_);addChild(gradientStopColor_);gradientControls_.push_back({gradientStopColor_,80});auto color=[this]{if(currentTools().gradientStops.empty())return;Pixel next;if(parsePaletteHex(gradientStopColor_->text(),next)){currentTools().gradientStops[gradientStop_].color=next;gradientChanged();}};gradientStopColor_->Change.connect(color);gradientStopColor_->blur=color;gradientStopColor_->accept=[this,color]{color();requestFocus();};
 
-    control(U"添加",40,[this]{addGradientStop();});control(U"删除",40,[this]{if(gradientStops_.size()>2){gradientStops_.erase(gradientStops_.begin()+gradientStop_);gradientStop_=std::max(0,gradientStop_-1);}});
+    control(U"添加",40,[this]{addGradientStop();});control(U"删除",40,[this]{if(currentTools().gradientStops.size()>2){currentTools().gradientStops.erase(currentTools().gradientStops.begin()+gradientStop_);gradientStop_=std::max(0,gradientStop_-1);}});
 
-    control(U"反转",40,[this]{for(auto& s:gradientStops_)s.position=1-s.position;std::reverse(gradientStops_.begin(),gradientStops_.end());gradientStop_=int(gradientStops_.size())-1-gradientStop_;});
+    control(U"反转",40,[this]{for(auto& s:currentTools().gradientStops)s.position=1-s.position;std::reverse(currentTools().gradientStops.begin(),currentTools().gradientStops.end());gradientStop_=int(currentTools().gradientStops.size())-1-gradientStop_;});
 
-    control(U"重置",40,[this]{gradientStops_={{0,ink_},{1,document.palette().secondary}};gradientStop_=0;});auto track=new GradientStopsTrack(toolIcons_);track->stops=&gradientStops_;track->selected=&gradientStop_;track->changed=[this]{gradientChanged();};addChild(track);gradientControls_.push_back({track,180});
+    control(U"重置",40,[this]{currentTools().gradientStops={{0,ink_},{1,currentDocument().palette().secondary}};gradientStop_=0;});auto track=new GradientStopsTrack(toolIcons_);track->stops=&currentTools().gradientStops;track->selected=&gradientStop_;track->changed=[this]{gradientChanged();};addChild(track);gradientControls_.push_back({track,180});
 
   }
 
@@ -1155,15 +1165,15 @@ void Editor::connectLegacyPropertyRanges(){
 
   }
 
-void Editor::createShapeOptions(){drawingAnchorButton_=button(U"",[this]{drawFromCanvasCenter_=!drawFromCanvasCenter_;saveBrushPreferences();refresh();});drawingAnchorButton_->icon="draw-with-anchor";drawingAnchorButton_->iconSkin=&toolIcons_;drawingAnchorButton_->hover=[this]{status_=U"从绘图锚点绘制";invalidate();};drawingAnchorPresetButton_=button(U"",[this]{showDrawingAnchorPopup();});drawingAnchorPresetButton_->icon="anchor-preset-center";drawingAnchorPresetButton_->iconSkin=&toolIcons_;curveAnchorInput_=new PixelEntry(font_,skin_);addChild(curveAnchorInput_);curveAnchorInput_->numeric=true;curveAnchorInput_->suffix=U"控制点";curveAnchorInput_->setVisible(false);curveAnchorInput_->Change.connect([this]{try{curveAnchorCount_=std::clamp(std::stoi(curveAnchorInput_->text()),1,8);saveBrushPreferences();}catch(...){} });curveAnchorInput_->focus=[this]{showPropertyRange(curveAnchorInput_,1,8);};auto option=[&](const char32_t* text,int width,std::function<void()> action){auto b=button(text,[this,action]{action();saveBrushPreferences();layoutToolOptions();invalidate();});shapeControls_.push_back({b,width});return b;};shapeModeButton_=option(U"矩形填充",76,[this]{showToolGroup((shapeSpec_.kind==ShapeKind::Line||shapeSpec_.kind==ShapeKind::Curve)?5:4);});shapeModeButton_->iconSkin=&toolIcons_;shapeModeButton_->iconWithCaption=true;shapeRoundedButton_=option(U"圆角",45,[this]{shapeRounded_=!shapeRounded_;});shapeRatioButton_=option(U"固定比例",65,[this]{shapeRatio_=!shapeRatio_;});for(auto b:{shapeRoundedButton_,shapeRatioButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
+void Editor::createShapeOptions(){drawingAnchorButton_=button(U"",[this]{currentView().drawFromCanvasCenter=!currentView().drawFromCanvasCenter;saveBrushPreferences();refresh();});drawingAnchorButton_->icon="draw-with-anchor";drawingAnchorButton_->iconSkin=&toolIcons_;drawingAnchorButton_->hover=[this]{status_=U"从绘图锚点绘制";invalidate();};drawingAnchorPresetButton_=button(U"",[this]{showDrawingAnchorPopup();});drawingAnchorPresetButton_->icon="anchor-preset-center";drawingAnchorPresetButton_->iconSkin=&toolIcons_;curveAnchorInput_=new PixelEntry(font_,skin_);addChild(curveAnchorInput_);curveAnchorInput_->numeric=true;curveAnchorInput_->suffix=U"控制点";curveAnchorInput_->setVisible(false);curveAnchorInput_->Change.connect([this]{try{currentTools().curveAnchorCount=std::clamp(std::stoi(curveAnchorInput_->text()),1,8);saveBrushPreferences();}catch(...){} });curveAnchorInput_->focus=[this]{showPropertyRange(curveAnchorInput_,1,8);};auto option=[&](const char32_t* text,int width,std::function<void()> action){auto b=button(text,[this,action]{action();saveBrushPreferences();layoutToolOptions();invalidate();});shapeControls_.push_back({b,width});return b;};shapeModeButton_=option(U"矩形填充",76,[this]{showToolGroup((currentTools().shapeKind==ShapeKind::Line||currentTools().shapeKind==ShapeKind::Curve)?5:4);});shapeModeButton_->iconSkin=&toolIcons_;shapeModeButton_->iconWithCaption=true;shapeRoundedButton_=option(U"圆角",45,[this]{currentTools().shapeRounded=!currentTools().shapeRounded;});shapeRatioButton_=option(U"固定比例",65,[this]{currentTools().shapeRatio=!currentTools().shapeRatio;});for(auto b:{shapeRoundedButton_,shapeRatioButton_}){b->iconSkin=&toolIcons_;b->bareIconWithCaption=true;}
 
-    auto number=[&](int field,const char32_t* suffix,int width){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->suffix=suffix;addChild(input);shapeControls_.push_back({input,width});auto commit=[this,input,field]{try{std::size_t used=0;const auto value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value))return;if(field==0)shapeRadius_=gradientRound(std::clamp(value,0.0,256.0));else (field==1?shapeRatioWidth_:shapeRatioHeight_)=std::floor(std::clamp(value,.1,100.0)*10+.5)/10;saveBrushPreferences();layoutToolOptions();invalidate();}catch(...){} };input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();requestFocus();};return input;};shapeRadiusInput_=number(0,U"px",48);shapeRatioWidthInput_=number(1,U"",38);shapeRatioHeightInput_=number(2,U"",38);auto swap=option(U"",19,[this]{std::swap(shapeRatioWidth_,shapeRatioHeight_);});swap->iconSkin=&toolIcons_;swap->icon="swap";
+    auto number=[&](int field,const char32_t* suffix,int width){auto input=new PixelEntry(font_,skin_);input->numeric=true;input->suffix=suffix;addChild(input);shapeControls_.push_back({input,width});auto commit=[this,input,field]{try{std::size_t used=0;const auto value=std::stod(input->text(),&used);if(used!=input->text().size() || !std::isfinite(value))return;if(field==0)currentTools().shapeRadius=gradientRound(std::clamp(value,0.0,256.0));else (field==1?currentTools().shapeRatioWidth:currentTools().shapeRatioHeight)=std::floor(std::clamp(value,.1,100.0)*10+.5)/10;saveBrushPreferences();layoutToolOptions();invalidate();}catch(...){} };input->Change.connect(commit);input->blur=commit;input->accept=[this,commit]{commit();requestFocus();};return input;};shapeRadiusInput_=number(0,U"px",48);shapeRatioWidthInput_=number(1,U"",38);shapeRatioHeightInput_=number(2,U"",38);auto swap=option(U"",19,[this]{std::swap(currentTools().shapeRatioWidth,currentTools().shapeRatioHeight);});swap->iconSkin=&toolIcons_;swap->icon="swap";
 
   }
 
 void Editor::migratePropertyDropdowns() {
 
-    auto* imageModeDropdown=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(imageModeDropdown);imagePaintModeDropdown_=imageModeDropdown;addChild(imagePaintModeDropdown_);imagePaintModeDropdown_->setOptions({U"油漆笔刷",U"图案与来源对齐",U"图案与目标对齐"});imagePaintModeDropdown_->prepareOptions=[this]{imagePaintModeDropdown_->setSelectedIndex(int(brushFeedback_.brushProfiles_[eraser_?1:0].imagePaintMode));};imagePaintModeDropdown_->changed=[this](int mode){if(mode<0||mode>2||document.active())return;brushFeedback_.brushProfiles_[eraser_?1:0].imagePaintMode=PatternPaintMode(mode);saveBrushPreferences();refresh();};propertyDropdowns_.push_back(imagePaintModeDropdown_);toolControls_.push_back({imagePaintModeDropdown_,116});
+    auto* imageModeDropdown=new DialogBackground<PixelDropdown>(font_,skin_);configureDialogBackground(imageModeDropdown);imagePaintModeDropdown_=imageModeDropdown;addChild(imagePaintModeDropdown_);imagePaintModeDropdown_->setOptions({U"油漆笔刷",U"图案与来源对齐",U"图案与目标对齐"});imagePaintModeDropdown_->prepareOptions=[this]{imagePaintModeDropdown_->setSelectedIndex(int(currentTools().brushProfiles[currentTools().eraser?1:0].imagePaintMode));};imagePaintModeDropdown_->changed=[this](int mode){if(mode<0||mode>2||currentDocument().active())return;currentTools().brushProfiles[currentTools().eraser?1:0].imagePaintMode=PatternPaintMode(mode);saveBrushPreferences();refresh();};propertyDropdowns_.push_back(imagePaintModeDropdown_);toolControls_.push_back({imagePaintModeDropdown_,116});
 
     auto convert=[this](PixelButton*& old,std::vector<std::u32string> names,std::function<int()> current,std::function<void(int)> choose) {
 
@@ -1183,11 +1193,11 @@ void Editor::migratePropertyDropdowns() {
 
     };
 
-    convert(selectionAlgorithmButton_,{U"\u5feb\u901f\u65cb\u8f6c",U"RotSprite"},[this]{return selectionRotSprite_;},[this](int i){selectionRotSprite_=i!=0;if(auto target=document.floatingTransform())document.transformFloatingPaste(*target,selectionRotSprite_);});
+    convert(selectionAlgorithmButton_,{U"\u5feb\u901f\u65cb\u8f6c",U"RotSprite"},[this]{return currentTools().selectionRotSprite;},[this](int i){currentTools().selectionRotSprite=i!=0;if(auto target=currentDocument().floatingTransform())currentDocument().transformFloatingPaste(*target,currentTools().selectionRotSprite);});
 
-    convert(gradientDither_,{U"\u65e0\u6296\u52a8",U"Bayer 2\u00d72",U"Bayer 4\u00d74",U"Bayer 8\u00d78",U"\u68cb\u76d8",U"\u5bf9\u89d2\u7ebf",U"\u53cd\u5411\u5bf9\u89d2\u7ebf",U"\u6c34\u5e73\u7ebf",U"\u5782\u76f4\u7ebf"},[this]{return gradientSpec_.dither;},[this](int i){gradientSpec_.dither=i;gradientChanged();});
+    convert(gradientDither_,{U"\u65e0\u6296\u52a8",U"Bayer 2\u00d72",U"Bayer 4\u00d74",U"Bayer 8\u00d78",U"\u68cb\u76d8",U"\u5bf9\u89d2\u7ebf",U"\u53cd\u5411\u5bf9\u89d2\u7ebf",U"\u6c34\u5e73\u7ebf",U"\u5782\u76f4\u7ebf"},[this]{return currentTools().gradientDither;},[this](int i){currentTools().gradientDither=i;gradientChanged();});
 
-    convert(eyedropperSourceButton_,{U"\u5408\u6210\u56fe\u50cf",U"\u5f53\u524d\u56fe\u5c42"},[this]{return eyedropperSource_==EyedropperSource::CurrentLayer;},[this](int i){eyedropperSource_=i?EyedropperSource::CurrentLayer:EyedropperSource::Composite;try{if(!smoke_){const auto path=palettePreferencePath().parent_path()/"eyedropper-source.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);out<<(i?"current-layer":"composite");}}catch(const std::exception& e){status_=U"\u5438\u7ba1\u8bbe\u7f6e\u4fdd\u5b58\u5931\u8d25:"+unicodeText(e.what());}});
+    convert(eyedropperSourceButton_,{U"\u5408\u6210\u56fe\u50cf",U"\u5f53\u524d\u56fe\u5c42"},[this]{return currentTools().eyedropperSource==EyedropperSource::CurrentLayer;},[this](int i){currentTools().eyedropperSource=i?EyedropperSource::CurrentLayer:EyedropperSource::Composite;try{if(!smoke_){const auto path=palettePreferencePath().parent_path()/"eyedropper-source.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);out<<(i?"current-layer":"composite");}}catch(const std::exception& e){status_=U"\u5438\u7ba1\u8bbe\u7f6e\u4fdd\u5b58\u5931\u8d25:"+unicodeText(e.what());}});
 
   }
 
@@ -1239,7 +1249,7 @@ void Editor::placePropertyControl(ui::Widget* control,int x,int width) {
 
   }
 
-bool Editor::supportsToolSymmetry()const{return !(fillTool_&&magicEraserTool_) && !liquifyTool_ && !smoothTool_ && !handTool_ && !navigation_.zoomTool_ && !gradientTool_ && !eyedropperTool_;}
+bool Editor::supportsToolSymmetry()const{return !(currentTools().fillTool&&currentTools().magicEraserTool) && !currentTools().liquifyTool && !currentTools().smoothTool && !currentTools().handTool && !currentTools().zoomTool && !currentTools().gradientTool && !currentTools().eyedropperTool;}
 
 void Editor::layoutSymmetryOptions(){
 
@@ -1256,7 +1266,7 @@ void Editor::layoutSymmetryOptions(){
 
     const int right=commands_[3]->bounds().x/uiScale-uiGap;left=std::min(left,right-85);const bool show=supportsToolSymmetry();
 
-    for(int i=0;i<6;++i){auto b=symmetryButtons_[i];if(!b)continue;placePropertyControl(b,left+i*14,15);b->setVisible(show && left+85<=right);b->setEnabled(pending_==Pending::None && !document.active() && !selectionDragging_ && !symmetryDragging_);if(i<5)b->active=symmetryFlag(i);}
+    for(int i=0;i<6;++i){auto b=symmetryButtons_[i];if(!b)continue;placePropertyControl(b,left+i*14,15);b->setVisible(show && left+85<=right);b->setEnabled(pending_==Pending::None && !currentDocument().active() && !selectionDragging_ && !symmetryDragging_);if(i<5)b->active=symmetryFlag(i);}
 
   }
 
@@ -1319,7 +1329,7 @@ void Editor::layoutToolOptions() {
 
     struct Finish {Editor& editor;~Finish(){editor.layoutMoveOptions();editor.layoutSliceOptions();editor.finishToolScrollLayout();editor.applyAdvancedVisibility();editor.syncParameterRange();}} finish{*this};
 
-    if(!document.selection()&&!document.floating())selectionPropertiesActive_=false;
+    if(!currentDocument().selection()&&!currentDocument().floating())selectionPropertiesActive_=false;
 
     if(toolControls_.empty()) return;
 
@@ -1327,9 +1337,9 @@ void Editor::layoutToolOptions() {
 
     for(int i=0;i<5;++i)if(symmetryButtons_[i])symmetryButtons_[i]->active=symmetryFlag(i);
 
-    if(brushRange_ && (handTool_ || pending_!=Pending::None)) brushRange_->setVisible(false);
+    if(brushRange_ && (currentTools().handTool || pending_!=Pending::None)) brushRange_->setVisible(false);
 
-    const auto rc=uiLogical(bounds());const auto optionsLayout=workspaceLayout(rc);const bool usable=pending_==Pending::None && !document.active();if(inkButton_){auto m=currentInkMode();inkButton_->icon=m==InkMode::Simple?"ink-simple":m==InkMode::CopyAlphaColor?"ink-copy-alpha-color":"ink-lock-alpha";inkButton_->setEnabled(usable);}if(toolRail_.size()>3){const char* icons[]{"selection-rectangle-normal","selection-ellipse-normal","selection-lasso-normal","selection-polygon-lasso-normal","selection-magic-normal","selection-brush-normal"};toolRail_[3]->icon=icons[selectionKind_];}
+    const auto rc=uiLogical(bounds());const auto optionsLayout=workspaceLayout(rc);const bool usable=pending_==Pending::None && !currentDocument().active();if(inkButton_){auto m=currentInkMode();inkButton_->icon=m==InkMode::Simple?"ink-simple":m==InkMode::CopyAlphaColor?"ink-copy-alpha-color":"ink-lock-alpha";inkButton_->setEnabled(usable);}if(toolRail_.size()>3){const char* icons[]{"selection-rectangle-normal","selection-ellipse-normal","selection-lasso-normal","selection-polygon-lasso-normal","selection-magic-normal","selection-brush-normal"};toolRail_[3]->icon=icons[currentTools().selectionKind];}
 
     if(homeButton_){homeButton_->setEnabled(usable);homeButton_->setVisible(true);}
 
@@ -1348,80 +1358,80 @@ void Editor::layoutToolOptions() {
 
     if(gradientRadialButton_)gradientRadialButton_->setVisible(false);
 
-    if(!liquifyTool_)for(auto& control:liquifyControls_)control.first->setVisible(false);
+    if(!currentTools().liquifyTool)for(auto& control:liquifyControls_)control.first->setVisible(false);
     for(auto& control:shapeControls_)control.first->setVisible(false);
-    if(!smoothTool_)for(auto& c:smoothControls_)c.first->setVisible(false);
-    if(smoothTool_){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);for(auto& c:airbrushControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);int x=rc.x+optionsLayout.workX;const auto& b=smoothBrush_;auto shape=static_cast<PixelButton*>(smoothControls_[0].first);shape->icon=b.shape==BrushShape::Round?"brush-round":b.shape==BrushShape::Square?"brush-square":"brush-line";auto size=static_cast<PixelEntry*>(smoothControls_[1].first);if(!size->hasFocus())syncText(size,std::to_string(b.size));if(!smoothAngleInput_->hasFocus())syncText(smoothAngleInput_,std::to_string(smoothAngle_));if(!smoothStrengthInput_->hasFocus())syncText(smoothStrengthInput_,std::to_string(smoothStrength_));for(auto& c:smoothControls_){const bool angular=c.first==smoothAngleInput_||c.first==smoothControls_[2].first;const bool visible=!angular||(b.size>1&&b.shape!=BrushShape::Round);c.first->setVisible(visible);c.first->setEnabled(usable&&!smoothDragging_);if(visible){placePropertyControl(c.first,x,c.second);x+=propertyControlWidth(c.first,c.second)+uiGap;}}for(auto button:symmetryButtons_)if(button)button->setVisible(false);if(dynamicsButton_){placePropertyControl(dynamicsButton_,x,15);dynamicsButton_->setVisible(true);dynamicsButton_->setEnabled(usable&&!smoothDragging_);}return;}
+    if(!currentTools().smoothTool)for(auto& c:smoothControls_)c.first->setVisible(false);
+    if(currentTools().smoothTool){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);for(auto& c:airbrushControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);int x=rc.x+optionsLayout.workX;const auto& b=currentTools().smoothBrush;auto shape=static_cast<PixelButton*>(smoothControls_[0].first);shape->icon=b.shape==BrushShape::Round?"brush-round":b.shape==BrushShape::Square?"brush-square":"brush-line";auto size=static_cast<PixelEntry*>(smoothControls_[1].first);if(!size->hasFocus())syncText(size,std::to_string(b.size));if(!smoothAngleInput_->hasFocus())syncText(smoothAngleInput_,std::to_string(currentTools().smoothAngle));if(!smoothStrengthInput_->hasFocus())syncText(smoothStrengthInput_,std::to_string(currentTools().smoothStrength));for(auto& c:smoothControls_){const bool angular=c.first==smoothAngleInput_||c.first==smoothControls_[2].first;const bool visible=!angular||(b.size>1&&b.shape!=BrushShape::Round);c.first->setVisible(visible);c.first->setEnabled(usable&&!smoothDragging_);if(visible){placePropertyControl(c.first,x,c.second);x+=propertyControlWidth(c.first,c.second)+uiGap;}}for(auto button:symmetryButtons_)if(button)button->setVisible(false);if(dynamicsButton_){placePropertyControl(dynamicsButton_,x,15);dynamicsButton_->setVisible(true);dynamicsButton_->setEnabled(usable&&!smoothDragging_);}return;}
     layoutAirbrushOptions();
-    if(airbrushTool_){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
+    if(currentTools().airbrushTool){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
 
     if(layoutLiquifyOptions())return;
-    if(moveTool_||textTool_){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
-    if(navigation_.zoomTool_){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
+    if(currentTools().moveTool||currentTools().textTool){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
+    if(currentTools().zoomTool){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);layoutSymmetryOptions();return;}
 
-    if(eyedropperTool_ && eyedropperSourceButton_){
+    if(currentTools().eyedropperTool && eyedropperSourceButton_){
       for(auto& c:toolControls_)c.first->setVisible(false);
       for(auto& c:selectionControls_)c.first->setVisible(false);
       if(brushRange_)brushRange_->setVisible(false);
       int x=rc.x+optionsLayout.workX;
       const bool enabled=(usable || replaceSampling_>=0) && !eyedropperGesture_.active();
       auto place=[&](PixelButton* control,int width){placePropertyControl(control,x,width);control->setVisible(true);control->setEnabled(enabled);x+=propertyControlWidth(control,width)+uiGap;};
-      eyedropperSourceButton_->caption=eyedropperSource_==EyedropperSource::Composite?U"合成图像":U"当前图层";
+      eyedropperSourceButton_->caption=currentTools().eyedropperSource==EyedropperSource::Composite?U"合成图像":U"当前图层";
       place(eyedropperSourceButton_,76);x+=6-uiGap;
-      eyedropperForegroundButton_->swatch=document.displayPalette().primary;
-      eyedropperBackgroundButton_->swatch=document.displayPalette().secondary;
+      eyedropperForegroundButton_->swatch=currentDocument().displayPalette().primary;
+      eyedropperBackgroundButton_->swatch=currentDocument().displayPalette().secondary;
       const int colorWidth=font_.measure(U"#FFFFFFFF")+8;
       place(eyedropperForegroundButton_,colorWidth);place(eyedropperBackgroundButton_,colorWidth);x+=6-uiGap;
       place(eyedropperReplaceButton_,font_.measure(eyedropperReplaceButton_->caption)+24);
       layoutSymmetryOptions();return;
     }
 
-    if(fillTool_&&magicEraserTool_){
+    if(currentTools().fillTool&&currentTools().magicEraserTool){
       for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);
-      if(!wandToleranceInput_->hasFocus())syncText(wandToleranceInput_,std::to_string(wandOptions_.tolerance));if(!wandGapInput_->hasFocus())syncText(wandGapInput_,std::to_string(wandOptions_.gapThreshold));wandContiguousButton_->icon=magicEraserContiguous_?"check":"checkboxUnchecked";wandGapButton_->icon=wandOptions_.gapClosing?"check":"checkboxUnchecked";
-      int x=rc.x+optionsLayout.workX;for(int i:{1,2,3,4,5,7}){auto [w,width]=selectionControls_[i];const bool show=magicEraserContiguous_||(i!=4&&i!=5);w->setVisible(show);w->setEnabled(usable&&!magicEraserDragging_&&(i!=5||wandOptions_.gapClosing));if(show){placePropertyControl(w,x,width);x+=propertyControlWidth(w,width)+uiGap;}}
+      if(!wandToleranceInput_->hasFocus())syncText(wandToleranceInput_,std::to_string(currentTools().wandOptions.tolerance));if(!wandGapInput_->hasFocus())syncText(wandGapInput_,std::to_string(currentTools().wandOptions.gapThreshold));wandContiguousButton_->icon=currentTools().magicEraserContiguous?"check":"checkboxUnchecked";wandGapButton_->icon=currentTools().wandOptions.gapClosing?"check":"checkboxUnchecked";
+      int x=rc.x+optionsLayout.workX;for(int i:{1,2,3,4,5,7}){auto [w,width]=selectionControls_[i];const bool show=currentTools().magicEraserContiguous||(i!=4&&i!=5);w->setVisible(show);w->setEnabled(usable&&!magicEraserDragging_&&(i!=5||currentTools().wandOptions.gapClosing));if(show){placePropertyControl(w,x,width);x+=propertyControlWidth(w,width)+uiGap;}}
       if(toolRail_.size()>1)toolRail_[1]->icon="tool-magic-eraser-normal";layoutSymmetryOptions();return;
     }
     if(toolRail_.size()>1)toolRail_[1]->icon="tool-eraser-normal";
     if(curveAnchorInput_)curveAnchorInput_->setVisible(false);
-    if(shapeTool_ && !shapeControls_.empty()){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);const bool line=shapeSpec_.kind==ShapeKind::Line||shapeSpec_.kind==ShapeKind::Curve,rect=shapeSpec_.kind==ShapeKind::Rectangle || shapeSpec_.kind==ShapeKind::RectangleOutline,outline=shapeSpec_.kind==ShapeKind::RectangleOutline || shapeSpec_.kind==ShapeKind::EllipseOutline;int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);const char32_t* labels[]{U"直线",U"矩形描边",U"矩形填充",U"椭圆描边",U"椭圆填充",U"多边形填充",U"自由形状",U"曲线"};const char* icons[]{"shape-line-normal","shape-rectangle-normal","shape-rectangle-fill-normal","shape-ellipse-normal","shape-ellipse-fill-normal","shape-polygon-normal","shape-freeform-normal","shape-curve-normal"};shapeModeButton_->caption=labels[int(shapeSpec_.kind)];shapeModeButton_->icon=icons[int(shapeSpec_.kind)];if(toolRail_.size()>5){toolRail_[(shapeSpec_.kind==ShapeKind::Line||shapeSpec_.kind==ShapeKind::Curve)?5:4]->icon=icons[int(shapeSpec_.kind)];}shapeRoundedButton_->icon=shapeRounded_?"check":"checkboxUnchecked";shapeRatioButton_->icon=shapeRatio_?"check":"checkboxUnchecked";if(!shapeRadiusInput_->hasFocus())syncText(shapeRadiusInput_,std::to_string(shapeRadius_));for(auto field:{shapeRatioWidthInput_,shapeRatioHeightInput_})if(!field->hasFocus()){std::ostringstream text;text<<(field==shapeRatioWidthInput_?shapeRatioWidth_:shapeRatioHeight_);syncText(field,text.str());}
+    if(currentTools().shapeTool && !shapeControls_.empty()){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);const bool line=currentTools().shapeKind==ShapeKind::Line||currentTools().shapeKind==ShapeKind::Curve,rect=currentTools().shapeKind==ShapeKind::Rectangle || currentTools().shapeKind==ShapeKind::RectangleOutline,outline=currentTools().shapeKind==ShapeKind::RectangleOutline || currentTools().shapeKind==ShapeKind::EllipseOutline;int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);const char32_t* labels[]{U"直线",U"矩形描边",U"矩形填充",U"椭圆描边",U"椭圆填充",U"多边形填充",U"自由形状",U"曲线"};const char* icons[]{"shape-line-normal","shape-rectangle-normal","shape-rectangle-fill-normal","shape-ellipse-normal","shape-ellipse-fill-normal","shape-polygon-normal","shape-freeform-normal","shape-curve-normal"};shapeModeButton_->caption=labels[int(currentTools().shapeKind)];shapeModeButton_->icon=icons[int(currentTools().shapeKind)];if(toolRail_.size()>5){toolRail_[(currentTools().shapeKind==ShapeKind::Line||currentTools().shapeKind==ShapeKind::Curve)?5:4]->icon=icons[int(currentTools().shapeKind)];}shapeRoundedButton_->icon=currentTools().shapeRounded?"check":"checkboxUnchecked";shapeRatioButton_->icon=currentTools().shapeRatio?"check":"checkboxUnchecked";if(!shapeRadiusInput_->hasFocus())syncText(shapeRadiusInput_,std::to_string(currentTools().shapeRadius));for(auto field:{shapeRatioWidthInput_,shapeRatioHeightInput_})if(!field->hasFocus()){std::ostringstream text;text<<(field==shapeRatioWidthInput_?currentTools().shapeRatioWidth:currentTools().shapeRatioHeight);syncText(field,text.str());}
 
-      auto place=[&](ui::Widget* w,int width){width=propertyControlWidth(w,width);placePropertyControl(w,x,width);w->setVisible(true);w->setEnabled(usable && !shapeDragging_);x+=width+uiGap;};shapeModeButton_->setVisible(false);if(line){brushShapeButton_->icon=brushFeedback_.brushProfiles_[0].shape==BrushShape::Round?"brush-round":brushFeedback_.brushProfiles_[0].shape==BrushShape::Square?"brush-square":"brush-line";place(brushShapeButton_,15);perfectPixelsButton_->icon=brushFeedback_.brushProfiles_[0].perfectPixels?"check":"checkboxUnchecked";place(perfectPixelsButton_,toolControls_[8].second);}if(shapeSpec_.kind!=ShapeKind::Polygon&&shapeSpec_.kind!=ShapeKind::Freeform)place(inkButton_,15);if(line || outline){if(!brushSizeInput_->hasFocus())syncText(brushSizeInput_,std::to_string(brushFeedback_.brushProfiles_[0].size));place(brushSizeInput_,toolControls_[3].second);}if(!line&&shapeSpec_.kind!=ShapeKind::Polygon&&shapeSpec_.kind!=ShapeKind::Freeform){if(rect){place(shapeRoundedButton_,45);if(shapeRounded_)place(shapeRadiusInput_,48);}place(shapeRatioButton_,65);if(shapeRatio_){place(shapeRatioWidthInput_,38);place(shapeRatioHeightInput_,38);place(shapeControls_[6].first,19);}}if(shapeSpec_.kind==ShapeKind::Curve){if(!curveAnchorInput_->hasFocus())syncText(curveAnchorInput_,std::to_string(curveAnchorCount_));place(curveAnchorInput_,48);}layoutDrawingAnchor(x);layoutSymmetryOptions();return;}
+      auto place=[&](ui::Widget* w,int width){width=propertyControlWidth(w,width);placePropertyControl(w,x,width);w->setVisible(true);w->setEnabled(usable && !shapeDragging_);x+=width+uiGap;};shapeModeButton_->setVisible(false);if(line){brushShapeButton_->icon=currentTools().brushProfiles[0].shape==BrushShape::Round?"brush-round":currentTools().brushProfiles[0].shape==BrushShape::Square?"brush-square":"brush-line";place(brushShapeButton_,15);perfectPixelsButton_->icon=currentTools().brushProfiles[0].perfectPixels?"check":"checkboxUnchecked";place(perfectPixelsButton_,toolControls_[8].second);}if(currentTools().shapeKind!=ShapeKind::Polygon&&currentTools().shapeKind!=ShapeKind::Freeform)place(inkButton_,15);if(line || outline){if(!brushSizeInput_->hasFocus())syncText(brushSizeInput_,std::to_string(currentTools().brushProfiles[0].size));place(brushSizeInput_,toolControls_[3].second);}if(!line&&currentTools().shapeKind!=ShapeKind::Polygon&&currentTools().shapeKind!=ShapeKind::Freeform){if(rect){place(shapeRoundedButton_,45);if(currentTools().shapeRounded)place(shapeRadiusInput_,48);}place(shapeRatioButton_,65);if(currentTools().shapeRatio){place(shapeRatioWidthInput_,38);place(shapeRatioHeightInput_,38);place(shapeControls_[6].first,19);}}if(currentTools().shapeKind==ShapeKind::Curve){if(!curveAnchorInput_->hasFocus())syncText(curveAnchorInput_,std::to_string(currentTools().curveAnchorCount));place(curveAnchorInput_,48);}layoutDrawingAnchor(x);layoutSymmetryOptions();return;}
 
-    if(gradientTool_ && !gradientControls_.empty()){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);const int left=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);int total=0;for(int i=0;i<int(gradientControls_.size());++i)if((i<9 && i!=5) || (i>=9 && i<11 && gradientPending_))total+=propertyControlWidth(gradientControls_[i].first,gradientControls_[i].second)+uiGap;int x=left;
+    if(currentTools().gradientTool && !gradientControls_.empty()){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);const int left=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);int total=0;for(int i=0;i<int(gradientControls_.size());++i)if((i<9 && i!=5) || (i>=9 && i<11 && gradientPending_))total+=propertyControlWidth(gradientControls_[i].first,gradientControls_[i].second)+uiGap;int x=left;
 
-      gradientType_->caption.clear();gradientType_->icon="gradient-linear";gradientType_->active=!gradientSpec_.radial;gradientRadialButton_->active=gradientSpec_.radial;if(!gradientTolerance_->hasFocus())syncText(gradientTolerance_,std::to_string(gradientOptions_.tolerance));gradientContiguous_->icon=gradientOptions_.contiguous?"check":"checkboxUnchecked";gradientReference_->caption.clear();gradientConnectivity_->caption=gradientOptions_.connectivity==4?U"4 方连接":U"8 方连接";const char32_t* dithers[]{U"无抖动",U"Bayer 2×2",U"Bayer 4×4",U"Bayer 8×8",U"棋盘",U"对角线",U"反向对角线",U"水平线",U"垂直线"};gradientDither_->caption=dithers[gradientSpec_.dither];gradientFreeformButton_->icon.clear();gradientMode_->caption=gradientConfirm_?U"确认应用":U"即时应用";if(!gradientStops_.empty()){gradientStop_=std::clamp(gradientStop_,0,int(gradientStops_.size())-1);if(!gradientStopPosition_->hasFocus()){std::ostringstream text;text<<gradientStops_[gradientStop_].position*100;syncText(gradientStopPosition_,text.str());}if(!gradientStopColor_->hasFocus())syncText(gradientStopColor_,paletteHex(gradientStops_[gradientStop_].color));}
+      gradientType_->caption.clear();gradientType_->icon="gradient-linear";gradientType_->active=!currentTools().gradientRadial;gradientRadialButton_->active=currentTools().gradientRadial;if(!gradientTolerance_->hasFocus())syncText(gradientTolerance_,std::to_string(currentTools().gradientOptions.tolerance));gradientContiguous_->icon=currentTools().gradientOptions.contiguous?"check":"checkboxUnchecked";gradientReference_->caption.clear();gradientConnectivity_->caption=currentTools().gradientOptions.connectivity==4?U"4 方连接":U"8 方连接";const char32_t* dithers[]{U"无抖动",U"Bayer 2×2",U"Bayer 4×4",U"Bayer 8×8",U"棋盘",U"对角线",U"反向对角线",U"水平线",U"垂直线"};gradientDither_->caption=dithers[currentTools().gradientDither];gradientFreeformButton_->icon.clear();gradientMode_->caption=currentTools().gradientConfirm?U"确认应用":U"即时应用";if(!currentTools().gradientStops.empty()){gradientStop_=std::clamp(gradientStop_,0,int(currentTools().gradientStops.size())-1);if(!gradientStopPosition_->hasFocus()){std::ostringstream text;text<<currentTools().gradientStops[gradientStop_].position*100;syncText(gradientStopPosition_,text.str());}if(!gradientStopColor_->hasFocus())syncText(gradientStopColor_,paletteHex(currentTools().gradientStops[gradientStop_].color));}
 
       for(int i=0;i<int(gradientControls_.size());++i){auto [w,width]=gradientControls_[i];width=propertyControlWidth(w,width);const bool applies=(i<9 && i!=5) || (i>=9 && i<11 && gradientPending_);w->setVisible(applies);w->setEnabled(pending_==Pending::None && !gradientDragging_);placePropertyControl(w,x,width);if(i==0){gradientType_->setBounds(uiPhysical(gfx::Rect(x,rc.y+optionsTop()+(Layout::optionsHeight-16)/2,15,16)));placePropertyControl(gradientRadialButton_,x+14,15);gradientRadialButton_->setVisible(!w->hasFlags(ui::HIDDEN));gradientRadialButton_->setEnabled(w->isEnabled());}if(applies)x+=width+uiGap;}if(toolRail_.size()>6)toolRail_[6]->icon="tool-gradient-normal";layoutSymmetryOptions();return;}
 
-    if(toolRail_.size()>6)toolRail_[6]->icon=rememberGradientTool_?"tool-gradient-normal":"tool-fill-normal";
+    if(toolRail_.size()>6)toolRail_[6]->icon=currentTools().rememberGradientTool?"tool-gradient-normal":"tool-fill-normal";
 
-    if(fillTool_){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);
+    if(currentTools().fillTool){for(auto& c:toolControls_)c.first->setVisible(false);for(auto& c:selectionControls_)c.first->setVisible(false);if(brushRange_)brushRange_->setVisible(false);int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);
 
-      if(!fillToleranceInput_->hasFocus())syncText(fillToleranceInput_,std::to_string(fillOptions_.tolerance));if(!fillGapInput_->hasFocus())syncText(fillGapInput_,std::to_string(fillOptions_.gapThreshold));fillContiguousButton_->icon=fillOptions_.contiguous?"check":"checkboxUnchecked";fillGapButton_->icon=fillOptions_.gapClosing?"check":"checkboxUnchecked";fillConnectivityButton_->caption=fillOptions_.connectivity==4?U"4 方连接":U"8 方连接";fillReferenceButton_->caption.clear();
+      if(!fillToleranceInput_->hasFocus())syncText(fillToleranceInput_,std::to_string(currentTools().fillOptions.tolerance));if(!fillGapInput_->hasFocus())syncText(fillGapInput_,std::to_string(currentTools().fillOptions.gapThreshold));fillContiguousButton_->icon=currentTools().fillOptions.contiguous?"check":"checkboxUnchecked";fillGapButton_->icon=currentTools().fillOptions.gapClosing?"check":"checkboxUnchecked";fillConnectivityButton_->caption=currentTools().fillOptions.connectivity==4?U"4 方连接":U"8 方连接";fillReferenceButton_->caption.clear();
 
-      const char32_t* textureNames[]{U"纯色",U"裂纹",U"木纹",U"颗粒"};fillTextureButton_->caption=textureNames[int(fillPattern_.texture)];fillImageButton_->active=!fillPattern_.brushes.empty();if(!fillTextureScale_->hasFocus())syncText(fillTextureScale_,std::to_string(fillPattern_.textureScale));
+      const char32_t* textureNames[]{U"纯色",U"裂纹",U"木纹",U"颗粒"};fillTextureButton_->caption=textureNames[int(currentTools().fillPattern.texture)];fillImageButton_->active=!currentTools().fillPattern.brushes.empty();if(!fillTextureScale_->hasFocus())syncText(fillTextureScale_,std::to_string(currentTools().fillPattern.textureScale));
 
-      for(std::size_t i=0;i<fillControls_.size();++i){auto [control,width]=fillControls_[i];width=propertyControlWidth(control,width);const bool show=control!=fillTextureScale_ && i!=5 && (fillOptions_.contiguous || (i!=3 && i!=4));control->setVisible(show);control->setEnabled(usable && !fillDragging_ && (i!=4 || fillOptions_.gapClosing));placePropertyControl(control,x,width);if(show)x+=width+uiGap;}layoutSymmetryOptions();return;}
+      for(std::size_t i=0;i<fillControls_.size();++i){auto [control,width]=fillControls_[i];width=propertyControlWidth(control,width);const bool show=control!=fillTextureScale_ && i!=5 && (currentTools().fillOptions.contiguous || (i!=3 && i!=4));control->setVisible(show);control->setEnabled(usable && !fillDragging_ && (i!=4 || currentTools().fillOptions.gapClosing));placePropertyControl(control,x,width);if(show)x+=width+uiGap;}layoutSymmetryOptions();return;}
 
-    if(selectionTool_){if(brushRange_ && selectionKind_!=5)brushRange_->setVisible(false);for(auto& c:toolControls_)c.first->setVisible(false);int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);
+    if(currentTools().selectionTool){if(brushRange_ && currentTools().selectionKind!=5)brushRange_->setVisible(false);for(auto& c:toolControls_)c.first->setVisible(false);int x=rc.x+optionsLayout.workX,right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0);
 
-      if(selectionKind_==5 && !selectionPropertiesActive_){const auto& brush=brushFeedback_.brushProfiles_[0];if(!brushSizeInput_->hasFocus())syncText(brushSizeInput_,std::to_string(brush.size));brushSizeInput_->setEnabled(usable && !selectionDragging_);brushShapeButton_->setEnabled(usable && !selectionDragging_);brushShapeButton_->icon=brush.shape==BrushShape::Round?"brush-round":brush.shape==BrushShape::Square?"brush-square":"brush-line";for(auto index:{0,3}){auto& control=toolControls_[index];control.first->setVisible(true);placePropertyControl(control.first,x,control.second);x+=propertyControlWidth(control.first,control.second)+uiGap;}}
+      if(currentTools().selectionKind==5 && !selectionPropertiesActive_){const auto& brush=currentTools().brushProfiles[0];if(!brushSizeInput_->hasFocus())syncText(brushSizeInput_,std::to_string(brush.size));brushSizeInput_->setEnabled(usable && !selectionDragging_);brushShapeButton_->setEnabled(usable && !selectionDragging_);brushShapeButton_->icon=brush.shape==BrushShape::Round?"brush-round":brush.shape==BrushShape::Square?"brush-square":"brush-line";for(auto index:{0,3}){auto& control=toolControls_[index];control.first->setVisible(true);placePropertyControl(control.first,x,control.second);x+=propertyControlWidth(control.first,control.second)+uiGap;}}
 
-      selectionRoundedButton_->icon=selectionRounded_?"check":"checkboxUnchecked";if(!selectionCornerRadiusInput_->hasFocus())syncText(selectionCornerRadiusInput_,std::to_string(selectionCornerRadius_));
+      selectionRoundedButton_->icon=currentTools().selectionRounded?"check":"checkboxUnchecked";if(!selectionCornerRadiusInput_->hasFocus())syncText(selectionCornerRadiusInput_,std::to_string(currentTools().selectionCornerRadius));
 
-      const char32_t* modes[]{U"替换选区",U"添加选区",U"减去选区",U"相交选区"};for(int i=0;i<4;++i)selectionModeButtons_[i]->active=i==(selectionRight_?2:selectionShift_?1:selectionMode_);
+      const char32_t* modes[]{U"替换选区",U"添加选区",U"减去选区",U"相交选区"};for(int i=0;i<4;++i)selectionModeButtons_[i]->active=i==(selectionRight_?2:selectionShift_?1:currentTools().selectionMode);
 
-      selectionAlgorithmButton_->caption=selectionRotSprite_?U"RotSprite":U"快速旋转";if(!selectionBrushAngleInput_->hasFocus())syncText(selectionBrushAngleInput_,std::to_string(selectionBrushAngle_));if(!wandToleranceInput_->hasFocus())syncText(wandToleranceInput_,std::to_string(wandOptions_.tolerance));if(!wandGapInput_->hasFocus())syncText(wandGapInput_,std::to_string(wandOptions_.gapThreshold));wandContiguousButton_->icon=wandOptions_.contiguous?"check":"checkboxUnchecked";wandGapButton_->icon=wandOptions_.gapClosing?"check":"checkboxUnchecked";wandConnectivityButton_->caption=wandOptions_.connectivity==4?U"4 方连接":U"8 方连接";wandReferenceButton_->caption.clear();
+      selectionAlgorithmButton_->caption=currentTools().selectionRotSprite?U"RotSprite":U"快速旋转";if(!selectionBrushAngleInput_->hasFocus())syncText(selectionBrushAngleInput_,std::to_string(currentTools().selectionBrushAngle));if(!wandToleranceInput_->hasFocus())syncText(wandToleranceInput_,std::to_string(currentTools().wandOptions.tolerance));if(!wandGapInput_->hasFocus())syncText(wandGapInput_,std::to_string(currentTools().wandOptions.gapThreshold));wandContiguousButton_->icon=currentTools().wandOptions.contiguous?"check":"checkboxUnchecked";wandGapButton_->icon=currentTools().wandOptions.gapClosing?"check":"checkboxUnchecked";wandConnectivityButton_->caption=currentTools().wandOptions.connectivity==4?U"4 方连接":U"8 方连接";wandReferenceButton_->caption.clear();
 
       if(auto target=selectionTransformTarget()){const double values[]{target->x,target->y,target->width*(target->flipHorizontal?-1:1),target->height*(target->flipVertical?-1:1),target->angle};for(int i=0;i<5;++i)if(!selectionTransformFields_[i]->hasFocus()){std::ostringstream text;text<<values[i];syncText(selectionTransformFields_[i],text.str());}}
 
-      for(std::size_t i=0;i<selectionControls_.size();++i){auto [control,width]=selectionControls_[i];width=propertyControlWidth(control,width);const bool show=i!=6 && ((i==9 && selectionPropertiesActive_) || (i==17 && selectionKind_==0 && !selectionPropertiesActive_) || (i==18 && selectionKind_==0 && selectionRounded_ && !selectionPropertiesActive_) || ((i==15 || i==16) && document.selection()) || (selectionPropertiesActive_ && document.selection()?i>=10 && i<17:i==0 || (selectionKind_==4 && i>0 && i<8) || (selectionKind_==5 && i==8 && brushFeedback_.brushProfiles_[0].size>1 && brushFeedback_.brushProfiles_[0].shape!=BrushShape::Round)));control->setVisible(show);control->setEnabled((usable || document.floating()) && !selectionDragging_ && !floatingDragging_ && (control!=wandGapButton_ && control!=wandGapInput_ || wandOptions_.contiguous));placePropertyControl(control,x,width);if(i==0)for(int m=0;m<4;++m)selectionModeButtons_[m]->setBounds(uiPhysical(gfx::Rect(x+m*14,rc.y+optionsTop()+(Layout::optionsHeight-propertyIconHeight)/2,propertyIconWidth,propertyIconHeight)));if(show)x+=width+uiGap;}layoutDrawingAnchor(x);layoutSymmetryOptions();return;}
+      for(std::size_t i=0;i<selectionControls_.size();++i){auto [control,width]=selectionControls_[i];width=propertyControlWidth(control,width);const bool show=i!=6 && ((i==9 && selectionPropertiesActive_) || (i==17 && currentTools().selectionKind==0 && !selectionPropertiesActive_) || (i==18 && currentTools().selectionKind==0 && currentTools().selectionRounded && !selectionPropertiesActive_) || ((i==15 || i==16) && currentDocument().selection()) || (selectionPropertiesActive_ && currentDocument().selection()?i>=10 && i<17:i==0 || (currentTools().selectionKind==4 && i>0 && i<8) || (currentTools().selectionKind==5 && i==8 && currentTools().brushProfiles[0].size>1 && currentTools().brushProfiles[0].shape!=BrushShape::Round)));control->setVisible(show);control->setEnabled((usable || currentDocument().floating()) && !selectionDragging_ && !floatingDragging_ && (control!=wandGapButton_ && control!=wandGapInput_ || currentTools().wandOptions.contiguous));placePropertyControl(control,x,width);if(i==0)for(int m=0;m<4;++m)selectionModeButtons_[m]->setBounds(uiPhysical(gfx::Rect(x+m*14,rc.y+optionsTop()+(Layout::optionsHeight-propertyIconHeight)/2,propertyIconWidth,propertyIconHeight)));if(show)x+=width+uiGap;}layoutDrawingAnchor(x);layoutSymmetryOptions();return;}
 
     for(auto& c:selectionControls_)c.first->setVisible(false);
 
-    if(perfectPixelsButton_){perfectPixelsButton_->icon=brushFeedback_.brushProfiles_[0].perfectPixels?"check":"checkboxUnchecked";perfectPixelsButton_->setEnabled(usable&&!document.active());}
-    const int profile=eraser_?1:0;const auto& brush=brushFeedback_.brushProfiles_[profile];
+    if(perfectPixelsButton_){perfectPixelsButton_->icon=currentTools().brushProfiles[0].perfectPixels?"check":"checkboxUnchecked";perfectPixelsButton_->setEnabled(usable&&!currentDocument().active());}
+    const int profile=currentTools().eraser?1:0;const auto& brush=currentTools().brushProfiles[profile];
 
     updatingBrushFields_=true;
 
@@ -1433,12 +1443,12 @@ void Editor::layoutToolOptions() {
 
     brushShapeButton_->icon=brush.shape==BrushShape::Round?"brush-round":brush.shape==BrushShape::Square?"brush-square":"brush-line";
 
-    auto ditherControl=static_cast<PixelButton*>(toolControls_[1].first);ditherControl->active=brush.dither&&pencilImageBrushId_.empty();ditherControl->setEnabled(usable&&pencilImageBrushId_.empty()&&!document.active());
-    brushShapeButton_->active=pencilImageBrushId_.empty();imageBrushButton_->active=!pencilImageBrushId_.empty();imageBrushButton_->setEnabled(usable);brushShapeButton_->setEnabled(usable);brushSizeInput_->setEnabled(usable && pencilImageBrushId_.empty());brushOpacityInput_->setEnabled(usable);
+    auto ditherControl=static_cast<PixelButton*>(toolControls_[1].first);ditherControl->active=brush.dither&&currentTools().pencilImageBrushId.empty();ditherControl->setEnabled(usable&&currentTools().pencilImageBrushId.empty()&&!currentDocument().active());
+    brushShapeButton_->active=currentTools().pencilImageBrushId.empty();imageBrushButton_->active=!currentTools().pencilImageBrushId.empty();imageBrushButton_->setEnabled(usable);brushShapeButton_->setEnabled(usable);brushSizeInput_->setEnabled(usable && currentTools().pencilImageBrushId.empty());brushOpacityInput_->setEnabled(usable);
 
     const int right=commands_[3]->bounds().x/uiScale-uiGap-(supportsToolSymmetry()?85+uiGap:0),left=rc.x+optionsLayout.workX;int total=0;
 
-    for(std::size_t i=0;i<toolControls_.size();++i) if(std::find(symmetryButtons_.begin(),symmetryButtons_.end(),toolControls_[i].first)==symmetryButtons_.end() && !(eraser_ && toolControls_[i].pencilOnly)) total+=propertyControlWidth(toolControls_[i].first,toolControls_[i].second)+toolControls_[i].gap;
+    for(std::size_t i=0;i<toolControls_.size();++i) if(std::find(symmetryButtons_.begin(),symmetryButtons_.end(),toolControls_[i].first)==symmetryButtons_.end() && !(currentTools().eraser && toolControls_[i].pencilOnly)) total+=propertyControlWidth(toolControls_[i].first,toolControls_[i].second)+toolControls_[i].gap;
 
     int x=left;
 
@@ -1450,7 +1460,7 @@ void Editor::layoutToolOptions() {
         // focus/capture, only to show the same buttons again in this call.
         if(smoke_ && _wgetenv(L"MOONSPRITE_SYMMETRY_VISIBILITY_REFERENCE"))control.first->setVisible(false);
         continue;
-      }const bool applies=!(eraser_ && control.pencilOnly)&&(control.first!=imagePaintModeDropdown_||(ordinaryBrushTool()&&pencilImageBrush_&&pencilImageBrush_->intrinsicSize));
+      }const bool applies=!(currentTools().eraser && control.pencilOnly)&&(control.first!=imagePaintModeDropdown_||(ordinaryBrushTool()&&currentTools().pencilImageBrush&&currentTools().pencilImageBrush->intrinsicSize));
 
       const auto button=dynamic_cast<PixelButton*>(control.first);
 
@@ -1458,7 +1468,7 @@ void Editor::layoutToolOptions() {
 
       placePropertyControl(control.first,x,control.second);
 
-      control.first->setVisible(!handTool_ && applies);
+      control.first->setVisible(!currentTools().handTool && applies);
       if(control.first==imagePaintModeDropdown_)control.first->setEnabled(usable);
 
       if(applies) x+=propertyControlWidth(control.first,control.second)+control.gap;
@@ -1470,40 +1480,40 @@ void Editor::layoutToolOptions() {
   }
 
 std::vector<int> Editor::paletteViewSlots()const{
- auto& cache=paletteLayoutCache_;if(cache.identity!=document.identity()||cache.revision!=document.revision()||cache.columns!=paletteColumns_||cache.manual!=paletteManual_){const auto& p=document.palette();auto slots=paletteManual_?fitPaletteSlotsToGrid(normalizePaletteSlots(p.entries,p.order(),p.slots,p.columns),p.columns,paletteColumns_).slots:visiblePaletteOrder(p.entries,p.order());cache.slots=std::move(slots);cache.identity=document.identity();cache.revision=document.revision();cache.columns=paletteColumns_;cache.manual=paletteManual_;}return cache.slots;
+ auto& cache=paletteLayoutCache_;if(cache.identity!=currentDocument().identity()||cache.revision!=currentDocument().revision()||cache.columns!=paletteColumns_||cache.manual!=paletteManual_){const auto& p=currentDocument().palette();auto slots=paletteManual_?fitPaletteSlotsToGrid(normalizePaletteSlots(p.entries,p.order(),p.slots,p.columns),p.columns,paletteColumns_).slots:visiblePaletteOrder(p.entries,p.order());cache.slots=std::move(slots);cache.identity=currentDocument().identity();cache.revision=currentDocument().revision();cache.columns=paletteColumns_;cache.manual=paletteManual_;}return cache.slots;
 }
 
-PaletteViewSelection Editor::capturePaletteView()const{PaletteViewSelection view;view.columns=paletteColumns_;view.focused=paletteFocusedSlot_;if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())view.box=std::make_pair(paletteBoxRange_->start,paletteBoxRange_->end);return view;}
+PaletteViewSelection Editor::capturePaletteView()const{PaletteViewSelection view;view.columns=paletteColumns_;view.focused=paletteFocusedSlot_;if(paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity())view.box=std::make_pair(paletteBoxRange_->start,paletteBoxRange_->end);return view;}
 
-void Editor::restorePaletteView(){const auto serial=document.paletteViewRestoreSerial();if(paletteRestoreIdentity_==document.identity()&&paletteRestoreSerial_==serial)return;paletteRestoreIdentity_=document.identity();paletteRestoreSerial_=serial;if(const auto& view=document.paletteViewRestore()){auto map=[&](std::size_t i){return i/view->columns*paletteColumns_+i%view->columns;};paletteFocusedSlot_=view->focused?std::optional<std::size_t>(map(*view->focused)):std::nullopt;if(view->box)paletteBoxRange_=PaletteBoxRange{document.identity(),map(view->box->first),map(view->box->second),document.palette().selected};else paletteBoxRange_.reset();}}
+void Editor::restorePaletteView(){const auto serial=currentDocument().paletteViewRestoreSerial();if(paletteRestoreIdentity_==currentDocument().identity()&&paletteRestoreSerial_==serial)return;paletteRestoreIdentity_=currentDocument().identity();paletteRestoreSerial_=serial;if(const auto& view=currentDocument().paletteViewRestore()){auto map=[&](std::size_t i){return i/view->columns*paletteColumns_+i%view->columns;};paletteFocusedSlot_=view->focused?std::optional<std::size_t>(map(*view->focused)):std::nullopt;if(view->box)paletteBoxRange_=PaletteBoxRange{currentDocument().identity(),map(view->box->first),map(view->box->second),currentDocument().palette().selected};else paletteBoxRange_.reset();}}
 
 void Editor::choosePaletteLayout(bool manual){if(paletteGesture_)finishPalettePointer(true);if(paletteGrowth_)finishPaletteGrowth(true);paletteManual_=manual;if(!smoke_)try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"palette-layout-mode.txt");out<<(manual?"manual":"auto");if(!out)throw std::runtime_error("Palette layout write");}catch(...){status_=U"色板布局偏好保存失败";}refresh();}
 
-void Editor::addManualPaletteColor(std::size_t slot){const auto slots=paletteViewSlots();if(slot<slots.size()&&slots[slot])return;try{document.addPaletteColor(document.palette().primary,paletteLocked_,slot,&slots,paletteColumns_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";refresh();return;}if(!paletteLocked_){paletteFocusedSlot_.reset();paletteBoxRange_.reset();}refresh();}
+void Editor::addManualPaletteColor(std::size_t slot){const auto slots=paletteViewSlots();if(slot<slots.size()&&slots[slot])return;try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_,slot,&slots,paletteColumns_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";refresh();return;}if(!paletteLocked_){paletteFocusedSlot_.reset();paletteBoxRange_.reset();}refresh();}
 
 std::string Editor::activeRailTool() const {
-    if(liquifyTool_)return "liquify";
-    if(smoothTool_)return "smooth";
-    if(airbrushTool_)return "airbrush";
-    if(rotateTool_)return "rotate";
-    if(textTool_)return "text";
-    if(moveTool_)return sliceMode_?"move.slice":"move.move";
+    if(currentTools().liquifyTool)return "liquify";
+    if(currentTools().smoothTool)return "smooth";
+    if(currentTools().airbrushTool)return "airbrush";
+    if(currentTools().rotateTool)return "rotate";
+    if(currentTools().textTool)return "text";
+    if(currentTools().moveTool)return currentTools().sliceMode?"move.slice":"move.move";
 
-    if(shapeTool_){const char* ids[]{"line.line","shape.rectangle-outline","shape.rectangle","shape.ellipse-outline","shape.ellipse","shape.polygon","shape.freeform","line.curve"};return ids[int(shapeSpec_.kind)];}
+    if(currentTools().shapeTool){const char* ids[]{"line.line","shape.rectangle-outline","shape.rectangle","shape.ellipse-outline","shape.ellipse","shape.polygon","shape.freeform","line.curve"};return ids[int(currentTools().shapeKind)];}
 
-    if(navigation_.zoomTool_)return "zoom";
+    if(currentTools().zoomTool)return "zoom";
 
-    if(eyedropperTool_)return "eyedropper";
+    if(currentTools().eyedropperTool)return "eyedropper";
 
-    if(handTool_)return "hand";
+    if(currentTools().handTool)return "hand";
 
-    if(selectionTool_)return legacyToolGroups()[3][selectionKind_].id;
+    if(currentTools().selectionTool)return legacyToolGroups()[3][currentTools().selectionKind].id;
 
-    if(gradientTool_)return "fill.gradient";
+    if(currentTools().gradientTool)return "fill.gradient";
 
-    if(fillTool_)return magicEraserTool_?"magic-eraser":"fill.bucket";
+    if(currentTools().fillTool)return currentTools().magicEraserTool?"magic-eraser":"fill.bucket";
 
-    return eraser_?legacyToolGroups()[1].front().id:legacyToolGroups()[0].front().id;
+    return currentTools().eraser?legacyToolGroups()[1].front().id:legacyToolGroups()[0].front().id;
 
   }
 
@@ -1515,33 +1525,33 @@ void Editor::cancelStroke() {
     if(sliceDrag_)finishSliceGesture(true);
     if(moveDragging_)finishMoveGesture(true);
 
-    playing_=false;
-    if(temporaryBrushCapture_)exitTemporaryBrushCapture();
+    currentPlayback().playing=false;
+    if(currentTools().temporaryBrushCapture)exitTemporaryBrushCapture();
 
     finishPan(true);
 
-    curveControls_.clear();curveEndpoint_=true;curveAnchorIndex_=0;shapeSpec_.polygonPath.clear();shapeSpec_.polygonContour.clear();polygonShapeRedo_.clear();polygonShapeCachePath_.clear();polygonShapeCache_.clear();shapeDragging_=shapeRequest_=false;gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;if(fillDragging_){fillDragging_=false;if(fillCommitted_){fillCommitted_=false;document.undo();}}document.cancelStroke(); if(hasCapture()) releaseMouse(); refresh();
+    curveControls_.clear();curveEndpoint_=true;curveAnchorIndex_=0;shapeSpec_.polygonPath.clear();shapeSpec_.polygonContour.clear();polygonShapeRedo_.clear();polygonShapeCachePath_.clear();polygonShapeCache_.clear();shapeDragging_=shapeRequest_=false;gradientDragging_=gradientPending_=gradientRequest_=false;gradientHandle_=-1;if(fillDragging_){fillDragging_=false;if(fillCommitted_){fillCommitted_=false;currentDocument().undo();}}currentDocument().cancelStroke(); if(hasCapture()) releaseMouse(); refresh();
 
   }
 
-bool& Editor::symmetryFlag(int i){auto& a=document.symmetryAxes;return i==0?a.horizontal:i==1?a.vertical:i==2?a.diagonalUp:i==3?a.diagonalDown:a.rotational;}
+bool& Editor::symmetryFlag(int i){auto& a=currentDocument().symmetryAxes;return i==0?a.horizontal:i==1?a.vertical:i==2?a.diagonalUp:i==3?a.diagonalDown:a.rotational;}
 
 void Editor::saveSymmetryPreferences(){try{if(smoke_)return;const auto path=palettePreferencePath().parent_path()/"symmetry.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);for(int i=0;i<5;++i)out<<symmetryFlag(i)<<' ';out<<symmetryLocked_<<' '<<symmetryThickness_<<' '<<symmetryColor_;}catch(const std::exception& e){status_=U"对称偏好保存失败："+unicodeText(e.what());}}
 
 void Editor::toggleSymmetry(int i){
-  if(document.active() || i<0 || i>4)return;
+  if(currentDocument().active() || i<0 || i>4)return;
   const bool on=!symmetryFlag(i);
   const auto viewport=canvasViewport();
-  const auto center=document.symmetryCenter();
+  const auto center=currentDocument().symmetryCenter();
   // Legacy symmetryAxisSegment + viewportSegmentVisible: test the finite
   // displayed axis, rather than requiring its center to be on screen.
   auto visible=[&]{
     if(viewport.w<=0 || viewport.h<=0)return true;
-    auto displayPoint=[&](double x,double y){return viewRotation_.forward({canvas_.x+x*canvasScale(),canvas_.y+y*canvasScale()},canvasRotationPivot());};
+    auto displayPoint=[&](double x,double y){return currentView().rotation.forward({currentView().canvas.x+x*canvasScale(),currentView().canvas.y+y*canvasScale()},canvasRotationPivot());};
     const auto pivot=displayPoint(center.x,center.y);
     if(i==4)return pivot.x>=viewport.x && pivot.x<=viewport.x2() && pivot.y>=viewport.y && pivot.y<=viewport.y2();
     std::vector<view::Point> points;
-    const double w=document.width(),h=document.height();
+    const double w=currentDocument().width(),h=currentDocument().height();
     auto add=[&](double x,double y){
       const double e=1e-6;if(x< -e || y< -e || x>w+e || y>h+e)return;
       view::Point point{std::clamp(x,0.,w),std::clamp(y,0.,h)};
@@ -1566,20 +1576,20 @@ void Editor::toggleSymmetry(int i){
   };
   if(on && (!symmetryInitialized_ || !visible())){
     const auto at=canvasDocumentPoint(viewport.center());
-    const auto next=moveSymmetryCenter(center,SymmetryAxis::Center,{at.x,at.y},document.width(),document.height());
-    if(next.x!=center.x || next.y!=center.y)document.setSymmetryCenter(next);
+    const auto next=moveSymmetryCenter(center,SymmetryAxis::Center,{at.x,at.y},currentDocument().width(),currentDocument().height());
+    if(next.x!=center.x || next.y!=center.y)currentDocument().setSymmetryCenter(next);
   }
   if(on)symmetryInitialized_=true;
-  symmetryFlag(i)=on;persistedSymmetryAxes_=document.symmetryAxes;saveSymmetryPreferences();refresh();
+  symmetryFlag(i)=on;persistedSymmetryAxes_=currentDocument().symmetryAxes;saveSymmetryPreferences();refresh();
 }
 
-void Editor::showSymmetryMenu(){PixelMenu menu(skin_);auto add=[&](const char32_t* label,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,label);item->Click.connect(action);menu.addChild(item);return item;};add(U"重置对称轴",[this]{document.setSymmetryCenter(defaultSymmetryCenter(document.width(),document.height()));refresh();});auto lock=add(U"锁定对称轴（Ctrl临时解锁）",[this]{symmetryLocked_=!symmetryLocked_;saveSymmetryPreferences();});lock->checked=[this]{return symmetryLocked_;};for(int n=1;n<=8;++n){auto item=new PixelMenuItem(font_,skin_,U"轴粗细 "+unicodeText(std::to_string(n))+U" px");item->checked=[this,n]{return symmetryThickness_==n;};item->Click.connect([this,n]{symmetryThickness_=n;saveSymmetryPreferences();invalidateRect(canvasViewport());});menu.addChild(item);}auto colorLabel=new PixelMenuItem(font_,skin_,U"对称轴颜色 HEX");colorLabel->setEnabled(false);menu.addChild(colorLabel);auto colorInput=new PixelEntry(font_,skin_);colorInput->setText(paletteHex(symmetryColor_));menu.addChild(colorInput);colorInput->Change.connect([this,colorInput]{Pixel next;if(parsePaletteHex(colorInput->text(),next)){symmetryColor_=next;saveSymmetryPreferences();invalidateRect(canvasViewport());}});const auto at=symmetryButtons_[5]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
+void Editor::showSymmetryMenu(){PixelMenu menu(skin_);auto add=[&](const char32_t* label,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,label);item->Click.connect(action);menu.addChild(item);return item;};add(U"重置对称轴",[this]{currentDocument().setSymmetryCenter(defaultSymmetryCenter(currentDocument().width(),currentDocument().height()));refresh();});auto lock=add(U"锁定对称轴（Ctrl临时解锁）",[this]{symmetryLocked_=!symmetryLocked_;saveSymmetryPreferences();});lock->checked=[this]{return symmetryLocked_;};for(int n=1;n<=8;++n){auto item=new PixelMenuItem(font_,skin_,U"轴粗细 "+unicodeText(std::to_string(n))+U" px");item->checked=[this,n]{return symmetryThickness_==n;};item->Click.connect([this,n]{symmetryThickness_=n;saveSymmetryPreferences();invalidateRect(canvasViewport());});menu.addChild(item);}auto colorLabel=new PixelMenuItem(font_,skin_,U"对称轴颜色 HEX");colorLabel->setEnabled(false);menu.addChild(colorLabel);auto colorInput=new PixelEntry(font_,skin_);colorInput->setText(paletteHex(symmetryColor_));menu.addChild(colorInput);colorInput->Change.connect([this,colorInput]{Pixel next;if(parsePaletteHex(colorInput->text(),next)){symmetryColor_=next;saveSymmetryPreferences();invalidateRect(canvasViewport());}});const auto at=symmetryButtons_[5]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
-std::optional<SymmetryAxis> Editor::symmetryHit(gfx::Point at,bool ctrl)const{if(!symmetryAxisDragAllowed(symmetryLocked_,ctrl) || !symmetryHas(document.symmetryAxes) || !canvasViewport().contains(at) || !canvasDocumentContains(at))return {};const auto p=SymmetryCenter{canvasDocumentPoint(at).x,canvasDocumentPoint(at).y},c=document.symmetryCenter();if(std::hypot(p.x-c.x,p.y-c.y)<=std::max(.35,9/canvasScale()))return SymmetryAxis::Center;const double radius=std::max(.25,std::max(7.0,symmetryThickness_/2.0+4)/canvasScale());double best=radius;std::optional<SymmetryAxis> axis;auto check=[&](SymmetryAxis a,double d){if(d<=radius && (!axis || d<best)){best=d;axis=a;}};const auto a=document.symmetryAxes;if(a.horizontal||a.rotational)check(SymmetryAxis::Horizontal,std::abs(p.y-c.y));if(a.vertical||a.rotational)check(SymmetryAxis::Vertical,std::abs(p.x-c.x));if(a.diagonalUp)check(SymmetryAxis::DiagonalUp,std::abs(p.x+p.y-c.x-c.y)/std::sqrt(2.0));if(a.diagonalDown)check(SymmetryAxis::DiagonalDown,std::abs(p.y-p.x-c.y+c.x)/std::sqrt(2.0));return axis;}
+std::optional<SymmetryAxis> Editor::symmetryHit(gfx::Point at,bool ctrl)const{if(!symmetryAxisDragAllowed(symmetryLocked_,ctrl) || !symmetryHas(currentDocument().symmetryAxes) || !canvasViewport().contains(at) || !canvasDocumentContains(at))return {};const auto p=SymmetryCenter{canvasDocumentPoint(at).x,canvasDocumentPoint(at).y},c=currentDocument().symmetryCenter();if(std::hypot(p.x-c.x,p.y-c.y)<=std::max(.35,9/canvasScale()))return SymmetryAxis::Center;const double radius=std::max(.25,std::max(7.0,symmetryThickness_/2.0+4)/canvasScale());double best=radius;std::optional<SymmetryAxis> axis;auto check=[&](SymmetryAxis a,double d){if(d<=radius && (!axis || d<best)){best=d;axis=a;}};const auto a=currentDocument().symmetryAxes;if(a.horizontal||a.rotational)check(SymmetryAxis::Horizontal,std::abs(p.y-c.y));if(a.vertical||a.rotational)check(SymmetryAxis::Vertical,std::abs(p.x-c.x));if(a.diagonalUp)check(SymmetryAxis::DiagonalUp,std::abs(p.x+p.y-c.x-c.y)/std::sqrt(2.0));if(a.diagonalDown)check(SymmetryAxis::DiagonalDown,std::abs(p.y-p.x-c.y+c.x)/std::sqrt(2.0));return axis;}
 
-void Editor::finishSymmetryDrag(bool cancel){if(!symmetryDragging_)return;const auto center=cancel?symmetryDragBefore_:document.symmetryCenter();document.setSymmetryCenter(center,!cancel);symmetryDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();refresh();}
+void Editor::finishSymmetryDrag(bool cancel){if(!symmetryDragging_)return;const auto center=cancel?symmetryDragBefore_:currentDocument().symmetryCenter();currentDocument().setSymmetryCenter(center,!cancel);symmetryDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();refresh();}
 
-void Editor::useEyedropperTool(){liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;if((document.active()&&!document.floating()) || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active() || navigation_.zoomDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=navigation_.zoomTool_=false;eyedropperTool_=true;playing_=false;layoutToolOptions();refresh();}
+void Editor::useEyedropperTool(){currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().rotateTool=false;if((currentDocument().active()&&!currentDocument().floating()) || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active() || navigation_.zoomDragging_)return;currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().textTool=false;currentTools().moveTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=currentTools().zoomTool=false;currentTools().eyedropperTool=true;currentPlayback().playing=false;layoutToolOptions();refresh();}
 
 std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget& owner){
  const auto work=std::dynamic_pointer_cast<EyedropperLensWork>(owner.getProperty("moonsprite.eyedropper-lens-work"));
@@ -1591,30 +1601,30 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
     auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
     if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
     if(!eyedropperLensEnabled_){work->pending=false;eyedropperLensSurface_.reset();return;}
-    if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto at=canvasDocumentPoint(pointer);if(!repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_))return;}
+    if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto at=canvasDocumentPoint(pointer);if(!repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat))return;}
     // First preview remains immediate; subsequent pointer bursts render once at paint.
     if(!work->rendering&&eyedropperLensSurface_){work->pointer=pointer;work->sampled=sampled;work->pending=true;invalidateRect(canvasViewport());return;}
     work->pending=false;
 
-    if(!eyedropperLensSurface_)eyedropperLensPrevious_=eyedropperGesture_.secondary()?document.palette().secondary:document.palette().primary;
+    if(!eyedropperLensSurface_)eyedropperLensPrevious_=eyedropperGesture_.secondary()?currentDocument().palette().secondary:currentDocument().palette().primary;
 
     eyedropperLensPointer_=pointer;
 
     auto at=canvasDocumentPoint(pointer);
-    if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){
-      const auto mapped=repeat::map({at.x,at.y},document.width(),document.height(),tileRepeat_);
+    if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){
+      const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);
       if(!mapped)return;
       at={mapped->local.x,mapped->local.y};
-      sampled=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),int(std::floor(at.x)),int(std::floor(at.y)),eyedropperSource_);
+      sampled=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
     }
     const double px=at.x,py=at.y;
 
     const int sx=int(std::floor(px))-12,sy=int(std::floor(py))-12;
 
-    if(!work->cached||work->identity!=document.identity()||work->revision!=document.revision()||work->frame!=document.frame().id||work->layer!=document.layer().id||work->source!=eyedropperSource_||work->x!=sx||work->y!=sy){
-      auto pixels=eyedropperSource_==EyedropperSource::Composite?compositeNormalRegion(document.timeline(),document.frame().id,{sx,sy,25,25}):std::vector<Pixel>(625);
-      if(eyedropperSource_==EyedropperSource::CurrentLayer)for(int y=0;y<25;++y)for(int x=0;x<25;++x)pixels[y*25+x]=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),sx+x,sy+y,eyedropperSource_);
-      work->pixels=std::move(pixels);work->identity=document.identity();work->revision=document.revision();work->frame=document.frame().id;work->layer=document.layer().id;work->source=eyedropperSource_;work->x=sx;work->y=sy;work->cached=true;++work->reads;
+    if(!work->cached||work->identity!=currentDocument().identity()||work->revision!=currentDocument().revision()||work->frame!=currentDocument().frame().id||work->layer!=currentDocument().layer().id||work->source!=currentTools().eyedropperSource||work->x!=sx||work->y!=sy){
+      auto pixels=currentTools().eyedropperSource==EyedropperSource::Composite?compositeNormalRegion(currentDocument().timeline(),currentDocument().frame().id,{sx,sy,25,25}):std::vector<Pixel>(625);
+      if(currentTools().eyedropperSource==EyedropperSource::CurrentLayer)for(int y=0;y<25;++y)for(int x=0;x<25;++x)pixels[y*25+x]=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),sx+x,sy+y,currentTools().eyedropperSource);
+      work->pixels=std::move(pixels);work->identity=currentDocument().identity();work->revision=currentDocument().revision();work->frame=currentDocument().frame().id;work->layer=currentDocument().layer().id;work->source=currentTools().eyedropperSource;work->x=sx;work->y=sy;work->cached=true;++work->reads;
     }
     const auto& pixels=work->pixels;++work->renders;
 
@@ -1622,7 +1632,7 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
     eyedropperLensSurface_=os::instance()->makeRgbaSurface(128,128);eyedropperLensSurface_->clear();
 
-    const double pixelScale=std::max(12.0,zoom_*1.5)/2;
+    const double pixelScale=std::max(12.0,currentView().zoom*1.5)/2;
 
     auto over=[](Pixel background,Pixel color){const unsigned a=color>>24;auto c=[&](int shift){return (((color>>shift)&255)*a+((background>>shift)&255)*(255-a)+127)/255;};return Pixel(c(0)|(c(8)<<8)|(c(16)<<16)|0xff000000);};
 
@@ -1642,7 +1652,7 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
         const Pixel bg=Pixel(gfx::getr(checker)|(gfx::getg(checker)<<8)|(gfx::getb(checker)<<16)|0xff000000);
 
-        color=over(bg,dx>=0 && dy>=0 && dx<document.width() && dy<document.height() && dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
+        color=over(bg,dx>=0 && dy>=0 && dx<currentDocument().width() && dy<currentDocument().height() && dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
 
         if(x>=56 && x<72 && y>=56 && y<72){const auto p=pointerBitmap.pixels[(y-56)*2*32+(x-56)*2];color=over(color,(p&0xffffff)|((p>>25)<<24));}
 
@@ -1687,7 +1697,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   auto target=colorEditorSamplingTarget_;
   if(!colorEditorSampling_||!target)return false;
   auto finish=[&]{target->finishSampling();};
-  if(document.identity()!=colorEditorSamplingIdentity_){finish();return false;}
+  if(currentDocument().identity()!=colorEditorSamplingIdentity_){finish();return false;}
   if(msg->type()==ui::kKeyDownMessage){
     if(static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){finish();return true;}
     return false;
@@ -1713,16 +1723,16 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
     }else if(msg->type()!=ui::kMouseMoveMessage)return false;
     if(eyedropperGesture_.active()&&canvasViewport().contains(point)){
       const auto p=transformCanvasPoint(point);const Point at{int(std::floor(p.x)),int(std::floor(p.y))};
-      const auto color=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),at.x,at.y,eyedropperSource_);
+      const auto color=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),at.x,at.y,currentTools().eyedropperSource);
       updateEyedropperLens(point,color);sampleEyedropperAt(at);
     }
     return eyedropperGesture_.active();
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
 }
 
-void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
+void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),p.x,p.y,currentTools().eyedropperSource);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
 
-void Editor::finishEyedropper(){if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=eyedropperTool_ && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{document.addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){eyedropperTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=navigation_.zoomTool_=eraser_=false;}updateNavigationCursor();refresh();}
+void Editor::finishEyedropper(){if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=currentTools().eyedropperTool && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{currentDocument().addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){currentTools().eyedropperTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().zoomTool=currentTools().eraser=false;}updateNavigationCursor();refresh();}
 
 std::filesystem::path Editor::fillBrushLibraryDirectory() const {if(brushLibraryTestDirectory_)return *brushLibraryTestDirectory_;
 
@@ -1732,74 +1742,74 @@ std::filesystem::path Editor::fillBrushLibraryDirectory() const {if(brushLibrary
 
 std::filesystem::path Editor::backgroundPresetDirectory() const {return fillBrushLibraryDirectory().parent_path()/L"BackgroundPresets";}
 
-void Editor::createSelectionBackgroundPreset(){document.commitFloatingPaste();if(!document.selection()){status_=U"请先创建选区";refresh();return;}try{auto image=encodeSelectionBackgroundPreset(document,*document.selection());if(!image){status_=U"选区中没有可用的背景预设像素";refresh();return;}BackgroundPresetLibrary library(backgroundPresetTestDirectory_.value_or(backgroundPresetDirectory()));library.save(U"选区背景预设",image->png);status_=U"已保存背景预设";}catch(const std::exception& e){status_=U"保存背景预设失败："+unicodeText(e.what());}refresh();}
+void Editor::createSelectionBackgroundPreset(){currentDocument().commitFloatingPaste();if(!currentDocument().selection()){status_=U"请先创建选区";refresh();return;}try{auto image=encodeSelectionBackgroundPreset(currentDocument(),*currentDocument().selection());if(!image){status_=U"选区中没有可用的背景预设像素";refresh();return;}BackgroundPresetLibrary library(backgroundPresetTestDirectory_.value_or(backgroundPresetDirectory()));library.save(U"选区背景预设",image->png);status_=U"已保存背景预设";}catch(const std::exception& e){status_=U"保存背景预设失败："+unicodeText(e.what());}refresh();}
 
-void Editor::resolvePencilImageBrush(){pencilImageBrush_.reset();if(pencilImageBrushId_.empty())return;try{if(pencilImageBrushId_.rfind("project:",0)==0){const auto id=pencilImageBrushId_.substr(8);for(const auto& item:document.projectBrushes())if(item.metadata.id==id){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=item.brush;temporaryBrushActive_=false;return;}throw std::runtime_error("工程笔刷已不存在");}PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes)if(item.id==pencilImageBrushId_){if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];pencilImageBrush_=importPatternBrush(std::filesystem::u8path(item.filePath)).brush;pencilImageBrush_->selectionColorMapping=item.sourceX.has_value()&&item.sourceY.has_value();pencilImageBrush_->sourceX=item.sourceX.value_or(0);pencilImageBrush_->sourceY=item.sourceY.value_or(0);temporaryBrushActive_=false;return;}throw std::runtime_error("本地笔刷已不存在");}catch(const std::exception& e){pencilImageBrushId_.clear();status_=U"图像笔刷不可用："+unicodeText(e.what());}}
+void Editor::resolvePencilImageBrush(){currentTools().pencilImageBrush.reset();if(currentTools().pencilImageBrushId.empty())return;try{if(currentTools().pencilImageBrushId.rfind("project:",0)==0){const auto id=currentTools().pencilImageBrushId.substr(8);for(const auto& item:currentDocument().projectBrushes())if(item.metadata.id==id){if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];currentTools().pencilImageBrush=item.brush;currentTools().temporaryBrushActive=false;return;}throw std::runtime_error("工程笔刷已不存在");}PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& item:library.list().brushes)if(item.id==currentTools().pencilImageBrushId){if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];currentTools().pencilImageBrush=importPatternBrush(std::filesystem::u8path(item.filePath)).brush;currentTools().pencilImageBrush->selectionColorMapping=item.sourceX.has_value()&&item.sourceY.has_value();currentTools().pencilImageBrush->sourceX=item.sourceX.value_or(0);currentTools().pencilImageBrush->sourceY=item.sourceY.value_or(0);currentTools().temporaryBrushActive=false;return;}throw std::runtime_error("本地笔刷已不存在");}catch(const std::exception& e){currentTools().pencilImageBrushId.clear();status_=U"图像笔刷不可用："+unicodeText(e.what());}}
 
 
 void Editor::deleteFillLibrarySelection(const std::vector<std::string>& ids){
- if(ids.empty()||pending_!=Pending::None||document.active())return;
- try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:ids){if(id.rfind("project:",0)==0)document.deleteProjectBrush(id.substr(8));else library.remove(id);fillLibrarySelection_.removed(id);}applyFillLibrarySelection();saveBrushPreferences();status_=U"已删除笔刷："+unicodeText(std::to_string(ids.size()));}catch(const std::exception& e){const auto error=std::string(e.what());try{applyFillLibrarySelection();}catch(const std::exception&){fillPattern_.brushes.clear();fillImageName_.clear();pencilImageBrushId_.clear();pencilImageBrush_.reset();}status_=U"删除图案失败："+unicodeText(error);}brushLibraryNeedsReload_=true;refresh();
+ if(ids.empty()||pending_!=Pending::None||currentDocument().active())return;
+ try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:ids){if(id.rfind("project:",0)==0)currentDocument().deleteProjectBrush(id.substr(8));else library.remove(id);currentTools().fillLibrarySelection.removed(id);}applyFillLibrarySelection();saveBrushPreferences();status_=U"已删除笔刷："+unicodeText(std::to_string(ids.size()));}catch(const std::exception& e){const auto error=std::string(e.what());try{applyFillLibrarySelection();}catch(const std::exception&){currentTools().fillPattern.brushes.clear();currentTools().fillImageName.clear();currentTools().pencilImageBrushId.clear();currentTools().pencilImageBrush.reset();}status_=U"删除图案失败："+unicodeText(error);}brushLibraryNeedsReload_=true;refresh();
 }
 void Editor::confirmFillLibraryDelete(int verify){
- if(pending_!=Pending::None||document.active()||fillLibrarySelection_.ids.empty())return;
- try{PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<std::string> ids;std::u32string name;auto add=[&](const std::string& id,const std::string& label){if(std::find(fillLibrarySelection_.ids.begin(),fillLibrarySelection_.ids.end(),id)!=fillLibrarySelection_.ids.end()){ids.push_back(id);name=unicodeText(label);}};for(const auto& item:listing.brushes)if(item.folderId==fillFolder_)add(item.id,item.name);if(fillFolder_.empty())for(const auto& item:document.projectBrushes())add("project:"+item.metadata.id,item.metadata.name);if(ids.empty())return;if(ids.size()>1)name=unicodeText(std::to_string(ids.size()))+U" 个笔刷";
- const auto identity=document.identity();BrushLibraryDeleteDialog popup(font_,skin_,toolIcons_,name);popup.setDisplay(display(),false);const auto size=popup.minimumDialogSize(300*uiScale);popup.setBounds({bounds().center().x-150*uiScale,bounds().center().y-size.h/2,300*uiScale,size.h});ui::Timer timer(30,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke(verify-1);});timer.start();}popup.openWindowInForeground();if(popup.accepted()&&document.identity()==identity)deleteFillLibrarySelection(ids);
+ if(pending_!=Pending::None||currentDocument().active()||currentTools().fillLibrarySelection.ids.empty())return;
+ try{PatternBrushLibrary library(fillBrushLibraryDirectory());const auto listing=library.list();std::vector<std::string> ids;std::u32string name;auto add=[&](const std::string& id,const std::string& label){if(std::find(currentTools().fillLibrarySelection.ids.begin(),currentTools().fillLibrarySelection.ids.end(),id)!=currentTools().fillLibrarySelection.ids.end()){ids.push_back(id);name=unicodeText(label);}};for(const auto& item:listing.brushes)if(item.folderId==fillFolder_)add(item.id,item.name);if(fillFolder_.empty())for(const auto& item:currentDocument().projectBrushes())add("project:"+item.metadata.id,item.metadata.name);if(ids.empty())return;if(ids.size()>1)name=unicodeText(std::to_string(ids.size()))+U" 个笔刷";
+ const auto identity=currentDocument().identity();BrushLibraryDeleteDialog popup(font_,skin_,toolIcons_,name);popup.setDisplay(display(),false);const auto size=popup.minimumDialogSize(300*uiScale);popup.setBounds({bounds().center().x-150*uiScale,bounds().center().y-size.h/2,300*uiScale,size.h});ui::Timer timer(30,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke(verify-1);});timer.start();}popup.openWindowInForeground();if(popup.accepted()&&currentDocument().identity()==identity)deleteFillLibrarySelection(ids);
  }catch(const std::exception& e){status_=U"删除图案失败："+unicodeText(e.what());}requestFocus();refresh();
 }
 
 void Editor::editFillFolder(bool rename){if(rename&&fillFolder_.empty())return;fillFolderRename_=rename;fillFolderEditing_=fillFolder_;paletteInput_->numeric=false;paletteInput_->suffix.clear();paletteInput_->setText(rename?std::filesystem::u8path(fillFolder_).filename().u8string():"");pending_=Pending::BrushFolderName;menuBar_->setEnabled(false);discard_->caption=rename?U"重命名":U"创建";keep_->caption=U"取消";discard_->setVisible(true);keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
 
-void Editor::moveFillBrushes(const std::string& folder){try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:fillLibrarySelection_.ids)if(id.rfind("project:",0)!=0)library.move(id,folder);status_=U"已移动选中图案";}catch(const std::exception& e){status_=U"移动图案失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();}
+void Editor::moveFillBrushes(const std::string& folder){try{PatternBrushLibrary library(fillBrushLibraryDirectory());for(const auto& id:currentTools().fillLibrarySelection.ids)if(id.rfind("project:",0)!=0)library.move(id,folder);status_=U"已移动选中图案";}catch(const std::exception& e){status_=U"移动图案失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();}
 
-void Editor::confirmFillFolderDelete(){if(fillFolder_.empty())return;auto target=fillFolder_;PixelMenu menu(skin_);menu.addChild(new PixelMenuItem(font_,skin_,U"取消"));auto confirm=new PixelMenuItem(font_,skin_,U"确认删除文件夹及全部图案（无法撤销）");confirm->Click.connect([this,target]{try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto before=library.list();library.removeFolder(target);for(const auto& item:before.brushes)if(item.folderId==target||item.folderId.rfind(target+"/",0)==0)fillLibrarySelection_.removed(item.id);fillFolder_.clear();applyFillLibrarySelection();saveBrushPreferences();status_=U"已删除图案文件夹";}catch(const std::exception& e){status_=U"删除文件夹失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();});menu.addChild(confirm);auto at=brushLibraryPanel_&&brushLibraryPanel_->isVisible()?brushLibraryActions_[2]->bounds():fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
+void Editor::confirmFillFolderDelete(){if(fillFolder_.empty())return;auto target=fillFolder_;PixelMenu menu(skin_);menu.addChild(new PixelMenuItem(font_,skin_,U"取消"));auto confirm=new PixelMenuItem(font_,skin_,U"确认删除文件夹及全部图案（无法撤销）");confirm->Click.connect([this,target]{try{PatternBrushLibrary library(fillBrushLibraryDirectory());auto before=library.list();library.removeFolder(target);for(const auto& item:before.brushes)if(item.folderId==target||item.folderId.rfind(target+"/",0)==0)currentTools().fillLibrarySelection.removed(item.id);fillFolder_.clear();applyFillLibrarySelection();saveBrushPreferences();status_=U"已删除图案文件夹";}catch(const std::exception& e){status_=U"删除文件夹失败："+unicodeText(e.what());}brushLibraryNeedsReload_=true;refresh();});menu.addChild(confirm);auto at=brushLibraryPanel_&&brushLibraryPanel_->isVisible()?brushLibraryActions_[2]->bounds():fillImageButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
 // legacy workspace-commands-tool.ts274-311 and workspace-temporary-brush.test.ts.
 void Editor::beginTemporaryBrushCapture(){
- if(temporaryBrushCapture_ || (document.active()&&!document.floating()) || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientPending_ || gradientDragging_ || fillDragging_ || eyedropperGesture_.active())return;
- document.commitFloatingPaste();cancelStroke();
- if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];
- temporaryBrushCapture_=TemporaryBrushCapture{selectionKind_,selectionMode_,selectionCornerRadius_,selectionRounded_,document.identity()};
- selectionKind_=0;selectionMode_=0;selectionRounded_=false;selectionFreeTransform_=selectionPropertiesActive_=false;
- selectionTool_=true;shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;
+ if(currentTools().temporaryBrushCapture || (currentDocument().active()&&!currentDocument().floating()) || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientPending_ || gradientDragging_ || fillDragging_ || eyedropperGesture_.active())return;
+ currentDocument().commitFloatingPaste();cancelStroke();
+ if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];
+ currentTools().temporaryBrushCapture=TemporaryBrushCapture{currentTools().selectionKind,currentTools().selectionMode,currentTools().selectionCornerRadius,currentTools().selectionRounded,currentDocument().identity()};
+ currentTools().selectionKind=0;currentTools().selectionMode=0;currentTools().selectionRounded=false;currentView().freeTransform=selectionPropertiesActive_=false;
+ currentTools().selectionTool=true;currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;
  status_=U"拖出矩形捕获临时笔刷，Esc 取消";refresh();
 }
 void Editor::finishTemporaryBrushCapture(const SelectionMask& selection){
- if(!temporaryBrushCapture_ || temporaryBrushCapture_->identity!=document.identity())return;
+ if(!currentTools().temporaryBrushCapture || currentTools().temporaryBrushCapture->identity!=currentDocument().identity())return;
  try{
-  auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),selection);
+  auto brush=createSelectionPatternBrush(currentDocument().activeSurfaceIfPresent(),currentDocument().width(),currentDocument().height(),selection);
   if(!brush){status_=U"选区中没有可用笔刷像素";return;}
-  const auto old=*temporaryBrushCapture_;selectionKind_=old.kind;selectionMode_=old.mode;selectionRounded_=old.rounded;selectionCornerRadius_=old.radius;temporaryBrushCapture_.reset();
-  if(temporaryBrushReturnProfile_)brushFeedback_.brushProfiles_[0]=*temporaryBrushReturnProfile_;
-  pencilImageBrush_=std::move(brush);pencilImageBrushId_="temporary-capture";pencilImageBrushAngle_=0;temporaryBrushActive_=true;
-  fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();
-  selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;
+  const auto old=*currentTools().temporaryBrushCapture;currentTools().selectionKind=old.kind;currentTools().selectionMode=old.mode;currentTools().selectionRounded=old.rounded;currentTools().selectionCornerRadius=old.radius;currentTools().temporaryBrushCapture.reset();
+  if(currentTools().temporaryBrushReturnProfile)currentTools().brushProfiles[0]=*currentTools().temporaryBrushReturnProfile;
+  currentTools().pencilImageBrush=std::move(brush);currentTools().pencilImageBrushId="temporary-capture";currentTools().pencilImageBrushAngle=0;currentTools().temporaryBrushActive=true;
+  currentTools().fillPattern.brushes.clear();currentTools().fillLibrarySelection={};currentTools().fillImageName.clear();
+  currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;
   status_=U"已捕获临时笔刷，Esc 恢复普通笔刷";
  }catch(const std::exception& e){status_=U"捕获笔刷失败："+unicodeText(e.what());}
 }
 void Editor::exitTemporaryBrushCapture(){
- const bool capturing=bool(temporaryBrushCapture_);
- if(capturing){const auto old=*temporaryBrushCapture_;selectionKind_=old.kind;selectionMode_=old.mode;selectionRounded_=old.rounded;selectionCornerRadius_=old.radius;temporaryBrushCapture_.reset();}
- const auto paintMode=brushFeedback_.brushProfiles_[0].imagePaintMode;
- if(temporaryBrushReturnProfile_)brushFeedback_.brushProfiles_[0]=*temporaryBrushReturnProfile_;
- brushFeedback_.brushProfiles_[0].imagePaintMode=paintMode;
- temporaryBrushReturnProfile_.reset();temporaryBrushActive_=false;pencilImageBrush_.reset();pencilImageBrushId_.clear();fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();
- if(capturing)selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;
+ const bool capturing=bool(currentTools().temporaryBrushCapture);
+ if(capturing){const auto old=*currentTools().temporaryBrushCapture;currentTools().selectionKind=old.kind;currentTools().selectionMode=old.mode;currentTools().selectionRounded=old.rounded;currentTools().selectionCornerRadius=old.radius;currentTools().temporaryBrushCapture.reset();}
+ const auto paintMode=currentTools().brushProfiles[0].imagePaintMode;
+ if(currentTools().temporaryBrushReturnProfile)currentTools().brushProfiles[0]=*currentTools().temporaryBrushReturnProfile;
+ currentTools().brushProfiles[0].imagePaintMode=paintMode;
+ currentTools().temporaryBrushReturnProfile.reset();currentTools().temporaryBrushActive=false;currentTools().pencilImageBrush.reset();currentTools().pencilImageBrushId.clear();currentTools().fillPattern.brushes.clear();currentTools().fillLibrarySelection={};currentTools().fillImageName.clear();
+ if(capturing)currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;
 }
 
 void Editor::createBrushFromSelection(){
 
-    document.commitFloatingPaste();if(!document.selection()){status_=U"需要像素选区";refresh();return;}
+    currentDocument().commitFloatingPaste();if(!currentDocument().selection()){status_=U"需要像素选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];temporaryBrushActive_=false;pencilImageBrushId_=stored.id;pencilImageBrush_=*brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();document.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=gradientTool_=fillTool_=handTool_=eraser_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(currentDocument().activeSurfaceIfPresent(),currentDocument().width(),currentDocument().height(),*currentDocument().selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}const auto directory=smoke_?fillBrushLibraryDirectory().parent_path().parent_path()/"pattern-brush-library-fixture":fillBrushLibraryDirectory();PatternBrushLibrary library(directory);auto value=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];currentTools().temporaryBrushActive=false;currentTools().pencilImageBrushId=value.id;currentTools().pencilImageBrush=*brush;currentTools().fillPattern.brushes.clear();currentTools().fillLibrarySelection={};currentTools().fillImageName.clear();currentDocument().previewSelection({});currentView().pivot.reset();selectionPropertiesActive_=false;currentView().freeTransform=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 
 void Editor::createFillBrushFromSelection(){
 
-    document.commitFloatingPaste();if(!document.selection()){status_=U"需要选区";refresh();return;}
+    currentDocument().commitFloatingPaste();if(!currentDocument().selection()){status_=U"需要选区";refresh();return;}
 
-    try{auto brush=createSelectionPatternBrush(document.activeSurfaceIfPresent(),document.width(),document.height(),*document.selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto stored=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(stored.id,fillFolder_);PatternBrushSelection selection;selection.ids={stored.id};selection.active=selection.anchor=stored.id;std::vector<PatternBrush> patterns{*brush};auto active=*brush;const auto name=unicodeText(std::filesystem::u8path(stored.filePath).stem().u8string());if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];temporaryBrushActive_=false;fillLibrarySelection_=std::move(selection);fillPattern_.brushes=std::move(patterns);pencilImageBrushId_=stored.id;pencilImageBrush_=std::move(active);fillImageName_=name;document.previewSelection({});selectionPropertiesActive_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
+    try{auto brush=createSelectionPatternBrush(currentDocument().activeSurfaceIfPresent(),currentDocument().width(),currentDocument().height(),*currentDocument().selection());if(!brush){status_=U"选区中没有可用笔刷像素";refresh();return;}PatternBrushLibrary library(fillBrushLibraryDirectory());auto value=library.save("笔刷",encodePatternBrushPng(*brush),true,brush->sourceX,brush->sourceY);if(!fillFolder_.empty())library.move(value.id,fillFolder_);PatternBrushSelection selection;selection.ids={value.id};selection.active=selection.anchor=value.id;std::vector<PatternBrush> patterns{*brush};auto active=*brush;const auto name=unicodeText(std::filesystem::u8path(value.filePath).stem().u8string());if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];currentTools().temporaryBrushActive=false;currentTools().fillLibrarySelection=std::move(selection);currentTools().fillPattern.brushes=std::move(patterns);currentTools().pencilImageBrushId=value.id;currentTools().pencilImageBrush=std::move(active);currentTools().fillImageName=name;currentDocument().previewSelection({});selectionPropertiesActive_=false;saveBrushPreferences();brushLibraryNeedsReload_=true;status_=U"选区笔刷已保存到本地库";}catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();
 
   }
 
@@ -1819,7 +1829,7 @@ void Editor::createFillPatternOptions(){
 
     fillTextureButton_=button(U"纯色",[this]{showFillTexturePopup();});fillControls_.push_back({fillTextureButton_,48});
 
-    fillTextureScale_=new PixelEntry(font_,skin_);fillTextureScale_->numeric=true;addChild(fillTextureScale_);fillControls_.push_back({fillTextureScale_,32});auto scale=[this]{try{fillPattern_.textureScale=std::clamp(std::stoi(fillTextureScale_->text()),1,16);saveBrushPreferences();}catch(...){}layoutToolOptions();};fillTextureScale_->Change.connect(scale);fillTextureScale_->blur=scale;fillTextureScale_->accept=[this,scale]{scale();requestFocus();};
+    fillTextureScale_=new PixelEntry(font_,skin_);fillTextureScale_->numeric=true;addChild(fillTextureScale_);fillControls_.push_back({fillTextureScale_,32});auto scale=[this]{try{currentTools().fillPattern.textureScale=std::clamp(std::stoi(fillTextureScale_->text()),1,16);saveBrushPreferences();}catch(...){}layoutToolOptions();};fillTextureScale_->Change.connect(scale);fillTextureScale_->blur=scale;fillTextureScale_->accept=[this,scale]{scale();requestFocus();};
 
     fillImageButton_=button(U"图案",[this]{showFillLibraryMenu();});fillControls_.push_back({fillImageButton_,48});
 
@@ -1835,9 +1845,9 @@ void Editor::createEyedropperOptions(){
 
     // localStorage preference becomes the existing native preference directory.
 
-    try{std::ifstream in(palettePreferencePath().parent_path()/"eyedropper-source.txt");std::string value;if(in>>value && value=="current-layer")eyedropperSource_=EyedropperSource::CurrentLayer;}catch(const std::exception& e){status_=U"吸管设置读取失败："+unicodeText(e.what());}
+    try{std::ifstream in(palettePreferencePath().parent_path()/"eyedropper-source.txt");std::string value;if(in>>value && value=="current-layer")currentTools().eyedropperSource=EyedropperSource::CurrentLayer;}catch(const std::exception& e){status_=U"吸管设置读取失败："+unicodeText(e.what());}
 
-    eyedropperSourceButton_=button(U"合成图像",[this]{PixelMenu menu(skin_);for(int i=0;i<2;++i){auto item=new PixelMenuItem(font_,skin_,i?U"当前图层":U"合成图像");item->checked=[this,i]{return eyedropperSource_==(i?EyedropperSource::CurrentLayer:EyedropperSource::Composite);};item->Click.connect([this,i]{eyedropperSource_=i?EyedropperSource::CurrentLayer:EyedropperSource::Composite;try{if(!smoke_){const auto path=palettePreferencePath().parent_path()/"eyedropper-source.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);out<<(i?"current-layer":"composite");}}catch(const std::exception& e){status_=U"吸管设置保存失败："+unicodeText(e.what());}refresh();});menu.addChild(item);}const auto at=eyedropperSourceButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
+    eyedropperSourceButton_=button(U"合成图像",[this]{PixelMenu menu(skin_);for(int i=0;i<2;++i){auto item=new PixelMenuItem(font_,skin_,i?U"当前图层":U"合成图像");item->checked=[this,i]{return currentTools().eyedropperSource==(i?EyedropperSource::CurrentLayer:EyedropperSource::Composite);};item->Click.connect([this,i]{currentTools().eyedropperSource=i?EyedropperSource::CurrentLayer:EyedropperSource::Composite;try{if(!smoke_){const auto path=palettePreferencePath().parent_path()/"eyedropper-source.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);out.exceptions(std::ios::failbit|std::ios::badbit);out<<(i?"current-layer":"composite");}}catch(const std::exception& e){status_=U"吸管设置保存失败："+unicodeText(e.what());}refresh();});menu.addChild(item);}const auto at=eyedropperSourceButton_->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();});
 
     // legacy EditorToolOptions: filled role controls and refresh replacement entry.
     eyedropperForegroundButton_=button(U"",[this]{showRoleColorEditor(false,eyedropperForegroundButton_);});
@@ -1852,7 +1862,7 @@ void Editor::createEyedropperOptions(){
 
 void Editor::showToolGroup(std::size_t index,bool smoke,int smokeChoice) {
 
-    if(floatingDragging_ || (selectionDragging_ && selectionKind_==5))return;
+    if(floatingDragging_ || (selectionDragging_ && currentTools().selectionKind==5))return;
 
     if(pending_!=Pending::None) return;
 
@@ -1903,7 +1913,7 @@ void Editor::showToolGroup(std::size_t index,bool smoke,int smokeChoice) {
 
       item->active=activeRailTool()==tool.id;
 
-      if(available) item->Click.connect([this,command=tool.command,id=std::string(tool.id)]{if(id=="magic-eraser"){useMagicEraserTool();return;}if(id=="liquify"){runShortcutCommand("tool.liquify");return;}if(id=="smooth"){useSmoothTool();return;}if(id=="airbrush"){useAirbrushTool();return;}if(id=="move.slice"){useSliceTool();return;}if(id=="move.move"){useMoveTool();return;}if(id=="text"){useTextTool();return;}if(id=="eyedropper"){useEyedropperTool();return;}if(id=="zoom"){useZoomTool();return;}if(id=="rotate"){runShortcutCommand("tool.rotate");return;}if(id=="line.line" || id=="line.curve" || id=="shape.rectangle-outline" || id=="shape.rectangle" || id=="shape.ellipse-outline" || id=="shape.ellipse" || id=="shape.polygon" || id=="shape.freeform"){useShapeTool(id=="line.curve"?ShapeKind::Curve:id=="shape.freeform"?ShapeKind::Freeform:id=="shape.polygon"?ShapeKind::Polygon:id=="line.line"?ShapeKind::Line:id=="shape.rectangle-outline"?ShapeKind::RectangleOutline:id=="shape.rectangle"?ShapeKind::Rectangle:id=="shape.ellipse-outline"?ShapeKind::EllipseOutline:ShapeKind::Ellipse);return;}if(id=="fill.bucket"){useFillTool();return;}if(id=="fill.gradient"){useGradientTool();return;}if(command<0){int kind=id=="selection.ellipse"?1:id=="selection.lasso"?2:id=="selection.polygon-lasso"?3:id=="selection.magic"?4:id=="selection.brush"?5:0;useSelectionTool(kind);return;}document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=command==5;eraser_=command==2;refresh();});
+      if(available) item->Click.connect([this,command=tool.command,id=std::string(tool.id)]{if(id=="magic-eraser"){useMagicEraserTool();return;}if(id=="liquify"){runShortcutCommand("tool.liquify");return;}if(id=="smooth"){useSmoothTool();return;}if(id=="airbrush"){useAirbrushTool();return;}if(id=="move.slice"){useSliceTool();return;}if(id=="move.move"){useMoveTool();return;}if(id=="text"){useTextTool();return;}if(id=="eyedropper"){useEyedropperTool();return;}if(id=="zoom"){useZoomTool();return;}if(id=="rotate"){runShortcutCommand("tool.rotate");return;}if(id=="line.line" || id=="line.curve" || id=="shape.rectangle-outline" || id=="shape.rectangle" || id=="shape.ellipse-outline" || id=="shape.ellipse" || id=="shape.polygon" || id=="shape.freeform"){useShapeTool(id=="line.curve"?ShapeKind::Curve:id=="shape.freeform"?ShapeKind::Freeform:id=="shape.polygon"?ShapeKind::Polygon:id=="line.line"?ShapeKind::Line:id=="shape.rectangle-outline"?ShapeKind::RectangleOutline:id=="shape.rectangle"?ShapeKind::Rectangle:id=="shape.ellipse-outline"?ShapeKind::EllipseOutline:ShapeKind::Ellipse);return;}if(id=="fill.bucket"){useFillTool();return;}if(id=="fill.gradient"){useGradientTool();return;}if(command<0){int kind=id=="selection.ellipse"?1:id=="selection.lasso"?2:id=="selection.polygon-lasso"?3:id=="selection.magic"?4:id=="selection.brush"?5:0;useSelectionTool(kind);return;}currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().textTool=false;currentTools().moveTool=false;currentTools().selectionTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=command==5;currentTools().eraser=command==2;refresh();});
 
       if(available)item->Click.connect([window=&popup]{window->closeWindow(nullptr);});
 
@@ -1977,13 +1987,13 @@ void Editor::createToolRail() {
 
       b->iconSkin=&toolIcons_;b->icon=std::string(first.icon)+"-normal";
 
-      b->mutedIcon=first.command<0 && index!=2 && index!=3 && index!=4 && index!=5 && index!=6 && index!=7 && index!=8 && index!=9 && index!=11 && index!=12;if(index==2)b->Click.connect([this]{runShortcutCommand("tool.liquify");});if(index==4)b->Click.connect([this]{useShapeTool(shapeSpec_.kind==ShapeKind::Line?ShapeKind::Rectangle:shapeSpec_.kind);});if(index==5)b->Click.connect([this]{useShapeTool(shapeSpec_.kind==ShapeKind::Curve?ShapeKind::Curve:ShapeKind::Line);});if(index==6)b->Click.connect([this]{if(rememberGradientTool_)useGradientTool();else useFillTool();});if(index==7)b->Click.connect([this]{useTextTool();});if(index==8)b->Click.connect([this]{useMoveTool();});if(index==9)b->Click.connect([this]{useEyedropperTool();});if(index==11)b->Click.connect([this]{useZoomTool();});if(index==12)b->Click.connect([this]{runShortcutCommand("tool.rotate");});if(index==3)b->Click.connect([this]{useSelectionTool();});
+      b->mutedIcon=first.command<0 && index!=2 && index!=3 && index!=4 && index!=5 && index!=6 && index!=7 && index!=8 && index!=9 && index!=11 && index!=12;if(index==2)b->Click.connect([this]{runShortcutCommand("tool.liquify");});if(index==4)b->Click.connect([this]{useShapeTool(currentTools().shapeKind==ShapeKind::Line?ShapeKind::Rectangle:currentTools().shapeKind);});if(index==5)b->Click.connect([this]{useShapeTool(currentTools().shapeKind==ShapeKind::Curve?ShapeKind::Curve:ShapeKind::Line);});if(index==6)b->Click.connect([this]{if(currentTools().rememberGradientTool)useGradientTool();else useFillTool();});if(index==7)b->Click.connect([this]{useTextTool();});if(index==8)b->Click.connect([this]{useMoveTool();});if(index==9)b->Click.connect([this]{useEyedropperTool();});if(index==11)b->Click.connect([this]{useZoomTool();});if(index==12)b->Click.connect([this]{runShortcutCommand("tool.rotate");});if(index==3)b->Click.connect([this]{useSelectionTool();});
 
       b->hover=[this,index] {
 
         const auto& group=legacyToolGroups()[index];
 
-        const auto& primary=group[index==3?selectionKind_:index==6 && rememberGradientTool_?1:0];
+        const auto& primary=group[index==3?currentTools().selectionKind:index==6 && currentTools().rememberGradientTool?1:0];
 
         status_=std::u32string(primary.label)+(primary.command<0 && index!=2 && index!=3 && index!=4 && index!=5 && index!=6 && index!=7 && index!=8 && index!=9 && index!=11 && index!=12?U" · 未接入":U"");
 
@@ -2008,12 +2018,12 @@ void Editor::createToolRail() {
   }
 
 
-void Editor::saveSmoothPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto p=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"smooth-brush-v1.txt";std::filesystem::create_directories(p.parent_path());std::ofstream out(p);out.exceptions(std::ios::failbit|std::ios::badbit);out<<"smooth-v1 "<<smoothStrength_<<' '<<smoothAngle_<<' '<<smoothBrush_.size<<' '<<int(smoothBrush_.shape)<<'\n';}catch(...){status_=U"平滑参数已调整，但偏好保存失败";}}
+void Editor::saveSmoothPreferences(){if(smoke_&&!workspacePresetTestDirectory_)return;try{const auto p=(smoke_?*workspacePresetTestDirectory_:palettePreferencePath().parent_path())/"smooth-brush-v1.txt";std::filesystem::create_directories(p.parent_path());std::ofstream out(p);out.exceptions(std::ios::failbit|std::ios::badbit);out<<"smooth-v1 "<<currentTools().smoothStrength<<' '<<currentTools().smoothAngle<<' '<<currentTools().smoothBrush.size<<' '<<int(currentTools().smoothBrush.shape)<<'\n';}catch(...){status_=U"平滑参数已调整，但偏好保存失败";}}
 void Editor::createSmoothOptions(){
 
  auto label=[&](const char32_t* text){auto b=button(text,[]{});b->labelOnly=true;b->setEnabled(false);smoothControls_.push_back({b,font_.measure(text)});};
- auto number=[&](int field,const char32_t* suffix){auto e=new PixelEntry(font_,skin_);e->numeric=true;e->deferredNumeric=true;e->numericMounted=[this,field]{return smoothTool_&&(field!=1||(smoothBrush_.size>1&&smoothBrush_.shape!=BrushShape::Round));};e->numericMinimum=field==0?1:field==1?-180:0;e->numericMaximum=field==0?64:field==1?180:100;e->numericValue=[this,field]{return double(field==0?smoothBrush_.size:field==1?smoothAngle_:smoothStrength_);};e->suffix=suffix;e->setFixedContentWidth(e->widthForValue(field==1?U"-180":U"100"));addChild(e);smoothControls_.push_back({e,e->widthForValue(field==1?U"-180":U"100")});auto commit=[this,e,field]{if(smoothDragging_)return;try{std::size_t used=0;const auto v=std::stod(e->text(),&used);if(used!=e->text().size()||!std::isfinite(v))return;const int value=int(std::floor(std::clamp(v,-1000.0,1000.0)+.5));if(field==0){smoothBrush_.size=std::clamp(value,1,64);saveSmoothPreferences();}else{(field==1?smoothAngle_:smoothStrength_)=std::clamp(value,field==1?-180:0,field==1?180:100);saveSmoothPreferences();}layoutToolOptions();invalidateRect(canvasViewport());}catch(...){}};e->deferredCommit=commit;e->Change.connect(commit);e->blur=commit;e->accept=[this,commit]{commit();closeParameterRange();requestFocus();};e->cancel=[this]{closeParameterRange();};e->focus=[this,e,field]{openParameterRange(e,field==0?1:field==1?-180:0,field==0?64:field==1?180:100);};return e;};
- auto shape=button(U"",[this]{PixelMenu menu(skin_);const char32_t* names[]={U"圆形",U"方形",U"直线"};const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,names[i]);row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(smoothBrush_.shape)==i;};row->Click.connect([this,i]{smoothBrush_.shape=BrushShape(i);saveSmoothPreferences();layoutToolOptions();invalidateRect(canvasViewport());});menu.addChild(row);}const auto r=smoothControls_[0].first->bounds();menu.showPopup({r.x,r.y2()+uiGap*uiScale},display());requestFocus();});shape->iconSkin=&toolIcons_;smoothControls_.push_back({shape,15});
+ auto number=[&](int field,const char32_t* suffix){auto e=new PixelEntry(font_,skin_);e->numeric=true;e->deferredNumeric=true;e->numericMounted=[this,field]{return currentTools().smoothTool&&(field!=1||(currentTools().smoothBrush.size>1&&currentTools().smoothBrush.shape!=BrushShape::Round));};e->numericMinimum=field==0?1:field==1?-180:0;e->numericMaximum=field==0?64:field==1?180:100;e->numericValue=[this,field]{return double(field==0?currentTools().smoothBrush.size:field==1?currentTools().smoothAngle:currentTools().smoothStrength);};e->suffix=suffix;e->setFixedContentWidth(e->widthForValue(field==1?U"-180":U"100"));addChild(e);smoothControls_.push_back({e,e->widthForValue(field==1?U"-180":U"100")});auto commit=[this,e,field]{if(smoothDragging_)return;try{std::size_t used=0;const auto v=std::stod(e->text(),&used);if(used!=e->text().size()||!std::isfinite(v))return;const int value=int(std::floor(std::clamp(v,-1000.0,1000.0)+.5));if(field==0){currentTools().smoothBrush.size=std::clamp(value,1,64);saveSmoothPreferences();}else{(field==1?currentTools().smoothAngle:currentTools().smoothStrength)=std::clamp(value,field==1?-180:0,field==1?180:100);saveSmoothPreferences();}layoutToolOptions();invalidateRect(canvasViewport());}catch(...){}};e->deferredCommit=commit;e->Change.connect(commit);e->blur=commit;e->accept=[this,commit]{commit();closeParameterRange();requestFocus();};e->cancel=[this]{closeParameterRange();};e->focus=[this,e,field]{openParameterRange(e,field==0?1:field==1?-180:0,field==0?64:field==1?180:100);};return e;};
+ auto shape=button(U"",[this]{PixelMenu menu(skin_);const char32_t* names[]={U"圆形",U"方形",U"直线"};const char* icons[]={"brush-round","brush-square","brush-line"};for(int i=0;i<3;++i){auto row=new PixelMenuItem(font_,skin_,names[i]);row->iconSkin=&toolIcons_;row->icon=icons[i];row->checked=[this,i]{return int(currentTools().smoothBrush.shape)==i;};row->Click.connect([this,i]{currentTools().smoothBrush.shape=BrushShape(i);saveSmoothPreferences();layoutToolOptions();invalidateRect(canvasViewport());});menu.addChild(row);}const auto r=smoothControls_[0].first->bounds();menu.showPopup({r.x,r.y2()+uiGap*uiScale},display());requestFocus();});shape->iconSkin=&toolIcons_;smoothControls_.push_back({shape,15});
  number(0,U"px");label(U"角度");smoothAngleInput_=number(1,U"°");label(U"效果强度");smoothStrengthInput_=number(2,U"%");
 
 }

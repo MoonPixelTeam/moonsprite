@@ -1,27 +1,45 @@
 #pragma once
 #include "layer_panel_tree.h"
 #include "timeline_model.h"
+#include "animation_change.h"
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 namespace moon::editor {
-struct TimelineSlot {std::string rowId,frameId;bool operator==(const TimelineSlot& b)const{return rowId==b.rowId&&frameId==b.frameId;}};
+using TimelineSlot=AnimationCellSlot;
 class TimelineRows {
  const timeline::State& state_;const timeline::Timeline* timeline_=nullptr;std::vector<LayerPanelNode> rows_;
+ std::unordered_map<std::string,int> rowIndices_;
+ std::vector<bool> maskRows_;
+ std::vector<std::string> owners_;
 public:
- TimelineRows(const timeline::State& state,const std::vector<std::string>& collapsed,bool includeMaskRows=true):state_(state),rows_(buildLayerPanelTree(state,collapsed)){auto original=rows_;rows_.clear();for(const auto& row:original){rows_.push_back(row);if(includeMaskRows&&std::any_of(state.masks.begin(),state.masks.end(),[&](const auto& m){return m.ownerId==row.id;})){auto mask=row;mask.id=maskRowId(row.id);++mask.depth;rows_.push_back(std::move(mask));}}}
+ TimelineRows(const timeline::State& state,const std::vector<std::string>& collapsed,bool includeMaskRows=true):state_(state){
+  // Legacy LayersPanel keeps mask owners in a Set, independent of frame count.
+  std::unordered_set<std::string> maskOwners,maskIds;
+  for(const auto& mask:state.masks)if(maskOwners.insert(mask.ownerId).second)maskIds.insert(maskRowId(mask.ownerId));
+  auto original=buildLayerPanelTree(state,collapsed);rows_.reserve(original.size()+std::min(original.size(),maskOwners.size()));
+  for(auto& row:original){
+   const bool include=includeMaskRows&&maskOwners.count(row.id);
+   rows_.push_back(std::move(row));
+   if(include){auto mask=rows_.back();mask.id=maskRowId(mask.id);++mask.depth;rows_.push_back(std::move(mask));}
+  }
+  rowIndices_.reserve(rows_.size());maskRows_.reserve(rows_.size());owners_.reserve(rows_.size());
+  for(int i=0;i<int(rows_.size());++i){const auto& id=rows_[i].id;const bool mask=maskIds.count(id)!=0;rowIndices_.emplace(id,i);maskRows_.push_back(mask);owners_.push_back(mask?id.substr(10):id);}
+ }
  TimelineRows(const timeline::Timeline& timeline,const std::vector<std::string>& collapsed,bool includeMaskRows=true):TimelineRows(timeline.state(),collapsed,includeMaskRows){timeline_=&timeline;}
  static std::string maskRowId(const std::string& owner){return "@mask-row:"+owner;}
- bool mask(int row)const{const auto* n=at(row);return n&&std::any_of(state_.masks.begin(),state_.masks.end(),[&](const auto& m){return n->id==maskRowId(m.ownerId);});}
- std::string owner(int row)const{auto n=at(row);return !n?std::string{}:mask(row)?n->id.substr(10):n->id;}
+ bool mask(int row)const{return row>=0&&row<size()&&maskRows_[row];}
+ std::string owner(int row)const{return at(row)?owners_[row]:std::string{};}
  int size()const{return int(rows_.size());}
  const LayerPanelNode* at(int row)const{return row>=0&&row<size()?&rows_[row]:nullptr;}
- int index(const std::string& id)const{auto i=std::find_if(rows_.begin(),rows_.end(),[&](const auto& n){return n.id==id;});return i==rows_.end()?-1:int(i-rows_.begin());}
- std::optional<std::size_t> layerIndex(int row)const{auto n=at(row);if(!n||n->kind!=LayerPanelKind::Layer)return {};if(timeline_)return timeline_->layerIndex(owner(row));auto i=std::find_if(state_.layers.begin(),state_.layers.end(),[&](const auto& l){return l.id==owner(row);});return i==state_.layers.end()?std::optional<std::size_t>{}:std::size_t(i-state_.layers.begin());}
+ int index(const std::string& id)const{auto i=rowIndices_.find(id);return i==rowIndices_.end()?-1:i->second;}
+ std::optional<std::size_t> layerIndex(int row)const{auto n=at(row);if(!n||n->kind!=LayerPanelKind::Layer)return {};const auto& id=owners_[row];if(timeline_)return timeline_->layerIndex(id);auto i=std::find_if(state_.layers.begin(),state_.layers.end(),[&](const auto& l){return l.id==id;});return i==state_.layers.end()?std::optional<std::size_t>{}:std::size_t(i-state_.layers.begin());}
  const timeline::Layer* layer(int row)const{auto i=layerIndex(row);return i?&state_.layers[*i]:nullptr;}
- const timeline::Group* group(int row)const{auto n=at(row);if(!n||n->kind!=LayerPanelKind::Group)return nullptr;auto i=std::find_if(state_.groups.begin(),state_.groups.end(),[&](const auto& g){return g.id==owner(row);});return i==state_.groups.end()?nullptr:&*i;}
+ const timeline::Group* group(int row)const{auto n=at(row);if(!n||n->kind!=LayerPanelKind::Group)return nullptr;const auto& id=owners_[row];auto i=std::find_if(state_.groups.begin(),state_.groups.end(),[&](const auto& g){return g.id==id;});return i==state_.groups.end()?nullptr:&*i;}
  // Outer-to-inner strips retain every ancestor, including uncolored levels.
  std::vector<std::optional<timeline::Pixel>> ancestorColors(int row)const{
   std::vector<std::optional<timeline::Pixel>> colors;auto l=layer(row);auto g=group(row);auto id=l?l->groupId:g?g->parentGroupId:std::optional<std::string>{};std::set<std::string> seen;

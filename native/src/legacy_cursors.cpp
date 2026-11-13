@@ -1,10 +1,29 @@
 #include "legacy_cursors.h"
+#include "os/window.h"
 #include <fstream>
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
 
 namespace moon {
+void applyLegacyCursor(os::Window& window,const LegacyCursors& cursors,const char* id) {
+
+  if(std::string(id)=="none") {
+
+    // laf WindowWin stores a null HCURSOR to hide successfully, but its
+
+    // boolean reports whether the handle is non-null, not operation success.
+
+    window.setCursor(os::NativeCursor::Hidden);
+
+    return;
+
+  }
+
+  if(!window.setCursor(cursors.get(id)))throw std::runtime_error("Cannot apply legacy cursor");
+
+}
+
 LegacyCursors::LegacyCursors(const std::filesystem::path& directory,const SkinAssets* atlas) {
   std::ifstream input(directory/"cursors.txt");
   if(!input) throw std::runtime_error("Cannot load legacy cursor definitions");

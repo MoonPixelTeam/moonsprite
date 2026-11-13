@@ -1,21 +1,8 @@
 #include "timeline_model.h"
+#include "timeline_index_validation.h"
 #include "layer_blend.h"
 #include <cmath>
 #include <algorithm>
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
-#include <cmath>
-#include <algorithm>
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
@@ -34,15 +21,9 @@ std::mutex selectionMutex;
 SelectionCacheStats celSelectionCacheStats(){std::lock_guard<std::mutex> lock(selectionMutex);auto result=selectionStats;result.entries=selectionLru.size();return result;}
 
 namespace {
-void requireId(const std::string& id) {if(id.empty()) throw std::invalid_argument("Timeline ID must not be empty");}
-void checkLayer(const Layer& layer) {
-  requireId(layer.id);if(!layer.linkedContentId.empty()&&(!layer.kind.empty()||layer.background))throw std::invalid_argument("Special/background layers cannot share linked raster content");
-  if(!parseLayerBlendMode(layer.blendMode))throw std::invalid_argument("Invalid layer blend mode");
-  if(!std::isfinite(layer.opacity) || layer.opacity<0 || layer.opacity>1) throw std::invalid_argument("Invalid layer opacity");
-}
-void checkFrame(const Frame& frame) {
-  requireId(frame.id);if(frame.duration<1) throw std::invalid_argument("Frame duration must be positive");
-}
+using index_detail::requireId;
+using index_detail::checkLayer;
+using index_detail::checkFrame;
 constexpr std::size_t missing=std::numeric_limits<std::size_t>::max();
 }
 namespace {
@@ -77,44 +58,15 @@ Timeline::Timeline(const Timeline& other):visibleContent_(other.visibleContent_)
 Timeline& Timeline::operator=(const Timeline& other){if(this!=&other){Timeline copy(other);*this=std::move(copy);}return *this;}
 
 void Timeline::buildIndex() {
-  invalidateCompositeOrder();
-  selectionContent_.clear();
-  thumbnailStorage_.clear();
-  visibleContent_.clear();
-  layers_.clear();frames_.clear();cels_.clear();slots_.clear();resolved_.clear();
-  for(std::size_t i=0;i<state_.layers.size();++i) {
-    const auto& layer=state_.layers[i];checkLayer(layer);
-    if(!layers_.emplace(layer.id,i).second) throw std::invalid_argument("Duplicate layer ID: "+layer.id);
-  }
-  std::unordered_map<std::string,const Group*> groups;
-  for(const auto& group:state_.groups){requireId(group.id);if(layers_.count(group.id)||!groups.emplace(group.id,&group).second)throw std::invalid_argument("Duplicate group/layer ID: "+group.id);if(!std::isfinite(group.opacity)||group.opacity<0||group.opacity>1||!parseLayerBlendMode(group.blendMode)||(group.panelOrder&&!std::isfinite(*group.panelOrder)))throw std::invalid_argument("Invalid group metadata");}
-  std::unordered_set<std::string> verified;
-  for(const auto& group:state_.groups){std::unordered_set<std::string> path;const Group* current=&group;while(current&&!verified.count(current->id)){if(!path.insert(current->id).second)throw std::invalid_argument("Cyclic group parent");if(!current->parentGroupId)break;const auto parent=groups.find(*current->parentGroupId);if(parent==groups.end())throw std::invalid_argument("Unknown group parent");current=parent->second;}verified.insert(path.begin(),path.end());}
-  for(const auto& layer:state_.layers)if(layer.groupId&&!groups.count(*layer.groupId))throw std::invalid_argument("Unknown layer group");
-  for(std::size_t i=0;i<state_.frames.size();++i) {
-    const auto& frame=state_.frames[i];checkFrame(frame);
-    if(!frames_.emplace(frame.id,i).second) throw std::invalid_argument("Duplicate frame ID: "+frame.id);
-  }
-  for(std::size_t i=0;i<state_.cels.size();++i) {
-    const auto& cel=state_.cels[i];checkCel(cel);
-    if(!cels_.emplace(cel.id,i).second) throw std::invalid_argument("Duplicate cel ID: "+cel.id);
-    if(!slots_.emplace(std::make_pair(cel.layerId,cel.frameId),i).second) throw std::invalid_argument("Duplicate layer/frame cel slot");
-  }
+  decltype(layers_) layers;decltype(frames_) frames;decltype(cels_) cels;decltype(slots_) slots;
+  index_detail::buildIndices(state_,layers,frames,cels,slots);
+  // Publish complete indices only after all metadata and allocations succeed.
+  invalidateCompositeOrder();selectionContent_.clear();thumbnailStorage_.clear();visibleContent_.clear();resolved_.clear();
+  layers_.swap(layers);frames_.swap(frames);cels_.swap(cels);slots_.swap(slots);
   synchronizeLinkedLayers();
 }
-void Timeline::checkCel(const Cel& cel) const {
-  requireId(cel.id);
-  if(!layers_.count(cel.layerId)) throw std::invalid_argument("Unknown cel layer: "+cel.layerId);
-  if(!frames_.count(cel.frameId)) throw std::invalid_argument("Unknown cel frame: "+cel.frameId);
-  if(cel.opacity && (!std::isfinite(*cel.opacity) || *cel.opacity<0 || *cel.opacity>1)) throw std::invalid_argument("Invalid cel opacity");
-  if(cel.surface) {
-    const auto& surface=*cel.surface;
-    if(surface.width<1 || surface.height<1) throw std::invalid_argument("Invalid cel surface dimensions");
-    const auto width=std::size_t(surface.width),height=std::size_t(surface.height);
-    if(width>std::numeric_limits<std::size_t>::max()/height || width*height!=surface.pixels.size())
-      throw std::invalid_argument("Cel surface pixel count does not match dimensions");
-  }
-}
+void Timeline::checkCel(const Cel& cel) const {index_detail::checkCel(cel,layers_,frames_);}
+
 const Cel* Timeline::findCel(const std::string& layerId,const std::string& frameId) const {
   const auto found=slots_.find({layerId,frameId});return found==slots_.end()?nullptr:&state_.cels[found->second];
 }
@@ -244,18 +196,11 @@ PixelChange Timeline::setPixel(const std::string& celId,std::size_t localIndex,P
   if(change.changed())mutableOwnedSurface(owner.id)->pixels[localIndex]=color;
   return change;
 }
-// Native counterpart of JS localeCompare for equal-range labels.
-static bool loopNameLess(const std::u32string& left,const std::u32string& right){
-#ifdef _WIN32
- auto wide=[](const std::u32string& text){std::wstring out;for(auto c:text){if(c<=0xffff)out.push_back(wchar_t(c));else{c-=0x10000;out.push_back(wchar_t(0xd800+(c>>10)));out.push_back(wchar_t(0xdc00+(c&1023)));}}return out;};const auto a=wide(left),b=wide(right);const int order=CompareStringEx(LOCALE_NAME_USER_DEFAULT,0,a.data(),int(a.size()),b.data(),int(b.size()),nullptr,nullptr,0);if(order)return order==CSTR_LESS_THAN;
-#endif
- return left<right;
-}
 // legacy components/panels/layer-timeline-layout.ts: nested lanes and leaf placement.
-LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview){
+LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview,LoopNameLess nameLess){
  struct Candidate{const LoopSection* section;int start,end,span,parent=-1,lane=0;};std::vector<Candidate> candidates;
  for(const auto& section:state.loopSections){auto range=loopRange(state,section);if(preview && preview->id==section.id && preview->startIndex>=0 && preview->endIndex<int(state.frames.size()))range={preview->startIndex,preview->endIndex};if(range.start>=0 && range.end>=range.start)candidates.push_back({&section,range.start,range.end,range.end-range.start+1});}
- std::stable_sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){return a.start!=b.start?a.start<b.start:a.span!=b.span?a.span>b.span:loopNameLess(a.section->name,b.section->name);});
+ std::stable_sort(candidates.begin(),candidates.end(),[nameLess](const auto& a,const auto& b){return a.start!=b.start?a.start<b.start:a.span!=b.span?a.span>b.span:(nameLess?nameLess(a.section->name,b.section->name):a.section->name<b.section->name);});
  auto overlaps=[&](int a,int b){return candidates[a].start<=candidates[b].end && candidates[b].start<=candidates[a].end;};
  std::vector<std::vector<int>> lanes;LoopSectionLayout result;
  for(int n=0;n<int(candidates.size());++n){auto& c=candidates[n];for(int p=0;p<n;++p){const auto& parent=candidates[p];if(parent.start<=c.start && parent.end>=c.end && (parent.start<c.start || parent.end>c.end) && (c.parent<0 || parent.span<candidates[c.parent].span))c.parent=p;}int lane=c.parent>=0?candidates[c.parent].lane+1:0;for(;;++lane){if(lane>=int(lanes.size())){lanes.resize(lane+1);break;}if(std::none_of(lanes[lane].begin(),lanes[lane].end(),[&](int other){return overlaps(other,n);}))break;}c.lane=lane;lanes[lane].push_back(n);result.items.push_back({c.section->id,c.start,c.span,lane,1});result.laneCount=std::max(result.laneCount,lane+1);}

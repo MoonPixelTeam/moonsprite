@@ -1,5 +1,5 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "ui_frame_capture.h"
 #include "release_notes_dialog.h"
 namespace moon::editor {
 void Editor::showLatestRelease(std::size_t index,bool verify){
@@ -26,11 +26,11 @@ void Editor::showReleaseNoticeOnce(){
  if(releases::shouldShow(releases::all().front().version,read,write))showLatestRelease();
  }catch(const std::exception& e){status_=U"更新日志提示不可用："+unicodeText(e.what());}
 }
-void Editor::smokeReleaseNotes(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("openLatestRelease")||!menuCommands_.enabled("openLatestRelease"))throw std::runtime_error("Release notes real help menu available without document");const auto before=document.historyPosition(),revision=document.revision();std::string seen;int writes=0;auto read=[&]{return seen;};auto write=[&](const std::string& value){seen=value;++writes;};if(!releases::shouldShow(releases::all()[0].version,read,write)||releases::shouldShow(releases::all()[0].version,read,write)||writes!=1)throw std::runtime_error("Release announcement once-per-version policy");releaseNotesVerify_=true;menuCommands_.invoke("openLatestRelease");releaseNotesVerify_=false;showLatestRelease(1,true);if(before!=document.historyPosition()||revision!=document.revision())throw std::runtime_error("Release notes must not change project");}
+void Editor::smokeReleaseNotes(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("openLatestRelease")||!menuCommands_.enabled("openLatestRelease"))throw std::runtime_error("Release notes real help menu available without document");const auto before=currentDocument().historyPosition(),revision=currentDocument().revision();std::string seen;int writes=0;auto read=[&]{return seen;};auto write=[&](const std::string& value){seen=value;++writes;};if(!releases::shouldShow(releases::all()[0].version,read,write)||releases::shouldShow(releases::all()[0].version,read,write)||writes!=1)throw std::runtime_error("Release announcement once-per-version policy");releaseNotesVerify_=true;menuCommands_.invoke("openLatestRelease");releaseNotesVerify_=false;showLatestRelease(1,true);if(before!=currentDocument().historyPosition()||revision!=currentDocument().revision())throw std::runtime_error("Release notes must not change project");}
 void Editor::smokeHomeAnnouncements(int phase){
  if(phase==0){smoke_=true;pending_=Pending::None;homeOpen_=true;documentOpen_=false;refresh();if(!homeAnnouncements_)throw std::runtime_error("Missing home announcements");homeAnnouncements_->scrollEnd();invalidate();return;}
  smoke_=true;pending_=Pending::None;homeOpen_=true;documentOpen_=false;refresh();
- auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};check(homeAnnouncements_&&homeAnnouncements_->count()==3,"Actual home announcement widgets");const auto expected=releases::homeAnnouncements();const auto before=document.historyPosition(),revision=document.revision();const auto rightScroll=homeScrollPixels_;const auto original=homeAnnouncements_->bounds();
+ auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};check(homeAnnouncements_&&homeAnnouncements_->count()==3,"Actual home announcement widgets");const auto expected=releases::homeAnnouncements();const auto before=currentDocument().historyPosition(),revision=currentDocument().revision();const auto rightScroll=homeScrollPixels_;const auto original=homeAnnouncements_->bounds();
  for(std::size_t i=0;i<expected.size();++i){check(homeAnnouncements_->releaseIndex(i)==expected[i]&&homeAnnouncements_->version(i)==releases::all()[expected[i]].version,"Home announcement version/title association");}
  homeAnnouncements_->setRelayoutEnabled(false);
  homeAnnouncements_->setBounds({original.x,original.y,120*uiScale,68*uiScale});homeAnnouncements_->configure(4*18+6);check(!homeAnnouncements_->summariesVisible(),"Legacy short news container hides summary");check(homeAnnouncements_->maximum()>0,"Short news viewport overflows");
@@ -39,7 +39,7 @@ void Editor::smokeHomeAnnouncements(int phase){
  homeAnnouncements_->setBounds({original.x,original.y,200*uiScale,360*uiScale});homeAnnouncements_->configure(0);check(homeAnnouncements_->summariesVisible(),"Legacy tall news container shows up to three summary lines");
  homeAnnouncements_->setBounds(original);homeAnnouncements_->configure(4*(homeBounds().h<340?18:26)+6);homeAnnouncements_->setRelayoutEnabled(true);releaseNotesVerify_=true;
  for(std::size_t i=0;i<expected.size();++i){homeAnnouncements_->smokeClick(i);check(releaseNotesLastOpened_==expected[i],"Actual home card opens its own historical release");}
- releaseNotesVerify_=false;check(homeScrollPixels_==rightScroll,"Left news scroll must not scroll recent files");check(document.historyPosition()==before&&document.revision()==revision,"Home announcement browsing preserves project");refresh();homeAnnouncements_->setRelayoutEnabled(false);homeAnnouncements_->setBounds({original.x,original.y,120*uiScale,68*uiScale});homeAnnouncements_->configure(4*18+6);homeAnnouncements_->ensureVisible(2);invalidate();
+ releaseNotesVerify_=false;check(homeScrollPixels_==rightScroll,"Left news scroll must not scroll recent files");check(currentDocument().historyPosition()==before&&currentDocument().revision()==revision,"Home announcement browsing preserves project");refresh();homeAnnouncements_->setRelayoutEnabled(false);homeAnnouncements_->setBounds({original.x,original.y,120*uiScale,68*uiScale});homeAnnouncements_->configure(4*18+6);homeAnnouncements_->ensureVisible(2);invalidate();
 }
 
 }

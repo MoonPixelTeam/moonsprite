@@ -16,7 +16,7 @@ bool Document::beginLiquify(liquify::Point p,liquify::Options options){
  const std::string selected=cel().id;liquifyBeforeCels_.clear();liquifyAfterCels_.clear();liquifyDeltas_.clear();liquifyLookup_.clear();liquifyGeometry_.reset();
  for(const auto& c:timeline_.state().cels){if(!c.linkedCelId&&!c.runtimeSharedCelId)continue;auto r=timeline_.resolveSurface(c.id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid liquify source");if(c.id!=selected&&r.source->id!=selected)continue;liquifyBeforeCels_.push_back(c);auto next=c;next.surface=*r.surface;next.opacity=r.source->opacity;next.zIndex=r.source->zIndex;next.linkedCelId.reset();next.runtimeSharedCelId.reset();liquifyAfterCels_.push_back(std::move(next));}
  try {
-  if(!liquifyAfterCels_.empty()){Edit e{{},state_,nextState_};e.afterCels=liquifyAfterCels_;applyCelEdit(e,true);}
+  if(!liquifyAfterCels_.empty()){Edit e{{},state_,nextState_};e.contentHistory.afterCels=liquifyAfterCels_;applyCelEdit(e,true);}
   const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid liquify owner");liquifyOwner_=r.source->id;auto* owner=timeline_.mutableOwnedSurface(liquifyOwner_);raster::validate(*owner);
   const bool covers=owner->offsetX<=0&&owner->offsetY<=0&&std::int64_t(owner->offsetX)+owner->width>=width_&&std::int64_t(owner->offsetY)+owner->height>=height_;
   if(!covers){constexpr std::size_t limit=256*1024*1024;std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface){if(c.surface->pixels.size()>(limit-used)/sizeof(Pixel))throw std::length_error("Liquify expansion exceeds document pixel budget");used+=c.surface->pixels.size()*sizeof(Pixel);}auto expanded=raster::expanded(*owner,{0,0,width_,height_},limit-used);if(expanded){liquifyGeometry_=std::move(*owner);*owner=std::move(*expanded);}}
@@ -28,17 +28,17 @@ bool Document::holdLiquify(){if(!liquifyActive())return false;auto c=liquifyCont
 void Document::cancelLiquify(){
  const bool had=liquifyStroke_.has_value();auto* owner=timeline_.mutableOwnedSurface(liquifyOwner_);if(owner){for(const auto& d:liquifyDeltas_)owner->pixels[d.index]=d.before;if(liquifyGeometry_)*owner=std::move(*liquifyGeometry_);}
  liquifyStroke_.reset();liquifyGeometry_.reset();liquifyDeltas_.clear();liquifyLookup_.clear();liquifyOwner_.clear();active_=false;strokePixels_=nullptr;
- if(!liquifyBeforeCels_.empty()){Edit e{{},state_,nextState_};e.beforeCels=std::move(liquifyBeforeCels_);applyCelEdit(e,false);}liquifyBeforeCels_.clear();liquifyAfterCels_.clear();if(had){change_={0,0,width_,height_};publishChange();}
+ if(!liquifyBeforeCels_.empty()){Edit e{{},state_,nextState_};e.contentHistory.beforeCels=std::move(liquifyBeforeCels_);applyCelEdit(e,false);}liquifyBeforeCels_.clear();liquifyAfterCels_.clear();if(had){change_={0,0,width_,height_};publishChange();}
 }
 bool Document::commitLiquify(){
  if(!liquifyActive())return false;auto c=liquifyContext();auto* owner=timeline_.mutableOwnedSurface(liquifyOwner_);
  if(liquifyOptions_.mode==liquify::Mode::Push&&liquifyOptions_.smoothing){std::vector<std::size_t> visited;for(const auto& d:liquifyDeltas_)if(d.before!=owner->pixels[d.index]){const int x=owner->offsetX+int(d.index%owner->width),y=owner->offsetY+int(d.index/owner->width);if(x>=0&&y>=0&&x<width_&&y<height_)visited.push_back(std::size_t(y)*width_+x);}const auto result=smoothBrushPixels(width_,height_,visited,selection_,liquifyOptions_.smoothingStrength,[&](int x,int y){return c.current(x,y).value_or(0);},[&](int x,int y){return c.current(x,y).has_value();});for(const auto& [i,p]:result)c.write(int(i%width_),int(i/width_),p);publishChange();}
- Edit pixels{{},state_,nextState_};pixels.targetCelId=cel().id;pixels.pixelAddress=PixelAddressSpace{owner->width,owner->height,owner->storageOriginX.value_or(0),owner->storageOriginY.value_or(0)};for(const auto& d:liquifyDeltas_)if(d.before!=d.after)pixels.pixels.push_back(d);
+ Edit pixels{{},state_,nextState_};pixels.contentHistory.targetCelId=cel().id;pixels.contentHistory.pixelAddress=PixelAddressSpace{owner->width,owner->height,owner->storageOriginX.value_or(0),owner->storageOriginY.value_or(0)};for(const auto& d:liquifyDeltas_)if(d.before!=d.after)pixels.pixels.push_back(d);
  if(pixels.pixels.empty()){cancelLiquify();return false;}
  // Native owner expansion and legacy unlink are one reversible transaction.
  Edit combined{{},state_,nextState_};
- if(!liquifyBeforeCels_.empty()){Edit links{{},state_,nextState_};links.beforeCels=liquifyBeforeCels_;links.afterCels=liquifyAfterCels_;combined.children.push_back(std::move(links));}
- if(liquifyGeometry_){Edit geometry{{},state_,nextState_};auto baseline=*owner;for(const auto& d:liquifyDeltas_)baseline.pixels[d.index]=d.before;geometry.surfaceChanges.push_back({liquifyOwner_,*liquifyGeometry_,std::move(baseline)});combined.children.push_back(std::move(geometry));}
+ if(!liquifyBeforeCels_.empty()){Edit links{{},state_,nextState_};links.contentHistory.beforeCels=liquifyBeforeCels_;links.contentHistory.afterCels=liquifyAfterCels_;combined.children.push_back(std::move(links));}
+ if(liquifyGeometry_){Edit geometry{{},state_,nextState_};auto baseline=*owner;for(const auto& d:liquifyDeltas_)baseline.pixels[d.index]=d.before;geometry.contentHistory.surfaceChanges.push_back({liquifyOwner_,*liquifyGeometry_,std::move(baseline)});combined.children.push_back(std::move(geometry));}
  combined.children.push_back(std::move(pixels));pushEdit(std::move(combined),U"液化");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));
  liquifyStroke_.reset();liquifyGeometry_.reset();liquifyBeforeCels_.clear();liquifyAfterCels_.clear();liquifyDeltas_.clear();liquifyLookup_.clear();liquifyOwner_.clear();active_=false;strokePixels_=nullptr;return true;
 }

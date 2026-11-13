@@ -99,7 +99,9 @@ struct LoopRange {int start=-1,end=-1;};
 struct LoopSectionLayoutItem {std::string id;int startIndex=0,span=0,lane=0,laneSpan=1;};
 struct LoopSectionLayout {std::vector<LoopSectionLayoutItem> items;int laneCount=0;};
 struct LoopSectionPreview {std::string id;int startIndex=0,endIndex=0;};
-LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview={});
+// UI supplies its locale comparison; headless callers default to code-point order.
+using LoopNameLess=bool(*)(const std::u32string&,const std::u32string&);
+LoopSectionLayout layoutLoopSections(const State& state,const std::optional<LoopSectionPreview>& preview={},LoopNameLess nameLess=nullptr);
 int loopResizeFrameIndex(double pointer,double firstFrame,double frameWidth,int frameCount,bool startEdge);
 
 struct LoopPlaybackContext {std::string sectionId;int iteration=0;std::optional<int> position;};

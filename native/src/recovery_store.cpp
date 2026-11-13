@@ -3,7 +3,7 @@
 #include <windows.h>
 #include <fstream>
 #include <algorithm>
-#include <atomic>
+#include "system_atomic_file.h"
 #include <set>
 #include <map>
 #include <array>
@@ -36,20 +36,17 @@ public:
  DirectoryGuard(const DirectoryGuard&)=delete;DirectoryGuard& operator=(const DirectoryGuard&)=delete;
 };
 void atomic(const std::filesystem::path& target,const Bytes& data){
- static std::atomic<std::uint64_t> serial{0};
- auto temp=target;temp+=L"."+std::to_wstring(GetCurrentProcessId())+L"."+std::to_wstring(GetTickCount64())+L"."+std::to_wstring(++serial)+L".tmp";
- HANDLE file=CreateFileW(temp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
- if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot create recovery temporary file");
- try {for(std::size_t offset=0;offset<data.size();){const auto count=DWORD(std::min<std::size_t>(1024*1024,data.size()-offset));DWORD n=0;if(!WriteFile(file,data.data()+offset,count,&n,nullptr)||n!=count)failed("Cannot write recovery");offset+=count;
+ io::AtomicWritePolicy policy;
+ policy.create="Cannot create recovery temporary file";policy.write="Cannot write recovery";
+ policy.flush="Cannot flush recovery";policy.replace="Cannot commit recovery";
+ policy.domain=target.extension()==L".recovery-pending"?"descriptor":target.extension()==L".moonsprite"?"payload":"metadata";
 #ifdef MOONSPRITE_RECOVERY_COMMIT_TEST
- if(target.extension()==L".moonsprite"&&offset<data.size())commitCheckpoint("payload-partial");
+ if(target.extension()==L".moonsprite"){
+  policy.afterChunk=[&](std::size_t offset){if(offset<data.size())commitCheckpoint("payload-partial");};
+  policy.beforeReplace=[](const auto&){commitCheckpoint("payload-temp");};
+ }
 #endif
- }if(!FlushFileBuffers(file))failed("Cannot flush recovery");CloseHandle(file);file=INVALID_HANDLE_VALUE;
-#ifdef MOONSPRITE_RECOVERY_COMMIT_TEST
- if(target.extension()==L".moonsprite")commitCheckpoint("payload-temp");
-#endif
- if(!MoveFileExW(temp.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Cannot commit recovery");
- }catch(...){if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);DeleteFileW(temp.c_str());throw;}
+ io::commitAtomicBytes(target,data,std::move(policy));
 }
 // Native GAP-015 commit descriptor. Existing .moonsprite/.json remain readable
 // by legacy. Only a matching payload may use this uncommitted metadata.

@@ -27,8 +27,8 @@
 #include <locale>
 #define CHECK(v) do{if(!(v))throw std::runtime_error("Journal budget check failed: " #v);}while(0)
 namespace moon {struct RasterHistoryFixture {
- static void apply(Document& d){d.applyEdit(d.history_.front(),true);}
- static void compound(Document& d){const auto start=d.position_;d.groupingHistory_=true;{Document::HistoryLabelScope label(d,U"compound");d.beginStroke({2,3},0xff771122);d.commitStroke();d.beginStroke({3,3},0xff772233);d.commitStroke();}d.groupingHistory_=false;d.groupEdits(start,d.selectedFrames_);}
+ static void apply(Document& d){d.applyEdit(d.history_.at(0),true);}
+ static void compound(Document& d){const auto start=d.history_.position();d.groupingHistory_=true;{Document::HistoryLabelScope label(d,U"compound");d.beginStroke({2,3},0xff771122);d.commitStroke();d.beginStroke({3,3},0xff772233);d.commitStroke();}d.groupingHistory_=false;d.groupEdits(start,d.selectedFrames_);}
 };}
 using namespace moon;
 using namespace moon::local_history;

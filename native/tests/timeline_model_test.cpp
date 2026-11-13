@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include <stdexcept>
+#include <limits>
 
 using namespace moon::timeline;
 
@@ -47,7 +48,23 @@ static void validatedStateTransfer(){
  require(validated.state().cels.empty()&&!validated.hasLayer("transfer-layer")&&!validated.hasFrame("transfer-frame")&&!validated.findCelById("transfer-cel")&&validated.diagnoseLinks().empty(),"Consumed timeline clears state and indexed identities");
  Timeline rebuilt(std::move(transferred));require(rebuilt.findCelById("transfer-cel")&&rebuilt.state().tilesets[0].pixels.data()==sheetPixels&&rebuilt.diagnoseLinks().empty(),"Transferred state retains valid content and buffer identity");
 }
-int main() {
+static void linkedPreparationFailure(){
+ State state;state.frames={{"frame",100}};
+ for(const auto& id:{"A","B","C","D"}){Layer layer;layer.id=id;state.layers.push_back(std::move(layer));state.cels.push_back(cel(id,id,"frame",0xff123456));}
+ Timeline timeline(std::move(state));
+ // Inject after construction: buildIndex also synchronizes links, while this
+ // fixture specifically checks an existing timeline's explicit synchronization.
+ auto& live=const_cast<State&>(timeline.state());
+ for(auto& layer:live.layers)layer.linkedContentId=(layer.id=="A"||layer.id=="B")?"first":"second";
+ auto& broken=*live.cels[3].surface;broken.offsetX=std::numeric_limits<int>::max();broken.storageOriginX=std::numeric_limits<int>::min();
+ live.cels[2].surface->storageOriginX=0;live.cels[2].surface->pixels[0]=0xffaabbcc;
+ std::vector<const void*> identities;std::vector<int> offsets;
+ for(const auto& value:timeline.state().cels){identities.push_back(value.surface->pixels.identity());offsets.push_back(value.surface->offsetX);}
+ rejects([&]{timeline.synchronizeLinkedLayers("A");});
+ for(std::size_t i=0;i<identities.size();++i)require(timeline.state().cels[i].surface->pixels.identity()==identities[i]&&timeline.state().cels[i].surface->offsetX==offsets[i],"Later linked group rejection partially installed an earlier group");
+}
+static void runTests() {
+ linkedPreparationFailure();
   validatedStateTransfer();
   {auto state=fixture();state.cels[2].surface.reset();state.cels[2].runtimeSharedCelId="A1";Timeline invalid(state);const auto result=invalid.resolveSurface("B1");require(result.issue==LinkIssue::CrossLayer && result.offendingId=="A1","Runtime-only cross-layer link safely reports actual target");require(!invalid.diagnoseLinks().empty(),"Runtime-only cross-layer link rejected before import");}
   {State state;state.layers={{"L",U"L"}};state.frames={{"F",100},{"G",100}};Cel root;root.id="root";root.layerId="L";root.frameId="F";root.surface=Surface{4,2,0,0,{},{},{0,0x01000000,0,0xff000000,0,0,0,0}};Cel alias;alias.id="alias";alias.layerId="L";alias.frameId="G";alias.linkedCelId="root";state.cels={root,alias};Timeline cache(state);const auto before=celSelectionCacheStats();auto first=cache.contentSelection("root",4,2);require(first && first->x==1 && first->width==3 && first->mask==std::vector<unsigned char>({1,0,1}),"Cache tight alpha hole mask");first->mask[0]=0;auto second=cache.contentSelection("alias",4,2);auto after=celSelectionCacheStats();require(second->mask[0]==1 && after.builds==before.builds+1 && after.hits==before.hits+1,"Linked owner shares build and returns private mask");cache.setPixel("alias",1,0);auto changed=cache.contentSelection("root",4,2);require(changed && changed->x==3 && changed->mask.empty() && celSelectionCacheStats().builds==after.builds+1,"Linked mutation rebuilds rectangle");cache.contentSelection("root",3,2);require(celSelectionCacheStats().builds==after.builds+2,"Canvas clipping invalidates mask");const auto bypass=celSelectionCacheStats();cache.contentSelection("root",4,2,false);cache.contentSelection("root",4,2,false);require(celSelectionCacheStats().builds==bypass.builds+2,"Borrowed live stroke bypasses cache");Timeline independent(state);independent.setPixel("root",1,0);require(independent.contentSelection("root",4,2)->x==3 && second->x==1,"Independent storage never shares stale content");}
@@ -213,7 +230,11 @@ int main() {
 
   State loops;for(int n=0;n<8;++n)loops.frames.push_back({"f"+std::to_string(n),100});loops.loopSections={{"outer",U"Outer","f0","f7"},{"child",U"Child","f1","f4"},{"leaf",U"Leaf","f2","f3"},{"sibling",U"Sibling","f5","f6"}};auto layout=layoutLoopSections(loops);require(layout.laneCount==3 && layout.items[0].id=="outer" && layout.items[0].laneSpan==3,"Loop parent spans all nested lanes");require(layout.items[1].lane==1 && layout.items[2].lane==2 && layout.items[3].lane==2,"Loop leaves shift to deepest available lane");auto preview=layoutLoopSections(loops,LoopSectionPreview{"leaf",5,7});require(preview.items.size()==4 && loops.loopSections[2].startFrameId=="f2","Loop preview does not mutate source");State same; same.frames=loops.frames;same.loopSections={{"b",U"B","f1","f3"},{"a",U"A","f1","f3"},{"next",U"Next","f4","f5"}};auto tied=layoutLoopSections(same);require(tied.laneCount==2 && tied.items[0].id=="a" && tied.items[1].id=="b" && tied.items[2].lane==1,"Equal ranges retain name tie order and nonoverlap leaf placement");require(loopResizeFrameIndex(112,100,24,8,true)==1 && loopResizeFrameIndex(112,100,24,8,false)==0 && loopResizeFrameIndex(-100,100,24,8,true)==0 && loopResizeFrameIndex(999,100,24,8,false)==7,"Loop resize rounds boundaries and clamps both edges");
 
+  auto reverse=layoutLoopSections(same,{},[](const std::u32string& a,const std::u32string& b){return a>b;});require(reverse.items[0].id=="b"&&reverse.items[1].id=="a","Injected locale comparison applies to equal ranges");
+  auto equivalent=layoutLoopSections(same,{},[](const std::u32string&,const std::u32string&){return false;});require(equivalent.items[0].id=="b"&&equivalent.items[1].id=="a","Equal locale labels preserve stable insertion order");
   std::cout<<"Timeline model: 2 layers x 2 frames, source-owned writes, linked fallback/cache, deep copies, IDs, sparse slots and validation passed.\n";
 
 }
+
+int main(){try{runTests();return 0;}catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}
 

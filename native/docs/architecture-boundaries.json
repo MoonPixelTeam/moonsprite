@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "definitionOwners": {
+    "Document::captureFrameOrder": "document_history_frames.cpp",
+    "Document::normalizeAnimationSelection": "timeline_interaction.cpp",
+    "Document::finishAnimationSelectionHistory": "timeline_interaction.cpp",
+    "Document::Edit::animationSelectionBytes": "document_history_cost.cpp",
+    "Document::captureLayerOrder": "document_history_layers.cpp",
+    "Document::capturePaletteEdit": "document_history_palette.cpp",
+    "Document::preparePaletteEdit": "document_history_palette.cpp",
+    "Document::exchangePaletteEdit": "document_history_palette.cpp",
+    "Document::prepareSurfaceEdit": "document_history_content.cpp",
+    "Document::prepareHistoryPixelRestore": "document_history_content.cpp",
+    "Document::prepareHistoryLeafMetadata": "document_history_content.cpp",
+    "Document::exchangeHistoryLeaf": "document_history_content.cpp",
+    "Document::applyTerminalHistory": "document_history_apply.cpp",
+    "Document::applyLocalSnapshotHistory": "document_history_snapshots.cpp",
+    "Document::applyRollbackHistory": "document_history_snapshots.cpp",
+    "Document::exchangeRollbackPayload": "document_rollback.cpp",
+    "Document::applyPreparedRollback": "document_rollback.cpp",
+    "Document::applySnapshotStructure": "document_history_snapshots.cpp",
+    "Document::SnapshotHistory::exclusiveBytes": "document_history_snapshots.cpp",
+    "Document::SnapshotHistory::timelineBytes": "document_history_snapshots.cpp",
+    "Document::SnapshotHistory::geometryBytes": "document_history_snapshots.cpp",
+    "Document::applyTileHistoryResources": "document_history_resources.cpp",
+    "Document::applyFreeTileSelectionHistory": "document_history_resources.cpp",
+    "Document::TileResourceHistory::exclusiveBytes": "document_history_resources.cpp",
+    "Document::TileResourceHistory::pixelBytes": "document_history_resources.cpp",
+    "Document::TileResourceHistory::slotBytes": "document_history_resources.cpp",
+    "Document::applySliceHistory": "document_history_slices.cpp",
+    "Document::SliceHistory::bytes": "document_history_slices.cpp",
+    "Document::applyCelEdit": "document_history_content.cpp",
+    "Document::applySurfaceEdit": "document_history_content.cpp",
+    "Document::applyCelPropertiesEdit": "document_history_content.cpp",
+    "Document::applyPixelEdit": "document_history_content.cpp",
+    "Document::ContentHistory::exclusiveBytes": "document_history_content.cpp",
+    "Document::ContentHistory::textBytes": "document_history_content.cpp",
+    "Document::ContentHistory::addressBytes": "document_history_content.cpp",
+    "Document::ContentHistory::pixelBytes": "document_history_content.cpp",
+    "Document::ContentHistory::denseBytes": "document_history_content.cpp",
+    "Document::ContentHistory::celBytes": "document_history_content.cpp",
+    "Document::ContentHistory::offsetBytes": "document_history_content.cpp",
+    "Document::ContentHistory::surfaceBytes": "document_history_content.cpp",
+    "Document::applyTilemapPixelHistory": "document_tilemap.cpp",
+    "Document::applyMaskHistoryResources": "document_history_masks.cpp",
+    "Document::applyMaskHistoryContext": "document_history_masks.cpp",
+    "Document::MaskHistory::resourceBytes": "document_history_masks.cpp",
+    "Document::MaskHistory::contextBytes": "document_history_masks.cpp",
+    "Document::applyTrimPivotHistory": "document_history_selection.cpp",
+    "Document::applyPixelSelectionHistory": "document_history_selection.cpp",
+    "Document::PixelSelectionHistory::bytes": "document_history_selection.cpp",
+    "Document::applyPaletteEdit": "document_history_palette.cpp",
+    "Document::PaletteHistory::exclusiveBytes": "document_history_palette.cpp",
+    "Document::PaletteHistory::metadataBytes": "document_history_palette.cpp",
+    "Document::PaletteHistory::snapshotBytes": "document_history_palette.cpp",
+    "Document::applyLayerEdit": "document_history_layers.cpp",
+    "Document::LayerHistory::tilesetBytes": "document_history_layers.cpp",
+    "Document::LayerHistory::nameBytes": "document_history_layers.cpp",
+    "Document::LayerHistory::propertyBytes": "document_history_layers.cpp",
+    "Document::LayerHistory::orderBytes": "document_history_layers.cpp",
+    "Document::LayerHistory::projectionBytes": "document_history_layers.cpp",
+    "Document::LayerHistory::snapshotBytes": "document_history_layers.cpp",
+    "Document::applyLayerStructure": "document_layer_groups.cpp",
+    "Document::exchangeLayerStructure": "document_layer_groups.cpp",
+    "Document::applyGroupUi": "document_layer_groups.cpp",
+    "Document::applyFrameEdit": "document_history_frames.cpp",
+    "Document::FrameHistory::durationBytes": "document_history_frames.cpp",
+    "Document::FrameHistory::loopBytes": "document_history_frames.cpp",
+    "Document::FrameHistory::frameBytes": "document_history_frames.cpp",
+    "Document::applyEdit": "document_history_apply.cpp",
+    "Document::applyValidatedEdit": "document_history_apply.cpp",
+    "Document::applyHistoryResources": "document_history_apply.cpp",
+    "Document::applyHistoryStructure": "document_history_apply.cpp",
+    "Document::applyHistoryContent": "document_history_content.cpp",
+    "Document::applyHistorySelection": "document_history_apply.cpp",
+    "Document::applyHistoryProjection": "document_history_apply.cpp",
+    "Document::finishHistorySources": "document_history_resources.cpp",
+    "Document::Edit::bytes": "document_history_cost.cpp"
+  },
+  "allowed": {
+    "core": [
+      "core",
+      "shared"
+    ],
+    "shared": [
+      "core",
+      "shared"
+    ],
+    "application": [
+      "core",
+      "shared",
+      "application"
+    ],
+    "platform": [
+      "core",
+      "shared",
+      "platform",
+      "codec"
+    ],
+    "codec": [
+      "core",
+      "shared",
+      "codec",
+      "platform"
+    ],
+    "extension": [
+      "core",
+      "shared",
+      "application",
+      "extension",
+      "codec",
+      "platform"
+    ],
+    "ui": [
+      "core",
+      "shared",
+      "application",
+      "platform",
+      "codec",
+      "extension",
+      "ui"
+    ],
+    "test": [
+      "core",
+      "shared",
+      "application",
+      "platform",
+      "codec",
+      "extension",
+      "ui",
+      "test"
+    ]
+  },
+  "targets": {
+    "moon-core": "core",
+    "moonsprite-native": "ui",
+    "moon-project-reader": "codec",
+    "moon-local-history": "codec",
+    "moon-gif-export": "codec",
+    "moon-pattern-import": "codec",
+    "moon-skin": "platform",
+    "moon-vpx": "codec",
+    "moon-webm": "codec",
+    "moon-usage-statistics": "platform",
+    "moon-lua-invocation": "extension",
+    "moon-lua-runtime": "platform",
+    "moon-system-clipboard": "platform",
+    "moon-system-text": "platform",
+    "moon-winrt-platform": "platform",
+    "icu": "codec",
+    "moon-raster-io": "codec",
+    "moon-recovery": "codec",
+    "moon-timelapse-io": "codec",
+    "moon-atomic-file": "platform"
+  },
+  "testTargets": [
+    "*-tests"
+  ],
+  "externalSources": {
+    "moon-webm": [
+      ".cache/libvpx-1.15.2/third_party/libwebm/mkvmuxer/*.cc"
+    ],
+    "timelapse-video-tests": [
+      ".cache/libvpx-1.15.2/third_party/libwebm/mkvparser/*.cc"
+    ]
+  },
+  "generatedSources": {
+    "laf-os": [
+      "build/generated/moonsprite_laf_window.cpp"
+    ],
+    "core-public-headers-tests": [
+      "build/generated/public_header_history_replay.cpp",
+      "build/generated/public_header_history_store.cpp",
+      "build/generated/public_header_animation_change.cpp",
+      "build/generated/public_header_playback_session.cpp",
+      "build/generated/public_header_document.cpp",
+      "build/generated/public_header_timeline_model.cpp",
+      "build/generated/public_header_new_document_clipboard.cpp",
+      "build/generated/public_header_history_commands.cpp",
+      "build/generated/public_header_batch_export_task.cpp",
+      "build/generated/public_header_wand_preview_controller.cpp",
+      "build/generated/public_header_preview_task.cpp",
+      "build/generated/public_header_filter_preview_controllers.cpp",
+      "build/generated/public_header_ui_frame_capture.cpp",
+      "build/generated/public_header_system_clipboard_size.cpp",
+      "build/generated/public_header_tool_session_state.cpp",
+      "build/generated/public_header_save_task.cpp",
+      "build/generated/public_header_save_decision.cpp",
+      "build/generated/public_header_system_winrt_apartment.cpp",
+      "build/generated/public_header_layered_export_task.cpp",
+      "build/generated/public_header_task_stage_profile.cpp",
+      "build/generated/public_header_task_poll_schedule.cpp",
+      "build/generated/public_header_atomic_write.cpp",
+      "build/generated/public_header_captured_save.cpp"
+    ],
+    "ui-public-headers-tests": [
+      "build/generated/public_header_interaction_profile.cpp",
+      "build/generated/public_header_pixel_theme.cpp",
+      "build/generated/public_header_curve_editor_native.cpp",
+      "build/generated/public_header_sprite_sheet_preview.cpp",
+      "build/generated/public_header_tool_property_popup.cpp",
+      "build/generated/public_header_loop_number_entry.cpp",
+      "build/generated/public_header_frame_duration_palette_entry.cpp",
+      "build/generated/public_header_layer_label_separator.cpp",
+      "build/generated/public_header_extension_panel_host.cpp",
+      "build/generated/public_header_extension_menu_adapter.cpp",
+      "build/generated/public_header_extension_preferences.cpp",
+      "build/generated/public_header_extension_install_dialog.cpp",
+      "build/generated/public_header_extension_settings_dialog.cpp",
+      "build/generated/public_header_editor.cpp",
+      "build/generated/public_header_preview_panel.cpp",
+      "build/generated/public_header_floating_column_surface.cpp",
+      "build/generated/public_header_dialog_background.cpp",
+      "build/generated/public_header_floating_panel_geometry.cpp",
+      "build/generated/public_header_reference_image_panel.cpp",
+      "build/generated/public_header_free_tile_instances_panel.cpp",
+      "build/generated/public_header_tileset_management_panel.cpp"
+    ]
+  },
+  "externalTargets": [
+    {
+      "patterns": [
+        "ui-lib",
+        "laf-*",
+        "clip",
+        "obs"
+      ],
+      "module": "ui"
+    },
+    {
+      "patterns": [
+        "fmt",
+        "Threads::Threads"
+      ],
+      "module": "shared"
+    },
+    {
+      "patterns": [
+        "zlibstatic",
+        "icu"
+      ],
+      "module": "codec"
+    },
+    {
+      "patterns": [
+        "user32",
+        "gdi32",
+        "ole32",
+        "windowscodecs",
+        "windowsapp",
+        "runtimeobject",
+        "opengl32",
+        "fontsub",
+        "comdlg32",
+        "comctl32",
+        "shell32",
+        "winmm",
+        "xmllite",
+        "shlwapi",
+        "ws2_32",
+        "userenv",
+        "bcrypt",
+        "ntdll",
+        "advapi32",
+        "kernel32",
+        "uuid",
+        "dwrite",
+        "mfplat",
+        "mfreadwrite",
+        "mfuuid",
+        "*skia.lib"
+      ],
+      "module": "platform"
+    }
+  ],
+  "headers": [
+    {
+      "patterns": [
+        "history_commands.h",
+        "playback_session.h",
+        "ui_frame_capture.h",
+        "batch_export_task.h",
+        "wand_preview_controller.h",
+        "preview_task.h",
+        "filter_preview_controllers.h",
+        "tool_session_state.h",
+        "save_task.h",
+        "save_decision.h",
+        "layered_export_task.h",
+        "task_stage_profile.h",
+        "task_poll_schedule.h",
+        "captured_save.h"
+      ],
+      "module": "application"
+    },
+    {
+      "patterns": [
+        "system_clipboard_size.h",
+        "system_string_compare.h",
+        "system_winrt_apartment.h",
+        "system_atomic_file.h"
+      ],
+      "module": "platform"
+    },
+    {
+      "patterns": [
+        "editor*.h",
+        "native_*.h",
+        "pixel_font.h",
+        "pixel_text_area.h",
+        "pixel_clipboard.h",
+        "canvas_renderer.h",
+        "dialog_background.h",
+        "floating_panel_geometry.h",
+        "legacy_cursors.h",
+        "ui_*.h",
+        "*_dialog.h",
+        "*_panel.h",
+        "*_column*.h",
+        "timeline_button.h",
+        "extension_menu_adapter.h",
+        "extension_panel_host.h",
+        "extension_preferences.h",
+        "extension_form_image.h",
+        "extension_form_window.h",
+        "lua_script_window_host.h",
+        "lua_script_numeric_widgets.h"
+      ],
+      "module": "ui"
+    },
+    {
+      "patterns": [
+        "document.h",
+        "history_store.h",
+        "animation_change.h",
+        "document_*.h",
+        "timeline_model.h",
+        "timeline_index_validation.h",
+        "layer_compositor.h",
+        "cel_properties.h",
+        "cel_properties_targets.h",
+        "raster*.h"
+      ],
+      "module": "core"
+    },
+    {
+      "patterns": [
+        "extension_*.h",
+        "lua_script_directory.h",
+        "lua_script_service.h"
+      ],
+      "module": "extension"
+    }
+  ],
+  "externalHeaders": [
+    {
+      "patterns": [
+        "ui/*",
+        "os/*",
+        "gfx/*",
+        "text/*",
+        "she/*",
+        "base/*",
+        "obs/*"
+      ],
+      "module": "ui"
+    },
+    {
+      "patterns": [
+        "windows.h",
+        "winrt/*",
+        "objbase.h",
+        "shellapi.h",
+        "shlobj.h",
+        "commdlg.h",
+        "commctrl.h",
+        "wincodec.h",
+        "dwrite.h",
+        "d2d1.h",
+        "shlwapi.h",
+        "winsock2.h",
+        "iphlpapi.h",
+        "bcrypt.h",
+        "unknwn.h",
+        "winternl.h",
+        "winerror.h",
+        "propvarutil.h",
+        "wrl/*"
+      ],
+      "module": "platform"
+    },
+    {
+      "patterns": [
+        "vpx/*",
+        "webp/*",
+        "zlib.h",
+        "png.h",
+        "include/core/*",
+        "include/codec/*",
+        "include/encode/*",
+        "include/effects/*"
+      ],
+      "module": "codec"
+    }
+  ]
+}

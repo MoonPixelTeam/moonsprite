@@ -1,43 +1,58 @@
+#include "editor.h"
+#include "cel_thumbnail.h"
+#include "ui/system.h"
+#include "animation_crossfade_dialog.h"
+#include "cel_properties_dialog.h"
+#include "pixel_text_area.h"
+#include "custom_grid_dialog.h"
+#include "animation_settings_dialog.h"
+#include "layer_quick_actions_dialog.h"
 #include "quick_command_drag_handle.h"
 #include "sheet_import_preview.h"
-#include "editor_implementation.h"
-#include "editor.h"
+#include "curve_editor_native.h"
+#include "sprite_sheet_preview.h"
+#include "loop_number_entry.h"
+#include "frame_duration_palette_entry.h"
+#include "layer_label_separator.h"
+#include "gradient_stops_track.h"
+#include "interaction_profile.h"
+#include "system_string_compare.h"
 #include "free_tile_instances_panel.h"
 #include "raster_geometry.h"
 #include "lua_script_result.h"
 
 namespace moon::editor {
 
-std::vector<std::string> Editor::autoLinkVisibleTargets()const{return TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).ids(true);}
+std::vector<std::string> Editor::autoLinkVisibleTargets()const{return TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).ids(true);}
 
-std::vector<std::string> Editor::autoLinkModifierTargets()const{auto ids=document.timelineSelection().layers;ids.erase(std::remove_if(ids.begin(),ids.end(),[this](const auto& id){return std::none_of(document.timeline().state().layers.begin(),document.timeline().state().layers.end(),[&](const auto& layer){return layer.id==id;});}),ids.end());return ids.size()>1?ids:autoLinkVisibleTargets();}
+std::vector<std::string> Editor::autoLinkModifierTargets()const{auto ids=currentDocument().timelineSelection().layers;ids.erase(std::remove_if(ids.begin(),ids.end(),[this](const auto& id){return std::none_of(currentDocument().timeline().state().layers.begin(),currentDocument().timeline().state().layers.end(),[&](const auto& layer){return layer.id==id;});}),ids.end());return ids.size()>1?ids:autoLinkVisibleTargets();}
 
-bool Editor::autoLinkValue(const std::string& id)const{const auto& layers=document.timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->autoLinkAnimationCels;}
+bool Editor::autoLinkValue(const std::string& id)const{const auto& layers=currentDocument().timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->autoLinkAnimationCels;}
 
-void Editor::finishAutoLinkGesture(){if(!autoLinkGesture_)return;autoLinkGesture_.reset();if(autoLinkGestureIdentity_==document.identity())document.commitAutoLinkGesture();if(hasCapture())releaseMouse();refresh();}
+void Editor::finishAutoLinkGesture(){if(!autoLinkGesture_)return;autoLinkGesture_.reset();if(autoLinkGestureIdentity_==currentDocument().identity())currentDocument().commitAutoLinkGesture();if(hasCapture())releaseMouse();refresh();}
 
-void Editor::updateAutoLinkGesture(const std::string& id){if(!autoLinkGesture_ || autoLinkGestureIdentity_!=document.identity())return;auto& gesture=*autoLinkGesture_;const auto ids=autoLinkVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,autoLinkValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);document.previewAutoLinkGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
+void Editor::updateAutoLinkGesture(const std::string& id){if(!autoLinkGesture_ || autoLinkGestureIdentity_!=currentDocument().identity())return;auto& gesture=*autoLinkGesture_;const auto ids=autoLinkVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,autoLinkValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);currentDocument().previewAutoLinkGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
 
-void Editor::beginAutoLinkGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),document.frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);if(!maskLayerControlsAvailable(owner,document.frame().id))return;const auto* slot=timeline::resolvedMask(document.timeline().state(),owner,document.frame().id);if(slot){const auto m=*slot;document.setAttachedMaskFlags(owner,document.frame().id,m.visible,m.locked,m.moveWithOwner,!m.autoLinkAnimationCels);refresh();}}return;}
+void Editor::beginAutoLinkGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),currentDocument().frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);if(!maskLayerControlsAvailable(owner,currentDocument().frame().id))return;const auto* slot=timeline::resolvedMask(currentDocument().timeline().state(),owner,currentDocument().frame().id);if(slot){const auto m=*slot;currentDocument().setAttachedMaskFlags(owner,currentDocument().frame().id,m.visible,m.locked,m.moveWithOwner,!m.autoLinkAnimationCels);refresh();}}return;}
 
-    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();if(autoLinkGestureIdentity_!=document.identity()){autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();}autoLinkGestureIdentity_=document.identity();const bool value=!autoLinkValue(id);document.beginAutoLinkGesture();
+    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();if(autoLinkGestureIdentity_!=currentDocument().identity()){autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();}autoLinkGestureIdentity_=currentDocument().identity();const bool value=!autoLinkValue(id);currentDocument().beginAutoLinkGesture();
 
-    if(mouse.altPressed()){const auto ids=autoLinkModifierTargets();for(const auto& [key,original]:autoLinkSoloOriginals_)document.previewAutoLinkGesture(key,original);if(autoLinkSoloTarget_==id){autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();}else{autoLinkSoloOriginals_.clear();for(const auto& key:ids)autoLinkSoloOriginals_.emplace(key,autoLinkValue(key));for(const auto& key:ids)document.previewAutoLinkGesture(key,key==id);autoLinkSoloTarget_=id;}document.commitAutoLinkGesture();refresh();return;}
+    if(mouse.altPressed()){const auto ids=autoLinkModifierTargets();for(const auto& [key,original]:autoLinkSoloOriginals_)currentDocument().previewAutoLinkGesture(key,original);if(autoLinkSoloTarget_==id){autoLinkSoloTarget_.clear();autoLinkSoloOriginals_.clear();}else{autoLinkSoloOriginals_.clear();for(const auto& key:ids)autoLinkSoloOriginals_.emplace(key,autoLinkValue(key));for(const auto& key:ids)currentDocument().previewAutoLinkGesture(key,key==id);autoLinkSoloTarget_=id;}currentDocument().commitAutoLinkGesture();refresh();return;}
 
-    if(mouse.ctrlPressed()){for(const auto& key:autoLinkModifierTargets())document.previewAutoLinkGesture(key,value);document.commitAutoLinkGesture();refresh();return;}
+    if(mouse.ctrlPressed()){for(const auto& key:autoLinkModifierTargets())currentDocument().previewAutoLinkGesture(key,value);currentDocument().commitAutoLinkGesture();refresh();return;}
 
     autoLinkGesture_=AutoLinkGesture{id,value,{}};updateAutoLinkGesture(id);manager()->setCapture(this,true);requestFocus();
 
   }
 
 bool Editor::processAutoLinkGesture(ui::Message* msg){
-    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!autoLinkGesture_)return false;if(autoLinkGestureIdentity_!=document.identity()){autoLinkGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishAutoLinkGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishAutoLinkGesture();return true;}for(std::size_t n=0;n<layerAutoLinks_.size() && n+layerScroll_<TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size();++n)if(layerAutoLinks_[n]->timelineVisible && layerAutoLinks_[n]->bounds().contains(mouse->position())){updateAutoLinkGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(n)+layerScroll_)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishAutoLinkGesture();return true;}return false;}
+    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!autoLinkGesture_)return false;if(autoLinkGestureIdentity_!=currentDocument().identity()){autoLinkGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishAutoLinkGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishAutoLinkGesture();return true;}const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);for(std::size_t n=0;n<layerAutoLinks_.size() && n+currentView().layers<rows.size();++n)if(layerAutoLinks_[n]->timelineVisible && layerAutoLinks_[n]->bounds().contains(mouse->position())){updateAutoLinkGesture(rows.at(int(n)+currentView().layers)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishAutoLinkGesture();return true;}return false;}
 
 bool Editor::processTimelineSelectionKeyboard(ui::Message* msg){
 
     if(msg->type()==ui::kFocusLeaveMessage){timelineSpaceFocus_=nullptr;return false;}
 
-    const auto focus=manager()->getFocus();if(timelineSpaceFocus_ && (focus!=timelineSpaceFocus_ || timelineSpaceIdentity_!=document.identity()))timelineSpaceFocus_=nullptr;
+    const auto focus=manager()->getFocus();if(timelineSpaceFocus_ && (focus!=timelineSpaceFocus_ || timelineSpaceIdentity_!=currentDocument().identity()))timelineSpaceFocus_=nullptr;
 
     if(msg->type()!=ui::kKeyDownMessage && msg->type()!=ui::kKeyUpMessage)return false;
 
@@ -53,9 +68,9 @@ bool Editor::processTimelineSelectionKeyboard(ui::Message* msg){
 
     bool activate=key->scancode()==ui::kKeyEnter && msg->type()==ui::kKeyDownMessage;
 
-    if(key->scancode()==ui::kKeySpace){if(msg->type()==ui::kKeyDownMessage){if(!key->repeat()){timelineSpaceFocus_=focus;timelineSpaceIdentity_=document.identity();}}else{activate=timelineSpaceFocus_==focus && timelineSpaceIdentity_==document.identity();timelineSpaceFocus_=nullptr;}}
+    if(key->scancode()==ui::kKeySpace){if(msg->type()==ui::kKeyDownMessage){if(!key->repeat()){timelineSpaceFocus_=focus;timelineSpaceIdentity_=currentDocument().identity();}}else{activate=timelineSpaceFocus_==focus && timelineSpaceIdentity_==currentDocument().identity();timelineSpaceFocus_=nullptr;}}
 
-    if(activate){const int mode=key->shiftPressed()?2:key->ctrlPressed()?1:0;const auto& state=document.timeline().state();if(header>=0){document.selectFrameHeader(state.frames.at(frameScroll_+header).id,mode,playing_);markFrameSelection();}else{const int cols=timelineColumns(columnLayout(uiLogical(clientBounds()),2));selectTimelineSlot(layerScroll_+slot/cols,frameScroll_+slot%cols,mode);frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;playing_=false;loopPlayback_={};}refresh();focus->requestFocus();}return true;
+    if(activate){const int mode=key->shiftPressed()?2:key->ctrlPressed()?1:0;const auto& state=currentDocument().timeline().state();if(header>=0){currentDocument().selectFrameHeader(state.frames.at(currentView().frames+header).id,mode,currentPlayback().playing);markFrameSelection();}else{const int cols=timelineColumns(columnLayout(uiLogical(clientBounds()),2));selectTimelineSlot(currentView().layers+slot/cols,currentView().frames+slot%cols,mode);currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;currentPlayback().playing=false;currentPlayback().loop={};}refresh();focus->requestFocus();}return true;
 
   }
 
@@ -75,63 +90,63 @@ bool Editor::processAutoLinkKeyboard(ui::Message* msg){
 
   }
 
-std::vector<std::string> Editor::visibilityVisibleTargets()const{return TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).ids();}
+std::vector<std::string> Editor::visibilityVisibleTargets()const{return TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).ids();}
 
-std::vector<std::string> Editor::visibilityModifierTargets()const{auto ids=visibilityVisibleTargets();auto selected=document.timelineSelection().layers;selected.insert(selected.end(),document.selectedGroupIds().begin(),document.selectedGroupIds().end());if(selected.size()>1)ids.erase(std::remove_if(ids.begin(),ids.end(),[&](const auto& id){return std::find(selected.begin(),selected.end(),id)==selected.end();}),ids.end());return ids;}
+std::vector<std::string> Editor::visibilityModifierTargets()const{auto ids=visibilityVisibleTargets();auto selected=currentDocument().timelineSelection().layers;selected.insert(selected.end(),currentDocument().selectedGroupIds().begin(),currentDocument().selectedGroupIds().end());if(selected.size()>1)ids.erase(std::remove_if(ids.begin(),ids.end(),[&](const auto& id){return std::find(selected.begin(),selected.end(),id)==selected.end();}),ids.end());return ids;}
 
-bool Editor::visibilityValue(const std::string& id)const{if(attachedMaskRow(id)){const auto* m=timeline::resolvedMask(document.timeline().state(),attachedMaskOwner(id),document.frame().id);return m&&m->visible;}if(const auto* g=document.findGroup(id))return g->visible;const auto& layers=document.timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->visible;}
+bool Editor::visibilityValue(const std::string& id)const{if(attachedMaskRow(id)){const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),attachedMaskOwner(id),currentDocument().frame().id);return m&&m->visible;}if(const auto* g=currentDocument().findGroup(id))return g->visible;const auto& layers=currentDocument().timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->visible;}
 
-void Editor::finishVisibilityGesture(){if(!visibilityGesture_)return;visibilityGesture_.reset();if(visibilityGestureIdentity_==document.identity())document.commitVisibilityGesture();if(hasCapture())releaseMouse();refresh();}
+void Editor::finishVisibilityGesture(){if(!visibilityGesture_)return;visibilityGesture_.reset();if(visibilityGestureIdentity_==currentDocument().identity())currentDocument().commitVisibilityGesture();if(hasCapture())releaseMouse();refresh();}
 
-void Editor::updateVisibilityGesture(const std::string& id){if(!visibilityGesture_ || visibilityGestureIdentity_!=document.identity())return;auto& gesture=*visibilityGesture_;const auto ids=visibilityVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,visibilityValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);document.previewVisibilityGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
+void Editor::updateVisibilityGesture(const std::string& id){if(!visibilityGesture_ || visibilityGestureIdentity_!=currentDocument().identity())return;auto& gesture=*visibilityGesture_;const auto ids=visibilityVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,visibilityValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);currentDocument().previewVisibilityGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
 
-void Editor::beginVisibilityGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),document.frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);const auto* slot=timeline::resolvedMask(document.timeline().state(),owner,document.frame().id);if(slot){const auto m=*slot;document.setAttachedMaskFlags(owner,document.frame().id,!m.visible,m.locked,m.moveWithOwner,m.autoLinkAnimationCels);refresh();}}return;}
+void Editor::beginVisibilityGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),currentDocument().frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);const auto* slot=timeline::resolvedMask(currentDocument().timeline().state(),owner,currentDocument().frame().id);if(slot){const auto m=*slot;currentDocument().setAttachedMaskFlags(owner,currentDocument().frame().id,!m.visible,m.locked,m.moveWithOwner,m.autoLinkAnimationCels);refresh();}}return;}
 
-    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();finishVisibilityGesture();if(visibilityGestureIdentity_!=document.identity()){visibilitySoloTarget_.clear();visibilitySoloOriginals_.clear();}visibilityGestureIdentity_=document.identity();const bool value=!visibilityValue(id);document.beginVisibilityGesture();
+    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();finishVisibilityGesture();if(visibilityGestureIdentity_!=currentDocument().identity()){visibilitySoloTarget_.clear();visibilitySoloOriginals_.clear();}visibilityGestureIdentity_=currentDocument().identity();const bool value=!visibilityValue(id);currentDocument().beginVisibilityGesture();
 
-    if(mouse.altPressed()){const auto ids=visibilityModifierTargets();for(const auto& [key,original]:visibilitySoloOriginals_)document.previewVisibilityGesture(key,original);if(visibilitySoloTarget_==id){visibilitySoloTarget_.clear();visibilitySoloOriginals_.clear();}else{visibilitySoloOriginals_.clear();for(const auto& key:ids)visibilitySoloOriginals_.emplace(key,visibilityValue(key));for(const auto& key:ids)document.previewVisibilityGesture(key,key==id);visibilitySoloTarget_=id;}document.commitVisibilityGesture();refresh();return;}
+    if(mouse.altPressed()){const auto ids=visibilityModifierTargets();for(const auto& [key,original]:visibilitySoloOriginals_)currentDocument().previewVisibilityGesture(key,original);if(visibilitySoloTarget_==id){visibilitySoloTarget_.clear();visibilitySoloOriginals_.clear();}else{visibilitySoloOriginals_.clear();for(const auto& key:ids)visibilitySoloOriginals_.emplace(key,visibilityValue(key));for(const auto& key:ids)currentDocument().previewVisibilityGesture(key,key==id);visibilitySoloTarget_=id;}currentDocument().commitVisibilityGesture();refresh();return;}
 
-    if(mouse.ctrlPressed()){for(const auto& key:visibilityModifierTargets())document.previewVisibilityGesture(key,value);document.commitVisibilityGesture();refresh();return;}
+    if(mouse.ctrlPressed()){for(const auto& key:visibilityModifierTargets())currentDocument().previewVisibilityGesture(key,value);currentDocument().commitVisibilityGesture();refresh();return;}
 
     visibilityGesture_=VisibilityGesture{id,value,{}};updateVisibilityGesture(id);manager()->setCapture(this,true);requestFocus();
 
   }
 
 bool Editor::processVisibilityGesture(ui::Message* msg){
-    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!visibilityGesture_)return false;if(visibilityGestureIdentity_!=document.identity()){visibilityGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishVisibilityGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishVisibilityGesture();return true;}for(std::size_t n=0;n<layerEyes_.size() && n+layerScroll_<TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size();++n)if(layerEyes_[n]->timelineVisible && layerEyes_[n]->bounds().contains(mouse->position())){updateVisibilityGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(n)+layerScroll_)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishVisibilityGesture();return true;}return false;}
+    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!visibilityGesture_)return false;if(visibilityGestureIdentity_!=currentDocument().identity()){visibilityGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishVisibilityGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishVisibilityGesture();return true;}const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);for(std::size_t n=0;n<layerEyes_.size() && n+currentView().layers<rows.size();++n)if(layerEyes_[n]->timelineVisible && layerEyes_[n]->bounds().contains(mouse->position())){updateVisibilityGesture(rows.at(int(n)+currentView().layers)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishVisibilityGesture();return true;}return false;}
 
 std::vector<std::string> Editor::lockVisibleTargets()const{return visibilityVisibleTargets();}
 
 std::vector<std::string> Editor::lockModifierTargets()const{return visibilityModifierTargets();}
 
-bool Editor::lockValue(const std::string& id)const{if(attachedMaskRow(id)){const auto* m=timeline::resolvedMask(document.timeline().state(),attachedMaskOwner(id),document.frame().id);return m&&m->locked;}if(const auto* g=document.findGroup(id))return g->locked;const auto& layers=document.timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->locked;}
+bool Editor::lockValue(const std::string& id)const{if(attachedMaskRow(id)){const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),attachedMaskOwner(id),currentDocument().frame().id);return m&&m->locked;}if(const auto* g=currentDocument().findGroup(id))return g->locked;const auto& layers=currentDocument().timeline().state().layers;const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& layer){return layer.id==id;});return it!=layers.end() && it->locked;}
 
-void Editor::finishLockGesture(){if(!lockGesture_)return;lockGesture_.reset();if(lockGestureIdentity_==document.identity())document.commitLockGesture();if(hasCapture())releaseMouse();refresh();}
+void Editor::finishLockGesture(){if(!lockGesture_)return;lockGesture_.reset();if(lockGestureIdentity_==currentDocument().identity())currentDocument().commitLockGesture();if(hasCapture())releaseMouse();refresh();}
 
-void Editor::updateLockGesture(const std::string& id){if(!lockGesture_ || lockGestureIdentity_!=document.identity())return;auto& gesture=*lockGesture_;const auto ids=lockVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,lockValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);document.previewLockGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
+void Editor::updateLockGesture(const std::string& id){if(!lockGesture_ || lockGestureIdentity_!=currentDocument().identity())return;auto& gesture=*lockGesture_;const auto ids=lockVisibleTargets();const auto start=std::find(ids.begin(),ids.end(),gesture.start),end=std::find(ids.begin(),ids.end(),id);if(start==ids.end() || end==ids.end())return;const auto first=std::min(start,end),last=std::max(start,end);for(auto at=first;at<=last;++at)gesture.originals.emplace(*at,lockValue(*at));for(const auto& [key,value]:gesture.originals){const auto at=std::find(ids.begin(),ids.end(),key);currentDocument().previewLockGesture(key,at>=first && at<=last?gesture.value:value);}refresh();}
 
-void Editor::beginLockGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),document.frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);if(!maskLayerControlsAvailable(owner,document.frame().id))return;const auto* slot=timeline::resolvedMask(document.timeline().state(),owner,document.frame().id);if(slot){const auto m=*slot;document.setAttachedMaskFlags(owner,document.frame().id,m.visible,!m.locked,m.moveWithOwner,m.autoLinkAnimationCels,&selectedMaskSlots_);refresh();}}return;}
+void Editor::beginLockGesture(const std::string& id,const ui::MouseMessage& mouse){if(attachedMaskRow(id)){if(mouse.right()){showAttachedMaskMenu(attachedMaskOwner(id),currentDocument().frame().id);return;}if(mouse.left()){const auto owner=attachedMaskOwner(id);if(!maskLayerControlsAvailable(owner,currentDocument().frame().id))return;const auto* slot=timeline::resolvedMask(currentDocument().timeline().state(),owner,currentDocument().frame().id);if(slot){const auto m=*slot;currentDocument().setAttachedMaskFlags(owner,currentDocument().frame().id,m.visible,!m.locked,m.moveWithOwner,m.autoLinkAnimationCels,&currentView().maskSlots);refresh();}}return;}
 
-    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();finishVisibilityGesture();finishLockGesture();if(lockGestureIdentity_!=document.identity()){lockSoloTarget_.clear();lockSoloOriginals_.clear();}lockGestureIdentity_=document.identity();const bool value=!lockValue(id);document.beginLockGesture();
+    if(!mouse.left() || pending_!=Pending::None)return;finishAutoLinkGesture();finishVisibilityGesture();finishLockGesture();if(lockGestureIdentity_!=currentDocument().identity()){lockSoloTarget_.clear();lockSoloOriginals_.clear();}lockGestureIdentity_=currentDocument().identity();const bool value=!lockValue(id);currentDocument().beginLockGesture();
 
-    if(mouse.altPressed()){const auto ids=lockModifierTargets();for(const auto& [key,original]:lockSoloOriginals_)document.previewLockGesture(key,original);if(lockSoloTarget_==id){lockSoloTarget_.clear();lockSoloOriginals_.clear();}else{lockSoloOriginals_.clear();for(const auto& key:ids)lockSoloOriginals_.emplace(key,lockValue(key));for(const auto& key:ids)document.previewLockGesture(key,key==id);lockSoloTarget_=id;}document.commitLockGesture();refresh();return;}
+    if(mouse.altPressed()){const auto ids=lockModifierTargets();for(const auto& [key,original]:lockSoloOriginals_)currentDocument().previewLockGesture(key,original);if(lockSoloTarget_==id){lockSoloTarget_.clear();lockSoloOriginals_.clear();}else{lockSoloOriginals_.clear();for(const auto& key:ids)lockSoloOriginals_.emplace(key,lockValue(key));for(const auto& key:ids)currentDocument().previewLockGesture(key,key==id);lockSoloTarget_=id;}currentDocument().commitLockGesture();refresh();return;}
 
-    if(mouse.ctrlPressed()){for(const auto& key:lockModifierTargets())document.previewLockGesture(key,value);document.commitLockGesture();refresh();return;}
+    if(mouse.ctrlPressed()){for(const auto& key:lockModifierTargets())currentDocument().previewLockGesture(key,value);currentDocument().commitLockGesture();refresh();return;}
 
     lockGesture_=LockGesture{id,value,{}};updateLockGesture(id);manager()->setCapture(this,true);requestFocus();
 
   }
 
 bool Editor::processLockGesture(ui::Message* msg){
-    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!lockGesture_)return false;if(lockGestureIdentity_!=document.identity()){lockGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishLockGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishLockGesture();return true;}for(std::size_t n=0;n<layerLocks_.size() && n+layerScroll_<TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size();++n)if(layerLocks_[n]->timelineVisible && layerLocks_[n]->bounds().contains(mouse->position())){updateLockGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(n)+layerScroll_)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishLockGesture();return true;}return false;}
+    if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(!lockGesture_)return false;if(lockGestureIdentity_!=currentDocument().identity()){lockGesture_.reset();if(hasCapture())releaseMouse();return false;}if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){finishLockGesture();return false;}if(msg->type()==ui::kMouseMoveMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left()){finishLockGesture();return true;}const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);for(std::size_t n=0;n<layerLocks_.size() && n+currentView().layers<rows.size();++n)if(layerLocks_[n]->timelineVisible && layerLocks_[n]->bounds().contains(mouse->position())){updateLockGesture(rows.at(int(n)+currentView().layers)->id);break;}return true;}if(msg->type()==ui::kMouseUpMessage){finishLockGesture();return true;}return false;}
 
 int Editor::timelineLabelWidth()const{
 
-    const auto l=columnLayout(uiLogical(clientBounds()),2);if(timelineHidden_)return std::max(1,l.workW-10);int stored=layerLabelWidth_.logical();
+    const auto l=columnLayout(uiLogical(clientBounds()),2);if(timelineHidden_)return std::max(1,l.workW-10);int value=layerLabelWidth_.logical();
 
     const auto dock=docking_.groups[docking_.groupOf(2)].dock;
 
-    if(docking_.custom && (dock==panels::Dock::Left || dock==panels::Dock::Right))stored=std::min(stored,std::max(40,l.workW-34));
+    if(docking_.custom && (dock==panels::Dock::Left || dock==panels::Dock::Right))value=std::min(value,std::max(40,l.workW-34));
 
     // Layout must not depend on child visibility: laf temporarily hides
 
@@ -139,7 +154,7 @@ int Editor::timelineLabelWidth()const{
 
     constexpr int toolbarExtent=5+4*14+15+uiGap+2*14+15;
 
-    return std::max(stored,toolbarExtent);
+    return std::max(value,toolbarExtent);
 
   }
 
@@ -172,7 +187,7 @@ bool Editor::processLayerLabelResize(ui::Message* msg){
 
   }
 
-void Editor::showCustomGridSettings(int verify){CustomGridDialog popup(font_,skin_,toolIcons_,document.customGrid(),[this](GridSettings settings){document.setCustomGrid(document.showCustomGrid(),settings);refresh();});popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-100*uiScale,bounds().center().y-73*uiScale,200*uiScale,146*uiScale});ui::Timer timer(30,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke(verify==2);});timer.start();}popup.openWindowInForeground();requestFocus();}
+void Editor::showCustomGridSettings(int verify){CustomGridDialog popup(font_,skin_,toolIcons_,currentDocument().customGrid(),[this](GridSettings settings){currentDocument().setCustomGrid(currentDocument().showCustomGrid(),settings);refresh();});popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-100*uiScale,bounds().center().y-73*uiScale,200*uiScale,146*uiScale});ui::Timer timer(30,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke(verify==2);});timer.start();}popup.openWindowInForeground();requestFocus();}
 
 bool Editor::persistAnimationSettings(){if(smoke_)return true;if(!animationSettingsReadable_){status_=U"动画设置源损坏，保存已禁用";return false;}try{animationprefs::save(palettePreferencePath().parent_path()/"animation-settings.json",{onion_,skipDisabledFrames_});return true;}catch(const std::exception& e){status_=U"动画设置保存失败："+unicodeText(e.what());return false;}}
 
@@ -198,32 +213,32 @@ void Editor::showLayerQuickActions(bool verify){
 
   }
 
-bool Editor::enabledTimelineAction(std::size_t i) const {return pending_==Pending::None && (i<=6 || (i==7 && document.timeline().state().frames.size()>1) || i==8);}
+bool Editor::enabledTimelineAction(std::size_t i) const {return pending_==Pending::None && (i<=6 || (i==7 && currentDocument().timeline().state().frames.size()>1) || i==8);}
 
-void Editor::toolbarSelectFrame(std::size_t index){document.selectFrameHeader(document.timeline().state().frames.at(index).id,0,playing_);markFrameSelection();if(playing_)retargetTagPlayback();refresh();}
+void Editor::toolbarSelectFrame(std::size_t index){currentDocument().selectFrameHeader(currentDocument().timeline().state().frames.at(index).id,0,currentPlayback().playing);markFrameSelection();if(currentPlayback().playing)retargetTagPlayback();refresh();}
 
-void Editor::toolbarStepFrame(int direction){const auto count=document.timeline().state().frames.size();const auto at=document.activeFrameIndex();toolbarSelectFrame(direction>0?(at+1)%count:(at?at-1:0));}
+void Editor::toolbarStepFrame(int direction){const auto count=currentDocument().timeline().state().frames.size();const auto at=currentDocument().activeFrameIndex();toolbarSelectFrame(direction>0?(at+1)%count:(at?at-1:0));}
 
 namespace {
 // Canonical mask focus includes empty slots, which have no active mask ID.
-std::string navigationMaskOwner(const Document& document,const std::vector<Document::MaskSlotKey>& slots,const std::optional<Document::MaskSlotKey>& anchor){
+std::string navigationMaskOwner(const Document& value,const std::vector<Document::MaskSlotKey>& slots,const std::optional<Document::MaskSlotKey>& anchor){
  if(!slots.empty())return anchor?anchor->first:slots.back().first;
- if(!document.timelineSelection().maskRows.empty())return document.timelineSelection().maskRows.back();
- if(!document.activeMaskId().empty())for(const auto& slot:document.timeline().state().masks)if(slot.mask.id==document.activeMaskId())return slot.ownerId;
+ if(!value.timelineSelection().maskRows.empty())return value.timelineSelection().maskRows.back();
+ if(!value.activeMaskId().empty())for(const auto& slot:value.timeline().state().masks)if(slot.mask.id==value.activeMaskId())return slot.ownerId;
  return {};
 }
 }
 void Editor::keyboardStepFrame(int direction){if(timelineHidden_)return;
 
-    if(playing_){playing_=false;refresh();return;}document.commitFloatingPaste();if(document.timeline().state().frames.size()<2)return;
-    const auto maskOwner=navigationMaskOwner(document,selectedMaskSlots_,maskSelectionAnchor_);
-    const auto target=timeline::stepFrameId(document.timeline().state(),document.frame().id,direction,playbackTagMode_,skipDisabledFrames_);
+    if(currentPlayback().playing){currentPlayback().playing=false;refresh();return;}currentDocument().commitFloatingPaste();if(currentDocument().timeline().state().frames.size()<2)return;
+    const auto maskOwner=navigationMaskOwner(currentDocument(),currentView().maskSlots,currentView().maskAnchor);
+    const auto target=timeline::stepFrameId(currentDocument().timeline().state(),currentDocument().frame().id,direction,currentPlayback().tagMode,skipDisabledFrames_);
     if(!maskOwner.empty()){
       // stepAnimationCell snapshots the row before stepAnimationFrame clears
       // explicit selection, then replaces the destination mask-cell selection.
-      selectMaskSlot(maskOwner,target.empty()?document.frame().id:target);return;
+      selectMaskSlot(maskOwner,target.empty()?currentDocument().frame().id:target);return;
     }
-    if(!target.empty() && target!=document.frame().id){document.clearTimelineSelection();clearTimelineRowSelection();document.selectFrame(target);}const auto* slot=document.timeline().findCel(document.layer().id,document.frame().id);if(slot)document.selectTimelineCel(slot->id);frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();
+    if(!target.empty() && target!=currentDocument().frame().id){currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentDocument().selectFrame(target);}const auto* slot=currentDocument().timeline().findCel(currentDocument().layer().id,currentDocument().frame().id);if(slot)currentDocument().selectTimelineCel(slot->id);currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;refresh();
 
   }
 
@@ -231,7 +246,7 @@ bool Editor::celNavigationKey(ui::KeyScancode key){return key==ui::kKeyLeft || k
 
 bool Editor::celNavigationBlocked() const {
 
-    if(!documentOpen_ || homeOpen_ || pending_!=Pending::None || document.selection() || document.active() || timelineGesture_.kind || navigation_.pan_.active || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active())return true;
+    if(!documentOpen_ || homeOpen_ || pending_!=Pending::None || currentDocument().selection() || currentDocument().active() || timelineGesture_.kind || navigation_.pan_.active || selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active())return true;
 
     auto manager=ui::Manager::getDefault();auto focus=manager->getFocus();
 
@@ -250,21 +265,21 @@ void Editor::stopCelNavigation(){heldCelNavigation_.clear();celNavigationTimer_.
 void Editor::releaseCelNavigation(ui::KeyScancode key){heldCelNavigation_.erase(std::remove_if(heldCelNavigation_.begin(),heldCelNavigation_.end(),[key](const auto& held){return held.key==key;}),heldCelNavigation_.end());if(heldCelNavigation_.empty())celNavigationTimer_.stop();}
 
 void Editor::navigateCel(ui::KeyScancode key){
- if(celNavigationBlocked())return;if(playing_){playing_=false;refresh();return;}
- if(key==ui::kKeyLeft||key==ui::kKeyRight){if(document.timeline().state().frames.size()>1)keyboardStepFrame(key==ui::kKeyLeft?-1:1);return;}
- TimelineRows owners(document.timeline(),document.collapsedGroupIds(),false),visible(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);
+ if(celNavigationBlocked())return;if(currentPlayback().playing){currentPlayback().playing=false;refresh();return;}
+ if(key==ui::kKeyLeft||key==ui::kKeyRight){if(currentDocument().timeline().state().frames.size()>1)keyboardStepFrame(key==ui::kKeyLeft?-1:1);return;}
+ TimelineRows owners(currentDocument().timeline(),currentDocument().collapsedGroupIds(),false),visible(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);
  std::vector<std::string> order;
  // animationLayerPanelSelectionRows puts masks before their owner; native
  // display order differs, so navigation must not use display indices directly.
  for(int r=0;r<owners.size();++r){const auto id=owners.owner(r);if(!timelineHidden_&&visible.index(TimelineRows::maskRowId(id))>=0)order.push_back(TimelineRows::maskRowId(id));order.push_back(id);}
- const auto maskOwner=navigationMaskOwner(document,selectedMaskSlots_,maskSelectionAnchor_);
- std::string focus=!maskOwner.empty()?TimelineRows::maskRowId(maskOwner):virtualAnchor_?virtualAnchor_->rowId:document.selectedGroupId()?*document.selectedGroupId():document.layer().id;
- auto at=std::find(order.begin(),order.end(),focus);if(at==order.end())at=std::find(order.begin(),order.end(),document.layer().id);
+ const auto maskOwner=navigationMaskOwner(currentDocument(),currentView().maskSlots,currentView().maskAnchor);
+ std::string focus=!maskOwner.empty()?TimelineRows::maskRowId(maskOwner):currentView().virtualAnchor?currentView().virtualAnchor->rowId:currentDocument().selectedGroupId()?*currentDocument().selectedGroupId():currentDocument().layer().id;
+ auto at=std::find(order.begin(),order.end(),focus);if(at==order.end())at=std::find(order.begin(),order.end(),currentDocument().layer().id);
  const int direction=key==ui::kKeyUp?-1:1,current=at==order.end()?(direction>0?-1:int(order.size())):int(at-order.begin());
  for(int next=current+direction;next>=0&&next<int(order.size());next+=direction){
-  const int row=visible.index(order[next]);if(visible.mask(row)){document.commitFloatingPaste();selectMaskTimelineRow(row,int(document.activeFrameIndex()));return;}
-  if(document.findGroup(order[next]))continue;const auto* cel=document.timeline().findCel(order[next],document.frame().id);if(!cel)continue;
-  const auto id=cel->id;document.commitFloatingPaste();selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document.exitAttachedMask();document.restoreTimelineRowSelection({},{});document.selectTimelineCel(id);virtualSlots_.clear();virtualAnchor_.reset();clearTimelineRowSelection();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();return;
+  const int row=visible.index(order[next]);if(visible.mask(row)){currentDocument().commitFloatingPaste();selectMaskTimelineRow(row,int(currentDocument().activeFrameIndex()));return;}
+  if(currentDocument().findGroup(order[next]))continue;const auto* cel=currentDocument().timeline().findCel(order[next],currentDocument().frame().id);if(!cel)continue;
+  const auto id=cel->id;currentDocument().commitFloatingPaste();currentView().maskSlots.clear();currentView().maskAnchor.reset();currentDocument().exitAttachedMask();currentDocument().restoreTimelineRowSelection({},{});currentDocument().selectTimelineCel(id);currentView().virtualSlots.clear();currentView().virtualAnchor.reset();clearTimelineRowSelection();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;refresh();return;
  }
 }
 
@@ -272,13 +287,13 @@ void Editor::pressCelNavigation(ui::KeyScancode key,std::chrono::steady_clock::t
 
     if(std::any_of(heldCelNavigation_.begin(),heldCelNavigation_.end(),[key](const auto& held){return held.key==key;}))return;
 
-    celNavigationIdentity_=document.identity();heldCelNavigation_.push_back({key,now+std::chrono::milliseconds(280)});navigateCel(key);celNavigationTimer_.start();
+    celNavigationIdentity_=currentDocument().identity();heldCelNavigation_.push_back({key,now+std::chrono::milliseconds(280)});navigateCel(key);celNavigationTimer_.start();
 
   }
 
 void Editor::celNavigationTick(std::chrono::steady_clock::time_point now){
 
-    if(celNavigationIdentity_!=document.identity() || celNavigationBlocked()){stopCelNavigation();return;}
+    if(celNavigationIdentity_!=currentDocument().identity() || celNavigationBlocked()){stopCelNavigation();return;}
 
     // Legacy Map iteration retains insertion order when several arrow keys are held.
 
@@ -286,112 +301,112 @@ void Editor::celNavigationTick(std::chrono::steady_clock::time_point now){
 
   }
 
-bool Editor::canDeleteWorkspaceContent() const {return document.selection().has_value() || document.floating() || !document.timelineSelection().cels.empty() || !document.selectedFrames().empty() || document.canDeleteLayers();}
+bool Editor::canDeleteWorkspaceContent() const {return currentDocument().selection().has_value() || currentDocument().floating() || !currentDocument().timelineSelection().cels.empty() || !currentDocument().selectedFrames().empty() || currentDocument().canDeleteLayers();}
 
 void Editor::deleteWorkspaceContent(bool keyboard){
 
-    playing_=false;cancelStroke();
+    currentPlayback().playing=false;cancelStroke();
 
-    if(keyboard && paletteFocused_){document.deletePaletteColors(document.palette().selected);refresh();return;}
+    if(keyboard && paletteFocused_){currentDocument().deletePaletteColors(currentDocument().palette().selected);refresh();return;}
 
     // Legacy animation delete selection takes precedence over a stale canvas selection.
-    if(!selectedMaskSlots_.empty()||!document.timelineSelection().maskRows.empty()){deleteTimelineItems();return;}
+    if(!currentView().maskSlots.empty()||!currentDocument().timelineSelection().maskRows.empty()){deleteTimelineItems();return;}
 
-    if(document.selection() || document.floating()){
-      const bool paintPixelBlocked=document.tilemapPaintSelectionDeleteBlocked();
-      document.deleteSelectedPixels();
+    if(currentDocument().selection() || currentDocument().floating()){
+      const bool paintPixelBlocked=currentDocument().tilemapPaintSelectionDeleteBlocked();
+      currentDocument().deleteSelectedPixels();
       if(paintPixelBlocked)status_=U"请在瓦片集中选择新增、绘制或修改模式；其他像素操作需先栅格化图层。";
     }
 
-    else if(!selectedMaskSlots_.empty()||!document.timelineSelection().maskRows.empty()){deleteTimelineItems();return;}
+    else if(!currentView().maskSlots.empty()||!currentDocument().timelineSelection().maskRows.empty()){deleteTimelineItems();return;}
 
-    else if(!document.timelineSelection().cels.empty()){document.deleteSelectedCels();clearTimelineRowSelection();}
+    else if(!currentDocument().timelineSelection().cels.empty()){currentDocument().deleteSelectedCels();clearTimelineRowSelection();}
 
-    else if(!document.selectedFrames().empty()){document.deleteSelectedFrames();frameSelectionExplicit_=false;clearTimelineRowSelection();}
+    else if(!currentDocument().selectedFrames().empty()){currentDocument().deleteSelectedFrames();currentView().frameSelection=false;clearTimelineRowSelection();}
 
-    else if(keyboard && (!document.timelineSelection().layers.empty()||document.hasSelectedGroups()))document.deleteSelectedLayers();
+    else if(keyboard && (!currentDocument().timelineSelection().layers.empty()||currentDocument().hasSelectedGroups()))currentDocument().deleteSelectedLayers();
 
-    else if(keyboard){const auto* slot=document.timeline().findCel(document.layer().id,document.frame().id);if(slot){document.selectTimelineCel(slot->id);document.deleteSelectedCels();clearTimelineRowSelection();}}
+    else if(keyboard){const auto* slot=currentDocument().timeline().findCel(currentDocument().layer().id,currentDocument().frame().id);if(slot){currentDocument().selectTimelineCel(slot->id);currentDocument().deleteSelectedCels();clearTimelineRowSelection();}}
 
-    else document.deleteLayer();
+    else currentDocument().deleteLayer();
 
-    timelineSelectionIdentity_=document.identity();refresh();
+    timelineSelectionIdentity_=currentDocument().identity();refresh();
 
   }
 
-void Editor::seekFrame(std::size_t index) {document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();loopPlayback_={};frameSelectionExplicit_=false;playing_=false;document.selectFrame(document.timeline().state().frames.at(index).id);refresh();}
+void Editor::seekFrame(std::size_t index) {currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentDocument().clearFrameSelection();currentPlayback().loop={};currentView().frameSelection=false;currentPlayback().playing=false;currentDocument().selectFrame(currentDocument().timeline().state().frames.at(index).id);refresh();}
 
-void Editor::createLayer(){playing_=false;document.addLayer();clearTimelineRowSelection();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();}
+void Editor::createLayer(){auto selectionHistory=currentDocument().trackAnimationSelectionHistory(true);currentPlayback().playing=false;currentDocument().addLayer();clearTimelineRowSelection();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;refresh();}
 
-void Editor::deleteTimelineItems(){if(!selectedMaskSlots_.empty()||!document.timelineSelection().maskRows.empty()){if(document.deleteAttachedMasks(selectedMaskSlots_))selectedMaskSlots_.clear();else status_=U"未删除蒙版，请检查所属图层或图层组是否锁定";refresh();return;}playing_=false;cancelStroke();try{if(!document.timelineSelection().cels.empty())document.deleteSelectedCels(true);else{const auto count=document.timeline().state().frames.size();document.deleteSelectedFrames(true);if(document.timeline().state().frames.size()!=count){selectionPivot_.reset();selectionPivotMask_.reset();selectionFreeTransform_=false;}}clearTimelineRowSelection();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();refresh();}catch(const std::exception& e){showSaveError(e);}}
+void Editor::deleteTimelineItems(){if(!currentView().maskSlots.empty()||!currentDocument().timelineSelection().maskRows.empty()){if(currentDocument().deleteAttachedMasks(currentView().maskSlots))currentView().maskSlots.clear();else status_=U"未删除蒙版，请检查所属图层或图层组是否锁定";refresh();return;}currentPlayback().playing=false;cancelStroke();try{if(!currentDocument().timelineSelection().cels.empty())currentDocument().deleteSelectedCels(true);else{const auto count=currentDocument().timeline().state().frames.size();currentDocument().deleteSelectedFrames(true);if(currentDocument().timeline().state().frames.size()!=count){currentView().pivot.reset();currentView().pivotMask.reset();currentView().freeTransform=false;}}clearTimelineRowSelection();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();refresh();}catch(const std::exception& e){showSaveError(e);}}
 
-void Editor::frameAction(int kind) {playing_=false;try{if(kind==2)document.deleteSelectedFrames();else {document.addFrame(kind==1);selectionPivot_.reset();selectionPivotMask_.reset();selectionFreeTransform_=false;clearTimelineRowSelection();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();}refresh();}catch(const std::exception& e){showSaveError(e);}}
+void Editor::frameAction(int kind) {currentPlayback().playing=false;try{if(kind==2)currentDocument().deleteSelectedFrames();else {currentDocument().addFrame(kind==1);currentView().pivot.reset();currentView().pivotMask.reset();currentView().freeTransform=false;clearTimelineRowSelection();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();}refresh();}catch(const std::exception& e){showSaveError(e);}}
 
 double Editor::normalizedPlaybackRate(double value){for(double rate:{.25,.5,1.,1.5,2.,3.})if(value==rate)return rate;return 1;}
 
-std::chrono::steady_clock::duration Editor::playbackFrameDelay() const {return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double,std::milli>(document.frame().duration/playbackRate_));}
+std::chrono::steady_clock::duration Editor::playbackFrameDelay() const {return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double,std::milli>(currentDocument().frame().duration/currentPlayback().rate));}
 
-void Editor::readPlaybackPreferences(std::istream& in){double rate=1;int back=0;if(!(in>>rate>>back))throw std::runtime_error("Invalid animation playback preferences");playbackRate_=normalizedPlaybackRate(rate);playbackReturnToStart_=back==1;std::string mode; savedPlaybackMode_.reset();if(in>>mode)if(mode=="once" || mode=="all" || mode=="tag")savedPlaybackMode_=mode;playbackModeIdentity_=0;}
+void Editor::readPlaybackPreferences(std::istream& in){double rate=1;int back=0;if(!(in>>rate>>back))throw std::runtime_error("Invalid animation playback preferences");savedPlaybackRate_=currentPlayback().rate=normalizedPlaybackRate(rate);savedPlaybackReturnToStart_=currentPlayback().returnToStart=back==1;std::string mode; savedPlaybackMode_.reset();if(in>>mode)if(mode=="once" || mode=="all" || mode=="tag")savedPlaybackMode_=mode;workspace::initializePlaybackMode(currentPlayback(),currentDocument(),savedPlaybackMode_);}
 
-void Editor::writePlaybackPreferences(std::ostream& out)const{out<<playbackRate_<<' '<<playbackReturnToStart_<<' '<<savedPlaybackMode_.value_or("-");}
+void Editor::writePlaybackPreferences(std::ostream& out)const{out<<savedPlaybackRate_<<' '<<savedPlaybackReturnToStart_<<' '<<savedPlaybackMode_.value_or("-");}
 
 void Editor::savePlaybackPreferences(){if(smoke_)return;try{const auto path=palettePreferencePath().parent_path()/"animation-playback.txt";std::filesystem::create_directories(path.parent_path());std::ofstream out(path);writePlaybackPreferences(out);out.close();if(!out)throw std::runtime_error("Cannot save animation playback preferences");}catch(const std::exception& e){status_=U"播放偏好保存失败："+unicodeText(e.what());}}
 
-void Editor::setPlaybackRate(double rate){playbackRate_=normalizedPlaybackRate(rate);if(playing_)playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();savePlaybackPreferences();refresh();}
+void Editor::setPlaybackRate(double rate){savedPlaybackRate_=currentPlayback().rate=normalizedPlaybackRate(rate);if(currentPlayback().playing)currentPlayback().due=std::chrono::steady_clock::now()+playbackFrameDelay();savePlaybackPreferences();refresh();}
 
-void Editor::completePlayback(bool once){playing_=false;loopPlayback_={};playbackTagCycle_.clear();if(playbackReturnToStart_&&!playbackStartFrame_.empty()){const auto& frames=document.timeline().state().frames;if(std::any_of(frames.begin(),frames.end(),[this](const auto& f){return f.id==playbackStartFrame_;}))document.selectFrame(playbackStartFrame_);}else if(once){const auto& frames=document.timeline().state().frames;const auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first!=frames.end())document.selectFrame(first->id);}playbackStartFrame_.clear();}
+void Editor::completePlayback(bool once){currentPlayback().playing=false;currentPlayback().loop={};currentPlayback().tagCycle.clear();if(currentPlayback().returnToStart&&!currentPlayback().startFrame.empty()){const auto& frames=currentDocument().timeline().state().frames;if(std::any_of(frames.begin(),frames.end(),[this](const auto& f){return f.id==currentPlayback().startFrame;}))currentDocument().selectFrame(currentPlayback().startFrame,AnimationFrameOrigin::Playback);}else if(once){const auto& frames=currentDocument().timeline().state().frames;const auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first!=frames.end())currentDocument().selectFrame(first->id,AnimationFrameOrigin::Playback);}currentPlayback().startFrame.clear();}
 
-void Editor::setPlaybackLoopMode(bool loop){playbackSessionMode_=loop?"all":"once";savedPlaybackMode_=playbackSessionMode_;savePlaybackPreferences();playbackTagMode_=false;playbackTagCycle_.clear();loopPlayback_={};document.setAnimationLoop(loop);if(playing_){playbackIdentity_=document.identity();playbackRevision_=document.revision();}refresh();}
+void Editor::setPlaybackLoopMode(bool loop){currentPlayback().mode=loop?"all":"once";savedPlaybackMode_=currentPlayback().mode;savePlaybackPreferences();currentPlayback().tagMode=false;currentPlayback().tagCycle.clear();currentPlayback().loop={};currentDocument().setAnimationLoop(loop);if(currentPlayback().playing){currentPlayback().identity=currentDocument().identity();currentPlayback().revision=currentDocument().revision();}refresh();}
 
 void Editor::playOnceMode(){setPlaybackLoopMode(false);}
 
-void Editor::showPlaybackMenu(){PixelMenu menu(skin_);auto toggle=new PixelMenuItem(font_,skin_,playing_?U"暂停":U"播放");toggle->iconSkin=&toolIcons_;toggle->icon=playing_?"playback-pause":"playback-play";toggle->Click.connect([this]{togglePlayback();});menu.addChild(toggle);menu.addChild(new PixelMenuSeparator(skin_));const double rates[]{.25,.5,1,1.5,2,3};const char32_t* labels[]{U"0.25×",U"0.5×",U"1×",U"1.5×",U"2×",U"3×"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->checked=[this,rate=rates[i]]{return playbackRate_==rate;};item->Click.connect([this,rate=rates[i]]{setPlaybackRate(rate);});menu.addChild(item);}menu.addChild(new PixelMenuSeparator(skin_));{auto item=new PixelMenuItem(font_,skin_,U"播放一次");item->checked=[this]{return playbackSessionMode_=="once";};item->Click.connect([this]{playOnceMode();});menu.addChild(item);}{auto item=new PixelMenuItem(font_,skin_,U"循环全部");item->checked=[this]{return playbackSessionMode_=="all";};item->Click.connect([this]{setPlaybackLoopMode(true);});menu.addChild(item);}{auto item=new PixelMenuItem(font_,skin_,U"循环当前段");item->checked=[this]{return playbackTagMode_;};item->Click.connect([this]{setPlaybackTagMode();});menu.addChild(item);}auto back=new PixelMenuItem(font_,skin_,U"播放完成后返回起点");back->checked=[this]{return playbackReturnToStart_;};back->Click.connect([this]{playbackReturnToStart_=!playbackReturnToStart_;savePlaybackPreferences();refresh();});menu.addChild(back);const auto at=timelineInactive_[2]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
+void Editor::showPlaybackMenu(){PixelMenu menu(skin_);auto toggle=new PixelMenuItem(font_,skin_,currentPlayback().playing?U"暂停":U"播放");toggle->iconSkin=&toolIcons_;toggle->icon=currentPlayback().playing?"playback-pause":"playback-play";toggle->Click.connect([this]{togglePlayback();});menu.addChild(toggle);menu.addChild(new PixelMenuSeparator(skin_));const double rates[]{.25,.5,1,1.5,2,3};const char32_t* labels[]{U"0.25×",U"0.5×",U"1×",U"1.5×",U"2×",U"3×"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->checked=[this,rate=rates[i]]{return currentPlayback().rate==rate;};item->Click.connect([this,rate=rates[i]]{setPlaybackRate(rate);});menu.addChild(item);}menu.addChild(new PixelMenuSeparator(skin_));{auto item=new PixelMenuItem(font_,skin_,U"播放一次");item->checked=[this]{return currentPlayback().mode=="once";};item->Click.connect([this]{playOnceMode();});menu.addChild(item);}{auto item=new PixelMenuItem(font_,skin_,U"循环全部");item->checked=[this]{return currentPlayback().mode=="all";};item->Click.connect([this]{setPlaybackLoopMode(true);});menu.addChild(item);}{auto item=new PixelMenuItem(font_,skin_,U"循环当前段");item->checked=[this]{return currentPlayback().tagMode;};item->Click.connect([this]{setPlaybackTagMode();});menu.addChild(item);}auto back=new PixelMenuItem(font_,skin_,U"播放完成后返回起点");back->checked=[this]{return currentPlayback().returnToStart;};back->Click.connect([this]{savedPlaybackReturnToStart_=currentPlayback().returnToStart=!currentPlayback().returnToStart;savePlaybackPreferences();refresh();});menu.addChild(back);const auto at=timelineInactive_[2]->bounds();menu.showPopup({at.x,at.y2()},display());requestFocus();}
 
-const timeline::LoopSection* Editor::playbackSection(const std::string& id)const{for(const auto& section:document.timeline().state().loopSections)if(section.id==id)return &section;return nullptr;}
+const timeline::LoopSection* Editor::playbackSection(const std::string& id)const{for(const auto& section:currentDocument().timeline().state().loopSections)if(section.id==id)return &section;return nullptr;}
 
-bool Editor::playbackSectionContains(const timeline::LoopSection& section,const std::string& frame)const{const auto& state=document.timeline().state();const auto range=timeline::loopRange(state,section);for(int i=range.start;i>=0 && i<=range.end;++i)if(state.frames[i].id==frame)return true;return false;}
+bool Editor::playbackSectionContains(const timeline::LoopSection& section,const std::string& frame)const{const auto& state=currentDocument().timeline().state();const auto range=timeline::loopRange(state,section);for(int i=range.start;i>=0 && i<=range.end;++i)if(state.frames[i].id==frame)return true;return false;}
 
-bool Editor::installPlaybackSection(const timeline::LoopSection& section,bool seek){const auto sequence=timeline::loopPlaybackFrames(document.timeline().state(),section);if(sequence.empty())return false;loopPlayback_={{section.id,0,{}},{},!section.repeatCount};if(seek)document.selectFrame(sequence.front());playbackObservedFrame_=document.frame().id;return true;}
+bool Editor::installPlaybackSection(const timeline::LoopSection& section,bool seek){const auto sequence=timeline::loopPlaybackFrames(currentDocument().timeline().state(),section);if(sequence.empty())return false;currentPlayback().loop={{section.id,0,{}},{},!section.repeatCount};if(seek)currentDocument().selectFrame(sequence.front(),AnimationFrameOrigin::Playback);currentPlayback().observedFrame=currentDocument().frame().id;return true;}
 
-std::string Editor::nextTagFrame(const std::string& frame)const{const auto& frames=document.timeline().state().frames;int at=-1;for(int i=0;i<int(frames.size());++i)if(frames[i].id==frame)at=i;for(int n=1;n<=int(frames.size());++n){const auto& next=frames[(at+n)%frames.size()];if(!next.disabled)return next.id;}return {};}
+std::string Editor::nextTagFrame(const std::string& frame)const{const auto& frames=currentDocument().timeline().state().frames;int at=-1;for(int i=0;i<int(frames.size());++i)if(frames[i].id==frame)at=i;for(int n=1;n<=int(frames.size());++n){const auto& next=frames[(at+n)%frames.size()];if(!next.disabled)return next.id;}return {};}
 
-void Editor::setPlaybackTagMode(){savedPlaybackMode_="tag";savePlaybackPreferences();playbackSessionMode_="tag";if(playbackTagMode_ && (!playing_ || loopPlayback_.repeatIndefinitely))return;playbackTagMode_=true;if(playing_){loopPlayback_={};playbackTagCycle_.clear();const auto* section=timeline::loopAtFrame(document.timeline().state(),document.frame().id);if(!section || !installPlaybackSection(*section,true))playing_=false;else if(section->repeatCount)playbackTagCycle_=section->id;}playbackObservedFrame_=document.frame().id;refresh();}
+void Editor::setPlaybackTagMode(){savedPlaybackMode_="tag";savePlaybackPreferences();currentPlayback().mode="tag";if(currentPlayback().tagMode && (!currentPlayback().playing || currentPlayback().loop.repeatIndefinitely))return;currentPlayback().tagMode=true;if(currentPlayback().playing){currentPlayback().loop={};currentPlayback().tagCycle.clear();const auto* section=timeline::loopAtFrame(currentDocument().timeline().state(),currentDocument().frame().id);if(!section || !installPlaybackSection(*section,true))currentPlayback().playing=false;else if(section->repeatCount)currentPlayback().tagCycle=section->id;}currentPlayback().observedFrame=currentDocument().frame().id;refresh();}
 
-void Editor::retargetTagPlayback(){if(!playing_ || !playbackTagMode_)return;loopPlayback_={};playbackTagCycle_.clear();const auto* section=timeline::loopAtFrame(document.timeline().state(),document.frame().id);if(section)installPlaybackSection(*section,false);playbackObservedFrame_=document.frame().id;}
+void Editor::retargetTagPlayback(){if(!currentPlayback().playing || !currentPlayback().tagMode)return;currentPlayback().loop={};currentPlayback().tagCycle.clear();const auto* section=timeline::loopAtFrame(currentDocument().timeline().state(),currentDocument().frame().id);if(section)installPlaybackSection(*section,false);currentPlayback().observedFrame=currentDocument().frame().id;}
 
-bool Editor::continueTagPlayback(const std::string& next){if(next.empty())return false;const auto* cycle=playbackSection(playbackTagCycle_);if(!playbackTagCycle_.empty() && !cycle)return false;if(cycle && playbackSectionContains(*cycle,next))return installPlaybackSection(*cycle,true);if(cycle){const auto* section=timeline::loopAtFrame(document.timeline().state(),next);if(section && section->repeatCount)return installPlaybackSection(*section,true);loopPlayback_={};}document.selectFrame(next);return true;}
+bool Editor::continueTagPlayback(const std::string& next){if(next.empty())return false;const auto* cycle=playbackSection(currentPlayback().tagCycle);if(!currentPlayback().tagCycle.empty() && !cycle)return false;if(cycle && playbackSectionContains(*cycle,next))return installPlaybackSection(*cycle,true);if(cycle){const auto* section=timeline::loopAtFrame(currentDocument().timeline().state(),next);if(section && section->repeatCount)return installPlaybackSection(*section,true);currentPlayback().loop={};}currentDocument().selectFrame(next,AnimationFrameOrigin::Playback);return true;}
 
-void Editor::startLoopPlayback(const std::string& id){document.commitFloatingPaste();cancelStroke();playbackStartFrame_=document.frame().id;const auto& state=document.timeline().state();const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;const auto sequence=timeline::loopPlaybackFrames(state,*it);if(sequence.empty())return;loopPlayback_={{id,0,{}},{},!it->repeatCount};playbackTagCycle_=playbackTagMode_ && it->repeatCount?id:std::string{};document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;document.selectFrame(sequence.front());playbackObservedFrame_=document.frame().id;playing_=true;playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();refresh();}
+void Editor::startLoopPlayback(const std::string& id){currentDocument().commitFloatingPaste();cancelStroke();currentPlayback().startFrame=currentDocument().frame().id;const auto& state=currentDocument().timeline().state();const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;const auto sequence=timeline::loopPlaybackFrames(state,*it);if(sequence.empty())return;currentPlayback().loop={{id,0,{}},{},!it->repeatCount};currentPlayback().tagCycle=currentPlayback().tagMode && it->repeatCount?id:std::string{};currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentDocument().clearFrameSelection();currentView().frameSelection=false;currentDocument().selectFrame(sequence.front(),AnimationFrameOrigin::Playback);currentPlayback().observedFrame=currentDocument().frame().id;currentPlayback().playing=true;currentPlayback().identity=currentDocument().identity();currentPlayback().revision=currentDocument().revision();currentPlayback().due=std::chrono::steady_clock::now()+playbackFrameDelay();refresh();}
 
 void Editor::updateFramesDisabled(bool disabled,bool toggle){
 
-    if(!document.setSelectedFramesDisabled(disabled,toggle)){refresh();return;}
+    if(!currentDocument().setSelectedFramesDisabled(disabled,toggle)){refresh();return;}
 
-    if(playing_){playbackRevision_=document.revision();if(nextTagFrame(document.frame().id).empty()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();}else if(document.frame().disabled){playbackDue_=std::chrono::steady_clock::now();playbackTick();}}
+    if(currentPlayback().playing){currentPlayback().revision=currentDocument().revision();if(nextTagFrame(currentDocument().frame().id).empty()){currentPlayback().playing=false;currentPlayback().loop={};currentPlayback().tagCycle.clear();}else if(currentDocument().frame().disabled){currentPlayback().due=std::chrono::steady_clock::now();playbackTick();}}
 
     refresh();
 
   }
 
 void Editor::applyScriptPlayback(Document& target,const script::PlaybackRequest& request){
- if(&target!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua playback document is not active");
- auto clear=[&]{playing_=false;loopPlayback_={};playbackTagCycle_.clear();playbackStartFrame_.clear();playbackObservedFrame_=document.frame().id;};
- if(request.kind==script::PlaybackRequest::Kind::LoopChanged){if(loopPlayback_.current.sectionId==request.loopId||playbackTagCycle_==request.loopId){clear();refresh();}return;}
+ if(&target!=&currentDocument()||!documentOpen_||homeOpen_)throw std::logic_error("Lua playback document is not active");
+ auto clear=[&]{currentPlayback().playing=false;currentPlayback().loop={};currentPlayback().tagCycle.clear();currentPlayback().startFrame.clear();currentPlayback().observedFrame=currentDocument().frame().id;};
+ if(request.kind==script::PlaybackRequest::Kind::LoopChanged){if(currentPlayback().loop.current.sectionId==request.loopId||currentPlayback().tagCycle==request.loopId){clear();refresh();}return;}
  if(request.kind==script::PlaybackRequest::Kind::PlayLoop){
-  document.commitFloatingPaste();cancelStroke();
+  currentDocument().commitFloatingPaste();cancelStroke();
   if(!request.section||request.firstFrameId.empty()){clear();refresh();return;}
-  const auto& section=*request.section;playbackStartFrame_=document.frame().id;loopPlayback_={{section.id,0,{}},{},!section.repeatCount};playbackTagCycle_=playbackTagMode_&&section.repeatCount?section.id:std::string{};
-  document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;document.selectFrame(request.firstFrameId);playing_=true;
-  playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackObservedFrame_=document.frame().id;playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();refresh();return;
+  const auto& section=*request.section;currentPlayback().startFrame=currentDocument().frame().id;currentPlayback().loop={{section.id,0,{}},{},!section.repeatCount};currentPlayback().tagCycle=currentPlayback().tagMode&&section.repeatCount?section.id:std::string{};
+  currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentDocument().clearFrameSelection();currentView().frameSelection=false;currentDocument().selectFrame(request.firstFrameId,AnimationFrameOrigin::Playback);currentPlayback().playing=true;
+  currentPlayback().identity=currentDocument().identity();currentPlayback().revision=currentDocument().revision();currentPlayback().observedFrame=currentDocument().frame().id;currentPlayback().due=std::chrono::steady_clock::now()+playbackFrameDelay();refresh();return;
  }
- if(request.kind==script::PlaybackRequest::Kind::SetPlaying&&playing_!=request.playing){const bool hidden=timelineHidden_;timelineHidden_=false;try{togglePlayback();}catch(...){timelineHidden_=hidden;throw;}timelineHidden_=hidden;}
+ if(request.kind==script::PlaybackRequest::Kind::SetPlaying&&currentPlayback().playing!=request.playing){const bool hidden=timelineHidden_;timelineHidden_=false;try{togglePlayback();}catch(...){timelineHidden_=hidden;throw;}timelineHidden_=hidden;}
 }
 
-void Editor::togglePlayback(){if(timelineHidden_)return;const bool next=!playing_;if(next)document.commitFloatingPaste();cancelStroke();playing_=next;if(playing_ && nextTagFrame(document.frame().id).empty()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();}if(playing_){const bool paused=!loopPlayback_.current.sectionId.empty() && playbackIdentity_==document.identity() && playbackRevision_==document.revision() && playbackSection(loopPlayback_.current.sectionId) && playbackSectionContains(*playbackSection(loopPlayback_.current.sectionId),document.frame().id);if(!paused){playbackStartFrame_=document.frame().id;loopPlayback_={};playbackTagCycle_.clear();if(playbackTagMode_){const auto* section=timeline::loopAtFrame(document.timeline().state(),document.frame().id);if(section){if(!installPlaybackSection(*section,true))playing_=false;else if(section->repeatCount)playbackTagCycle_=section->id;}else if(document.frame().disabled){const auto nextFrame=nextTagFrame(document.frame().id);if(nextFrame.empty())playing_=false;else document.selectFrame(nextFrame);}}else{const auto& frames=document.timeline().state().frames;auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first==frames.end())playing_=false;else if(playbackSessionMode_=="once")document.selectFrame(first->id);else if(document.frame().disabled)document.selectFrame(nextTagFrame(document.frame().id));}}document.clearTimelineSelection();clearTimelineRowSelection();document.clearFrameSelection();frameSelectionExplicit_=false;playbackIdentity_=document.identity();playbackRevision_=document.revision();playbackDue_=std::chrono::steady_clock::now()+playbackFrameDelay();}playbackObservedFrame_=document.frame().id;refresh();}
+void Editor::togglePlayback(){if(timelineHidden_)return;const bool next=!currentPlayback().playing;if(next)currentDocument().commitFloatingPaste();cancelStroke();currentPlayback().playing=next;if(currentPlayback().playing && nextTagFrame(currentDocument().frame().id).empty()){currentPlayback().playing=false;currentPlayback().loop={};currentPlayback().tagCycle.clear();}if(currentPlayback().playing){const bool paused=!currentPlayback().loop.current.sectionId.empty() && currentPlayback().identity==currentDocument().identity() && currentPlayback().revision==currentDocument().revision() && playbackSection(currentPlayback().loop.current.sectionId) && playbackSectionContains(*playbackSection(currentPlayback().loop.current.sectionId),currentDocument().frame().id);if(!paused){currentPlayback().startFrame=currentDocument().frame().id;currentPlayback().loop={};currentPlayback().tagCycle.clear();if(currentPlayback().tagMode){const auto* section=timeline::loopAtFrame(currentDocument().timeline().state(),currentDocument().frame().id);if(section){if(!installPlaybackSection(*section,true))currentPlayback().playing=false;else if(section->repeatCount)currentPlayback().tagCycle=section->id;}else if(currentDocument().frame().disabled){const auto nextFrame=nextTagFrame(currentDocument().frame().id);if(nextFrame.empty())currentPlayback().playing=false;else currentDocument().selectFrame(nextFrame,AnimationFrameOrigin::Playback);}}else{const auto& frames=currentDocument().timeline().state().frames;auto first=std::find_if(frames.begin(),frames.end(),[](const auto& f){return !f.disabled;});if(first==frames.end())currentPlayback().playing=false;else if(currentPlayback().mode=="once")currentDocument().selectFrame(first->id,AnimationFrameOrigin::Playback);else if(currentDocument().frame().disabled)currentDocument().selectFrame(nextTagFrame(currentDocument().frame().id),AnimationFrameOrigin::Playback);}}currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentDocument().clearFrameSelection();currentView().frameSelection=false;currentPlayback().identity=currentDocument().identity();currentPlayback().revision=currentDocument().revision();currentPlayback().due=std::chrono::steady_clock::now()+playbackFrameDelay();}currentPlayback().observedFrame=currentDocument().frame().id;refresh();}
 
-void Editor::playbackTick(){if(!playing_)return;if(pending_!=Pending::None || document.active() || playbackIdentity_!=document.identity() || playbackRevision_!=document.revision()){playing_=false;loopPlayback_={};playbackTagCycle_.clear();refresh();return;}const auto now=std::chrono::steady_clock::now();bool moved=false;int count=0;while(now>=playbackDue_ && playing_ && ++count<=10000){if(!loopPlayback_.current.sectionId.empty()){const auto* section=playbackSection(loopPlayback_.current.sectionId);const auto end=section?section->endFrameId:std::string{};const bool finite=section && section->repeatCount && !loopPlayback_.repeatIndefinitely;const auto step=timeline::advanceLoopPlayback(document.timeline().state(),loopPlayback_,document.frame().id);if(step.completed){if(!section){playing_=false;break;}if(playbackTagMode_ && finite){if(!continueTagPlayback(nextTagFrame(end))){playing_=false;break;}}else{completePlayback(false);moved=true;break;}}else document.selectFrame(step.frameId);}else if(playbackTagMode_){if(!continueTagPlayback(nextTagFrame(document.frame().id))){playing_=false;break;}}else{const auto& frames=document.timeline().state().frames;auto index=document.activeFrameIndex()+1;while(index<frames.size() && frames[index].disabled)++index;if(index==frames.size()){if(playbackSessionMode_=="once"){completePlayback(true);moved=true;break;}index=0;while(index<frames.size() && frames[index].disabled)++index;}if(index==frames.size()){playing_=false;break;}document.selectFrame(frames[index].id);}playbackObservedFrame_=document.frame().id;playbackDue_+=playbackFrameDelay();moved=true;}if(moved)refresh(static_cast<RefreshScope>(unsigned(RefreshScope::Canvas)|unsigned(RefreshScope::Timeline)|unsigned(RefreshScope::Tools)|unsigned(RefreshScope::Commands)));}
+void Editor::playbackTick(){if(!currentPlayback().playing)return;if(pending_!=Pending::None || currentDocument().active() || currentPlayback().identity!=currentDocument().identity() || currentPlayback().revision!=currentDocument().revision()){currentPlayback().playing=false;currentPlayback().loop={};currentPlayback().tagCycle.clear();refresh();return;}const auto now=std::chrono::steady_clock::now();bool moved=false;int count=0;while(now>=currentPlayback().due && currentPlayback().playing && ++count<=10000){if(!currentPlayback().loop.current.sectionId.empty()){const auto* section=playbackSection(currentPlayback().loop.current.sectionId);const auto end=section?section->endFrameId:std::string{};const bool finite=section && section->repeatCount && !currentPlayback().loop.repeatIndefinitely;const auto step=timeline::advanceLoopPlayback(currentDocument().timeline().state(),currentPlayback().loop,currentDocument().frame().id);if(step.completed){if(!section){currentPlayback().playing=false;break;}if(currentPlayback().tagMode && finite){if(!continueTagPlayback(nextTagFrame(end))){currentPlayback().playing=false;break;}}else{completePlayback(false);moved=true;break;}}else currentDocument().selectFrame(step.frameId,AnimationFrameOrigin::Playback);}else if(currentPlayback().tagMode){if(!continueTagPlayback(nextTagFrame(currentDocument().frame().id))){currentPlayback().playing=false;break;}}else{const auto& frames=currentDocument().timeline().state().frames;auto index=currentDocument().activeFrameIndex()+1;while(index<frames.size() && frames[index].disabled)++index;if(index==frames.size()){if(currentPlayback().mode=="once"){completePlayback(true);moved=true;break;}index=0;while(index<frames.size() && frames[index].disabled)++index;}if(index==frames.size()){currentPlayback().playing=false;break;}currentDocument().selectFrame(frames[index].id,AnimationFrameOrigin::Playback);}currentPlayback().observedFrame=currentDocument().frame().id;currentPlayback().due+=playbackFrameDelay();moved=true;}if(moved)refresh(static_cast<RefreshScope>(unsigned(RefreshScope::Canvas)|unsigned(RefreshScope::Timeline)|unsigned(RefreshScope::Tools)|unsigned(RefreshScope::Commands)));}
 
-void Editor::openLoopEditor(const std::string& id){playing_=false;cancelStroke();timeline::LoopSection draft;const auto& state=document.timeline().state();if(!id.empty()){const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;draft=*it;}else{int n=1;for(;;++n){draft.name=U"循环节 "+unicodeText(std::to_string(n));if(std::none_of(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.name==draft.name;}))break;}auto selected=document.selectedFrames();if(selected.empty())selected={document.frame().id};int left=int(state.frames.size()),right=0;for(int i=0;i<int(state.frames.size());++i)if(std::find(selected.begin(),selected.end(),state.frames[i].id)!=selected.end()){left=std::min(left,i);right=i;}draft.startFrameId=state.frames[left].id;draft.endFrameId=state.frames[right].id;}loopDraft_=draft;const auto range=timeline::loopRange(state,draft);loopInputs_[0]->setText(utf8Text(draft.name));loopInputs_[1]->setText(std::to_string(range.start+1));loopInputs_[2]->setText(std::to_string(range.end+1));loopFinite_=bool(draft.repeatCount);for(int i=1;i<4;++i){auto input=static_cast<LoopNumberEntry*>(loopInputs_[i]);input->maximum=i==3?9999:int(state.frames.size());input->setValue(i==1?range.start+1:i==2?range.end+1:draft.repeatCount.value_or(1));}updateLoopRepeat();updateLoopDirection();pending_=Pending::LoopSection;for(auto input:loopInputs_)input->setVisible(true);loopDirection_->setVisible(true);loopRepeat_->setVisible(true);menuBar_->setEnabled(false);discard_->caption=U"保存";discard_->setVisible(true);keep_->caption=U"取消";keep_->setVisible(true);dialogClose_->setVisible(true);refresh();loopInputs_[0]->requestFocus();loopInputs_[0]->selectAllText();}
+void Editor::openLoopEditor(const std::string& id){currentPlayback().playing=false;cancelStroke();timeline::LoopSection draft;const auto& state=currentDocument().timeline().state();if(!id.empty()){const auto it=std::find_if(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.id==id;});if(it==state.loopSections.end())return;draft=*it;}else{int n=1;for(;;++n){draft.name=U"循环节 "+unicodeText(std::to_string(n));if(std::none_of(state.loopSections.begin(),state.loopSections.end(),[&](const auto& section){return section.name==draft.name;}))break;}auto selected=currentDocument().selectedFrames();if(selected.empty())selected={currentDocument().frame().id};int left=int(state.frames.size()),right=0;for(int i=0;i<int(state.frames.size());++i)if(std::find(selected.begin(),selected.end(),state.frames[i].id)!=selected.end()){left=std::min(left,i);right=i;}draft.startFrameId=state.frames[left].id;draft.endFrameId=state.frames[right].id;}loopDraft_=draft;const auto range=timeline::loopRange(state,draft);loopInputs_[0]->setText(utf8Text(draft.name));loopInputs_[1]->setText(std::to_string(range.start+1));loopInputs_[2]->setText(std::to_string(range.end+1));loopFinite_=bool(draft.repeatCount);for(int i=1;i<4;++i){auto input=static_cast<LoopNumberEntry*>(loopInputs_[i]);input->maximum=i==3?9999:int(state.frames.size());input->setValue(i==1?range.start+1:i==2?range.end+1:draft.repeatCount.value_or(1));}updateLoopRepeat();updateLoopDirection();pending_=Pending::LoopSection;for(auto input:loopInputs_)input->setVisible(true);loopDirection_->setVisible(true);loopRepeat_->setVisible(true);menuBar_->setEnabled(false);discard_->caption=U"保存";discard_->setVisible(true);keep_->caption=U"取消";keep_->setVisible(true);dialogClose_->setVisible(true);refresh();loopInputs_[0]->requestFocus();loopInputs_[0]->selectAllText();}
 
 void Editor::updateLoopDirection(){const char* directions[]{"forward","reverse","ping-pong","ping-pong-reverse"};for(int i=0;i<4;++i)if(loopDraft_->direction==directions[i])static_cast<PixelDropdown*>(loopDirection_)->setSelectedIndex(i);}
 
@@ -401,15 +416,15 @@ void Editor::toggleLoopRepeat(){loopFinite_=!loopFinite_;static_cast<LoopNumberE
 
 std::u32string Editor::loopDisplayName()const{const auto raw=unicodeText(loopInputs_[0]->text());const auto name=javascriptTrim(raw);return name.empty()?U"循环节 1":std::u32string(name.substr(0,64));}
 
-std::pair<int,int> Editor::loopDisplayRange()const{const int count=int(document.timeline().state().frames.size());const int a=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[1])->value,1.0,double(count)))),b=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[2])->value,1.0,double(count))));return {std::min(a,b),std::max(a,b)};}
+std::pair<int,int> Editor::loopDisplayRange()const{const int count=int(currentDocument().timeline().state().frames.size());const int a=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[1])->value,1.0,double(count)))),b=int(std::trunc(std::clamp(static_cast<LoopNumberEntry*>(loopInputs_[2])->value,1.0,double(count))));return {std::min(a,b),std::max(a,b)};}
 
-bool Editor::commitLoopEditor(){try{for(int i=1;i<4;++i)if(i!=3 || loopFinite_)static_cast<LoopNumberEntry*>(loopInputs_[i])->commitValue();auto draft=*loopDraft_;auto integer=[&](int index,int limit){const auto text=loopInputs_[index]->text();std::size_t used=0;const double raw=std::stod(text,&used);if(used!=text.size() || !std::isfinite(raw))throw std::invalid_argument("Loop field");return int(std::trunc(std::clamp(raw,1.0,double(limit))));};const int count=int(document.timeline().state().frames.size());int start=integer(1,count)-1,end=integer(2,count)-1;if(start>end)std::swap(start,end);draft.startFrameId=document.timeline().state().frames[start].id;draft.endFrameId=document.timeline().state().frames[end].id;draft.name=loopDisplayName();draft.repeatCount=loopFinite_?std::optional<int>{integer(3,9999)}:std::optional<int>{};if(!draft.id.empty()){const auto* existing=playbackSection(draft.id);if(existing && existing->name==draft.name && existing->startFrameId==draft.startFrameId && existing->endFrameId==draft.endFrameId && existing->direction==draft.direction && existing->repeatCount==draft.repeatCount)return true;}if(draft.id.empty())document.createLoopSection(draft);else document.updateLoopSection(draft);loopPlayback_={};return true;}catch(const std::exception&){status_=U"循环节帧范围或重复次数无效";invalidate();return false;}}
+bool Editor::commitLoopEditor(){try{for(int i=1;i<4;++i)if(i!=3 || loopFinite_)static_cast<LoopNumberEntry*>(loopInputs_[i])->commitValue();auto draft=*loopDraft_;auto integer=[&](int index,int limit){const auto text=loopInputs_[index]->text();std::size_t used=0;const double raw=std::stod(text,&used);if(used!=text.size() || !std::isfinite(raw))throw std::invalid_argument("Loop field");return int(std::trunc(std::clamp(raw,1.0,double(limit))));};const int count=int(currentDocument().timeline().state().frames.size());int start=integer(1,count)-1,end=integer(2,count)-1;if(start>end)std::swap(start,end);draft.startFrameId=currentDocument().timeline().state().frames[start].id;draft.endFrameId=currentDocument().timeline().state().frames[end].id;draft.name=loopDisplayName();draft.repeatCount=loopFinite_?std::optional<int>{integer(3,9999)}:std::optional<int>{};if(!draft.id.empty()){const auto* existing=playbackSection(draft.id);if(existing && existing->name==draft.name && existing->startFrameId==draft.startFrameId && existing->endFrameId==draft.endFrameId && existing->direction==draft.direction && existing->repeatCount==draft.repeatCount)return true;}if(draft.id.empty())currentDocument().createLoopSection(draft);else currentDocument().updateLoopSection(draft);currentPlayback().loop={};return true;}catch(const std::exception&){status_=U"循环节帧范围或重复次数无效";invalidate();return false;}}
 
-void Editor::openFramePropertiesFor(std::size_t index){if(pending_!=Pending::None || index>=document.timeline().state().frames.size())return;const auto id=document.timeline().state().frames[index].id;if(timelineGesture_.kind)finishTimelineGesture();document.selectFrame(id);showFrameDuration();}
+void Editor::openFramePropertiesFor(std::size_t index){if(pending_!=Pending::None || index>=currentDocument().timeline().state().frames.size())return;const auto id=currentDocument().timeline().state().frames[index].id;if(timelineGesture_.kind)finishTimelineGesture();currentDocument().selectFrame(id);showFrameDuration();}
 
 bool Editor::commitFrameDurationDraft(){
 
-    if(pending_!=Pending::FrameDuration)return false;const auto current=document.frame().duration;const auto raw=paletteInput_->text();
+    if(pending_!=Pending::FrameDuration)return false;const auto current=currentDocument().frame().duration;const auto raw=paletteInput_->text();
 
     static const std::regex token(R"((\s+|[+*/()\-]|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+\-]?[0-9]+)?))");std::size_t offset=0;std::smatch match;
 
@@ -417,7 +432,7 @@ bool Editor::commitFrameDurationDraft(){
 
     bool valid=!raw.empty()&&offset==raw.size();paletteInput_->numeric=true;if(valid)valid=paletteInput_->commitExpression();paletteInput_->numeric=false;
 
-    if(valid)try{std::size_t used=0;const double value=std::stod(paletteInput_->text(),&used);if(used!=paletteInput_->text().size()||!std::isfinite(value))throw std::invalid_argument("Duration");const int duration=int(std::trunc(std::clamp(value,1.0,60000.0)));document.previewFrameDuration(duration);paletteInput_->setText(std::to_string(duration));refresh();return true;}catch(...){}
+    if(valid)try{std::size_t used=0;const double value=std::stod(paletteInput_->text(),&used);if(used!=paletteInput_->text().size()||!std::isfinite(value))throw std::invalid_argument("Duration");const int duration=int(std::trunc(std::clamp(value,1.0,60000.0)));currentDocument().previewFrameDuration(duration);paletteInput_->setText(std::to_string(duration));refresh();return true;}catch(...){}
 
     paletteInput_->setText(std::to_string(current));invalidate();return false;
 
@@ -425,7 +440,7 @@ bool Editor::commitFrameDurationDraft(){
 
 void Editor::closePaletteModal(){if(pending_==Pending::Saving){dismissSaveProgress();return;}if(pending_==Pending::FrameDuration)commitFrameDurationDraft();resolve(false);}
 
-void Editor::showFrameDuration() {playing_=false;cancelStroke();document.beginFrameDuration();pending_=Pending::FrameDuration;static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationMode=true;paletteInput_->numeric=false;paletteInput_->setText(std::to_string(document.frame().duration));paletteInput_->suffix=U"ms";menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
+void Editor::showFrameDuration() {currentPlayback().playing=false;cancelStroke();currentDocument().beginFrameDuration();pending_=Pending::FrameDuration;static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationMode=true;paletteInput_->numeric=false;paletteInput_->setText(std::to_string(currentDocument().frame().duration));paletteInput_->suffix=U"ms";menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();}
 
 void Editor::saveOnionSettings(){persistAnimationSettings();refresh();}
 
@@ -445,7 +460,7 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
       entry->setEnabled(pending_==Pending::None && bool(action) && enabled);
 
-      if(action)entry->Click.connect([this,action,kind,target=contextFrameId_]{playing_=false;cancelStroke();try{if(kind==2 && !target.empty())document.selectFrame(target);action();refresh();}catch(const std::exception& e){showSaveError(e);}});
+      if(action)entry->Click.connect([this,action,kind,target=contextFrameId_]{currentPlayback().playing=false;cancelStroke();try{if(kind==2 && !target.empty())currentDocument().selectFrame(target);action();refresh();}catch(const std::exception& e){showSaveError(e);}});
 
       parent->addChild(entry);
 
@@ -459,13 +474,13 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     add(menu,U"新建图层","plus",U"Shift+N",[this]{createLayer();},true);
 
-    add(menu,U"新建图层组","newFolder",U"Ctrl+G",[this]{document.createLayerGroup();refresh();},true);
+    add(menu,U"新建图层组","newFolder",U"Ctrl+G",[this]{currentDocument().createLayerGroup();refresh();},true);
 
     separator(menu);
 
     add(menu,U"渐变映射调整图层","gradientMap",U"",[this]{openGradientMapLayer(true);});
 
-    add(menu,U"新建瓦片图层","tilemap",U"",[this]{showTilemapLayerDialog(false);},!document.active());
+    add(menu,U"新建瓦片图层","tilemap",U"",[this]{showTilemapLayerDialog(false);},!currentDocument().active());
 
     add(menu,U"新建自由瓦片图层","freeTile",U"",[this]{menuCommands_.invoke("newFreeTileLayer");},menuCommands_.enabled("newFreeTileLayer"));
 
@@ -479,49 +494,49 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
       create(branch(menu,U"新建","plus"));
 
-    add(menu,U"复制所选对象","copy",U"",[this]{document.duplicateSelectedLayers();},document.canDuplicateSelectedLayers());
+    add(menu,U"复制所选对象","copy",U"",[this]{currentDocument().duplicateSelectedLayers();},currentDocument().canDuplicateSelectedLayers());
 
-    const bool singleLayerContext=contextLayerIdentity_==document.identity()&&contextLayerTargets_.size()==1&&document.timeline().hasLayer(contextLayerTargets_.front());
+    const bool singleLayerContext=contextLayerIdentity_==currentDocument().identity()&&contextLayerTargets_.size()==1&&currentDocument().timeline().hasLayer(contextLayerTargets_.front());
     const auto contextLayer=singleLayerContext?contextLayerTargets_.front():std::string{};
-    const auto* source=singleLayerContext?&document.timeline().state().layers[document.timeline().layerIndex(contextLayer)]:nullptr;
-    const auto identity=document.identity();
-    if(source&&source->kind=="free-tile")add(menu,U"打开实例图层","freeTile",U"",[this,contextLayer,identity]{if(document.identity()!=identity)return;document.selectLayer(contextLayer);document.setFreeTileInstanceView(true);if(freeTileInstancesSeparate_){freeTileInstancesOpen_=true;initializeDocking();docking_.custom=true;docking_.select(13);}refresh();},source->freeTiles&&!source->freeTiles->sources.empty()&&document.timeline().findCel(contextLayer,document.frame().id)&&document.timeline().findCel(contextLayer,document.frame().id)->freeTiles&&!document.timeline().findCel(contextLayer,document.frame().id)->freeTiles->instances.empty());
-    add(menu,U"创建关联图层","linkedLayer",U"",[this,contextLayer,identity]{if(document.identity()==identity&&document.canCreateLinkedLayer(contextLayer))document.createLinkedLayer(contextLayer);},source&&document.canCreateLinkedLayer(contextLayer));
+    const auto* source=singleLayerContext?&currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(contextLayer)]:nullptr;
+    const auto identity=currentDocument().identity();
+    if(source&&source->kind=="free-tile")add(menu,U"打开实例图层","freeTile",U"",[this,contextLayer,identity]{if(currentDocument().identity()!=identity)return;currentDocument().selectLayer(contextLayer);currentDocument().setFreeTileInstanceView(true);if(freeTileInstancesSeparate_){freeTileInstancesOpen_=true;initializeDocking();docking_.custom=true;docking_.select(13);}refresh();},source->freeTiles&&!source->freeTiles->sources.empty()&&currentDocument().timeline().findCel(contextLayer,currentDocument().frame().id)&&currentDocument().timeline().findCel(contextLayer,currentDocument().frame().id)->freeTiles&&!currentDocument().timeline().findCel(contextLayer,currentDocument().frame().id)->freeTiles->instances.empty());
+    add(menu,U"创建关联图层","linkedLayer",U"",[this,contextLayer,identity]{if(currentDocument().identity()==identity&&currentDocument().canCreateLinkedLayer(contextLayer))currentDocument().createLinkedLayer(contextLayer);},source&&currentDocument().canCreateLinkedLayer(contextLayer));
 
       {auto submenu=branch(menu,U"转换为","convertTo");
 
-    add(submenu,U"转换为背景图层","image",U"",[this,contextLayer,identity]{if(document.identity()==identity&&document.timeline().hasLayer(contextLayer))document.setLayerBackground(contextLayer,true);},source&&source->kind.empty()&&!source->background);
+    add(submenu,U"转换为背景图层","image",U"",[this,contextLayer,identity]{if(currentDocument().identity()==identity&&currentDocument().timeline().hasLayer(contextLayer))currentDocument().setLayerBackground(contextLayer,true);},source&&source->kind.empty()&&!source->background);
 
-    add(submenu,U"转换为瓦片图层","tilemap",U"",[this]{showTilemapLayerDialog(true);},document.layer().kind.empty()&&!document.layerEffectivelyLocked(document.layer())&&!document.active());
+    add(submenu,U"转换为瓦片图层","tilemap",U"",[this]{showTilemapLayerDialog(true);},currentDocument().layer().kind.empty()&&!currentDocument().layerEffectivelyLocked(currentDocument().layer())&&!currentDocument().active());
 
-    add(submenu,U"转换为普通图层","image",U"",[this,contextLayer,identity]{if(document.identity()==identity&&document.canRasterizeLayer(contextLayer))document.rasterizeLayer(contextLayer);},source&&document.canRasterizeLayer(contextLayer));
+    add(submenu,U"转换为普通图层","image",U"",[this,contextLayer,identity]{if(currentDocument().identity()==identity&&currentDocument().canRasterizeLayer(contextLayer))currentDocument().rasterizeLayer(contextLayer);},source&&currentDocument().canRasterizeLayer(contextLayer));
 
       }
 
     separator(menu);
 
-    const auto contextGroup=contextLayerIdentity_==identity&&!contextLayerTargets_.empty()&&document.findGroup(contextLayerTargets_.front())?contextLayerTargets_.front():std::string{};
+    const auto contextGroup=contextLayerIdentity_==identity&&!contextLayerTargets_.empty()&&currentDocument().findGroup(contextLayerTargets_.front())?contextLayerTargets_.front():std::string{};
     const bool singleGroupContext=!contextGroup.empty()&&contextLayerTargets_.size()==1;
     if(!contextGroup.empty()){
-      add(menu,U"合并图层组","mergeDown",U"",[this,identity]{if(document.identity()==identity)menuCommands_.invoke("mergeLayerGroup");},singleGroupContext&&menuCommands_.enabled("mergeLayerGroup"));
+      add(menu,U"合并图层组","mergeDown",U"",[this,identity]{if(currentDocument().identity()==identity)menuCommands_.invoke("mergeLayerGroup");},singleGroupContext&&menuCommands_.enabled("mergeLayerGroup"));
     }else{
-      add(menu,U"向下合并","mergeDown",U"",[this]{document.mergeLayerDown();},document.canMergeLayerDown());
-      add(menu,U"合并所选图层","mergeDown",U"",[this]{document.mergeSelectedLayers();},document.canMergeSelectedLayers());
+      add(menu,U"向下合并","mergeDown",U"",[this]{currentDocument().mergeLayerDown();},currentDocument().canMergeLayerDown());
+      add(menu,U"合并所选图层","mergeDown",U"",[this]{currentDocument().mergeSelectedLayers();},currentDocument().canMergeSelectedLayers());
     }
-    add(menu,U"合并可见图层","mergeVisible",U"",[this]{try{document.mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},true);
+    add(menu,U"合并可见图层","mergeVisible",U"",[this]{try{currentDocument().mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},true);
     if(!contextGroup.empty()){
-      add(menu,U"取消图层组","ungroupFolder",U"",[this,identity]{if(document.identity()==identity)menuCommands_.invoke("ungroupLayers");},singleGroupContext);
+      add(menu,U"取消图层组","ungroupFolder",U"",[this,identity]{if(currentDocument().identity()==identity)menuCommands_.invoke("ungroupLayers");},singleGroupContext);
       const auto& bindings=shortcuts::forId(shortcutBindings_,"toggleSelectedGroupCollapsed");
       const auto hint=unicodeText(bindings.empty()?"":bindings.front());
-      add(menu,U"展开／折叠图层组","folderOpen",hint.c_str(),[this,contextGroup,identity]{if(document.identity()==identity){document.toggleGroupCollapsed(contextGroup);refresh();}},singleGroupContext);
+      add(menu,U"展开／折叠图层组","folderOpen",hint.c_str(),[this,contextGroup,identity]{if(currentDocument().identity()==identity){currentDocument().toggleGroupCollapsed(contextGroup);refresh();}},singleGroupContext);
     }
 
     separator(menu);
 
-    add(menu,document.activeClippingMask()?U"关闭剪贴蒙版":U"开启剪贴蒙版","clippingMask",U"Ctrl+Alt+G",[this]{document.toggleClippingMask();refresh();},document.canToggleClippingMask());
+    add(menu,currentDocument().activeClippingMask()?U"关闭剪贴蒙版":U"开启剪贴蒙版","clippingMask",U"Ctrl+Alt+G",[this]{currentDocument().toggleClippingMask();refresh();},currentDocument().canToggleClippingMask());
 
-    {const auto group=document.selectedGroupId();const std::string command=group?"toggleGroupMask":"toggleLayerMask";
-    const bool exists=group&&timeline::directMask(document.timeline().state(),*group,document.frame().id);
+    {const auto group=currentDocument().selectedGroupId();const std::string command=group?"toggleGroupMask":"toggleLayerMask";
+    const bool exists=group&&timeline::directMask(currentDocument().timeline().state(),*group,currentDocument().frame().id);
     add(menu,group?(exists?U"删除图层组蒙版":U"创建图层组蒙版"):U"创建图层蒙版","layerMask",U"",[this,command]{menuCommands_.invoke(command);refresh();},menuCommands_.enabled(command));}
 
     separator(menu);
@@ -529,35 +544,35 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
       {auto submenu=branch(menu,U"图层样式","layerStyle");
 
     const auto styleSource=contextLayerIdentity_==identity&&!contextLayerTargets_.empty()?contextLayerTargets_.front():std::string{};
-    const bool styleOwner=!styleSource.empty()&&(document.findGroup(styleSource)||(document.timeline().hasLayer(styleSource)&&document.timeline().state().layers[document.timeline().layerIndex(styleSource)].kind!="adjustment"));
+    const bool styleOwner=!styleSource.empty()&&(currentDocument().findGroup(styleSource)||(currentDocument().timeline().hasLayer(styleSource)&&currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(styleSource)].kind!="adjustment"));
     const auto configured=timeline::styleConfigured;
-    const auto sourceStyle=document.layerStyle(styleSource);
-    const bool selectionHasStyles=std::any_of(contextLayerTargets_.begin(),contextLayerTargets_.end(),[&](const auto& id){return configured(document.layerStyle(id));});
-    add(submenu,U"图层样式","layerStyle",U"",[this,styleSource,identity]{if(document.identity()==identity)showColorOverlay(false,false,false,false,false,0,styleSource);},styleOwner&&!document.active());
+    const auto sourceStyle=currentDocument().layerStyle(styleSource);
+    const bool selectionHasStyles=std::any_of(contextLayerTargets_.begin(),contextLayerTargets_.end(),[&](const auto& id){return configured(currentDocument().layerStyle(id));});
+    add(submenu,U"图层样式","layerStyle",U"",[this,styleSource,identity]{if(currentDocument().identity()==identity)showColorOverlay(false,false,false,false,false,0,styleSource);},styleOwner&&!currentDocument().active());
 
     if(styleOwner&&configured(sourceStyle)){
       const bool enabled=timeline::styleVisible(sourceStyle);
       const auto targets=contextLayerTargets_;
-      add(submenu,enabled?U"停用图层样式":U"启用图层样式",enabled?"eyeOff":"eye",U"",[this,targets,identity,enabled]{if(document.identity()==identity)document.setLayerStylesEnabled(targets,!enabled);},!document.active());
+      add(submenu,enabled?U"停用图层样式":U"启用图层样式",enabled?"eyeOff":"eye",U"",[this,targets,identity,enabled]{if(currentDocument().identity()==identity)currentDocument().setLayerStylesEnabled(targets,!enabled);},!currentDocument().active());
     }
 
-    add(submenu,U"拆分图层样式","layerStyle",U"",[this,contextLayer,identity]{if(document.identity()==identity)document.splitLayerStyles(contextLayer);},singleLayerContext&&document.canSplitLayerStyles(contextLayer));
+    add(submenu,U"拆分图层样式","layerStyle",U"",[this,contextLayer,identity]{if(currentDocument().identity()==identity)currentDocument().splitLayerStyles(contextLayer);},singleLayerContext&&currentDocument().canSplitLayerStyles(contextLayer));
 
     separator(submenu);
 
-    add(submenu,U"复制图层样式","copy",U"",[this,styleSource,identity]{if(document.identity()!=identity)return;copiedLayerStyle_=document.layerStyle(styleSource);layerStyleClipboard_=copiedLayerStyle_.has_value();},styleOwner&&configured(sourceStyle)&&!document.active());
+    add(submenu,U"复制图层样式","copy",U"",[this,styleSource,identity]{if(currentDocument().identity()!=identity)return;copiedLayerStyle_=currentDocument().layerStyle(styleSource);layerStyleClipboard_=copiedLayerStyle_.has_value();},styleOwner&&configured(sourceStyle)&&!currentDocument().active());
 
-    add(submenu,U"粘贴图层样式","paste",U"",[this,identity]{if(document.identity()==identity)menuCommands_.invoke("pasteLayerStyles");},styleOwner&&menuCommands_.enabled("pasteLayerStyles"));
+    add(submenu,U"粘贴图层样式","paste",U"",[this,identity]{if(currentDocument().identity()==identity)menuCommands_.invoke("pasteLayerStyles");},styleOwner&&menuCommands_.enabled("pasteLayerStyles"));
 
-    add(submenu,U"清除图层样式","clearRecords",U"",[this,identity]{if(document.identity()==identity&&document.beginLayerStyle())document.commitLayerStyle({});},styleOwner&&selectionHasStyles&&!document.active());
+    add(submenu,U"清除图层样式","clearRecords",U"",[this,identity]{if(currentDocument().identity()==identity&&currentDocument().beginLayerStyle())currentDocument().commitLayerStyle({});},styleOwner&&selectionHasStyles&&!currentDocument().active());
 
       }
 
     separator(menu);
 
-    add(menu,U"属性","properties",U"",[this,targets=contextLayerTargets_,identity=contextLayerIdentity_]{if(identity==document.identity() && !targets.empty())showLayerOpacity(targets);},contextLayerIdentity_==document.identity() && !contextLayerTargets_.empty());
+    add(menu,U"属性","properties",U"",[this,targets=contextLayerTargets_,identity=contextLayerIdentity_]{if(identity==currentDocument().identity() && !targets.empty())showLayerOpacity(targets);},contextLayerIdentity_==currentDocument().identity() && !contextLayerTargets_.empty());
 
-    add(menu,U"删除","delete",U"Delete",[this]{document.deleteSelectedLayers();},document.canDeleteSelectedLayers());
+    add(menu,U"删除","delete",U"Delete",[this]{currentDocument().deleteSelectedLayers();},currentDocument().canDeleteSelectedLayers());
 
       return;
 
@@ -567,11 +582,11 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     add(menu,U"创建循环节","link",U"",[this]{openLoopEditor();});
 
-    add(menu,U"生成补间帧","plus",U"",[this]{showCrossfadeTween(document.frame().id,document.layer().id);});
+    add(menu,U"生成补间帧","plus",U"",[this]{showCrossfadeTween(currentDocument().frame().id,currentDocument().layer().id);});
 
     add(menu,U"帧属性","info",U"",[this]{showFrameDuration();},true);
 
-    const bool allDisabled=document.selectedFramesDisabled();
+    const bool allDisabled=currentDocument().selectedFramesDisabled();
 
     add(menu,allDisabled?U"启用帧":U"停用帧",allDisabled?"eye":"eyeOff",U"",[this,allDisabled]{updateFramesDisabled(!allDisabled);},true);
 
@@ -581,7 +596,7 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     add(menu,U"粘贴帧","paste",U"Ctrl+V",[this]{pasteTimelineFrames();},hasApplicationFrameClipboard());
 
-    add(menu,U"反转帧顺序","swap",U"",[this]{document.reverseSelectedFrames();refresh();},document.canReverseSelectedFrames());
+    add(menu,U"反转帧顺序","swap",U"",[this]{currentDocument().reverseSelectedFrames();refresh();},currentDocument().canReverseSelectedFrames());
 
     separator(menu);
 
@@ -589,15 +604,15 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     add(menu,U"新建空白帧","paste",U"Alt+B",[this]{frameAction(0);},true);
 
-    add(menu,U"删除当前帧","delete",U"Alt+C",[this]{deleteTimelineItems();},document.timeline().state().frames.size()>1);
+    add(menu,U"删除当前帧","delete",U"Alt+C",[this]{deleteTimelineItems();},currentDocument().timeline().state().frames.size()>1);
 
       return;
 
     }
 
-    add(menu,U"生成补间帧","plus",U"",[this,id=contextCelId_,identity=contextCelIdentity_]{if(identity!=document.identity())return;const auto* c=document.timeline().findCelById(id);if(c)showCrossfadeTween(c->frameId,c->layerId);},contextCelIdentity_==document.identity()&&document.timeline().findCelById(contextCelId_));
+    add(menu,U"生成补间帧","plus",U"",[this,id=contextCelId_,identity=contextCelIdentity_]{if(identity!=currentDocument().identity())return;const auto* c=currentDocument().timeline().findCelById(id);if(c)showCrossfadeTween(c->frameId,c->layerId);},contextCelIdentity_==currentDocument().identity()&&currentDocument().timeline().findCelById(contextCelId_));
 
-    add(menu,U"新建图层蒙版","layerMask",U"",[this]{const auto group=document.selectedGroupId();document.createAttachedMask(group?*group:document.layer().id,document.frame().id,bool(group));refresh();},true);
+    add(menu,U"新建图层蒙版","layerMask",U"",[this]{const auto group=currentDocument().selectedGroupId();currentDocument().createAttachedMask(group?*group:currentDocument().layer().id,currentDocument().frame().id,bool(group));refresh();},true);
 
     separator(menu);
 
@@ -605,76 +620,76 @@ void Editor::buildLayerContextMenu(PixelMenu* menu,int kind) {
 
     separator(menu);
 
-    add(menu,U"单元格属性","info",U"",[this,id=contextCelId_,identity=contextCelIdentity_]{if(identity==document.identity())showCelProperties(id);},contextCelIdentity_==document.identity() && document.timeline().findCelById(contextCelId_));
+    add(menu,U"单元格属性","info",U"",[this,id=contextCelId_,identity=contextCelIdentity_]{if(identity==currentDocument().identity())showCelProperties(id);},contextCelIdentity_==currentDocument().identity() && currentDocument().timeline().findCelById(contextCelId_));
 
     separator(menu);
 
-    add(menu,U"复制单元格","copy",U"Ctrl+C",[this]{copyTimelineCels();},!document.hasTilemapContent()||(!document.active()&&!document.selection()&&document.activeMaskId().empty()));
+    add(menu,U"复制单元格","copy",U"Ctrl+C",[this]{copyTimelineCels();},!currentDocument().hasTilemapContent()||(!currentDocument().active()&&!currentDocument().selection()&&currentDocument().activeMaskId().empty()));
 
-    add(menu,U"粘贴单元格","paste",U"Ctrl+V",[this]{pasteTimelineCels();},hasApplicationCelClipboard() && (document.hasTilemapContent()? !document.active()&&!document.selection()&&document.activeMaskId().empty()&&!applicationCelSelectionOnly():(applicationCelSelectionOnly() || !document.selection())));
+    add(menu,U"粘贴单元格","paste",U"Ctrl+V",[this]{pasteTimelineCels();},hasApplicationCelClipboard() && (currentDocument().hasTilemapContent()? !currentDocument().active()&&!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&!applicationCelSelectionOnly():(applicationCelSelectionOnly() || !currentDocument().selection())));
 
-    add(menu,U"反转单元格顺序","swap",U"",[this]{document.reverseSelectedCels();refresh();},document.canReverseSelectedCels());
+    add(menu,U"反转单元格顺序","swap",U"",[this]{currentDocument().reverseSelectedCels();refresh();},currentDocument().canReverseSelectedCels());
 
-    add(menu,U"连接单元格","link",U"",[this]{document.connectSelectedCels();refresh();},document.canConnectSelectedCels());
+    add(menu,U"连接单元格","link",U"",[this]{currentDocument().connectSelectedCels();refresh();},currentDocument().canConnectSelectedCels());
 
-    add(menu,U"断开单元格连接","link",U"",[this]{document.disconnectSelectedCels();refresh();},document.canDisconnectSelectedCels());
+    add(menu,U"断开单元格连接","link",U"",[this]{currentDocument().disconnectSelectedCels();refresh();},currentDocument().canDisconnectSelectedCels());
 
-    const auto* contextCel=contextCelIdentity_==document.identity()?document.timeline().findCelById(contextCelId_):nullptr;
+    const auto* contextCel=contextCelIdentity_==currentDocument().identity()?currentDocument().timeline().findCelById(contextCelId_):nullptr;
 
-    add(menu,U"删除单元格","delete",U"",[this]{deleteTimelineItems();},celHasContent(contextCel?contextCel:document.timeline().findCel(document.layer().id,document.frame().id)));
+    add(menu,U"删除单元格","delete",U"",[this]{deleteTimelineItems();},celHasContent(contextCel?contextCel:currentDocument().timeline().findCel(currentDocument().layer().id,currentDocument().frame().id)));
 
   }
 
 void Editor::showCrossfadeTween(std::string start,std::string layer,int verify,std::string initialLoop){
- document.commitFloatingPaste();cancelStroke();document.cancelLayerOpacity();document.commitCelProperties();playing_=false;
- const auto identity=document.identity(),revision=document.revision(),history=document.historySize();const bool dirty=document.dirty();const auto selected=document.timelineSelection().layers;const auto duration=document.timeline().state().frames.at(document.timeline().frameIndex(start)).duration;
- const bool loopRequested=!initialLoop.empty();const auto& state=document.timeline().state();std::vector<std::pair<std::string,std::u32string>> loops;for(const auto& section:state.loopSections)loops.push_back({section.id,section.name});if(initialLoop.empty()){if(auto section=timeline::loopAtFrame(state,start))initialLoop=section->id;else if(!state.loopSections.empty())initialLoop=state.loopSections.front().id;}const bool between=!loopRequested&&document.timeline().frameIndex(start)+1<state.frames.size();
+ currentDocument().commitFloatingPaste();cancelStroke();currentDocument().cancelLayerOpacity();currentDocument().commitCelProperties();currentPlayback().playing=false;
+ const auto identity=currentDocument().identity(),revision=currentDocument().revision(),history=currentDocument().historySize();const bool dirty=currentDocument().dirty();const auto selected=currentDocument().timelineSelection().layers;const auto duration=currentDocument().timeline().state().frames.at(currentDocument().timeline().frameIndex(start)).duration;
+ const bool loopRequested=!initialLoop.empty();const auto& state=currentDocument().timeline().state();std::vector<std::pair<std::string,std::u32string>> loops;for(const auto& section:state.loopSections)loops.push_back({section.id,section.name});if(initialLoop.empty()){if(auto section=timeline::loopAtFrame(state,start))initialLoop=section->id;else if(!state.loopSections.empty())initialLoop=state.loopSections.front().id;}const bool between=!loopRequested&&currentDocument().timeline().frameIndex(start)+1<state.frames.size();
  std::optional<CrossfadeTweenSource> source;TweenLayerScope sourceScope=TweenLayerScope::All;TweenBetweenMode sourceMode=TweenBetweenMode::Morph;
  std::optional<TransformTweenSource> transformSource;std::optional<TweenRegion> transformBounds;TransformTweenOptions sourceOptions,boundsOptions;
  std::optional<TransformTweenSource> endpointSource;TransformTweenOptions endpointSourceOptions,endpointShapeOptions;std::optional<timeline::Surface> endpointShape;bool endpointShapeReady=false;
  AnimationCrossfadeDialog popup(font_,skin_,toolIcons_,duration,between,loopRequested,std::move(loops),initialLoop,[&,this](const AnimationTweenDialogOptions& options,int step)->AnimationTweenDialogPreview{
-  if(document.identity()!=identity||document.revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");
+  if(currentDocument().identity()!=identity||currentDocument().revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");
   AnimationTweenDialogPreview result;
-  if(options.between){if(!source||sourceScope!=options.layerScope||sourceMode!=options.betweenMode){source.reset();source=prepareCrossfadeTweenSource(document.timeline(),start,layer,options.layerScope,selected,options.betweenMode);sourceScope=options.layerScope;sourceMode=options.betweenMode;}const auto b=crossfadeTweenPreviewBounds(document.timeline(),*source);result={b.width,b.height,compositeCrossfadeTweenPreview(document.timeline(),document.width(),document.height(),*source,options,step,b),b.x,b.y};}
-  else{if(!transformSource||sourceOptions.scope!=options.scope||sourceOptions.layerScope!=options.layerScope||sourceOptions.loopSectionId!=options.loopSectionId){transformSource=prepareTransformTweenSource(document.timeline(),start,layer,options,selected);sourceOptions=options;transformBounds.reset();}
-   if(!transformBounds||boundsOptions.frameCount!=options.frameCount||boundsOptions.offsetX!=options.offsetX||boundsOptions.offsetY!=options.offsetY||boundsOptions.rotation!=options.rotation||boundsOptions.scale!=options.scale||boundsOptions.easing!=options.easing||boundsOptions.curve!=options.curve||boundsOptions.path.has_value()!=options.path.has_value()||(boundsOptions.path&&options.path&&!tweenPathEqual(*boundsOptions.path,*options.path))||boundsOptions.pathAnchor.has_value()!=options.pathAnchor.has_value()||(boundsOptions.pathAnchor&&options.pathAnchor&&(boundsOptions.pathAnchor->x!=options.pathAnchor->x||boundsOptions.pathAnchor->y!=options.pathAnchor->y))){transformBounds=transformTweenPreviewBounds(document.timeline(),*transformSource,options);boundsOptions=options;}const auto b=*transformBounds;result={b.width,b.height,compositeTransformTweenPreview(document.timeline(),*transformSource,options,step,b),b.x,b.y};result.pathAnchor=options.pathAnchor.value_or(TweenPathPoint{std::floor(transformSource->pivot.x+transformSource->pivot.width/2.),std::floor(transformSource->pivot.y+transformSource->pivot.height/2.)});
+  if(options.between){if(!source||sourceScope!=options.layerScope||sourceMode!=options.betweenMode){source.reset();source=prepareCrossfadeTweenSource(currentDocument().timeline(),start,layer,options.layerScope,selected,options.betweenMode);sourceScope=options.layerScope;sourceMode=options.betweenMode;}const auto b=crossfadeTweenPreviewBounds(currentDocument().timeline(),*source);result={b.width,b.height,compositeCrossfadeTweenPreview(currentDocument().timeline(),currentDocument().width(),currentDocument().height(),*source,options,step,b),b.x,b.y};}
+  else{if(!transformSource||sourceOptions.scope!=options.scope||sourceOptions.layerScope!=options.layerScope||sourceOptions.loopSectionId!=options.loopSectionId){transformSource=prepareTransformTweenSource(currentDocument().timeline(),start,layer,options,selected);sourceOptions=options;transformBounds.reset();}
+   if(!transformBounds||boundsOptions.frameCount!=options.frameCount||boundsOptions.offsetX!=options.offsetX||boundsOptions.offsetY!=options.offsetY||boundsOptions.rotation!=options.rotation||boundsOptions.scale!=options.scale||boundsOptions.easing!=options.easing||boundsOptions.curve!=options.curve||boundsOptions.path.has_value()!=options.path.has_value()||(boundsOptions.path&&options.path&&!tweenPathEqual(*boundsOptions.path,*options.path))||boundsOptions.pathAnchor.has_value()!=options.pathAnchor.has_value()||(boundsOptions.pathAnchor&&options.pathAnchor&&(boundsOptions.pathAnchor->x!=options.pathAnchor->x||boundsOptions.pathAnchor->y!=options.pathAnchor->y))){transformBounds=transformTweenPreviewBounds(currentDocument().timeline(),*transformSource,options);boundsOptions=options;}const auto b=*transformBounds;result={b.width,b.height,compositeTransformTweenPreview(currentDocument().timeline(),*transformSource,options,step,b),b.x,b.y};result.pathAnchor=options.pathAnchor.value_or(TweenPathPoint{std::floor(transformSource->pivot.x+transformSource->pivot.width/2.),std::floor(transformSource->pivot.y+transformSource->pivot.height/2.)});
   }
-  if(verify&&(document.identity()!=identity||document.revision()!=revision||document.historySize()!=history||document.dirty()!=dirty))throw std::runtime_error("Tween preview modified source");return result;
- },[&,this](const AnimationTweenDialogOptions& options){if(document.identity()!=identity||document.revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");const bool generated=options.between?document.generateCrossfadeTween(start,layer,options,selected,selectionPivot_):document.generateTransformTween(start,layer,options,selected,selectionPivot_);if(generated){frameSelectionExplicit_=true;timelineSelectionIdentity_=identity;timelineSelectionGuidesVisible_=true;refresh();}return generated;});
+  if(verify&&(currentDocument().identity()!=identity||currentDocument().revision()!=revision||currentDocument().historySize()!=history||currentDocument().dirty()!=dirty))throw std::runtime_error("Tween preview modified source");return result;
+ },[&,this](const AnimationTweenDialogOptions& options){if(currentDocument().identity()!=identity||currentDocument().revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");const bool generated=options.between?currentDocument().generateCrossfadeTween(start,layer,options,selected,currentView().pivot):currentDocument().generateTransformTween(start,layer,options,selected,currentView().pivot);if(generated){currentView().frameSelection=true;timelineSelectionIdentity_=identity;currentView().guides=true;refresh();}return generated;});
 
 
  const auto presetDirectory=verify>=13?std::filesystem::path("build/path-ui-presets-owned")/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64())):palettePreferencePath().parent_path();
- popup.setPathCallbacks(document.width(),document.height(),[&,this](const AnimationTweenDialogOptions& o){if(document.identity()!=identity||document.revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");TransformTweenOptions raw=o;raw.path.reset();raw.pathAnchor.reset();raw.rotation=0;raw.scale=100;raw.offsetX=raw.offsetY=0;auto source=prepareTransformTweenSource(document.timeline(),start,layer,raw,selected);auto single=source;single.frameIds={transformTweenSourceFrameId(source,raw,0)};single.layerIds={layer};raw.scope=TransformTweenScope::Frame;return std::make_pair(source.pivot,transformTweenEndpointPreview(document.timeline(),single,raw));},[presetDirectory]{return TweenPathPresetStore(presetDirectory).load();},[presetDirectory](std::u32string name,const TweenPath& path){return TweenPathPresetStore(presetDirectory).save(std::move(name),path);});
+ popup.setPathCallbacks(currentDocument().width(),currentDocument().height(),[&,this](const AnimationTweenDialogOptions& o){if(currentDocument().identity()!=identity||currentDocument().revision()!=revision)throw std::runtime_error("Tween source changed; reopen the dialog");TransformTweenOptions raw=o;raw.path.reset();raw.pathAnchor.reset();raw.rotation=0;raw.scale=100;raw.offsetX=raw.offsetY=0;auto source=prepareTransformTweenSource(currentDocument().timeline(),start,layer,raw,selected);auto single=source;single.frameIds={transformTweenSourceFrameId(source,raw,0)};single.layerIds={layer};raw.scope=TransformTweenScope::Frame;return std::make_pair(source.pivot,transformTweenEndpointPreview(currentDocument().timeline(),single,raw));},[presetDirectory]{return TweenPathPresetStore(presetDirectory).load();},[presetDirectory](std::u32string name,const TweenPath& path){return TweenPathPresetStore(presetDirectory).save(std::move(name),path);});
  popup.setEndpointCallbacks([&,this](const AnimationTweenDialogOptions& o,bool enabled)->std::optional<TweenRegion>{
   auto clear=[&]{tweenEndpointImage_.reset();tweenEndpointIdentity_=tweenEndpointRevision_=0;invalidateRect(canvasViewport());};
   if(!enabled){clear();endpointSource.reset();endpointShape.reset();endpointShapeReady=false;return {};}
-  if(document.identity()!=identity||document.revision()!=revision){clear();throw std::runtime_error("Tween source changed; reopen the dialog");}
-  if(!endpointSource||endpointSourceOptions.scope!=o.scope||endpointSourceOptions.layerScope!=o.layerScope||endpointSourceOptions.loopSectionId!=o.loopSectionId){endpointSource=prepareTransformTweenSource(document.timeline(),start,layer,o,selected);endpointSourceOptions=o;endpointShapeReady=false;}
-  if(!endpointShapeReady||endpointShapeOptions.frameCount!=o.frameCount||endpointShapeOptions.rotation!=o.rotation||endpointShapeOptions.scale!=o.scale){endpointShape=transformTweenEndpointPreview(document.timeline(),*endpointSource,o);endpointShapeOptions=o;endpointShapeReady=true;tweenEndpointImage_.reset();if(endpointShape){auto image=os::instance()->makeRgbaSurface(endpointShape->width,endpointShape->height);if(!image)throw std::runtime_error("Cannot create endpoint preview");uploadRgbaRegion(*image,endpointShape->pixels.data(),endpointShape->width,endpointShape->height,endpointShape->width);tweenEndpointImage_=std::move(image);}}
+  if(currentDocument().identity()!=identity||currentDocument().revision()!=revision){clear();throw std::runtime_error("Tween source changed; reopen the dialog");}
+  if(!endpointSource||endpointSourceOptions.scope!=o.scope||endpointSourceOptions.layerScope!=o.layerScope||endpointSourceOptions.loopSectionId!=o.loopSectionId){endpointSource=prepareTransformTweenSource(currentDocument().timeline(),start,layer,o,selected);endpointSourceOptions=o;endpointShapeReady=false;}
+  if(!endpointShapeReady||endpointShapeOptions.frameCount!=o.frameCount||endpointShapeOptions.rotation!=o.rotation||endpointShapeOptions.scale!=o.scale){endpointShape=transformTweenEndpointPreview(currentDocument().timeline(),*endpointSource,o);endpointShapeOptions=o;endpointShapeReady=true;tweenEndpointImage_.reset();if(endpointShape){auto image=os::instance()->makeRgbaSurface(endpointShape->width,endpointShape->height);if(!image)throw std::runtime_error("Cannot create endpoint preview");uploadRgbaRegion(*image,endpointShape->pixels.data(),endpointShape->width,endpointShape->height,endpointShape->width);tweenEndpointImage_=std::move(image);}}
   if(!endpointShape||!tweenEndpointImage_){clear();return {};}
   const auto translation=tweenTranslation(o,1);tweenEndpointX_=endpointShape->offsetX+std::floor(translation.x+.5);tweenEndpointY_=endpointShape->offsetY+std::floor(translation.y+.5);tweenEndpointIdentity_=identity;tweenEndpointRevision_=revision;invalidateRect(canvasViewport());
-  if(verify&&(document.historySize()!=history||document.revision()!=revision||document.dirty()!=dirty))throw std::runtime_error("Endpoint preview modified source");return TweenRegion{int(tweenEndpointX_),int(tweenEndpointY_),tweenEndpointImage_->width(),tweenEndpointImage_->height()};
- },[this](gfx::Point p,bool beginning)->std::optional<TransformPoint>{if(beginning&&(!canvasViewport().contains(p)||topFloatingColumnAt(p)>=0||!selectionTool_||spaceHeld_||handTool_||playing_||selectionDragging_||floatingDragging_||gradientDragging_||shapeDragging_||document.active()))return {};return transformCanvasPoint(p);});
- popup.setCheckerboard(checkerboard_.light,checkerboard_.dark,checkerboard_.size);popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-140*uiScale,bounds().center().y-252*uiScale,280*uiScale,504*uiScale});if(verify==7||verify==8)popup.setBounds({bounds().x+4*uiScale,bounds().y+4*uiScale,280*uiScale,504*uiScale});ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();if(verify==7||verify==8){os::Surface* cached=nullptr;const auto originalPixels=document.pixels();popup.smokeEndpoint(canvas_.origin(),canvasScale(),verify==8,[&,this](int phase){if(document.identity()!=identity||document.revision()!=revision||document.historySize()!=history||document.dirty()!=dirty||document.pixels()!=originalPixels||document.floating()||document.active()||selectionDragging_||floatingDragging_)throw std::runtime_error("Endpoint gesture touched document");if(phase==6){if(tweenEndpointImage_)throw std::runtime_error("Endpoint toggle ghost leak");return;}if(!tweenEndpointImage_)throw std::runtime_error("Endpoint ghost missing");if(phase==0)cached=tweenEndpointImage_.get();if(phase>0&&phase<6&&cached!=tweenEndpointImage_.get())throw std::runtime_error("Endpoint translation/seek rerasterized");if(phase==2){auto image=os::instance()->makeRgbaSurface(bounds().w,bounds().h);image->clear();{ui::Graphics g(image);paintCanvas(g);}const int x=int(std::floor(canvas_.x-bounds().x+(tweenEndpointX_+.5)*canvasScale()+.5)),y=int(std::floor(canvas_.y-bounds().y+(tweenEndpointY_+.5)*canvasScale()+.5));if(x<0||y<0||x>=image->width()||y>=image->height())throw std::runtime_error("Endpoint alpha fixture outside canvas");const auto visible=image->getPixel(x,y);auto saved=tweenEndpointImage_;tweenEndpointImage_.reset();auto base=os::instance()->makeRgbaSurface(bounds().w,bounds().h);base->clear();{ui::Graphics g(base);paintCanvas(g);}tweenEndpointImage_=saved;const auto under=base->getPixel(x,y),source=saved->getPixel(0,0);auto checkChannel=[&](int actual,int color,int below){if(std::abs(actual-int(std::floor(color*.4+below*.6+.5)))>2)throw std::runtime_error("Endpoint render opacity must be .4");};checkChannel(gfx::getr(visible),gfx::getr(source),gfx::getr(under));checkChannel(gfx::getg(visible),gfx::getg(source),gfx::getg(under));checkChannel(gfx::getb(visible),gfx::getb(source),gfx::getb(under));}});}else if(verify>=13)popup.smokePath(verify==14);else if(verify>=9)popup.smokeBetweenCrop(verify%2==0,verify<=10);else if(verify<=2)popup.smoke(verify==2);else popup.smokeTransform(verify==4||verify==6,verify>=5);});timer.start();}popup.openWindowInForeground();requestFocus();refresh();
+  if(verify&&(currentDocument().historySize()!=history||currentDocument().revision()!=revision||currentDocument().dirty()!=dirty))throw std::runtime_error("Endpoint preview modified source");return TweenRegion{int(tweenEndpointX_),int(tweenEndpointY_),tweenEndpointImage_->width(),tweenEndpointImage_->height()};
+ },[this](gfx::Point p,bool beginning)->std::optional<TransformPoint>{if(beginning&&(!canvasViewport().contains(p)||topFloatingColumnAt(p)>=0||!currentTools().selectionTool||spaceHeld_||currentTools().handTool||currentPlayback().playing||selectionDragging_||floatingDragging_||gradientDragging_||shapeDragging_||currentDocument().active()))return {};return transformCanvasPoint(p);});
+ popup.setCheckerboard(checkerboard_.light,checkerboard_.dark,checkerboard_.size);popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-140*uiScale,bounds().center().y-252*uiScale,280*uiScale,504*uiScale});if(verify==7||verify==8)popup.setBounds({bounds().x+4*uiScale,bounds().y+4*uiScale,280*uiScale,504*uiScale});ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();if(verify==7||verify==8){os::Surface* cached=nullptr;const auto originalPixels=currentDocument().pixels();popup.smokeEndpoint(currentView().canvas.origin(),canvasScale(),verify==8,[&,this](int phase){if(currentDocument().identity()!=identity||currentDocument().revision()!=revision||currentDocument().historySize()!=history||currentDocument().dirty()!=dirty||currentDocument().pixels()!=originalPixels||currentDocument().floating()||currentDocument().active()||selectionDragging_||floatingDragging_)throw std::runtime_error("Endpoint gesture touched document");if(phase==6){if(tweenEndpointImage_)throw std::runtime_error("Endpoint toggle ghost leak");return;}if(!tweenEndpointImage_)throw std::runtime_error("Endpoint ghost missing");if(phase==0)cached=tweenEndpointImage_.get();if(phase>0&&phase<6&&cached!=tweenEndpointImage_.get())throw std::runtime_error("Endpoint translation/seek rerasterized");if(phase==2){auto image=os::instance()->makeRgbaSurface(bounds().w,bounds().h);image->clear();{ui::Graphics g(image);paintCanvas(g);}const int x=int(std::floor(currentView().canvas.x-bounds().x+(tweenEndpointX_+.5)*canvasScale()+.5)),y=int(std::floor(currentView().canvas.y-bounds().y+(tweenEndpointY_+.5)*canvasScale()+.5));if(x<0||y<0||x>=image->width()||y>=image->height())throw std::runtime_error("Endpoint alpha fixture outside canvas");const auto visible=image->getPixel(x,y);auto saved=tweenEndpointImage_;tweenEndpointImage_.reset();auto base=os::instance()->makeRgbaSurface(bounds().w,bounds().h);base->clear();{ui::Graphics g(base);paintCanvas(g);}tweenEndpointImage_=saved;const auto under=base->getPixel(x,y),source=saved->getPixel(0,0);auto checkChannel=[&](int actual,int color,int below){if(std::abs(actual-int(std::floor(color*.4+below*.6+.5)))>2)throw std::runtime_error("Endpoint render opacity must be .4");};checkChannel(gfx::getr(visible),gfx::getr(source),gfx::getr(under));checkChannel(gfx::getg(visible),gfx::getg(source),gfx::getg(under));checkChannel(gfx::getb(visible),gfx::getb(source),gfx::getb(under));}});}else if(verify>=13)popup.smokePath(verify==14);else if(verify>=9)popup.smokeBetweenCrop(verify%2==0,verify<=10);else if(verify<=2)popup.smoke(verify==2);else popup.smokeTransform(verify==4||verify==6,verify>=5);});timer.start();}popup.openWindowInForeground();requestFocus();refresh();
 }
 
 void Editor::showCelProperties(const std::string& id,int verify){
 
-    const auto* slot=document.timeline().findCelById(id);if(!slot)return;const auto source=document.timeline().resolveSurface(id);if(!source.source)return;const double opacity=source.source->opacity.value_or(1);const int z=source.source->zIndex;const auto identity=document.identity();auto targets=document.timelineSelection().cels;if(std::find(targets.begin(),targets.end(),id)==targets.end()){document.selectTimelineCel(id);targets={id};}if(!document.beginCelProperties(id,targets))return;
+    const auto* slot=currentDocument().timeline().findCelById(id);if(!slot)return;const auto source=currentDocument().timeline().resolveSurface(id);if(!source.source)return;const double opacity=source.source->opacity.value_or(1);const int z=source.source->zIndex;const auto identity=currentDocument().identity();auto targets=currentDocument().timelineSelection().cels;if(std::find(targets.begin(),targets.end(),id)==targets.end()){currentDocument().selectTimelineCel(id);targets={id};}if(!currentDocument().beginCelProperties(id,targets))return;
 
-    try{CelPropertiesDialog popup(font_,skin_,toolIcons_,opacity,z,[this,identity](double opacity,int z){if(document.identity()==identity){document.previewCelProperties(opacity,z);refresh();}});popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-170*uiScale/2,bounds().center().y-130*uiScale/2,170*uiScale,131*uiScale});ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke();ui::KeyMessage key(ui::kKeyDownMessage,verify==1?ui::kKeyEsc:ui::kKeyEnter,ui::kKeyNoneModifier,0,0);popup.onProcessMessage(&key);});timer.start();}popup.openWindowInForeground();if(document.identity()==identity)document.commitCelProperties();}catch(...){if(document.identity()==identity)document.cancelCelProperties();throw;}requestFocus();refresh();
+    try{CelPropertiesDialog popup(font_,skin_,toolIcons_,opacity,z,[this,identity](double opacity,int z){if(currentDocument().identity()==identity){currentDocument().previewCelProperties(opacity,z);refresh();}});popup.setDisplay(display(),false);popup.setBounds({bounds().center().x-170*uiScale/2,bounds().center().y-130*uiScale/2,170*uiScale,131*uiScale});ui::Timer timer(50,&popup);if(verify){timer.Tick.connect([&]{timer.stop();popup.smoke();ui::KeyMessage key(ui::kKeyDownMessage,verify==1?ui::kKeyEsc:ui::kKeyEnter,ui::kKeyNoneModifier,0,0);popup.onProcessMessage(&key);});timer.start();}popup.openWindowInForeground();if(currentDocument().identity()==identity)currentDocument().commitCelProperties();}catch(...){if(currentDocument().identity()==identity)currentDocument().cancelCelProperties();throw;}requestFocus();refresh();
 
   }
 
-void Editor::prepareLayerContext(const std::string& id){if(attachedMaskRow(id)){maskContextOwner_=attachedMaskOwner(id);maskContextFrame_=document.frame().id;return;}maskContextOwner_.clear();TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);const auto* node=rows.at(rows.index(id));if(!node)return;const auto& selected=node->kind==LayerPanelKind::Group?document.selectedGroupIds():document.timelineSelection().layers;if(std::find(selected.begin(),selected.end(),id)==selected.end())document.selectTimelineRow(*node);contextLayerTargets_=document.timelineSelection().layers;contextLayerTargets_.insert(contextLayerTargets_.end(),document.selectedGroupIds().begin(),document.selectedGroupIds().end());if(const auto source=std::find(contextLayerTargets_.begin(),contextLayerTargets_.end(),id);source!=contextLayerTargets_.end())std::rotate(contextLayerTargets_.begin(),source,source+1);contextLayerIdentity_=document.identity();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();}
+void Editor::prepareLayerContext(const std::string& id){if(attachedMaskRow(id)){maskContextOwner_=attachedMaskOwner(id);maskContextFrame_=currentDocument().frame().id;return;}maskContextOwner_.clear();TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);const auto* node=rows.at(rows.index(id));if(!node)return;const auto& selected=node->kind==LayerPanelKind::Group?currentDocument().selectedGroupIds():currentDocument().timelineSelection().layers;if(std::find(selected.begin(),selected.end(),id)==selected.end())currentDocument().selectTimelineRow(*node);contextLayerTargets_=currentDocument().timelineSelection().layers;contextLayerTargets_.insert(contextLayerTargets_.end(),currentDocument().selectedGroupIds().begin(),currentDocument().selectedGroupIds().end());if(const auto source=std::find(contextLayerTargets_.begin(),contextLayerTargets_.end(),id);source!=contextLayerTargets_.end())std::rotate(contextLayerTargets_.begin(),source,source+1);contextLayerIdentity_=currentDocument().identity();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;refresh();}
 
 void Editor::prepareCelContext(const std::string& id){
 
-    const auto& selected=document.timelineSelection().cels;
+    const auto& selected=currentDocument().timelineSelection().cels;
 
-    if(std::find(selected.begin(),selected.end(),id)==selected.end())document.selectTimelineCel(id);
+    if(std::find(selected.begin(),selected.end(),id)==selected.end())currentDocument().selectTimelineCel(id);
 
-    contextCelId_=id;contextCelIdentity_=document.identity();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;refresh();
+    contextCelId_=id;contextCelIdentity_=currentDocument().identity();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;refresh();
 
   }
 
@@ -682,13 +697,13 @@ void Editor::showLayerContextMenu(int kind){if(!maskContextOwner_.empty()){const
 
 bool Editor::celHasContent(const timeline::Cel* cel) {
 
-    if(!cel)return false;bool cache=true;if(document.active()){const auto active=document.timeline().resolveSurface(document.cel().id),target=document.timeline().resolveSurface(cel->id);cache=!active.source||!target.source||active.source->id!=target.source->id;}return document.timeline().hasVisiblePixels(cel->id,cache);
+    if(!cel)return false;bool cache=true;if(currentDocument().active()){const auto active=currentDocument().timeline().resolveSurface(currentDocument().cel().id),target=currentDocument().timeline().resolveSurface(cel->id);cache=!active.source||!target.source||active.source->id!=target.source->id;}return currentDocument().timeline().hasVisiblePixels(cel->id,cache);
 
   }
 
 void Editor::clearTimelineRowSelection() {
 
-    virtualSlots_.clear();virtualAnchor_.reset();selectedTimelineLayer_.clear();selectedTimelineCelLayer_.clear();selectedTimelineCelFrame_.clear();
+    currentView().virtualSlots.clear();currentView().virtualAnchor.reset();selectedTimelineLayer_.clear();selectedTimelineCelLayer_.clear();selectedTimelineCelFrame_.clear();
 
   }
 
@@ -696,24 +711,24 @@ void Editor::markFrameSelection() {
 
     // Legacy selectAnimationFrame promotes selected mask cells to owner rows,
     // retaining the original active mask even when the new frame has no mask.
-    if(!selectedMaskSlots_.empty()){
-      auto selection=document.timelineSelection();
-      for(const auto& key:selectedMaskSlots_)if(std::find(selection.maskRows.begin(),selection.maskRows.end(),key.first)==selection.maskRows.end())selection.maskRows.push_back(key.first);
-      document.restoreTimelineRowSelection({}, {}, {});auto restored=document.timelineSelection();restored.maskRows=std::move(selection.maskRows);document.restoreTimelineSelection(std::move(restored),document.selectedFrames());
-      selectedMaskSlots_.clear();maskSelectionAnchor_.reset();
+    if(!currentView().maskSlots.empty()){
+      auto selection=currentDocument().timelineSelection();
+      for(const auto& key:currentView().maskSlots)if(std::find(selection.maskRows.begin(),selection.maskRows.end(),key.first)==selection.maskRows.end())selection.maskRows.push_back(key.first);
+      currentDocument().restoreTimelineRowSelection({}, {}, {});auto restored=currentDocument().timelineSelection();restored.maskRows=std::move(selection.maskRows);currentDocument().restoreTimelineSelection(std::move(restored),currentDocument().selectedFrames());
+      currentView().maskSlots.clear();currentView().maskAnchor.reset();
     }
 
-    virtualSlots_.clear();virtualAnchor_.reset();selectedTimelineLayer_.clear();selectedTimelineCelLayer_.clear();selectedTimelineCelFrame_.clear();timelineSelectionGuidesVisible_=true;frameSelectionExplicit_=true;
+    currentView().virtualSlots.clear();currentView().virtualAnchor.reset();selectedTimelineLayer_.clear();selectedTimelineCelLayer_.clear();selectedTimelineCelFrame_.clear();currentView().guides=true;currentView().frameSelection=true;
 
   }
 
-void Editor::selectTimelineLayer(std::size_t index){if(selectMaskPanelRow(int(index)))return;selectedMaskSlots_.clear();document.exitAttachedMask();TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(const auto* n=rows.at(int(index)))document.selectTimelineRow(*n);virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;refresh();}
+void Editor::selectTimelineLayer(std::size_t index){if(selectMaskPanelRow(int(index)))return;currentView().maskSlots.clear();currentDocument().exitAttachedMask();TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(const auto* n=rows.at(int(index)))currentDocument().selectTimelineRow(*n);currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;refresh();}
 
-void Editor::selectTimelineCel(std::size_t row,std::size_t column){if(selectMaskTimelineRow(int(row),int(column)))return;selectedMaskSlots_.clear();document.exitAttachedMask();selectTimelineSlot(int(row),int(column));refresh();}
+void Editor::selectTimelineCel(std::size_t row,std::size_t column){if(selectMaskTimelineRow(int(row),int(column)))return;currentView().maskSlots.clear();currentDocument().exitAttachedMask();selectTimelineSlot(int(row),int(column));refresh();}
 
 void Editor::hideTimelineSelectionGuides() {
 
-    timelineSelectionGuidesVisible_=false;layoutLayers();
+    currentView().guides=false;layoutLayers();
 
     const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,2);
 
@@ -739,15 +754,15 @@ bool Editor::clearTimelineSelectionFromBlank(const ui::MouseMessage& mouse) {
 
       if(button->timelineVisible && button->bounds().contains(point) && (!button->paletteViewport || button->paletteViewport().contains(point)))return false;
 
-    document.clearTimelineSelection();clearTimelineRowSelection();selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document.exitAttachedMask();frameSelectionExplicit_=false;
+    currentDocument().clearTimelineSelection();clearTimelineRowSelection();currentView().maskSlots.clear();currentView().maskAnchor.reset();currentDocument().exitAttachedMask();currentView().frameSelection=false;
 
-    timelineSelectionGuidesVisible_=true;refresh();
+    currentView().guides=true;refresh();
 
     return mouse.left(); // Right click continues to the create-area menu.
 
   }
 
-timeline::LoopSectionLayout Editor::loopTrackLayout() const {return timeline::layoutLoopSections(document.timeline().state(),loopTrackDrag_?std::optional<timeline::LoopSectionPreview>{{loopTrackDrag_->id,loopTrackDrag_->previewStart,loopTrackDrag_->previewEnd}}:std::nullopt);}
+timeline::LoopSectionLayout Editor::loopTrackLayout() const {return timeline::layoutLoopSections(currentDocument().timeline().state(),loopTrackDrag_?std::optional<timeline::LoopSectionPreview>{{loopTrackDrag_->id,loopTrackDrag_->previewStart,loopTrackDrag_->previewEnd}}:std::nullopt,systemStringLess);}
 
 int Editor::loopTrackHeight() const {return timelineHidden_?0:loopTrackLayout().laneCount*20;}
 
@@ -761,36 +776,36 @@ int Editor::timelineHeaderHeight() const {return timelineHidden_?0:timelineDensi
 
 int Editor::timelineThumbnailSize() const {return std::array<int,6>{0,0,23,32,44,60}[timelineDensity_];}
 
-void Editor::setTimelineDensity(int density){density=std::clamp(density,0,5);if(density==timelineDensity_)return;timelineDensity_=density;frameScrollRemainder_=layerScrollRemainder_=0;if(!smoke_)try{const auto path=palettePreferencePath().parent_path()/"layer-display-density.txt";std::filesystem::create_directories(path.parent_path());const std::string value=timelineDensityKeys_[density];writeExportBytesAtomic(path,{value.begin(),value.end()});}catch(const std::exception&){status_=U"图层密度保存失败";}layoutLayers();invalidateTimelineGrid();}
+void Editor::setTimelineDensity(int density){density=std::clamp(density,0,5);if(density==timelineDensity_)return;timelineDensity_=density;currentView().frameRemainder=currentView().layerRemainder=0;if(!smoke_)try{const auto path=palettePreferencePath().parent_path()/"layer-display-density.txt";std::filesystem::create_directories(path.parent_path());const std::string value=timelineDensityKeys_[density];writeExportBytesAtomic(path,{value.begin(),value.end()});}catch(const std::exception&){status_=U"图层密度保存失败";}layoutLayers();invalidateTimelineGrid();}
 
 int Editor::timelineRowsOffset() const {return timelineHidden_?37:timelineHeaderOffset()+timelineHeaderHeight();}
 
 gfx::Rect Editor::loopTrackViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth(),l.layerTop+37,timelineScrollMetrics(l).width/uiScale,loopTrackHeight()));}
 
-gfx::Rect Editor::loopTrackItemBounds(const timeline::LoopSectionLayoutItem& item) const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth()+(item.startIndex-frameScroll_)*timelineFrameWidth(),l.layerTop+37+item.lane*20,item.span*timelineFrameWidth(),item.laneSpan*20)).offset(-frameScrollRemainder_,0);}
+gfx::Rect Editor::loopTrackItemBounds(const timeline::LoopSectionLayoutItem& item) const {const auto l=columnLayout(uiLogical(clientBounds()),2);return toDisplay(gfx::Rect(l.workX+5+timelineLabelWidth()+(item.startIndex-currentView().frames)*timelineFrameWidth(),l.layerTop+37+item.lane*20,item.span*timelineFrameWidth(),item.laneSpan*20)).offset(-currentView().frameRemainder,0);}
 
 Editor::LoopTrackHit Editor::loopTrackHit(gfx::Point point) const {if(!documentOpen_ || !columnShown(2) || pending_!=Pending::None || (topFloatingColumnAt(point)>=0 && topFloatingColumnAt(point)!=2) || !loopTrackViewport().contains(point))return {};const auto layout=loopTrackLayout();for(auto it=layout.items.rbegin();it!=layout.items.rend();++it){const auto box=loopTrackItemBounds(*it);if(point.y<box.y || point.y>=box.y2()+uiScale)continue;const int top=box.y+8*uiScale;if(point.y>=top){if(gfx::Rect(box.x-3*uiScale,top,9*uiScale,box.y2()+uiScale-top).contains(point))return {it->id,1};if(gfx::Rect(box.x2()-6*uiScale,top,9*uiScale,box.y2()+uiScale-top).contains(point))return {it->id,2};}if(box.contains(point))return {it->id,0};}return {};}
 
-void Editor::buildLoopTrackMenu(PixelMenu& menu,const std::string& id){auto add=[&](const char32_t* title,const char* icon,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,title);item->iconSkin=&toolIcons_;item->icon=icon;item->setEnabled(playbackSection(id)!=nullptr);item->Click.connect(action);menu.addChild(item);};add(U"播放循环节","right",[this,id]{startLoopPlayback(id);});add(U"循环节属性","properties",[this,id]{openLoopEditor(id);});add(U"生成补间帧","plus",[this,id]{if(const auto* section=playbackSection(id)){const auto range=timeline::loopRange(document.timeline().state(),*section);if(range.start>=0)showCrossfadeTween(document.timeline().state().frames.at(range.start).id,document.layer().id,0,id);}});menu.addChild(new PixelMenuSeparator(skin_));add(U"删除循环节","delete",[this,id]{document.deleteLoopSection(id);if(loopPlayback_.current.sectionId==id){playing_=false;loopPlayback_={};}refresh();});}
+void Editor::buildLoopTrackMenu(PixelMenu& menu,const std::string& id){auto add=[&](const char32_t* title,const char* icon,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,title);item->iconSkin=&toolIcons_;item->icon=icon;item->setEnabled(playbackSection(id)!=nullptr);item->Click.connect(action);menu.addChild(item);};add(U"播放循环节","right",[this,id]{startLoopPlayback(id);});add(U"循环节属性","properties",[this,id]{openLoopEditor(id);});add(U"生成补间帧","plus",[this,id]{if(const auto* section=playbackSection(id)){const auto range=timeline::loopRange(currentDocument().timeline().state(),*section);if(range.start>=0)showCrossfadeTween(currentDocument().timeline().state().frames.at(range.start).id,currentDocument().layer().id,0,id);}});menu.addChild(new PixelMenuSeparator(skin_));add(U"删除循环节","delete",[this,id]{currentDocument().deleteLoopSection(id);if(currentPlayback().loop.current.sectionId==id){currentPlayback().playing=false;currentPlayback().loop={};}refresh();});}
 
-void Editor::finishLoopTrackResize(bool cancel){if(!loopTrackDrag_)return;const auto drag=*loopTrackDrag_;loopTrackDrag_.reset();loopTrackTimer_.stop();if(hasCapture())releaseMouse();if(!cancel && drag.identity==document.identity() && drag.moved){if(const auto* current=playbackSection(drag.id)){auto section=*current;if(drag.previewStart!=drag.start || drag.previewEnd!=drag.end){section.startFrameId=document.timeline().state().frames.at(drag.previewStart).id;section.endFrameId=document.timeline().state().frames.at(drag.previewEnd).id;document.updateLoopSection(section);}}}refresh();}
+void Editor::finishLoopTrackResize(bool cancel){if(!loopTrackDrag_)return;const auto drag=*loopTrackDrag_;loopTrackDrag_.reset();loopTrackTimer_.stop();if(hasCapture())releaseMouse();if(!cancel && drag.identity==currentDocument().identity() && drag.moved){if(const auto* current=playbackSection(drag.id)){auto section=*current;if(drag.previewStart!=drag.start || drag.previewEnd!=drag.end){section.startFrameId=currentDocument().timeline().state().frames.at(drag.previewStart).id;section.endFrameId=currentDocument().timeline().state().frames.at(drag.previewEnd).id;currentDocument().updateLoopSection(section);}}}refresh();}
 
-void Editor::updateLoopTrackResize(gfx::Point point,bool scrolling){if(!loopTrackDrag_)return;auto& drag=*loopTrackDrag_;if(drag.identity!=document.identity() || !playbackSection(drag.id)){finishLoopTrackResize(true);return;}drag.pointer=point;const auto viewport=loopTrackViewport();if(scrolling){const auto metrics=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));int scroll=frameScroll_*timelineFrameWidth()*uiScale+frameScrollRemainder_;if(point.x>viewport.x2()-30*uiScale)scroll+=18*uiScale;else if(point.x<viewport.x+30*uiScale)scroll-=18*uiScale;scroll=std::clamp(scroll,0,std::max(0,metrics.contentWidth-metrics.width));frameScroll_=scroll/(timelineFrameWidth()*uiScale);frameScrollRemainder_=scroll%(timelineFrameWidth()*uiScale);}
+void Editor::updateLoopTrackResize(gfx::Point point,bool scrolling){if(!loopTrackDrag_)return;auto& drag=*loopTrackDrag_;if(drag.identity!=currentDocument().identity() || !playbackSection(drag.id)){finishLoopTrackResize(true);return;}drag.pointer=point;const auto viewport=loopTrackViewport();if(scrolling){const auto metrics=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));int scroll=currentView().frames*timelineFrameWidth()*uiScale+currentView().frameRemainder;if(point.x>viewport.x2()-30*uiScale)scroll+=18*uiScale;else if(point.x<viewport.x+30*uiScale)scroll-=18*uiScale;scroll=std::clamp(scroll,0,std::max(0,metrics.contentWidth-metrics.width));currentView().frames=scroll/(timelineFrameWidth()*uiScale);currentView().frameRemainder=scroll%(timelineFrameWidth()*uiScale);}
 
-    const double first=viewport.x-frameScroll_*timelineFrameWidth()*uiScale-frameScrollRemainder_;const int index=timeline::loopResizeFrameIndex(point.x,first,timelineFrameWidth()*uiScale,int(document.timeline().state().frames.size()),drag.edge==1);const int start=drag.edge==1?std::min(index,drag.end):drag.start,end=drag.edge==2?std::max(index,drag.start):drag.end;if(start!=drag.previewStart || end!=drag.previewEnd){drag.previewStart=start;drag.previewEnd=end;drag.moved=true;}layoutLayers();invalidateTimelineGrid();}
+    const double first=viewport.x-currentView().frames*timelineFrameWidth()*uiScale-currentView().frameRemainder;const int index=timeline::loopResizeFrameIndex(point.x,first,timelineFrameWidth()*uiScale,int(currentDocument().timeline().state().frames.size()),drag.edge==1);const int start=drag.edge==1?std::min(index,drag.end):drag.start,end=drag.edge==2?std::max(index,drag.start):drag.end;if(start!=drag.previewStart || end!=drag.previewEnd){drag.previewStart=start;drag.previewEnd=end;drag.moved=true;}layoutLayers();invalidateTimelineGrid();}
 
 bool Editor::processLoopTrack(ui::Message* msg){
     if(advancedActive()&&msg->type()==ui::kMouseDownMessage)return false;if(loopTrackDrag_){if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage || (msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)){finishLoopTrackResize(true);return true;}if(msg->type()==ui::kMouseMoveMessage){updateLoopTrackResize(static_cast<ui::MouseMessage*>(msg)->position(),true);return true;}if(msg->type()==ui::kMouseUpMessage && static_cast<ui::MouseMessage*>(msg)->left()){updateLoopTrackResize(static_cast<ui::MouseMessage*>(msg)->position());finishLoopTrackResize();return true;}if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)return true;}
 
-    if(msg->type()!=ui::kMouseDownMessage && msg->type()!=ui::kDoubleClickMessage)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto hit=loopTrackHit(mouse->position());if(hit.id.empty())return false;if(mouse->right()){if(msg->type()==ui::kDoubleClickMessage)return true;PixelMenu menu(skin_);buildLoopTrackMenu(menu,hit.id);menu.showPopup(pointerMenuPosition(mouse->position()),display());return true;}if(!mouse->left())return false;if(hit.edge && msg->type()==ui::kMouseDownMessage){const auto* section=playbackSection(hit.id);const auto range=timeline::loopRange(document.timeline().state(),*section);loopTrackDrag_=LoopTrackDrag{hit.id,hit.edge,range.start,range.end,range.start,range.end,document.identity(),false,mouse->position()};requestFocus();captureMouse();loopTrackTimer_.start();invalidateTimelineGrid();}else openLoopEditor(hit.id);return true;}
+    if(msg->type()!=ui::kMouseDownMessage && msg->type()!=ui::kDoubleClickMessage)return false;const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto hit=loopTrackHit(mouse->position());if(hit.id.empty())return false;if(mouse->right()){if(msg->type()==ui::kDoubleClickMessage)return true;PixelMenu menu(skin_);buildLoopTrackMenu(menu,hit.id);menu.showPopup(pointerMenuPosition(mouse->position()),display());return true;}if(!mouse->left())return false;if(hit.edge && msg->type()==ui::kMouseDownMessage){const auto* section=playbackSection(hit.id);const auto range=timeline::loopRange(currentDocument().timeline().state(),*section);loopTrackDrag_=LoopTrackDrag{hit.id,hit.edge,range.start,range.end,range.start,range.end,currentDocument().identity(),false,mouse->position()};requestFocus();captureMouse();loopTrackTimer_.start();invalidateTimelineGrid();}else openLoopEditor(hit.id);return true;}
 
-void Editor::paintLoopTrack(ui::Graphics& g){if(!loopTrackHeight())return;const auto viewport=loopTrackViewport().offset(-bounds().origin());g.saveClip();g.clipRect(viewport);UiPaintScale scale(g);const auto logical=uiLogical(viewport);skin_.draw(g,"timeline.loop.track",logical);for(const auto& item:loopTrackLayout().items){const auto box=uiLogical(loopTrackItemBounds(item).offset(-bounds().origin()));const auto* section=playbackSection(item.id);if(!section)continue;const bool playing=playing_ && loopPlayback_.current.sectionId==item.id,hover=paletteMousePosition_ && loopTrackHit(*paletteMousePosition_).id==item.id;const char* slot=playing?"timeline.loop.playing":hover?"timeline.loop.hover":"timeline.loop.normal";skin_.draw(g,slot,gfx::Rect(box.x+2,box.y+9,box.w-4,box.h-8));const auto ink=font_.inkBounds(section->name);auto label=gfx::Rect(box.x+4,box.y,std::max(0,box.w-8),12);g.saveClip();g.clipRect(label);const int width=std::min(label.w,ink.w);auto background=gfx::Rect(box.x+(box.w-width)/2-1,box.y,width+2,12);skin_.draw(g,"timeline.loop.track",background);font_.draw(g,section->name,box.x+(box.w-ink.w)/2-ink.x,box.y-ink.y,skin_[playing?"accent":hover?"text":"muted"]);g.restoreClip();}g.restoreClip();}
+void Editor::paintLoopTrack(ui::Graphics& g){if(!loopTrackHeight())return;const auto viewport=loopTrackViewport().offset(-bounds().origin());g.saveClip();g.clipRect(viewport);UiPaintScale scale(g);const auto logical=uiLogical(viewport);skin_.draw(g,"timeline.loop.track",logical);for(const auto& item:loopTrackLayout().items){const auto box=uiLogical(loopTrackItemBounds(item).offset(-bounds().origin()));const auto* section=playbackSection(item.id);if(!section)continue;const bool playing=currentPlayback().playing && currentPlayback().loop.current.sectionId==item.id,hover=paletteMousePosition_ && loopTrackHit(*paletteMousePosition_).id==item.id;const char* slot=playing?"timeline.loop.playing":hover?"timeline.loop.hover":"timeline.loop.normal";skin_.draw(g,slot,gfx::Rect(box.x+2,box.y+9,box.w-4,box.h-8));const auto ink=font_.inkBounds(section->name);auto label=gfx::Rect(box.x+4,box.y,std::max(0,box.w-8),12);g.saveClip();g.clipRect(label);const int width=std::min(label.w,ink.w);auto background=gfx::Rect(box.x+(box.w-width)/2-1,box.y,width+2,12);skin_.draw(g,"timeline.loop.track",background);font_.draw(g,section->name,box.x+(box.w-ink.w)/2-ink.x,box.y-ink.y,skin_[playing?"accent":hover?"text":"muted"]);g.restoreClip();}g.restoreClip();}
 
 Editor::TimelineScrollMetrics Editor::timelineScrollMetrics(const Layout& l) const {
 
-    TimelineScrollMetrics m;if(timelineHidden_){m.height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-6)*uiScale);m.contentHeight=TimelineRows(document.timeline(),document.collapsedGroupIds(),false).size()*timelineRowHeight()*uiScale+timelineRowHeight()*uiScale;m.vertical=m.contentHeight>m.height;m.viewportWidth=std::max(uiScale,(l.workW-10-(m.vertical?6:0))*uiScale);m.width=0;m.contentWidth=0;return m;}const int width=std::max(uiScale,(l.workW-10)*uiScale),height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-6)*uiScale);
+    TimelineScrollMetrics m;if(timelineHidden_){m.height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-6)*uiScale);m.contentHeight=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),false).size()*timelineRowHeight()*uiScale+timelineRowHeight()*uiScale;m.vertical=m.contentHeight>m.height;m.viewportWidth=std::max(uiScale,(l.workW-10-(m.vertical?6:0))*uiScale);m.width=0;m.contentWidth=0;return m;}const int width=std::max(uiScale,(l.workW-10)*uiScale),height=std::max(uiScale,(l.bottom-l.layerTop-timelineRowsOffset()-6)*uiScale);
 
-    const int contentWidth=int(document.timeline().state().frames.size())*timelineFrameWidth()*uiScale,contentHeight=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size()*timelineRowHeight()*uiScale;
+    const int contentWidth=int(currentDocument().timeline().state().frames.size())*timelineFrameWidth()*uiScale,contentHeight=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).size()*timelineRowHeight()*uiScale;
 
     for(int i=0;i<3;++i){m.viewportWidth=std::max(uiScale,width-(m.vertical?6*uiScale:0));m.width=std::max(0,m.viewportWidth-timelineLabelWidth()*uiScale);m.height=std::max(uiScale,height-(m.horizontal?6*uiScale:0));m.contentWidth=contentWidth+(contentWidth>m.width?m.width/2:0)+std::max(0,timelineLabelWidth()*uiScale-m.viewportWidth);m.contentHeight=contentHeight+timelineRowHeight()*uiScale;m.horizontal=m.contentWidth>m.width;m.vertical=m.contentHeight>m.height;}
 
@@ -798,9 +813,9 @@ Editor::TimelineScrollMetrics Editor::timelineScrollMetrics(const Layout& l) con
 
   }
 
-int Editor::timelineColumns(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.width+(m.vertical?6*uiScale:0)+frameScrollRemainder_+timelineFrameWidth()*uiScale-1)/(timelineFrameWidth()*uiScale));}
+int Editor::timelineColumns(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.width+(m.vertical?6*uiScale:0)+currentView().frameRemainder+timelineFrameWidth()*uiScale-1)/(timelineFrameWidth()*uiScale));}
 
-int Editor::timelineCapacity(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.height+(m.horizontal?6*uiScale:0)+layerScrollRemainder_+timelineRowHeight()*uiScale-1)/(timelineRowHeight()*uiScale));}
+int Editor::timelineCapacity(const Layout& l) const {const auto m=timelineScrollMetrics(l);return std::max(1,(m.height+(m.horizontal?6*uiScale:0)+currentView().layerRemainder+timelineRowHeight()*uiScale-1)/(timelineRowHeight()*uiScale));}
 
 gfx::Rect Editor::timelineRowViewport() const {const auto l=columnLayout(uiLogical(clientBounds()),2);const auto m=timelineScrollMetrics(l);return toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineRowsOffset(),m.viewportWidth/uiScale,m.height/uiScale));}
 
@@ -828,11 +843,11 @@ void Editor::layoutTimelineScrollBars(const Layout& l) {
     const auto row=toDisplay(gfx::Rect(l.workX+5,l.layerTop+timelineRowsOffset(),m.viewportWidth/uiScale,m.height/uiScale));
     if(smoke_ && _wgetenv(L"MOONSPRITE_VIEWPORT_METRICS_REFERENCE") && row!=timelineRowViewport())throw std::runtime_error("Scrollbar shared metrics differ from live row viewport");
 
-    int vertical=std::clamp(layerScroll_*timelineRowHeight()*uiScale+layerScrollRemainder_,0,std::max(0,m.contentHeight-m.height));
+    int vertical=std::clamp(currentView().layers*timelineRowHeight()*uiScale+currentView().layerRemainder,0,std::max(0,m.contentHeight-m.height));
 
-    int horizontal=std::clamp(frameScroll_*timelineFrameWidth()*uiScale+frameScrollRemainder_,0,std::max(0,m.contentWidth-m.width));
+    int horizontal=std::clamp(currentView().frames*timelineFrameWidth()*uiScale+currentView().frameRemainder,0,std::max(0,m.contentWidth-m.width));
 
-    layerScroll_=vertical/(timelineRowHeight()*uiScale);layerScrollRemainder_=vertical%(timelineRowHeight()*uiScale);frameScroll_=horizontal/(timelineFrameWidth()*uiScale);frameScrollRemainder_=horizontal%(timelineFrameWidth()*uiScale);
+    currentView().layers=vertical/(timelineRowHeight()*uiScale);currentView().layerRemainder=vertical%(timelineRowHeight()*uiScale);currentView().frames=horizontal/(timelineFrameWidth()*uiScale);currentView().frameRemainder=horizontal%(timelineFrameWidth()*uiScale);
 
     const auto verticalBounds=PixelScrollBar::gridBounds(row,true);if(timelineVertical_->bounds()!=verticalBounds)timelineVertical_->setDockBounds(verticalBounds);timelineVertical_->configure(m.contentHeight,m.height,vertical);
 
@@ -852,41 +867,41 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
     if(!cel || !timelineThumbnailSize() || !thumbnailQueue_){if(binding.cancel)binding.cancel();binding={};return;}
 
-    const auto stamp=document.timeline().thumbnailStorage(cel->id);const auto resolved=document.timeline().resolveSurface(cel->id);
+    const auto stamp=currentDocument().timeline().thumbnailStorage(cel->id);const auto resolved=currentDocument().timeline().resolveSurface(cel->id);
 
     if(!resolved.surface || !stamp.owner){if(binding.cancel)binding.cancel();binding={};return;}
 
-    const auto* activeCel=document.timeline().findCel(document.layer().id,document.frame().id);const auto activeOwner=activeCel?document.timeline().resolveSurface(activeCel->id):timeline::Resolution{};const bool live=document.active() && activeOwner.source && resolved.source && activeOwner.source->id==resolved.source->id;const int size=timelineThumbnailSize()*uiScale;
+    const auto* activeCel=currentDocument().timeline().findCel(currentDocument().layer().id,currentDocument().frame().id);const auto activeOwner=activeCel?currentDocument().timeline().resolveSurface(activeCel->id):timeline::Resolution{};const bool live=currentDocument().active() && activeOwner.source && resolved.source && activeOwner.source->id==resolved.source->id;const int size=timelineThumbnailSize()*uiScale;
 
-    std::ostringstream key;key<<document.width()<<':'<<document.height()<<':'<<size<<':'<<resolved.surface->width<<':'<<resolved.surface->height<<':'<<resolved.surface->offsetX<<':'<<resolved.surface->offsetY<<':'<<std::setprecision(17)<<cel->opacity.value_or(1)<<":checker:content:rgba";
+    std::ostringstream key;key<<currentDocument().width()<<':'<<currentDocument().height()<<':'<<size<<':'<<resolved.surface->width<<':'<<resolved.surface->height<<':'<<resolved.surface->offsetX<<':'<<resolved.surface->offsetY<<':'<<std::setprecision(17)<<cel->opacity.value_or(1)<<":checker:content:rgba";
 
-    const auto revision=live?document.contentRevision():stamp.revision;
+    const auto revision=live?currentDocument().contentRevision():stamp.revision;
 
-    if(binding.cel==cel->id && binding.key==key.str() && binding.identity==document.identity() && binding.owner==stamp.owner && binding.revision==revision && binding.live==live)return;
+    if(binding.cel==cel->id && binding.key==key.str() && binding.identity==currentDocument().identity() && binding.owner==stamp.owner && binding.revision==revision && binding.live==live)return;
 
     if(binding.cancel)binding.cancel();const auto generation=binding.generation+1;
 
-    binding={cel->id,key.str(),document.identity(),revision,generation,live,stamp.owner,{},{}};
+    binding={cel->id,key.str(),currentDocument().identity(),revision,generation,live,stamp.owner,{},{}};
 
     const auto identity=binding.identity;const auto id=cel->id;
 
     binding.cancel=thumbnailQueue_->schedule([this,slot,generation,identity,id,size]{
 
-      if(slot>=thumbnailBindings_.size() || document.identity()!=identity)return;
+      if(slot>=thumbnailBindings_.size() || currentDocument().identity()!=identity)return;
 
       auto& current=thumbnailBindings_[slot];if(current.generation!=generation || current.cel!=id)return;
 
-      const auto* cel=document.timeline().findCelById(id);if(!cel)return;const auto resolved=document.timeline().resolveSurface(id);if(!resolved.surface)return;
+      const auto* cel=currentDocument().timeline().findCelById(id);if(!cel)return;const auto resolved=currentDocument().timeline().resolveSurface(id);if(!resolved.surface)return;
 
-      const auto stamp=document.timeline().thumbnailStorage(id);if(stamp.owner!=current.owner)return;
+      const auto stamp=currentDocument().timeline().thumbnailStorage(id);if(stamp.owner!=current.owner)return;
 
       CelThumbnailOptions options;options.targetSize=size;options.opacity=cel->opacity.value_or(1);
 
-      const auto pixels=thumbnailCache_.get(stamp.owner,current.key,0,stamp.revision,[&]{return renderCelThumbnailPixels(document.width(),document.height(),*resolved.surface,options);},current.live);
+      const auto pixels=thumbnailCache_.get(stamp.owner,current.key,0,stamp.revision,[&]{return renderCelThumbnailPixels(currentDocument().width(),currentDocument().height(),*resolved.surface,options);},current.live);
 
       auto image=os::instance()->makeRgbaSurface(size,size);uploadRgbaRegion(*image,pixels->data(),size,size,size);
 
-      if(current.generation!=generation || document.identity()!=identity)return;current.image=std::move(image);invalidateTimelineGrid();
+      if(current.generation!=generation || currentDocument().identity()!=identity)return;current.image=std::move(image);invalidateTimelineGrid();
 
     });
 
@@ -894,22 +909,22 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
 
 void Editor::bindHiddenTimelineThumbnail(TimelineButton* button,const std::string& owner,bool mask){
- const int size=30*uiScale;std::ostringstream key;key<<document.identity()<<':'<<owner<<':'<<document.frame().id<<':'<<mask<<':'<<document.contentRevision()<<':'<<document.revision()<<':'<<document.gradientRevision()<<':'<<size;if(button->timelineImageKey==key.str())return;if(button->cancelTimelineImage)button->cancelTimelineImage();button->timelineImage.reset();button->timelineImageKey=key.str();const auto expected=button->timelineImageKey;const auto identity=document.identity();
- if(!thumbnailQueue_)return;button->cancelTimelineImage=thumbnailQueue_->schedule([this,button,owner,mask,size,expected,identity]{if(document.identity()!=identity||button->timelineImageKey!=expected||!timelineHidden_)return;std::vector<timeline::Pixel> pixels;
- if(mask){const auto* source=timeline::resolvedMask(document.timeline().state(),owner,document.frame().id);if(!source)return;auto surface=&source->surface;if(document.activeMaskId()==source->id&&document.maskPreview())surface=&document.maskPreview()->surface;pixels.assign(std::size_t(size)*size,0xffffffff);const double scale=std::min(double(size)/std::max(1,document.width()),double(size)/std::max(1,document.height()));const double ox=(size-document.width()*scale)/2,oy=(size-document.height()*scale)/2;for(int y=0;y<size;++y)for(int x=0;x<size;++x){double cx=(x+.5-ox)/scale,cy=(y+.5-oy)/scale;if(cx<0||cy<0||cx>=document.width()||cy>=document.height())continue;int sx=int(std::floor(cx-surface->offsetX)),sy=int(std::floor(cy-surface->offsetY));if(sx<0||sy<0||sx>=surface->width||sy>=surface->height)continue;const auto color=raster::readLocal(*surface,sx,sy);const double alpha=double(color>>24)/255;const int gray=int(std::floor(((color&255)+((color>>8)&255)+((color>>16)&255))/3.+.5));const auto value=std::uint32_t(std::floor(gray*alpha+255*(1-alpha)+.5));pixels[std::size_t(y)*size+x]=0xff000000|value|(value<<8)|(value<<16);}}
- else {if(!document.timeline().hasLayer(owner))return;const auto& layer=document.timeline().state().layers[document.timeline().layerIndex(owner)];if(layer.kind=="adjustment"&&layer.adjustment){GradientMapSampler sampler(layer.adjustment->gradientMap);pixels.resize(std::size_t(size)*size);for(int y=0;y<size;++y)for(int x=0;x<size;++x){const auto c=std::uint32_t((x*255)/std::max(1,size-1));pixels[std::size_t(y)*size+x]=sampler(0xff000000|c|(c<<8)|(c<<16),x,y);if(!layer.adjustment->enabled)pixels[std::size_t(y)*size+x]=(pixels[std::size_t(y)*size+x]&0xffffff)|0x66000000;}}
- else {const auto* cel=document.displayTimeline().findCel(owner,document.frame().id);if(!cel)return;const auto resolved=document.displayTimeline().resolveSurface(cel->id);if(!resolved.surface)return;const auto stamp=document.timeline().thumbnailStorage(cel->id);CelThumbnailOptions options;options.targetSize=size;options.opacity=cel->opacity.value_or(1);options.framing=CelThumbnailFraming::Canvas;const auto shared=thumbnailCache_.get(stamp.owner,expected,0,stamp.revision,[&]{return renderCelThumbnailPixels(document.width(),document.height(),*resolved.surface,options);},document.active());pixels=*shared;}}
+ const int size=30*uiScale;std::ostringstream key;key<<currentDocument().identity()<<':'<<owner<<':'<<currentDocument().frame().id<<':'<<mask<<':'<<currentDocument().contentRevision()<<':'<<currentDocument().revision()<<':'<<currentDocument().gradientRevision()<<':'<<size;if(button->timelineImageKey==key.str())return;if(button->cancelTimelineImage)button->cancelTimelineImage();button->timelineImage.reset();button->timelineImageKey=key.str();const auto expected=button->timelineImageKey;const auto identity=currentDocument().identity();
+ if(!thumbnailQueue_)return;button->cancelTimelineImage=thumbnailQueue_->schedule([this,button,owner,mask,size,expected,identity]{if(currentDocument().identity()!=identity||button->timelineImageKey!=expected||!timelineHidden_)return;std::vector<timeline::Pixel> pixels;
+ if(mask){const auto* source=timeline::resolvedMask(currentDocument().timeline().state(),owner,currentDocument().frame().id);if(!source)return;auto surface=&source->surface;if(currentDocument().activeMaskId()==source->id&&currentDocument().maskPreview())surface=&currentDocument().maskPreview()->surface;pixels.assign(std::size_t(size)*size,0xffffffff);const double scale=std::min(double(size)/std::max(1,currentDocument().width()),double(size)/std::max(1,currentDocument().height()));const double ox=(size-currentDocument().width()*scale)/2,oy=(size-currentDocument().height()*scale)/2;for(int y=0;y<size;++y)for(int x=0;x<size;++x){double cx=(x+.5-ox)/scale,cy=(y+.5-oy)/scale;if(cx<0||cy<0||cx>=currentDocument().width()||cy>=currentDocument().height())continue;int sx=int(std::floor(cx-surface->offsetX)),sy=int(std::floor(cy-surface->offsetY));if(sx<0||sy<0||sx>=surface->width||sy>=surface->height)continue;const auto color=raster::readLocal(*surface,sx,sy);const double alpha=double(color>>24)/255;const int gray=int(std::floor(((color&255)+((color>>8)&255)+((color>>16)&255))/3.+.5));const auto value=std::uint32_t(std::floor(gray*alpha+255*(1-alpha)+.5));pixels[std::size_t(y)*size+x]=0xff000000|value|(value<<8)|(value<<16);}}
+ else {if(!currentDocument().timeline().hasLayer(owner))return;const auto& layer=currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(owner)];if(layer.kind=="adjustment"&&layer.adjustment){GradientMapSampler sampler(layer.adjustment->gradientMap);pixels.resize(std::size_t(size)*size);for(int y=0;y<size;++y)for(int x=0;x<size;++x){const auto c=std::uint32_t((x*255)/std::max(1,size-1));pixels[std::size_t(y)*size+x]=sampler(0xff000000|c|(c<<8)|(c<<16),x,y);if(!layer.adjustment->enabled)pixels[std::size_t(y)*size+x]=(pixels[std::size_t(y)*size+x]&0xffffff)|0x66000000;}}
+ else {const auto* cel=currentDocument().displayTimeline().findCel(owner,currentDocument().frame().id);if(!cel)return;const auto resolved=currentDocument().displayTimeline().resolveSurface(cel->id);if(!resolved.surface)return;const auto stamp=currentDocument().timeline().thumbnailStorage(cel->id);CelThumbnailOptions options;options.targetSize=size;options.opacity=cel->opacity.value_or(1);options.framing=CelThumbnailFraming::Canvas;const auto shared=thumbnailCache_.get(stamp.owner,expected,0,stamp.revision,[&]{return renderCelThumbnailPixels(currentDocument().width(),currentDocument().height(),*resolved.surface,options);},currentDocument().active());pixels=*shared;}}
  auto image=os::instance()->makeRgbaSurface(size,size);uploadRgbaRegion(*image,pixels.data(),size,size,size);if(button->timelineImageKey!=expected)return;button->timelineImage=std::move(image);invalidateTimelineGrid();});
 }
 
 void Editor::layoutHiddenTimelineRows(){
- const TimelineRows rows(document.timeline(),document.collapsedGroupIds(),false);
- auto ensure=[&](std::vector<TimelineButton*>& pool,int kind){while(pool.size()<layerRows_.size()){const auto slot=pool.size();auto b=new TimelineButton(font_,skin_,U"",[this,slot,kind]{const TimelineRows rows(document.timeline(),document.collapsedGroupIds(),false);const auto* n=rows.at(int(slot)+layerScroll_);if(!n||!timelineHidden_)return;const auto owner=n->id,frame=document.frame().id;if(kind==0){document.exitAttachedMask();selectedMaskSlots_.clear();document.selectTimelineLayer(owner);}else if(kind==1){document.selectAttachedMask(owner,frame,false);document.clearTimelineSelection();selectedMaskSlots_.clear();virtualSlots_.clear();virtualAnchor_.reset();}else if(const auto* m=timeline::resolvedMask(document.timeline().state(),owner,frame))document.setMaskMoveWithOwner(owner,frame,!m->moveWithOwner);refresh();});if(kind==1)b->pointerPress=[this,b,slot](const ui::MouseMessage& mouse){const TimelineRows rows(document.timeline(),document.collapsedGroupIds(),false);const auto* n=rows.at(int(slot)+layerScroll_);if(!n||!timelineHidden_)return;if(mouse.right()){showAttachedMaskMenu(n->id,document.frame().id);return;}if(mouse.altPressed()){toggleMaskIsolation(n->id,document.frame().id,mouse.shiftPressed());selectedMaskSlots_.clear();maskSelectionAnchor_.reset();document.clearTimelineSelection();refresh();}else b->Click();};b->skinStyle="timeline-row";b->timelineParentPainted=true;b->iconSkin=&toolIcons_;b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineRowViewport();};addChild(b);pool.push_back(b);}};
+ const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),false);
+ auto ensure=[&](std::vector<TimelineButton*>& pool,int kind){while(pool.size()<layerRows_.size()){const auto slot=pool.size();auto b=new TimelineButton(font_,skin_,U"",[this,slot,kind]{const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),false);const auto* n=rows.at(int(slot)+currentView().layers);if(!n||!timelineHidden_)return;const auto owner=n->id,frame=currentDocument().frame().id;if(kind==0){currentDocument().exitAttachedMask();currentView().maskSlots.clear();currentDocument().selectTimelineLayer(owner);}else if(kind==1){currentDocument().selectAttachedMask(owner,frame,false);currentDocument().clearTimelineSelection();currentView().maskSlots.clear();currentView().virtualSlots.clear();currentView().virtualAnchor.reset();}else if(const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),owner,frame))currentDocument().setMaskMoveWithOwner(owner,frame,!m->moveWithOwner);refresh();});if(kind==1)b->pointerPress=[this,b,slot](const ui::MouseMessage& mouse){const TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),false);const auto* n=rows.at(int(slot)+currentView().layers);if(!n||!timelineHidden_)return;if(mouse.right()){showAttachedMaskMenu(n->id,currentDocument().frame().id);return;}if(mouse.altPressed()){toggleMaskIsolation(n->id,currentDocument().frame().id,mouse.shiftPressed());currentView().maskSlots.clear();currentView().maskAnchor.reset();currentDocument().clearTimelineSelection();refresh();}else b->Click();};b->skinStyle="timeline-row";b->timelineParentPainted=true;b->iconSkin=&toolIcons_;b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineRowViewport();};addChild(b);pool.push_back(b);}};
  ensure(hiddenCelThumbnails_,0);ensure(hiddenMaskThumbnails_,1);ensure(hiddenMaskLinks_,2);
- for(std::size_t i=0;i<layerRows_.size();++i){auto cel=hiddenCelThumbnails_[i],mask=hiddenMaskThumbnails_[i],link=hiddenMaskLinks_[i];for(auto b:{cel,mask,link}){b->timelineVisible=false;b->setVisible(false);b->setEnabled(pending_==Pending::None);if(!timelineHidden_&&b->cancelTimelineImage){b->cancelTimelineImage();b->cancelTimelineImage={};b->timelineImageKey.clear();b->timelineImage.reset();}}if(!timelineHidden_||!layerRows_[i]->timelineVisible)continue;const int index=int(i)+layerScroll_;const auto* node=rows.at(index);if(!node)continue;auto row=layerRows_[i];const auto owner=node->id;const auto frame=document.frame().id;const bool group=node->kind==LayerPanelKind::Group;const auto* attached=timeline::directMask(document.timeline().state(),owner,frame);auto rect=row->bounds();rect.x-=12*uiScale;rect.w+=12*uiScale;row->setBounds(rect);layerAutoLinks_[i]->setVisible(group);layerAutoLinks_[i]->timelineVisible=group;int left=rect.x+(2+node->depth*TimelineButton::timelineIndentWidth+(group?14:0))*uiScale;const int top=rect.y+6*uiScale;
+ for(std::size_t i=0;i<layerRows_.size();++i){auto cel=hiddenCelThumbnails_[i],mask=hiddenMaskThumbnails_[i],link=hiddenMaskLinks_[i];for(auto b:{cel,mask,link}){b->timelineVisible=false;b->setVisible(false);b->setEnabled(pending_==Pending::None);if(!timelineHidden_&&b->cancelTimelineImage){b->cancelTimelineImage();b->cancelTimelineImage={};b->timelineImageKey.clear();b->timelineImage.reset();}}if(!timelineHidden_||!layerRows_[i]->timelineVisible)continue;const int index=int(i)+currentView().layers;const auto* node=rows.at(index);if(!node)continue;auto row=layerRows_[i];const auto owner=node->id;const auto frame=currentDocument().frame().id;const bool group=node->kind==LayerPanelKind::Group;const auto* attached=timeline::directMask(currentDocument().timeline().state(),owner,frame);auto rect=row->bounds();rect.x-=12*uiScale;rect.w+=12*uiScale;row->setBounds(rect);layerAutoLinks_[i]->setVisible(group);layerAutoLinks_[i]->timelineVisible=group;int left=rect.x+(2+node->depth*TimelineButton::timelineIndentWidth+(group?14:0))*uiScale;const int top=rect.y+6*uiScale;
  auto show=[&](TimelineButton* b,gfx::Rect box){b->setBounds(box);b->timelineVisible=true;b->setVisible(true);b->setTransparent(columnFloating(2)||pending_!=Pending::None);};
- if(!group){show(cel,{left,top,32*uiScale,32*uiScale});cel->active=document.activeMaskId().empty()&&document.layer().id==owner;cel->context=[this,owner]{if(const auto* c=document.timeline().findCel(owner,document.frame().id)){prepareCelContext(c->id);showLayerContextMenu(3);}};bindHiddenTimelineThumbnail(cel,owner,false);left+=34*uiScale;}
- if(attached){show(link,{left,top+8*uiScale,12*uiScale,15*uiScale});link->icon="aspectLink";link->active=timeline::resolvedMask(document.timeline().state(),owner,frame)->moveWithOwner;left+=14*uiScale;show(mask,{left,top,32*uiScale,32*uiScale});mask->active=document.activeMaskId()==timeline::resolvedMask(document.timeline().state(),owner,frame)->id;mask->context=[this,owner]{showAttachedMaskMenu(owner,document.frame().id);};bindHiddenTimelineThumbnail(mask,owner,true);left+=34*uiScale;}
+ if(!group){show(cel,{left,top,32*uiScale,32*uiScale});cel->active=currentDocument().activeMaskId().empty()&&currentDocument().layer().id==owner;cel->context=[this,owner]{if(const auto* c=currentDocument().timeline().findCel(owner,currentDocument().frame().id)){prepareCelContext(c->id);showLayerContextMenu(3);}};bindHiddenTimelineThumbnail(cel,owner,false);left+=34*uiScale;}
+ if(attached){show(link,{left,top+8*uiScale,12*uiScale,15*uiScale});link->icon="aspectLink";link->active=timeline::resolvedMask(currentDocument().timeline().state(),owner,frame)->moveWithOwner;left+=14*uiScale;show(mask,{left,top,32*uiScale,32*uiScale});mask->active=currentDocument().activeMaskId()==timeline::resolvedMask(currentDocument().timeline().state(),owner,frame)->id;mask->context=[this,owner]{showAttachedMaskMenu(owner,currentDocument().frame().id);};bindHiddenTimelineThumbnail(mask,owner,true);left+=34*uiScale;}
  row->timelineCaptionPadding=(left-rect.x)/uiScale+2;}
 }
 
@@ -921,15 +936,15 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
     auto place=[](ui::Widget* widget,const gfx::Rect& box){if(widget->bounds()!=box)widget->setBounds(box);};
 
-    if(timelineSelectionIdentity_!=document.identity()){clearTimelineRowSelection();virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;timelineSelectionIdentity_=document.identity();}
+    if(timelineSelectionIdentity_!=currentDocument().identity()){clearTimelineRowSelection();currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;currentView().guides=true;timelineSelectionIdentity_=currentDocument().identity();}
 
-    frameSelectionExplicit_=!document.selectedFrames().empty();
+    currentView().frameSelection=!currentDocument().selectedFrames().empty();
 
-    const auto& formal=document.timelineSelection();
+    const auto& formal=currentDocument().timelineSelection();
 
     selectedTimelineLayer_=formal.layers.empty()?std::string{}:formal.layers.back();
 
-    const auto* selectedCel=formal.cels.empty()?nullptr:document.timeline().findCelById(formal.cels.back());
+    const auto* selectedCel=formal.cels.empty()?nullptr:currentDocument().timeline().findCelById(formal.cels.back());
 
     selectedTimelineCelLayer_=selectedCel?selectedCel->layerId:std::string{};selectedTimelineCelFrame_=selectedCel?selectedCel->frameId:std::string{};
 
@@ -947,27 +962,27 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
     timelineSelectedCels_.clear();timelineSelectedCels_.insert(formal.cels.begin(),formal.cels.end());
 
-    const std::unordered_set<std::string> selectedFrames(document.selectedFrames().begin(),document.selectedFrames().end());
+    const std::unordered_set<std::string> selectedFrames(currentDocument().selectedFrames().begin(),currentDocument().selectedFrames().end());
 
-    const auto& layers=document.timeline().state().layers;const TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);
+    const auto& layers=currentDocument().timeline().state().layers;const TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);
 
     layoutTimelineScrollBars(l);const int capacity=timelineCapacity(l);
 
     while(layerRows_.size()<std::size_t(std::min(capacity,visual.size()))) {
 
-      const auto i=layerRows_.size();auto select=[this,i]{selectTimelineLayer(layerScroll_+i);};
+      const auto i=layerRows_.size();auto select=[this,i]{selectTimelineLayer(currentView().layers+i);};
 
-      auto row=i==0?layerRow_:timelineButton(U"",select);if(i==0)row->Click.connect(select);row->skinStyle="timeline-row";row->doubleClickLeftOnly=true;row->doubleClick=[this,i]{TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(rows.mask(layerScroll_+int(i)))showAttachedMaskMenu(rows.owner(layerScroll_+int(i)),document.frame().id);else openLayerPropertiesFor(layerScroll_+i);};row->context=[this,i]{prepareLayerContext(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);showLayerContextMenu(1);};
+      auto row=i==0?layerRow_:timelineButton(U"",select);if(i==0)row->Click.connect(select);row->skinStyle="timeline-row";row->doubleClickLeftOnly=true;row->doubleClick=[this,i]{TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(rows.mask(currentView().layers+int(i)))showAttachedMaskMenu(rows.owner(currentView().layers+int(i)),currentDocument().frame().id);else openLayerPropertiesFor(currentView().layers+i);};row->context=[this,i]{prepareLayerContext(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);showLayerContextMenu(1);};
 
-      row->pointerPress=[this,i](const ui::MouseMessage& mouse){if(processGroupExpandGesture(const_cast<ui::MouseMessage*>(&mouse)))return;beginTimelineGesture(1,layerScroll_+int(i),-1,mouse);};
+      row->pointerPress=[this,i](const ui::MouseMessage& mouse){if(processGroupExpandGesture(const_cast<ui::MouseMessage*>(&mouse)))return;beginTimelineGesture(1,currentView().layers+int(i),-1,mouse);};
 
-      auto eye=i==0?layerEye_:timelineButton(U"",[this,i]{const auto id=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id;document.beginVisibilityGesture();document.previewVisibilityGesture(id,!visibilityValue(id));document.commitVisibilityGesture();refresh();});eye->iconSkin=&toolIcons_;eye->skinStyle="timeline-row";eye->context=[this,i]{prepareLayerContext(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);showLayerContextMenu(1);};eye->pointerPress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);showLayerContextMenu(1);return;}beginVisibilityGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id,mouse);};
+      auto eye=i==0?layerEye_:timelineButton(U"",[this,i]{const auto id=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id;currentDocument().beginVisibilityGesture();currentDocument().previewVisibilityGesture(id,!visibilityValue(id));currentDocument().commitVisibilityGesture();refresh();});eye->iconSkin=&toolIcons_;eye->skinStyle="timeline-row";eye->context=[this,i]{prepareLayerContext(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);showLayerContextMenu(1);};eye->pointerPress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);showLayerContextMenu(1);return;}beginVisibilityGesture(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id,mouse);};
 
-      auto lock=timelineButton(U"",[this,i]{const auto id=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id;document.beginLockGesture();document.previewLockGesture(id,!lockValue(id));document.commitLockGesture();refresh();});lock->iconSkin=&toolIcons_;lock->skinStyle="timeline-row";lock->context=[this,i]{prepareLayerContext(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);showLayerContextMenu(1);};lock->pointerPress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);showLayerContextMenu(1);return;}beginLockGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id,mouse);};
+      auto lock=timelineButton(U"",[this,i]{const auto id=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id;currentDocument().beginLockGesture();currentDocument().previewLockGesture(id,!lockValue(id));currentDocument().commitLockGesture();refresh();});lock->iconSkin=&toolIcons_;lock->skinStyle="timeline-row";lock->context=[this,i]{prepareLayerContext(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);showLayerContextMenu(1);};lock->pointerPress=[this,i](const ui::MouseMessage& mouse){if(mouse.right()){prepareLayerContext(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);showLayerContextMenu(1);return;}beginLockGesture(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id,mouse);};
 
-      auto autoLink=timelineButton(U"",[this,i]{const auto* layer=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).layer(int(i)+layerScroll_);if(layer)document.setLayerAutoLinkAnimationCels(layer->id,!layer->autoLinkAnimationCels);else document.toggleGroupCollapsed(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id);refresh();});
+      auto autoLink=timelineButton(U"",[this,i]{const auto* layer=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).layer(int(i)+currentView().layers);if(layer)currentDocument().setLayerAutoLinkAnimationCels(layer->id,!layer->autoLinkAnimationCels);else currentDocument().toggleGroupCollapsed(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id);refresh();});
 
-      autoLink->skinStyle="timeline-row";autoLink->iconSkin=&toolIcons_;autoLink->pointerPress=[this,i](const ui::MouseMessage& mouse){if(processGroupExpandGesture(const_cast<ui::MouseMessage*>(&mouse)))return;beginAutoLinkGesture(TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).at(int(i)+layerScroll_)->id,mouse);};
+      autoLink->skinStyle="timeline-row";autoLink->iconSkin=&toolIcons_;autoLink->pointerPress=[this,i](const ui::MouseMessage& mouse){if(processGroupExpandGesture(const_cast<ui::MouseMessage*>(&mouse)))return;beginAutoLinkGesture(TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).at(int(i)+currentView().layers)->id,mouse);};
 
       layerRows_.push_back(row);layerEyes_.push_back(eye);layerLocks_.push_back(lock);layerAutoLinks_.push_back(autoLink);
 
@@ -975,39 +990,39 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
     for(std::size_t i=0;i<layerRows_.size();++i) {
 
-      const bool shown=columnShown(2) && int(i)<capacity && int(i)+layerScroll_<visual.size();const int rowY=y+timelineRowsOffset()+int(i)*timelineRowHeight();
+      const bool shown=columnShown(2) && int(i)<capacity && int(i)+currentView().layers<visual.size();const int rowY=y+timelineRowsOffset()+int(i)*timelineRowHeight();
 
       for(auto b:{layerRows_[i],layerEyes_[i],layerLocks_[i],layerAutoLinks_[i]}){b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineRowViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);}
 
-      if(!shown)continue;const auto* node=visual.at(int(i)+layerScroll_);const auto* layer=visual.layer(int(i)+layerScroll_);const auto* group=visual.group(int(i)+layerScroll_);auto row=layerRows_[i];row->caption=visual.mask(int(i)+layerScroll_)?(group?U"图层组蒙版":U"图层蒙版"):(group?group->name:layer->name);row->icon=visual.mask(int(i)+layerScroll_)?"layerMask":"";row->timelineDisplayColor=group?group->displayColor:layer->displayColor;row->iconSkin=&toolIcons_;row->timelineAncestorColors=visual.ancestorColors(int(i)+layerScroll_);const auto* nextRow=visual.at(int(i)+layerScroll_+1);row->timelineNextRowDepth=nextRow?nextRow->depth:0;row->timelineCaptionPadding=2+int(row->timelineAncestorColors.size())*TimelineButton::timelineIndentWidth;
+      if(!shown)continue;const auto* node=visual.at(int(i)+currentView().layers);const auto* layer=visual.layer(int(i)+currentView().layers);const auto* group=visual.group(int(i)+currentView().layers);auto row=layerRows_[i];row->caption=visual.mask(int(i)+currentView().layers)?(group?U"图层组蒙版":U"图层蒙版"):(group?group->name:layer->name);row->icon=visual.mask(int(i)+currentView().layers)?"layerMask":"";row->timelineDisplayColor=group?group->displayColor:layer->displayColor;row->iconSkin=&toolIcons_;row->timelineAncestorColors=visual.ancestorColors(int(i)+currentView().layers);const auto* nextRow=visual.at(int(i)+currentView().layers+1);row->timelineNextRowDepth=nextRow?nextRow->depth:0;row->timelineCaptionPadding=2+int(row->timelineAncestorColors.size())*TimelineButton::timelineIndentWidth;
       if(layerTooltips_){const auto tooltip=utf8Text(trimLayerDescription(group?group->description:layer->description));if(layerTooltips_->getTooltipFor(row)!=tooltip){layerTooltips_->removeTooltipFor(row);if(!tooltip.empty())layerTooltips_->addTooltipFor(row,tooltip);}}
-      row->active=group?document.selectedGroupId()==node->id:node->id==document.layer().id;row->timelineSelected=timelineSelectionGuidesVisible_&&document.selectedFrames().empty()&&formal.cels.empty()&&virtualSlots_.empty()&&(group?std::find(document.selectedGroupIds().begin(),document.selectedGroupIds().end(),node->id)!=document.selectedGroupIds().end():selectedLayers.count(node->id)!=0);
-      if(visual.mask(int(i)+layerScroll_)){const auto* mask=timeline::resolvedMask(document.timeline().state(),visual.owner(int(i)+layerScroll_),document.frame().id);row->active=mask&&document.activeMaskId()==mask->id;row->timelineSelected=timelineSelectionGuidesVisible_&&std::find(formal.maskRows.begin(),formal.maskRows.end(),visual.owner(int(i)+layerScroll_))!=formal.maskRows.end();}
+      row->active=group?currentDocument().selectedGroupId()==node->id:node->id==currentDocument().layer().id;row->timelineSelected=currentView().guides&&currentDocument().selectedFrames().empty()&&formal.cels.empty()&&currentView().virtualSlots.empty()&&(group?std::find(currentDocument().selectedGroupIds().begin(),currentDocument().selectedGroupIds().end(),node->id)!=currentDocument().selectedGroupIds().end():selectedLayers.count(node->id)!=0);
+      if(visual.mask(int(i)+currentView().layers)){const auto* mask=timeline::resolvedMask(currentDocument().timeline().state(),visual.owner(int(i)+currentView().layers),currentDocument().frame().id);row->active=mask&&currentDocument().activeMaskId()==mask->id;row->timelineSelected=currentView().guides&&std::find(formal.maskRows.begin(),formal.maskRows.end(),visual.owner(int(i)+currentView().layers))!=formal.maskRows.end();}
       for(auto button:{layerEyes_[i],layerLocks_[i],layerAutoLinks_[i]})button->active=row->active;
-      layerAutoLinks_[i]->icon=layer?(layer->autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off"):(std::find(document.collapsedGroupIds().begin(),document.collapsedGroupIds().end(),node->id)==document.collapsedGroupIds().end()?"folderOpen":"folder");if(visual.mask(int(i)+layerScroll_)){const auto* m=timeline::resolvedMask(document.timeline().state(),visual.owner(int(i)+layerScroll_),document.frame().id);layerAutoLinks_[i]->icon=m&&m->autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off";}layerAutoLinks_[i]->setEnabled(pending_==Pending::None);place(layerAutoLinks_[i],toDisplay(gfx::Rect(x+24,rowY,12,timelineRowHeight())).offset(0,-layerScrollRemainder_));
-      if(visual.mask(int(i)+layerScroll_)){const auto owner=visual.owner(int(i)+layerScroll_);const auto* m=timeline::resolvedMask(document.timeline().state(),owner,document.frame().id);const bool exists=pending_==Pending::None&&m;layerEyes_[i]->setEnabled(exists);layerLocks_[i]->setEnabled(exists&&maskLayerControlsAvailable(owner,document.frame().id));layerAutoLinks_[i]->setEnabled(exists&&maskLayerControlsAvailable(owner,document.frame().id));}
-      place(row,toDisplay(gfx::Rect(x+36,rowY,timelineLabelWidth()-36,timelineRowHeight())).offset(0,-layerScrollRemainder_));layerEyes_[i]->icon=visibilityValue(node->id)?"eye":"eyeOff";place(layerEyes_[i],toDisplay(gfx::Rect(x,rowY,12,timelineRowHeight())).offset(0,-layerScrollRemainder_));layerLocks_[i]->icon=lockValue(node->id)?"lock":"unlock";place(layerLocks_[i],toDisplay(gfx::Rect(x+12,rowY,12,timelineRowHeight())).offset(0,-layerScrollRemainder_));
+      layerAutoLinks_[i]->icon=layer?(layer->autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off"):(std::find(currentDocument().collapsedGroupIds().begin(),currentDocument().collapsedGroupIds().end(),node->id)==currentDocument().collapsedGroupIds().end()?"folderOpen":"folder");if(visual.mask(int(i)+currentView().layers)){const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),visual.owner(int(i)+currentView().layers),currentDocument().frame().id);layerAutoLinks_[i]->icon=m&&m->autoLinkAnimationCels?"animation-auto-link-on":"animation-auto-link-off";}layerAutoLinks_[i]->setEnabled(pending_==Pending::None);place(layerAutoLinks_[i],toDisplay(gfx::Rect(x+24,rowY,12,timelineRowHeight())).offset(0,-currentView().layerRemainder));
+      if(visual.mask(int(i)+currentView().layers)){const auto owner=visual.owner(int(i)+currentView().layers);const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),owner,currentDocument().frame().id);const bool exists=pending_==Pending::None&&m;layerEyes_[i]->setEnabled(exists);layerLocks_[i]->setEnabled(exists&&maskLayerControlsAvailable(owner,currentDocument().frame().id));layerAutoLinks_[i]->setEnabled(exists&&maskLayerControlsAvailable(owner,currentDocument().frame().id));}
+      place(row,toDisplay(gfx::Rect(x+36,rowY,timelineLabelWidth()-36,timelineRowHeight())).offset(0,-currentView().layerRemainder));layerEyes_[i]->icon=visibilityValue(node->id)?"eye":"eyeOff";place(layerEyes_[i],toDisplay(gfx::Rect(x,rowY,12,timelineRowHeight())).offset(0,-currentView().layerRemainder));layerLocks_[i]->icon=lockValue(node->id)?"lock":"unlock";place(layerLocks_[i],toDisplay(gfx::Rect(x+12,rowY,12,timelineRowHeight())).offset(0,-currentView().layerRemainder));
 
     }
 
-    const auto& frames=document.timeline().state().frames;const int columns=timelineColumns(l);const int active=int(document.activeFrameIndex());if(!timelineGesture_.kind && !loopTrackDrag_ && !layerLabelWidth_.dragging && timelineLastActiveFrame_!=document.frame().id){if(active<frameScroll_){frameScroll_=active;frameScrollRemainder_=0;}else if(active>=frameScroll_+columns){frameScroll_=active-columns+1;frameScrollRemainder_=0;}}timelineLastActiveFrame_=document.frame().id;layoutTimelineScrollBars(l);
+    const auto& frames=currentDocument().timeline().state().frames;const int columns=timelineColumns(l);const int active=int(currentDocument().activeFrameIndex());if(!timelineGesture_.kind && !loopTrackDrag_ && !layerLabelWidth_.dragging && timelineLastActiveFrame_!=currentDocument().frame().id){if(active<currentView().frames){currentView().frames=active;currentView().frameRemainder=0;}else if(active>=currentView().frames+columns){currentView().frames=active-columns+1;currentView().frameRemainder=0;}}timelineLastActiveFrame_=currentDocument().frame().id;layoutTimelineScrollBars(l);
 
-    while(frameHeaders_.size()<std::size_t(columns)){const auto col=frameHeaders_.size();auto b=timelineButton(U"",[this,col]{document.selectFrameHeader(document.timeline().state().frames.at(frameScroll_+col).id,0,playing_);markFrameSelection();refresh();});b->skinStyle="timeline-row";
+    while(frameHeaders_.size()<std::size_t(columns)){const auto col=frameHeaders_.size();auto b=timelineButton(U"",[this,col]{currentDocument().selectFrameHeader(currentDocument().timeline().state().frames.at(currentView().frames+col).id,0,currentPlayback().playing);markFrameSelection();refresh();});b->skinStyle="timeline-row";
 
-      b->pointerPress=[this,col](const ui::MouseMessage& mouse){beginTimelineGesture(2,-1,frameScroll_+int(col),mouse);};
+      b->pointerPress=[this,col](const ui::MouseMessage& mouse){beginTimelineGesture(2,-1,currentView().frames+int(col),mouse);};
 
-      b->doubleClickLeftOnly=true;b->doubleClick=[this,col]{openFramePropertiesFor(frameScroll_+col);};
+      b->doubleClickLeftOnly=true;b->doubleClick=[this,col]{openFramePropertiesFor(currentView().frames+col);};
 
-      b->context=[this,col]{const auto id=document.timeline().state().frames.at(frameScroll_+col).id;if(std::find(document.selectedFrames().begin(),document.selectedFrames().end(),id)==document.selectedFrames().end())document.selectFrameHeader(id,0,playing_);markFrameSelection();contextFrameId_=id;refresh();showLayerContextMenu(2);};frameHeaders_.push_back(b);}
+      b->context=[this,col]{const auto id=currentDocument().timeline().state().frames.at(currentView().frames+col).id;if(std::find(currentDocument().selectedFrames().begin(),currentDocument().selectedFrames().end(),id)==currentDocument().selectedFrames().end())currentDocument().selectFrameHeader(id,0,currentPlayback().playing);markFrameSelection();contextFrameId_=id;refresh();showLayerContextMenu(2);};frameHeaders_.push_back(b);}
 
-    for(std::size_t col=0;col<frameHeaders_.size();++col){auto b=frameHeaders_[col];const int index=frameScroll_+int(col);const bool shown=columnShown(2) && !timelineHidden_ && int(col)<columns && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport(true);};b->setVisible(shown);b->setEnabled(pending_==Pending::None);if(shown){const auto n=std::to_string(index+1);b->caption=std::u32string(n.begin(),n.end());b->centerCaption=true;b->active=frames[index].id==document.frame().id || selectedFrames.count(frames[index].id)!=0;b->timelineSelected=timelineSelectionGuidesVisible_ && frameSelectionExplicit_ && selectedFrames.count(frames[index].id)!=0;place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+int(col)*timelineFrameWidth(),y+timelineHeaderOffset(),timelineFrameWidth(),timelineHeaderHeight())).offset(-frameScrollRemainder_,0));}}
+    for(std::size_t col=0;col<frameHeaders_.size();++col){auto b=frameHeaders_[col];const int index=currentView().frames+int(col);const bool shown=columnShown(2) && !timelineHidden_ && int(col)<columns && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport(true);};b->setVisible(shown);b->setEnabled(pending_==Pending::None);if(shown){const auto n=std::to_string(index+1);b->caption=std::u32string(n.begin(),n.end());b->centerCaption=true;b->active=frames[index].id==currentDocument().frame().id || selectedFrames.count(frames[index].id)!=0;b->timelineSelected=currentView().guides && currentView().frameSelection && selectedFrames.count(frames[index].id)!=0;place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+int(col)*timelineFrameWidth(),y+timelineHeaderOffset(),timelineFrameWidth(),timelineHeaderHeight())).offset(-currentView().frameRemainder,0));}}
 
-    while(frameCells_.size()<std::size_t(columns*capacity)){const auto slot=frameCells_.size();auto b=timelineButton(U"",[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);selectTimelineCel(layerScroll_+slot/cols,frameScroll_+slot%cols);});b->skinStyle="timeline-row";b->timelineCel=true;b->context=[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);if(const auto* cel=TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).cel(layerScroll_+slot/cols,frameScroll_+slot%cols)){prepareCelContext(cel->id);showLayerContextMenu(3);}};frameCells_.push_back(b);}
+    while(frameCells_.size()<std::size_t(columns*capacity)){const auto slot=frameCells_.size();auto b=timelineButton(U"",[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);selectTimelineCel(currentView().layers+slot/cols,currentView().frames+slot%cols);});b->skinStyle="timeline-row";b->timelineCel=true;b->context=[this,slot]{const auto rc=uiLogical(clientBounds());const auto l=columnLayout(rc,2);const int cols=timelineColumns(l);if(const auto* cel=TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).cel(currentView().layers+slot/cols,currentView().frames+slot%cols)){prepareCelContext(cel->id);showLayerContextMenu(3);}};frameCells_.push_back(b);}
 
     const auto maskVisualSlots=maskTimelineVisualSlots();
-    for(std::size_t slot=0;slot<frameCells_.size();++slot){auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns,index=frameScroll_+col;const bool shown=columnShown(2) && !timelineHidden_ && row<capacity && row+layerScroll_<visual.size() && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);b->pointerPress=[this,row,col](const ui::MouseMessage& mouse){beginTimelineGesture(3,row+layerScroll_,col+frameScroll_,mouse);};if(shown){const auto* cel=visual.cel(row+layerScroll_,index);const bool maskRow=visual.mask(row+layerScroll_);const auto* mask=maskRow?timeline::resolvedMask(document.timeline().state(),visual.owner(row+layerScroll_),frames[index].id):nullptr;b->timelineCel=mask?true:celHasContent(cel);b->iconSkin=&toolIcons_;b->icon="";b->active=(visual.at(row+layerScroll_)->id==document.layer().id || document.selectedGroupId()==visual.at(row+layerScroll_)->id) || frames[index].id==document.frame().id;b->timelineSelected=selectedMaskSlots_.empty() && timelineSelectionGuidesVisible_ && (cel?timelineSelectedCels_.count(cel->id)!=0:std::find(virtualSlots_.begin(),virtualSlots_.end(),*visual.slot(row+layerScroll_,index))!=virtualSlots_.end());if(maskRow){b->icon=mask&&!mask->linkedMaskId.empty()?"animation-auto-link-on":"";b->timelineSelected=std::find(maskVisualSlots.begin(),maskVisualSlots.end(),std::make_pair(visual.owner(row+layerScroll_),frames[index].id))!=maskVisualSlots.end();b->active=mask&&document.activeMaskId()==mask->id;}place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+col*timelineFrameWidth(),y+timelineRowsOffset()+row*timelineRowHeight(),timelineFrameWidth(),timelineRowHeight())).offset(-frameScrollRemainder_,-layerScrollRemainder_));}}
+    for(std::size_t slot=0;slot<frameCells_.size();++slot){auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns,index=currentView().frames+col;const bool shown=columnShown(2) && !timelineHidden_ && row<capacity && row+currentView().layers<visual.size() && index<int(frames.size());b->timelineParentPainted=true;b->timelineVisible=shown;b->setTransparent(columnFloating(2) || pending_!=Pending::None);b->hoverRepaint=[this]{invalidateTimelineGrid();};b->paletteViewport=[this]{return timelineFrameViewport();};b->setVisible(shown);b->setEnabled(pending_==Pending::None);b->pointerPress=[this,row,col](const ui::MouseMessage& mouse){beginTimelineGesture(3,row+currentView().layers,col+currentView().frames,mouse);};if(shown){const auto* cel=visual.cel(row+currentView().layers,index);const bool maskRow=visual.mask(row+currentView().layers);const auto* mask=maskRow?timeline::resolvedMask(currentDocument().timeline().state(),visual.owner(row+currentView().layers),frames[index].id):nullptr;b->timelineCel=mask?true:celHasContent(cel);b->iconSkin=&toolIcons_;b->icon="";b->active=(visual.at(row+currentView().layers)->id==currentDocument().layer().id || currentDocument().selectedGroupId()==visual.at(row+currentView().layers)->id) || frames[index].id==currentDocument().frame().id;b->timelineSelected=currentView().maskSlots.empty() && currentView().guides && (cel?timelineSelectedCels_.count(cel->id)!=0:std::find(currentView().virtualSlots.begin(),currentView().virtualSlots.end(),*visual.slot(row+currentView().layers,index))!=currentView().virtualSlots.end());if(maskRow){b->icon=mask&&!mask->linkedMaskId.empty()?"animation-auto-link-on":"";b->timelineSelected=std::find(maskVisualSlots.begin(),maskVisualSlots.end(),std::make_pair(visual.owner(row+currentView().layers),frames[index].id))!=maskVisualSlots.end();b->active=mask&&currentDocument().activeMaskId()==mask->id;}place(b,toDisplay(gfx::Rect(x+timelineLabelWidth()+col*timelineFrameWidth(),y+timelineRowsOffset()+row*timelineRowHeight(),timelineFrameWidth(),timelineRowHeight())).offset(-currentView().frameRemainder,-currentView().layerRemainder));}}
 
-    for(std::size_t slot=0;slot<frameCells_.size();++slot){const auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns;const timeline::Cel* cel=b->timelineVisible?visual.cel(row+layerScroll_,frameScroll_+col):nullptr;bindTimelineThumbnail(slot,cel);if(b->timelineVisible&&visual.mask(row+layerScroll_)){const auto* m=timeline::resolvedMask(document.timeline().state(),visual.owner(row+layerScroll_),document.timeline().state().frames[frameScroll_+col].id);b->icon=m?"layerMask":"";b->timelineCel=bool(m);}else if(timelineThumbnailSize())b->timelineCel=false;}
+    for(std::size_t slot=0;slot<frameCells_.size();++slot){const auto b=frameCells_[slot];const int row=int(slot)/columns,col=int(slot)%columns;const timeline::Cel* cel=b->timelineVisible?visual.cel(row+currentView().layers,currentView().frames+col):nullptr;bindTimelineThumbnail(slot,cel);if(b->timelineVisible&&visual.mask(row+currentView().layers)){const auto* m=timeline::resolvedMask(currentDocument().timeline().state(),visual.owner(row+currentView().layers),currentDocument().timeline().state().frames[currentView().frames+col].id);b->icon=m?"layerMask":"";b->timelineCel=bool(m);}else if(timelineThumbnailSize())b->timelineCel=false;}
 
     thumbnailCache_.prune();
 
@@ -1029,7 +1044,7 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
       else at={x+12+int(i-10)*12,y+timelineRowsOffset(),12,12};
 
-      b->setBounds(toDisplay(at));b->setVisible(columnShown(2) && !timelineHidden_ && i<8 && !(hideSideActions&&i>=6));b->setEnabled(enabledTimelineAction(i));if(i==5)b->active=onion_.enabled;if(i==2){b->active=playing_;b->icon=playing_?"playback-pause":"playback-play";}
+      b->setBounds(toDisplay(at));b->setVisible(columnShown(2) && !timelineHidden_ && i<8 && !(hideSideActions&&i>=6));b->setEnabled(enabledTimelineAction(i));if(i==5)b->active=onion_.enabled;if(i==2){b->active=currentPlayback().playing;b->icon=currentPlayback().playing?"playback-pause":"playback-play";}
 
     }
 
@@ -1046,13 +1061,13 @@ void Editor::layoutLayers() {InteractionScope interactionScope(1,"timeline-layou
 
     const bool enabled=pending_==Pending::None;
 
-    for(auto b:{layerProperties_}){b->setEnabled(enabled && (!formal.layers.empty()||document.hasSelectedGroups()));b->setVisible(columnShown(2));}
+    for(auto b:{layerProperties_}){b->setEnabled(enabled && (!formal.layers.empty()||currentDocument().hasSelectedGroups()));b->setVisible(columnShown(2));}
 
 
 
   }
 
-double Editor::canvasScale() const {return zoom_*uiScale;}
+double Editor::canvasScale() const {return currentView().zoom*uiScale;}
 
 bool Editor::modalControl(ui::Widget* w) const {
     for(auto current=w;current&&current!=this;current=current->parent())if((current->id()=="extension-preferences"||current->id()=="script-preferences"))return pending_==Pending::Preferences;
@@ -1103,101 +1118,100 @@ void Editor::beginTimelineGesture(int kind,int row,int column,const ui::MouseMes
  // Mask row names select rows, whereas mask frame cells select/edit slots.
  // Legacy row clicks prefer Shift range over Ctrl toggle and never start a move.
  if(kind==1&&mouse.left()&&!mouse.altPressed()&&selectMaskPanelRow(row,mouse.shiftPressed()?2:(mouse.ctrlPressed()||mouse.cmdPressed())?1:0))return;
- if(row>=0){TimelineRows maskRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(maskRows.mask(row)){
-  const int col=column<0?int(document.activeFrameIndex()):column;
-  if(mouse.right()){if(col>=0&&col<int(document.timeline().state().frames.size())){const auto key=std::make_pair(maskRows.owner(row),document.timeline().state().frames[col].id);if(std::find(selectedMaskSlots_.begin(),selectedMaskSlots_.end(),key)==selectedMaskSlots_.end())selectMaskTimelineRow(row,col);showAttachedMaskMenu(key.first,key.second);}return;}
-  if(!mouse.left())return;if(mouse.altPressed()){if(col>=0&&col<int(document.timeline().state().frames.size()))toggleMaskIsolation(maskRows.owner(row),document.timeline().state().frames[col].id,mouse.shiftPressed());return;}kind=4;column=col;
+ if(row>=0){TimelineRows maskRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(maskRows.mask(row)){
+  const int col=column<0?int(currentDocument().activeFrameIndex()):column;
+  if(mouse.right()){if(col>=0&&col<int(currentDocument().timeline().state().frames.size())){const auto key=std::make_pair(maskRows.owner(row),currentDocument().timeline().state().frames[col].id);if(std::find(currentView().maskSlots.begin(),currentView().maskSlots.end(),key)==currentView().maskSlots.end())selectMaskTimelineRow(row,col);showAttachedMaskMenu(key.first,key.second);}return;}
+  if(!mouse.left())return;if(mouse.altPressed()){if(col>=0&&col<int(currentDocument().timeline().state().frames.size()))toggleMaskIsolation(maskRows.owner(row),currentDocument().timeline().state().frames[col].id,mouse.shiftPressed());return;}kind=4;column=col;
  }}
- if(pending_!=Pending::None||!documentOpen_||timelineGesture_.kind)return;const auto& state=document.timeline().state();TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if((kind!=2&&!visual.at(row))||(kind!=1&&(column<0||column>=int(state.frames.size()))))return;if(kind==3&&visual.group(row)&&!mouse.left())return;
- auto& d=timelineGesture_;d={};d.kind=kind;d.starting=true;d.row=d.targetRow=row;d.column=d.targetColumn=column;d.origin=d.pointer=mouse.position();d.identity=document.identity();d.right=mouse.right();d.copy=mouse.altPressed()&&!d.right;d.altClick=d.copy;d.addContent=mouse.shiftPressed();d.selection=document.timelineSelection();d.groups=document.selectedGroupIds();d.virtualSlots=virtualSlots_;d.virtualAnchor=virtualAnchor_;d.frames=document.selectedFrames();d.frameAnchor=document.frameSelectionAnchor();d.activeLayer=document.layer().id;d.activeFrame=document.frame().id;d.mode=(mouse.ctrlPressed()||mouse.cmdPressed())?1:mouse.shiftPressed()?2:0;
- d.masks=selectedMaskSlots_;d.maskAnchor=maskSelectionAnchor_;d.maskIsolated=document.maskIsolated();
- if(!document.activeMaskId().empty())for(const auto& m:state.masks)if(m.frameId==d.activeFrame){const auto* root=timeline::resolvedMask(state,m.ownerId,m.frameId);if(root&&root->id==document.activeMaskId()){d.activeMaskSlot=std::make_pair(m.ownerId,m.frameId);break;}}
+ if(pending_!=Pending::None||!documentOpen_||timelineGesture_.kind)return;const auto& state=currentDocument().timeline().state();TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if((kind!=2&&!visual.at(row))||(kind!=1&&(column<0||column>=int(state.frames.size()))))return;if(kind==3&&visual.group(row)&&!mouse.left())return;
+ auto& d=timelineGesture_;d={};d.kind=kind;d.starting=true;d.row=d.targetRow=row;d.column=d.targetColumn=column;d.origin=d.pointer=mouse.position();d.identity=currentDocument().identity();d.right=mouse.right();d.copy=mouse.altPressed()&&!d.right;d.altClick=d.copy;d.addContent=mouse.shiftPressed();d.snapshot=currentDocument().captureAnimationSelection();d.virtualSlots=currentView().virtualSlots;d.virtualAnchor=currentView().virtualAnchor;d.mode=(mouse.ctrlPressed()||mouse.cmdPressed())?1:mouse.shiftPressed()?2:0;
+ d.masks=currentView().maskSlots;d.maskAnchor=currentView().maskAnchor;
 
- if(kind!=4&&kind!=2){selectedMaskSlots_.clear();document.exitAttachedMask();}
+ if(kind!=4&&kind!=2){currentView().maskSlots.clear();currentDocument().exitAttachedMask();}
  auto has=[](const auto& ids,const auto& id){return std::find(ids.begin(),ids.end(),id)!=ids.end();};
  if(kind==4){d.pointerAnchor=visual.slot(row,column);const auto key=std::make_pair(visual.owner(row),state.frames[column].id);if(d.mode==2&&has(d.masks,key))d.mode=1;d.canMove=!d.mode&&has(d.masks,key)&&(outline||timelineBorderHit(mouse.position()));if(!d.canMove)selectMaskTimelineRow(row,column,d.mode);}
- else if(kind==1){auto node=*visual.at(row);d.anchor=node.id;d.canMove=!d.mode;const auto& selected=node.kind==LayerPanelKind::Group?d.groups:d.selection.layers;if(!has(selected,d.anchor)||d.mode)document.selectTimelineRow(node,d.mode);virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;}
- else if(kind==2){d.anchor=state.frames[column].id;d.canMove=!d.mode&&has(d.frames,d.anchor)&&(outline||d.copy||(d.right&&d.frames.size()>1)||timelineBorderHit(mouse.position()));if(d.mode)document.selectFrameHeader(d.anchor,d.mode,playing_);else if(!d.canMove)document.selectFrameHeader(d.anchor,0,playing_);virtualSlots_.clear();virtualAnchor_.reset();markFrameSelection();}
- else{d.pointerAnchor=visual.slot(row,column);const auto* cel=visual.cel(row,column);const bool virtualSelected=has(virtualSlots_,*d.pointerAnchor);bool selected=cel?has(d.selection.cels,cel->id):virtualSelected;if(d.mode==2&&selected)d.mode=1;const bool boundary=outline||timelineBorderHit(mouse.position());if(!cel&&virtualSelected&&!d.mode&&boundary)cel=visual.mixedAnchor(*d.pointerAnchor,d.selection.cels);if(cel)d.anchor=cel->id;d.canMove=cel&&(d.copy||(!d.mode&&selected&&(boundary||(d.right&&d.selection.cels.size()>1))));if(!d.canMove&&!d.mode)selectTimelineSlot(row,column);else if(d.copy&&!selected)selectTimelineSlot(row,column);frameSelectionExplicit_=false;}
- d.minRow=int(state.layers.size());d.maxRow=-1;d.minColumn=int(state.frames.size());d.maxColumn=-1;if(d.canMove&&kind==3)for(const auto& id:document.timelineSelection().cels)if(const auto* c=document.timeline().findCelById(id)){int r=int(document.timeline().layerIndex(c->layerId)),col=visual.frameIndex(c->frameId);d.minRow=std::min(d.minRow,r);d.maxRow=std::max(d.maxRow,r);d.minColumn=std::min(d.minColumn,col);d.maxColumn=std::max(d.maxColumn,col);}
- timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;paletteFocused_=false;requestFocus();if(manager())manager()->setCapture(this,true);d.starting=false;timelineScrollTimer_.start();refresh();
+ else if(kind==1){auto node=*visual.at(row);d.anchor=node.id;d.canMove=!d.mode;const auto& selected=node.kind==LayerPanelKind::Group?d.snapshot.groups:d.snapshot.selection.layers;if(!has(selected,d.anchor)||d.mode)currentDocument().selectTimelineRow(node,d.mode);currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;}
+ else if(kind==2){d.anchor=state.frames[column].id;d.canMove=!d.mode&&has(d.snapshot.frames,d.anchor)&&(outline||d.copy||(d.right&&d.snapshot.frames.size()>1)||timelineBorderHit(mouse.position()));if(d.mode)currentDocument().selectFrameHeader(d.anchor,d.mode,currentPlayback().playing);else if(!d.canMove)currentDocument().selectFrameHeader(d.anchor,0,currentPlayback().playing);currentView().virtualSlots.clear();currentView().virtualAnchor.reset();markFrameSelection();}
+ else{d.pointerAnchor=visual.slot(row,column);const auto* cel=visual.cel(row,column);const bool virtualSelected=has(currentView().virtualSlots,*d.pointerAnchor);bool selected=cel?has(d.snapshot.selection.cels,cel->id):virtualSelected;if(d.mode==2&&selected)d.mode=1;const bool boundary=outline||timelineBorderHit(mouse.position());if(!cel&&virtualSelected&&!d.mode&&boundary)cel=visual.mixedAnchor(*d.pointerAnchor,d.snapshot.selection.cels);if(cel)d.anchor=cel->id;d.canMove=cel&&(d.copy||(!d.mode&&selected&&(boundary||(d.right&&d.snapshot.selection.cels.size()>1))));if(!d.canMove&&!d.mode)selectTimelineSlot(row,column);else if(d.copy&&!selected)selectTimelineSlot(row,column);currentView().frameSelection=false;}
+ d.minRow=int(state.layers.size());d.maxRow=-1;d.minColumn=int(state.frames.size());d.maxColumn=-1;if(d.canMove&&kind==3)for(const auto& id:currentDocument().timelineSelection().cels)if(const auto* c=currentDocument().timeline().findCelById(id)){int r=int(currentDocument().timeline().layerIndex(c->layerId)),col=visual.frameIndex(c->frameId);d.minRow=std::min(d.minRow,r);d.maxRow=std::max(d.maxRow,r);d.minColumn=std::min(d.minColumn,col);d.maxColumn=std::max(d.maxColumn,col);}
+ timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;paletteFocused_=false;requestFocus();if(manager())manager()->setCapture(this,true);d.starting=false;timelineScrollTimer_.start();refresh();
 }
 
 void Editor::updateTimelineGesture(gfx::Point pointer,bool copy,bool scrolling){
- auto& d=timelineGesture_;if(!d.kind)return;if(d.identity!=document.identity()){finishTimelineGesture(true);return;}d.pointer=pointer;d.copy=copy&&!d.right;if(!d.moved&&std::hypot(double(pointer.x-d.origin.x),double(pointer.y-d.origin.y))<4)return;d.moved=true;
- const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(pointer.x-bounds().x,pointer.y-bounds().y,1,1)).origin();const auto& s=document.timeline().state();TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(!visual.size()||s.frames.empty())return;const int columns=timelineColumns(l),capacity=timelineCapacity(l);
- if(scrolling){if(d.kind!=1){if(at.x<l.workX+20+timelineLabelWidth())frameScroll_=std::max(0,frameScroll_-1);else if(at.x>=l.workX+5+timelineLabelWidth()+columns*timelineFrameWidth()-15)frameScroll_=std::min(std::max(0,int(s.frames.size())-columns),frameScroll_+1);}if(d.kind!=2){if(at.y<l.layerTop+timelineRowsOffset()+timelineRowHeight())layerScroll_=std::max(0,layerScroll_-1);else if(at.y>=l.layerTop+timelineRowsOffset()+capacity*timelineRowHeight()-timelineRowHeight())layerScroll_=std::min(std::max(0,visual.size()-capacity),layerScroll_+1);}}
- const double rowAt=(double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/timelineRowHeight();d.targetRow=std::clamp(layerScroll_+int(std::floor(rowAt)),0,visual.size()-1);d.targetColumn=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(frameScrollRemainder_)/uiScale)/timelineFrameWidth())),0,int(s.frames.size())-1);const double fraction=rowAt-std::floor(rowAt);d.after=d.kind==1?fraction>=.5:(pointer.x-timelineFrameViewport().x+frameScrollRemainder_)%(timelineFrameWidth()*uiScale)>=timelineFrameWidth()*uiScale/2;
+ auto& d=timelineGesture_;if(!d.kind)return;if(d.identity!=currentDocument().identity()){finishTimelineGesture(true);return;}d.pointer=pointer;d.copy=copy&&!d.right;if(!d.moved&&std::hypot(double(pointer.x-d.origin.x),double(pointer.y-d.origin.y))<4)return;d.moved=true;
+ const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(pointer.x-bounds().x,pointer.y-bounds().y,1,1)).origin();const auto& s=currentDocument().timeline().state();TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(!visual.size()||s.frames.empty())return;const int columns=timelineColumns(l),capacity=timelineCapacity(l);
+ if(scrolling){if(d.kind!=1){if(at.x<l.workX+20+timelineLabelWidth())currentView().frames=std::max(0,currentView().frames-1);else if(at.x>=l.workX+5+timelineLabelWidth()+columns*timelineFrameWidth()-15)currentView().frames=std::min(std::max(0,int(s.frames.size())-columns),currentView().frames+1);}if(d.kind!=2){if(at.y<l.layerTop+timelineRowsOffset()+timelineRowHeight())currentView().layers=std::max(0,currentView().layers-1);else if(at.y>=l.layerTop+timelineRowsOffset()+capacity*timelineRowHeight()-timelineRowHeight())currentView().layers=std::min(std::max(0,visual.size()-capacity),currentView().layers+1);}}
+ const double rowAt=(double(at.y-l.layerTop-timelineRowsOffset())+double(currentView().layerRemainder)/uiScale)/timelineRowHeight();d.targetRow=std::clamp(currentView().layers+int(std::floor(rowAt)),0,visual.size()-1);d.targetColumn=std::clamp(currentView().frames+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(currentView().frameRemainder)/uiScale)/timelineFrameWidth())),0,int(s.frames.size())-1);const double fraction=rowAt-std::floor(rowAt);d.after=d.kind==1?fraction>=.5:(pointer.x-timelineFrameViewport().x+currentView().frameRemainder)%(timelineFrameWidth()*uiScale)>=timelineFrameWidth()*uiScale/2;
  d.realTargetCel.clear();d.rowDrop.reset();
- if(d.kind==4&&d.canMove){d.maskDrop.reset();d.maskPlacements.clear();if(visual.mask(d.targetRow)){const auto target=std::make_pair(visual.owner(d.targetRow),s.frames[d.targetColumn].id);std::vector<Document::MaskSlotKey> sources;for(const auto& key:d.masks)if(timeline::directMask(s,key.first,key.second))sources.push_back(key);d.maskPlacements=document.mapAttachedMaskBlock(sources,{visual.owner(d.row),s.frames[d.column].id},target);if(!d.maskPlacements.empty())d.maskDrop=target;}}
+ if(d.kind==4&&d.canMove){d.maskDrop.reset();d.maskPlacements.clear();if(visual.mask(d.targetRow)){const auto target=std::make_pair(visual.owner(d.targetRow),s.frames[d.targetColumn].id);std::vector<Document::MaskSlotKey> sources;for(const auto& key:d.masks)if(timeline::directMask(s,key.first,key.second))sources.push_back(key);d.maskPlacements=currentDocument().mapAttachedMaskBlock(sources,{visual.owner(d.row),s.frames[d.column].id},target);if(!d.maskPlacements.empty())d.maskDrop=target;}}
 
- if(d.kind==1&&d.canMove){using K=LayerPanelDropTarget::Kind;const auto* node=visual.at(d.targetRow);auto drop=LayerPanelDropTarget{node->kind==LayerPanelKind::Group?(fraction<=.25?K::Above:fraction>=.75?K::Below:K::Inside):(d.after?K::Below:K::Above),node->kind,node->id};if(rowAt+layerScroll_<0)drop={K::Top,LayerPanelKind::Layer,{}};else if(rowAt+layerScroll_>=visual.size())drop={K::Bottom,LayerPanelKind::Layer,{}};
-  if(node->kind==LayerPanelKind::Group){const auto* g=visual.group(d.targetRow);bool followingRoot=false;for(int i=d.targetRow+1;i<visual.size();++i)if(visual.at(i)->depth==0){followingRoot=true;break;}bool fromTarget=false;for(const auto& id:document.timelineSelection().layers){auto it=std::find_if(s.layers.begin(),s.layers.end(),[&](const auto& l){return l.id==id;});if(it!=s.layers.end()&&it->groupId==std::optional<std::string>(node->id))fromTarget=true;}for(const auto& id:document.selectedGroupIds()){const auto* selected=document.findGroup(id);if(id==node->id||(selected&&selected->parentGroupId==std::optional<std::string>(node->id)))fromTarget=true;}if(g&&!g->parentGroupId&&!followingRoot&&!fromTarget&&fraction>=.8)drop={K::Bottom,LayerPanelKind::Layer,{}};}
-  bool blocked=false;if(drop.kind!=K::Top&&drop.kind!=K::Bottom){if(node->kind==LayerPanelKind::Layer&&!d.copy&&std::find(document.timelineSelection().layers.begin(),document.timelineSelection().layers.end(),node->id)!=document.timelineSelection().layers.end())blocked=true;std::optional<std::string> parent=node->kind==LayerPanelKind::Group?std::optional<std::string>(node->id):visual.layer(d.targetRow)->groupId;std::set<std::string> seen;while(parent&&seen.insert(*parent).second){if(std::find(document.selectedGroupIds().begin(),document.selectedGroupIds().end(),*parent)!=document.selectedGroupIds().end()){blocked=true;break;}const auto* g=document.findGroup(*parent);parent=g?g->parentGroupId:std::nullopt;}}if(!blocked)d.rowDrop=drop;
+ if(d.kind==1&&d.canMove){using K=LayerPanelDropTarget::Kind;const auto* node=visual.at(d.targetRow);auto drop=LayerPanelDropTarget{node->kind==LayerPanelKind::Group?(fraction<=.25?K::Above:fraction>=.75?K::Below:K::Inside):(d.after?K::Below:K::Above),node->kind,node->id};if(rowAt+currentView().layers<0)drop={K::Top,LayerPanelKind::Layer,{}};else if(rowAt+currentView().layers>=visual.size())drop={K::Bottom,LayerPanelKind::Layer,{}};
+  if(node->kind==LayerPanelKind::Group){const auto* g=visual.group(d.targetRow);bool followingRoot=false;for(int i=d.targetRow+1;i<visual.size();++i)if(visual.at(i)->depth==0){followingRoot=true;break;}bool fromTarget=false;for(const auto& id:currentDocument().timelineSelection().layers){auto it=std::find_if(s.layers.begin(),s.layers.end(),[&](const auto& l){return l.id==id;});if(it!=s.layers.end()&&it->groupId==std::optional<std::string>(node->id))fromTarget=true;}for(const auto& id:currentDocument().selectedGroupIds()){const auto* selected=currentDocument().findGroup(id);if(id==node->id||(selected&&selected->parentGroupId==std::optional<std::string>(node->id)))fromTarget=true;}if(g&&!g->parentGroupId&&!followingRoot&&!fromTarget&&fraction>=.8)drop={K::Bottom,LayerPanelKind::Layer,{}};}
+  bool blocked=false;if(drop.kind!=K::Top&&drop.kind!=K::Bottom){if(node->kind==LayerPanelKind::Layer&&!d.copy&&std::find(currentDocument().timelineSelection().layers.begin(),currentDocument().timelineSelection().layers.end(),node->id)!=currentDocument().timelineSelection().layers.end())blocked=true;std::optional<std::string> parent=node->kind==LayerPanelKind::Group?std::optional<std::string>(node->id):visual.layer(d.targetRow)->groupId;std::set<std::string> seen;while(parent&&seen.insert(*parent).second){if(std::find(currentDocument().selectedGroupIds().begin(),currentDocument().selectedGroupIds().end(),*parent)!=currentDocument().selectedGroupIds().end()){blocked=true;break;}const auto* g=currentDocument().findGroup(*parent);parent=g?g->parentGroupId:std::nullopt;}}if(!blocked)d.rowDrop=drop;
  }
- if(d.canMove&&d.kind==3){const auto* anchor=document.timeline().findCelById(d.anchor);const timeline::Cel* candidate=nullptr;if(anchor&&d.pointerAnchor){if(!d.virtualSlots.empty())candidate=visual.mixedTarget(*anchor,*d.pointerAnchor,d.targetRow,d.targetColumn);else candidate=visual.cel(d.targetRow,d.targetColumn);}if(anchor&&candidate&&d.maxRow>=d.minRow){const int ar=int(document.timeline().layerIndex(anchor->layerId)),ac=visual.frameIndex(anchor->frameId);const int dr=std::clamp(int(document.timeline().layerIndex(candidate->layerId))-ar,-d.minRow,int(s.layers.size())-1-d.maxRow),dc=std::clamp(visual.frameIndex(candidate->frameId)-ac,-d.minColumn,int(s.frames.size())-1-d.maxColumn);if(const auto* target=document.timeline().findCel(s.layers[ar+dr].id,s.frames[ac+dc].id))d.realTargetCel=target->id;}}
+ if(d.canMove&&d.kind==3){const auto* anchor=currentDocument().timeline().findCelById(d.anchor);const timeline::Cel* candidate=nullptr;if(anchor&&d.pointerAnchor){if(!d.virtualSlots.empty())candidate=visual.mixedTarget(*anchor,*d.pointerAnchor,d.targetRow,d.targetColumn);else candidate=visual.cel(d.targetRow,d.targetColumn);}if(anchor&&candidate&&d.maxRow>=d.minRow){const int ar=int(currentDocument().timeline().layerIndex(anchor->layerId)),ac=visual.frameIndex(anchor->frameId);const int dr=std::clamp(int(currentDocument().timeline().layerIndex(candidate->layerId))-ar,-d.minRow,int(s.layers.size())-1-d.maxRow),dc=std::clamp(visual.frameIndex(candidate->frameId)-ac,-d.minColumn,int(s.frames.size())-1-d.maxColumn);if(const auto* target=currentDocument().timeline().findCel(s.layers[ar+dr].id,s.frames[ac+dc].id))d.realTargetCel=target->id;}}
  if(!d.canMove){if(d.kind==4){
   // Rebuild from the press snapshot so dragging back shrinks the range.
   auto keys=d.mode?d.masks:std::vector<std::pair<std::string,std::string>>{};
   int target=d.targetRow;if(!visual.mask(target)){int best=d.row;for(int r=std::min(d.row,target);r<=std::max(d.row,target);++r)if(visual.mask(r)&&std::abs(r-target)<std::abs(best-target))best=r;target=best;}
   for(int r=std::min(d.row,target);r<=std::max(d.row,target);++r)if(visual.mask(r))for(int c=std::min(d.column,d.targetColumn);c<=std::max(d.column,d.targetColumn);++c){auto key=std::make_pair(visual.owner(r),s.frames[c].id);if(std::find(keys.begin(),keys.end(),key)==keys.end())keys.push_back(key);}
   selectMaskTimelineRow(target,d.targetColumn,0,&keys);
- }else if(d.kind==2){document.selectFrameHeader(d.anchor,0,playing_);document.selectFrameHeader(s.frames[d.targetColumn].id,2,playing_);markFrameSelection();}else if(d.kind==3)selectTimelineSlot(d.targetRow,d.targetColumn,0,visual.rectangle(d.row,d.column,d.targetRow,d.targetColumn));}
+ }else if(d.kind==2){currentDocument().selectFrameHeader(d.anchor,0,currentPlayback().playing);currentDocument().selectFrameHeader(s.frames[d.targetColumn].id,2,currentPlayback().playing);markFrameSelection();}else if(d.kind==3)selectTimelineSlot(d.targetRow,d.targetColumn,0,visual.rectangle(d.row,d.column,d.targetRow,d.targetColumn));}
  layoutLayers();invalidateTimelineGrid();
 }
 
 void Editor::finishTimelineGesture(bool cancel){
- const auto d=timelineGesture_;if(!d.kind)return;timelineScrollTimer_.stop();timelineGesture_={};if(hasCapture())releaseMouse();if(d.identity!=document.identity())return;const auto& s=document.timeline().state();TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);
- if(cancel){document.restoreTimelineRowSelection(d.selection.layers,d.groups,d.selection.layerAnchor.empty()?std::nullopt:std::optional<std::string>(d.selection.layerAnchor));document.restoreTimelineSelection(d.selection,d.frames);document.restoreFrameSelectionAnchor(d.frameAnchor);document.selectLayer(d.activeLayer);document.selectFrame(d.activeFrame);virtualSlots_=d.virtualSlots;virtualAnchor_=d.virtualAnchor;selectedMaskSlots_=d.masks;maskSelectionAnchor_=d.maskAnchor;document.exitAttachedMask();if(d.activeMaskSlot)document.selectAttachedMask(d.activeMaskSlot->first,d.activeMaskSlot->second,d.maskIsolated);}
- else if(d.canMove&&d.moved){playing_=false;loopPlayback_={};if(d.kind==4){if(d.maskDrop)try{reportMaskTransfer(document.moveAttachedMasks(d.masks,{visual.owner(d.row),s.frames[d.column].id},*d.maskDrop));}catch(const std::exception& e){showSaveError(e);}}else if(d.kind==1){if(d.rowDrop)document.moveLayerPanelRows(*d.rowDrop,d.copy);}else if(d.kind==2){try{if(d.copy)document.copyTimelineFrames(s.frames[d.targetColumn].id,d.after);else document.moveSelectedFrames(s.frames[d.targetColumn].id,d.after);}catch(const std::exception& e){showSaveError(e);}}else{const auto* source=document.timeline().findCelById(d.anchor);const auto* target=document.timeline().findCelById(d.realTargetCel);if(source&&target){const auto groups=visual.movedGroups(d.virtualSlots,*source,*target);try{document.moveTimelineCels(d.anchor,d.realTargetCel,d.copy);virtualSlots_=groups;virtualAnchor_=groups.empty()?std::nullopt:std::optional<TimelineSlot>(groups.back());}catch(const std::exception& e){showSaveError(e);}}}}
- else if(!d.moved){if(d.kind==4&&d.canMove)selectMaskTimelineRow(d.row,d.column,d.mode);else if(d.kind==1&&!d.mode){if(const auto* n=visual.at(visual.index(d.anchor)))document.selectTimelineRow(*n);}else if(d.kind==2&&!d.mode&&!(d.right&&d.canMove)){document.selectFrameHeader(d.anchor,0,playing_);markFrameSelection();}else if(d.kind==3&&!(d.right&&d.canMove)){if(d.altClick&&!d.anchor.empty()&&visual.layer(d.row)){document.selectTimelineCelContent(d.anchor,d.addContent);selectionCommandOverride_=true;selectionTool_=true;selectionPropertiesActive_=true;}else selectTimelineSlot(d.row,d.column,d.mode);}}
- timelineSelectionGuidesVisible_=true;frameSelectionExplicit_=!document.selectedFrames().empty();refresh();if(!cancel&&d.right&&!d.moved){if(d.kind==1){prepareLayerContext(d.anchor);showLayerContextMenu(1);}else if(d.kind==3&&!d.anchor.empty()){prepareCelContext(d.anchor);showLayerContextMenu(3);}else if(d.kind==2)showLayerContextMenu(2);}if(playing_&&!cancel){document.restoreTimelineSelection({},{});virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;refresh();}
+ const auto d=timelineGesture_;if(!d.kind)return;timelineScrollTimer_.stop();timelineGesture_={};if(hasCapture())releaseMouse();if(d.identity!=currentDocument().identity())return;const auto& s=currentDocument().timeline().state();TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);
+ if(cancel){if(currentDocument().restoreAnimationSelection(d.snapshot)&&!d.snapshot.sessionSelection){currentView().virtualSlots=d.virtualSlots;currentView().virtualAnchor=d.virtualAnchor;currentView().maskSlots=d.masks;currentView().maskAnchor=d.maskAnchor;}}
+ else if(d.canMove&&d.moved){currentPlayback().playing=false;currentPlayback().loop={};if(d.kind==4){if(d.maskDrop)try{reportMaskTransfer(currentDocument().moveAttachedMasks(d.masks,{visual.owner(d.row),s.frames[d.column].id},*d.maskDrop));}catch(const std::exception& e){showSaveError(e);}}else if(d.kind==1){if(d.rowDrop)currentDocument().moveLayerPanelRows(*d.rowDrop,d.copy);}else if(d.kind==2){try{if(d.copy)currentDocument().copyTimelineFrames(s.frames[d.targetColumn].id,d.after);else currentDocument().moveSelectedFrames(s.frames[d.targetColumn].id,d.after);}catch(const std::exception& e){showSaveError(e);}}else{const auto* source=currentDocument().timeline().findCelById(d.anchor);const auto* target=currentDocument().timeline().findCelById(d.realTargetCel);if(source&&target){const auto groups=visual.movedGroups(d.virtualSlots,*source,*target);try{currentDocument().moveTimelineCels(d.anchor,d.realTargetCel,d.copy);currentView().virtualSlots=groups;currentView().virtualAnchor=groups.empty()?std::nullopt:std::optional<TimelineSlot>(groups.back());}catch(const std::exception& e){showSaveError(e);}}}}
+ else if(!d.moved){if(d.kind==4&&d.canMove)selectMaskTimelineRow(d.row,d.column,d.mode);else if(d.kind==1&&!d.mode){if(const auto* n=visual.at(visual.index(d.anchor)))currentDocument().selectTimelineRow(*n);}else if(d.kind==2&&!d.mode&&!(d.right&&d.canMove)){currentDocument().selectFrameHeader(d.anchor,0,currentPlayback().playing);markFrameSelection();}else if(d.kind==3&&!(d.right&&d.canMove)){if(d.altClick&&!d.anchor.empty()&&visual.layer(d.row)){currentDocument().selectTimelineCelContent(d.anchor,d.addContent);selectionCommandOverride_=true;currentTools().selectionTool=true;selectionPropertiesActive_=true;}else selectTimelineSlot(d.row,d.column,d.mode);}}
+ currentView().guides=true;currentView().frameSelection=!currentDocument().selectedFrames().empty();refresh();if(!cancel&&d.right&&!d.moved){if(d.kind==1){prepareLayerContext(d.anchor);showLayerContextMenu(1);}else if(d.kind==3&&!d.anchor.empty()){prepareCelContext(d.anchor);showLayerContextMenu(3);}else if(d.kind==2)showLayerContextMenu(2);}if(currentPlayback().playing&&!cancel){currentDocument().restoreTimelineSelection({},{});currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;refresh();}
 }
 
 bool Editor::beginTimelineOutline(const ui::MouseMessage& mouse){
- if(advancedActive())return false;int floating=topFloatingColumnAt(mouse.position());if(floating>=0&&floating!=2)return false;if(!documentOpen_||!columnShown(2)||pending_!=Pending::None||timelineGesture_.kind||(!mouse.left()&&!mouse.right())||!timelineBorderHit(mouse.position()))return false;const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(mouse.position().x-bounds().x,mouse.position().y-bounds().y,1,1)).origin();const auto& s=document.timeline().state();TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(!rows.size()||s.frames.empty())return false;int row=std::clamp(layerScroll_+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(layerScrollRemainder_)/uiScale)/timelineRowHeight())),0,rows.size()-1),column=std::clamp(frameScroll_+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(frameScrollRemainder_)/uiScale)/timelineFrameWidth())),0,int(s.frames.size())-1);
- if(!selectedMaskSlots_.empty()){
-  int bestRow=-1,bestColumn=-1,distance=std::numeric_limits<int>::max();for(const auto& slot:selectedMaskSlots_){const int r=rows.index(TimelineRows::maskRowId(slot.first)),c=rows.frameIndex(slot.second);if(r<0||c<0)continue;const int next=std::abs(r-row)+std::abs(c-column);if(next<distance){distance=next;bestRow=r;bestColumn=c;}}
+ if(advancedActive())return false;int floating=topFloatingColumnAt(mouse.position());if(floating>=0&&floating!=2)return false;if(!documentOpen_||!columnShown(2)||pending_!=Pending::None||timelineGesture_.kind||(!mouse.left()&&!mouse.right())||!timelineBorderHit(mouse.position()))return false;const auto l=columnLayout(uiLogical(bounds()),2);const auto at=uiLogical(gfx::Rect(mouse.position().x-bounds().x,mouse.position().y-bounds().y,1,1)).origin();const auto& s=currentDocument().timeline().state();TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(!rows.size()||s.frames.empty())return false;int row=std::clamp(currentView().layers+int(std::floor((double(at.y-l.layerTop-timelineRowsOffset())+double(currentView().layerRemainder)/uiScale)/timelineRowHeight())),0,rows.size()-1),column=std::clamp(currentView().frames+int(std::floor((double(at.x-l.workX-5-timelineLabelWidth())+double(currentView().frameRemainder)/uiScale)/timelineFrameWidth())),0,int(s.frames.size())-1);
+ if(!currentView().maskSlots.empty()){
+  int bestRow=-1,bestColumn=-1,distance=std::numeric_limits<int>::max();for(const auto& slot:currentView().maskSlots){const int r=rows.index(TimelineRows::maskRowId(slot.first)),c=rows.frameIndex(slot.second);if(r<0||c<0)continue;const int next=std::abs(r-row)+std::abs(c-column);if(next<distance){distance=next;bestRow=r;bestColumn=c;}}
   if(bestRow<0)return false;beginTimelineGesture(4,bestRow,bestColumn,mouse,true);
  }
- else if(!document.timelineSelection().cels.empty()||!virtualSlots_.empty()){int distance=std::numeric_limits<int>::max(),bestRow=-1,bestColumn=-1;auto consider=[&](const TimelineSlot& slot){int r=rows.index(slot.rowId),c=rows.frameIndex(slot.frameId);if(r<0||c<0)return;int next=std::abs(r-row)+std::abs(c-column);if(next<distance){distance=next;bestRow=r;bestColumn=c;}};for(const auto& slot:virtualSlots_)consider(slot);for(const auto& id:document.timelineSelection().cels)if(const auto* c=document.timeline().findCelById(id))consider({c->layerId,c->frameId});if(bestRow<0)return false;beginTimelineGesture(3,bestRow,bestColumn,mouse,true);}
- else if(!document.selectedFrames().empty())beginTimelineGesture(2,-1,column,mouse,true);else if(!document.timelineSelection().layers.empty()||document.hasSelectedGroups())beginTimelineGesture(1,row,-1,mouse,true);else return false;return timelineGesture_.kind!=0;
+ else if(!currentDocument().timelineSelection().cels.empty()||!currentView().virtualSlots.empty()){int distance=std::numeric_limits<int>::max(),bestRow=-1,bestColumn=-1;auto consider=[&](const TimelineSlot& slot){int r=rows.index(slot.rowId),c=rows.frameIndex(slot.frameId);if(r<0||c<0)return;int next=std::abs(r-row)+std::abs(c-column);if(next<distance){distance=next;bestRow=r;bestColumn=c;}};for(const auto& slot:currentView().virtualSlots)consider(slot);for(const auto& id:currentDocument().timelineSelection().cels)if(const auto* c=currentDocument().timeline().findCelById(id))consider({c->layerId,c->frameId});if(bestRow<0)return false;beginTimelineGesture(3,bestRow,bestColumn,mouse,true);}
+ else if(!currentDocument().selectedFrames().empty())beginTimelineGesture(2,-1,column,mouse,true);else if(!currentDocument().timelineSelection().layers.empty()||currentDocument().hasSelectedGroups())beginTimelineGesture(1,row,-1,mouse,true);else return false;return timelineGesture_.kind!=0;
 }
 
 std::vector<Editor::TimelineOutline> Editor::timelineOutlines()const{
- std::vector<TimelineOutline> out;if(!documentOpen_||!columnShown(2)||!timelineSelectionGuidesVisible_)return out;
- const bool noSelection=document.timelineSelection().cels.empty() && virtualSlots_.empty() && selectedMaskSlots_.empty() && timelineGesture_.virtualSlots.empty() && timelineGesture_.maskPlacements.empty() &&
+ std::vector<TimelineOutline> out;if(!documentOpen_||!columnShown(2)||!currentView().guides)return out;
+ const bool noSelection=currentDocument().timelineSelection().cels.empty() && currentView().virtualSlots.empty() && currentView().maskSlots.empty() && timelineGesture_.virtualSlots.empty() && timelineGesture_.maskPlacements.empty() &&
    std::none_of(layerRows_.begin(),layerRows_.end(),[](const auto* b){return b->timelineSelected;}) &&
    std::none_of(frameHeaders_.begin(),frameHeaders_.end(),[](const auto* b){return b->timelineSelected;});
  const bool emptyReference=smoke_ && _wgetenv(L"MOONSPRITE_EMPTY_SELECTION_REFERENCE");
  if(noSelection && !emptyReference)return out;
- const auto& state=document.timeline().state();const TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);const auto l=columnLayout(uiLogical(bounds()),2);const int rows=std::max(0,std::min(timelineCapacity(l),visual.size()-layerScroll_)),cols=timelineHidden_?0:std::max(0,std::min(timelineColumns(l),int(state.frames.size())-frameScroll_));const int x=l.workX+5,y=l.layerTop+timelineHeaderOffset();
+ const auto& state=currentDocument().timeline().state();const TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);const auto l=columnLayout(uiLogical(bounds()),2);const int rows=std::max(0,std::min(timelineCapacity(l),visual.size()-currentView().layers)),cols=timelineHidden_?0:std::max(0,std::min(timelineColumns(l),int(state.frames.size())-currentView().frames));const int x=l.workX+5,y=l.layerTop+timelineHeaderOffset();
  auto add=[&](gfx::Rect box,gfx::Point offset,gfx::Rect clip){clip.enlarge(2*uiScale);auto material=skin_.selectionMaterialBounds(uiPhysical(box).offset(offset));material.offset(bounds().x,bounds().y);out.push_back({box,paletteMousePosition_&&clip.contains(*paletteMousePosition_)&&skin_.selectionContains(material,*paletteMousePosition_),offset,clip});};
- for(int r=0;r<rows;){if(r>=int(layerRows_.size())||!layerRows_[r]->timelineSelected){++r;continue;}int first=r;while(r<rows&&r<int(layerRows_.size())&&layerRows_[r]->timelineSelected)++r;add({x+timelineNameOffset(),y+timelineHeaderHeight()+first*timelineRowHeight(),timelineLabelWidth()-timelineNameOffset()+cols*timelineFrameWidth()+1,(r-first)*timelineRowHeight()+1},{0,-layerScrollRemainder_},timelineRowViewport());}
- for(int c=0;c<cols;){if(c>=int(frameHeaders_.size())||!frameHeaders_[c]->timelineSelected){++c;continue;}int first=c;while(c<cols&&c<int(frameHeaders_.size())&&frameHeaders_[c]->timelineSelected)++c;add({x+timelineLabelWidth()+first*timelineFrameWidth(),y,(c-first)*timelineFrameWidth()+1,rows*timelineRowHeight()+timelineHeaderHeight()+1},{-frameScrollRemainder_,0},timelineFrameViewport(true)|timelineFrameViewport());}
+ for(int r=0;r<rows;){if(r>=int(layerRows_.size())||!layerRows_[r]->timelineSelected){++r;continue;}int first=r;while(r<rows&&r<int(layerRows_.size())&&layerRows_[r]->timelineSelected)++r;add({x+timelineNameOffset(),y+timelineHeaderHeight()+first*timelineRowHeight(),timelineLabelWidth()-timelineNameOffset()+cols*timelineFrameWidth()+1,(r-first)*timelineRowHeight()+1},{0,-currentView().layerRemainder},timelineRowViewport());}
+ for(int c=0;c<cols;){if(c>=int(frameHeaders_.size())||!frameHeaders_[c]->timelineSelected){++c;continue;}int first=c;while(c<cols&&c<int(frameHeaders_.size())&&frameHeaders_[c]->timelineSelected)++c;add({x+timelineLabelWidth()+first*timelineFrameWidth(),y,(c-first)*timelineFrameWidth()+1,rows*timelineRowHeight()+timelineHeaderHeight()+1},{-currentView().frameRemainder,0},timelineFrameViewport(true)|timelineFrameViewport());}
  // Mask rows are separated by owner rows. Outline each contiguous selected run
  // through the same material, physical-coordinate and alpha-hit pipeline.
  const auto maskVisualSlots=maskTimelineVisualSlots();
- for(int r=0;r<rows;++r)if(visual.mask(r+layerScroll_)){
-  auto selected=[&](int c){return std::find(maskVisualSlots.begin(),maskVisualSlots.end(),std::make_pair(visual.owner(r+layerScroll_),state.frames[c+frameScroll_].id))!=maskVisualSlots.end();};
-  for(int c=0;c<cols;){if(!selected(c)){++c;continue;}const int first=c;while(c<cols&&selected(c))++c;add({x+timelineLabelWidth()+first*timelineFrameWidth(),y+timelineHeaderHeight()+r*timelineRowHeight(),(c-first)*timelineFrameWidth()+1,timelineRowHeight()+1},{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());}
+ for(int r=0;r<rows;++r)if(visual.mask(r+currentView().layers)){
+  auto selected=[&](int c){return std::find(maskVisualSlots.begin(),maskVisualSlots.end(),std::make_pair(visual.owner(r+currentView().layers),state.frames[c+currentView().frames].id))!=maskVisualSlots.end();};
+  for(int c=0;c<cols;){if(!selected(c)){++c;continue;}const int first=c;while(c<cols&&selected(c))++c;add({x+timelineLabelWidth()+first*timelineFrameWidth(),y+timelineHeaderHeight()+r*timelineRowHeight(),(c-first)*timelineFrameWidth()+1,timelineRowHeight()+1},{-currentView().frameRemainder,-currentView().layerRemainder},timelineFrameViewport());}
  }
- std::vector<TimelineSlot> slots=virtualSlots_;const auto& d=timelineGesture_;const bool moving=d.kind==3&&d.canMove&&d.moved;const auto* anchor=moving?document.timeline().findCelById(d.anchor):nullptr;const auto* target=moving?document.timeline().findCelById(d.realTargetCel):nullptr;int dr=0,dc=0;if(anchor&&target){dr=int(document.timeline().layerIndex(target->layerId))-int(document.timeline().layerIndex(anchor->layerId));dc=visual.frameIndex(target->frameId)-visual.frameIndex(anchor->frameId);slots=visual.movedGroups(d.virtualSlots,*anchor,*target);}std::unordered_set<std::string> outlineVisibleRows;for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+layerScroll_))outlineVisibleRows.insert(node->id);if(selectedMaskSlots_.empty())for(const auto& id:document.timelineSelection().cels){const auto* cel=document.timeline().findCelById(id);if(!cel)continue;
+ std::vector<TimelineSlot> slots=currentView().virtualSlots;const auto& d=timelineGesture_;const bool moving=d.kind==3&&d.canMove&&d.moved;const auto* anchor=moving?currentDocument().timeline().findCelById(d.anchor):nullptr;const auto* target=moving?currentDocument().timeline().findCelById(d.realTargetCel):nullptr;int dr=0,dc=0;if(anchor&&target){dr=int(currentDocument().timeline().layerIndex(target->layerId))-int(currentDocument().timeline().layerIndex(anchor->layerId));dc=visual.frameIndex(target->frameId)-visual.frameIndex(anchor->frameId);slots=visual.movedGroups(d.virtualSlots,*anchor,*target);}std::unordered_set<std::string> outlineVisibleRows;for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+currentView().layers))outlineVisibleRows.insert(node->id);if(currentView().maskSlots.empty())for(const auto& id:currentDocument().timelineSelection().cels){const auto* cel=currentDocument().timeline().findCelById(id);if(!cel)continue;
  // Stationary rows keep their ID: reject offscreen rows before layer/frame
  // index queries. Translated selections still resolve the destination row.
  if(dr==0 && !outlineVisibleRows.count(cel->layerId))continue;
- const int r=int(document.timeline().layerIndex(cel->layerId))+dr;
+ const int r=int(currentDocument().timeline().layerIndex(cel->layerId))+dr;
  if(r<0 || r>=int(state.layers.size()) || !outlineVisibleRows.count(state.layers[r].id))continue;
  const int c=visual.frameIndex(cel->frameId)+dc;
- if(c>=frameScroll_&&c<frameScroll_+cols)slots.push_back({state.layers[r].id,state.frames[c].id});}
+ if(c>=currentView().frames&&c<currentView().frames+cols)slots.push_back({state.layers[r].id,state.frames[c].id});}
  // Only visible rows can contribute. The former visual.index() linearly
  // searched every row for every selected slot, including offscreen slots.
  std::unordered_map<std::string,int> visibleRows;visibleRows.reserve(rows);
- for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+layerScroll_))visibleRows.emplace(node->id,r);
+ for(int r=0;r<rows;++r)if(const auto* node=visual.at(r+currentView().layers))visibleRows.emplace(node->id,r);
  int top=rows,bottom=-1,left=cols,right=-1;
- for(const auto& slot:slots){const auto found=visibleRows.find(slot.rowId);if(found==visibleRows.end())continue;const int r=found->second,c=visual.frameIndex(slot.frameId)-frameScroll_;if(c<0||c>=cols)continue;top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}
- if(smoke_&&_wgetenv(L"MOONSPRITE_OUTLINE_REFERENCE")){auto referenceSlots=slots;if(selectedMaskSlots_.empty())for(const auto& id:document.timelineSelection().cels)if(const auto* cel=document.timeline().findCelById(id)){int r=int(document.timeline().layerIndex(cel->layerId))+dr,c=visual.frameIndex(cel->frameId)+dc;if(r>=0&&r<int(state.layers.size())&&c>=0&&c<int(state.frames.size()))referenceSlots.push_back({state.layers[r].id,state.frames[c].id});}int t=rows,b=-1,lft=cols,rgt=-1;for(const auto& slot:referenceSlots){int r=visual.index(slot.rowId)-layerScroll_,c=visual.frameIndex(slot.frameId)-frameScroll_;if(r<0||r>=rows||c<0||c>=cols)continue;t=std::min(t,r);b=std::max(b,r);lft=std::min(lft,c);rgt=std::max(rgt,c);}if(t!=top||b!=bottom||lft!=left||rgt!=right)throw std::runtime_error("Timeline outline visible bounds differ from reference");}
- if(bottom>=0)add({x+timelineLabelWidth()+left*timelineFrameWidth(),y+timelineHeaderHeight()+top*timelineRowHeight(),(right-left+1)*timelineFrameWidth()+1,(bottom-top+1)*timelineRowHeight()+1},{-frameScrollRemainder_,-layerScrollRemainder_},timelineFrameViewport());if(noSelection && emptyReference && !out.empty())throw std::runtime_error("Empty timeline selection produced an outline");return out;
+ for(const auto& slot:slots){const auto found=visibleRows.find(slot.rowId);if(found==visibleRows.end())continue;const int r=found->second,c=visual.frameIndex(slot.frameId)-currentView().frames;if(c<0||c>=cols)continue;top=std::min(top,r);bottom=std::max(bottom,r);left=std::min(left,c);right=std::max(right,c);}
+ if(smoke_&&_wgetenv(L"MOONSPRITE_OUTLINE_REFERENCE")){auto referenceSlots=slots;if(currentView().maskSlots.empty())for(const auto& id:currentDocument().timelineSelection().cels)if(const auto* cel=currentDocument().timeline().findCelById(id)){int r=int(currentDocument().timeline().layerIndex(cel->layerId))+dr,c=visual.frameIndex(cel->frameId)+dc;if(r>=0&&r<int(state.layers.size())&&c>=0&&c<int(state.frames.size()))referenceSlots.push_back({state.layers[r].id,state.frames[c].id});}int t=rows,b=-1,lft=cols,rgt=-1;for(const auto& slot:referenceSlots){int r=visual.index(slot.rowId)-currentView().layers,c=visual.frameIndex(slot.frameId)-currentView().frames;if(r<0||r>=rows||c<0||c>=cols)continue;t=std::min(t,r);b=std::max(b,r);lft=std::min(lft,c);rgt=std::max(rgt,c);}if(t!=top||b!=bottom||lft!=left||rgt!=right)throw std::runtime_error("Timeline outline visible bounds differ from reference");}
+ if(bottom>=0)add({x+timelineLabelWidth()+left*timelineFrameWidth(),y+timelineHeaderHeight()+top*timelineRowHeight(),(right-left+1)*timelineFrameWidth()+1,(bottom-top+1)*timelineRowHeight()+1},{-currentView().frameRemainder,-currentView().layerRemainder},timelineFrameViewport());if(noSelection && emptyReference && !out.empty())throw std::runtime_error("Empty timeline selection produced an outline");return out;
 }
 
 void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionScope(10,"timeline-paint");
@@ -1287,7 +1301,7 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
       // LayersPanel disabled-frame SVG: rising diagonal, inset 4, currentColor .72.
 
-      if(header){const auto index=frameScroll_+int(slot);if(index<int(document.timeline().state().frames.size()) && document.timeline().state().frames[index].disabled){UiPaintScale scale(g);const auto rc=uiLogical(box);g.drawLine(gfx::rgba(gfx::getr(skin_["timelineInk"]),gfx::getg(skin_["timelineInk"]),gfx::getb(skin_["timelineInk"]),184),gfx::Point(rc.x+2,rc.y2()-3),gfx::Point(rc.x2()-3,rc.y+2));}}
+      if(header){const auto index=currentView().frames+int(slot);if(index<int(currentDocument().timeline().state().frames.size()) && currentDocument().timeline().state().frames[index].disabled){UiPaintScale scale(g);const auto rc=uiLogical(box);g.drawLine(gfx::rgba(gfx::getr(skin_["timelineInk"]),gfx::getg(skin_["timelineInk"]),gfx::getb(skin_["timelineInk"]),184),gfx::Point(rc.x+2,rc.y2()-3),gfx::Point(rc.x2()-3,rc.y+2));}}
 
       g.restoreClip();
 
@@ -1303,27 +1317,27 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
       g.saveClip();g.clipRect(gfx::Rect(frameMaterial).offset(-bounds().origin()));
 
-      {UiPaintScale scale(g,gfx::Point(-frameScrollRemainder_,-layerScrollRemainder_));const auto l=columnLayout(uiLogical(bounds()),2);
+      {UiPaintScale scale(g,gfx::Point(-currentView().frameRemainder,-currentView().layerRemainder));const auto l=columnLayout(uiLogical(bounds()),2);
 
       const int columns=timelineColumns(l);
 
       // One immutable row view per composition, shared by all visible runs.
-      const TimelineRows visual(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);
-      const int rows=std::min(timelineCapacity(l),visual.size()-layerScroll_);
+      const TimelineRows visual(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);
+      const int rows=std::min(timelineCapacity(l),visual.size()-currentView().layers);
 
-      const auto& frames=document.timeline().state().frames;
+      const auto& frames=currentDocument().timeline().state().frames;
 
-      const int visible=std::min(columns,int(frames.size())-frameScroll_);
+      const int visible=std::min(columns,int(frames.size())-currentView().frames);
 
       for(int row=0;!timelineHidden_&&row<rows;++row) {
-        const auto* visualLayer=visual.layer(row+layerScroll_);if(!visualLayer)continue;
+        const auto* visualLayer=visual.layer(row+currentView().layers);if(!visualLayer)continue;
         const auto& layer=*visualLayer;
         for(int col=0;col<visible;) {
 
-        const auto* left=document.timeline().findCel(layer.id,frames[frameScroll_+col].id);
+        const auto* left=currentDocument().timeline().findCel(layer.id,frames[currentView().frames+col].id);
 
         if(!left){++col;continue;}
-        const auto a=document.timeline().resolveSurface(left->id);
+        const auto a=currentDocument().timeline().resolveSurface(left->id);
 
         const int first=col++;
 
@@ -1331,10 +1345,10 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
         while(col<visible) {
 
-          const auto* next=document.timeline().findCel(layer.id,frames[frameScroll_+col].id);
+          const auto* next=currentDocument().timeline().findCel(layer.id,frames[currentView().frames+col].id);
 
           if(!next)break;
-          const auto b=document.timeline().resolveSurface(next->id);
+          const auto b=currentDocument().timeline().resolveSurface(next->id);
 
           if(!b.source || a.source->id!=b.source->id)break;
 
@@ -1357,11 +1371,11 @@ void Editor::paintTimelineGrid(ui::Graphics& g) {InteractionScope interactionSco
 
     {UiPaintScale scale(g);
 
-    if(timelineGesture_.kind && timelineGesture_.canMove && timelineGesture_.moved && timelineGesture_.kind!=3){const auto l=columnLayout(uiLogical(bounds()),2);const auto& d=timelineGesture_;if(d.kind==1){const int row=d.targetRow-layerScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+41,l.layerTop+timelineRowsOffset()+row*timelineRowHeight(),timelineLabelWidth()-36+std::min(timelineColumns(l),int(document.timeline().state().frames.size())-frameScroll_)*timelineFrameWidth()+1,1)),false);}else{const int col=d.targetColumn-frameScroll_+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+5+timelineLabelWidth()+col*timelineFrameWidth(),l.layerTop+timelineHeaderOffset(),1,std::min(timelineCapacity(l),TimelineRows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_).size()-layerScroll_)*timelineRowHeight()+timelineHeaderHeight()+1)),false);}}
+    if(timelineGesture_.kind && timelineGesture_.canMove && timelineGesture_.moved && timelineGesture_.kind!=3){const auto l=columnLayout(uiLogical(bounds()),2);const auto& d=timelineGesture_;if(d.kind==1){const int row=d.targetRow-currentView().layers+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+41,l.layerTop+timelineRowsOffset()+row*timelineRowHeight(),timelineLabelWidth()-36+std::min(timelineColumns(l),int(currentDocument().timeline().state().frames.size())-currentView().frames)*timelineFrameWidth()+1,1)),false);}else{const int col=d.targetColumn-currentView().frames+(d.after?1:0);skin_.drawSelectionBorder(g,uiPhysical(gfx::Rect(l.workX+5+timelineLabelWidth()+col*timelineFrameWidth(),l.layerTop+timelineHeaderOffset(),1,std::min(timelineCapacity(l),TimelineRows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_).size()-currentView().layers)*timelineRowHeight()+timelineHeaderHeight()+1)),false);}}
 
     }
 
-    if(gifDropTargetIndex_){const auto grid=timelineFrameViewport(true)|timelineFrameViewport();g.saveClip();g.clipRect(gfx::Rect(grid).offset(-bounds().origin()));const int x=grid.x+(*gifDropTargetIndex_-frameScroll_)*timelineFrameWidth()*uiScale-frameScrollRemainder_-uiScale;g.fillRect(skin_["accent"],gfx::Rect(x-bounds().x,grid.y-bounds().y,2*uiScale,grid.h));g.restoreClip();}
+    if(gifDropTargetIndex_){const auto grid=timelineFrameViewport(true)|timelineFrameViewport();g.saveClip();g.clipRect(gfx::Rect(grid).offset(-bounds().origin()));const int x=grid.x+(*gifDropTargetIndex_-currentView().frames)*timelineFrameWidth()*uiScale-currentView().frameRemainder-uiScale;g.fillRect(skin_["accent"],gfx::Rect(x-bounds().x,grid.y-bounds().y,2*uiScale,grid.h));g.restoreClip();}
 
     for(const auto& outline:timelineOutlines()) {
 
@@ -1470,9 +1484,9 @@ bool Editor::processTimelineInput(ui::Message* msg){
 
     // Capture routes a second frame-header click to Editor rather than its button.
 
-    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t col=0;col<frameHeaders_.size();++col)if(frameHeaders_[col]->timelineVisible && frameHeaders_[col]->bounds().contains(point)){openFramePropertiesFor(frameScroll_+col);return true;}}
+    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t col=0;col<frameHeaders_.size();++col)if(frameHeaders_[col]->timelineVisible && frameHeaders_[col]->bounds().contains(point)){openFramePropertiesFor(currentView().frames+col);return true;}}
 
-    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t row=0;row<layerRows_.size();++row)if(layerRows_[row]->timelineVisible && layerRows_[row]->bounds().contains(point)){TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);if(rows.mask(layerScroll_+int(row)))showAttachedMaskMenu(rows.owner(layerScroll_+int(row)),document.frame().id);else openLayerPropertiesFor(layerScroll_+row);return true;}}
+    if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kDoubleClickMessage && static_cast<ui::MouseMessage*>(msg)->left()){const auto point=static_cast<ui::MouseMessage*>(msg)->position();for(std::size_t row=0;row<layerRows_.size();++row)if(layerRows_[row]->timelineVisible && layerRows_[row]->bounds().contains(point)){TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);if(rows.mask(currentView().layers+int(row)))showAttachedMaskMenu(rows.owner(currentView().layers+int(row)),currentDocument().frame().id);else openLayerPropertiesFor(currentView().layers+row);return true;}}
 
     if(msg->type()==ui::kFocusLeaveMessage)stopCelNavigation();
 
@@ -1513,24 +1527,24 @@ bool Editor::processTimelineInput(ui::Message* msg){
 }
 
 namespace moon::editor {
-void Editor::selectTimelineSlot(int row,int column,int mode,const std::vector<TimelineSlot>& replacement){if(selectMaskTimelineRow(row,column,mode))return;selectedMaskSlots_.clear();document.exitAttachedMask();
- TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);const auto target=rows.slot(row,column);if(!target)return;
- std::vector<TimelineSlot> slots=virtualSlots_;for(const auto& id:document.timelineSelection().cels)if(const auto* c=document.timeline().findCelById(id))slots.push_back({c->layerId,c->frameId});
- if(!replacement.empty())slots=replacement;else if(mode==2){auto anchor=virtualAnchor_;if(!anchor&&!document.timelineSelection().celAnchor.empty())if(const auto* c=document.timeline().findCelById(document.timelineSelection().celAnchor))anchor=TimelineSlot{c->layerId,c->frameId};const int ar=anchor?rows.index(anchor->rowId):-1,ac=anchor?rows.frameIndex(anchor->frameId):-1;slots=ar<0||ac<0?std::vector<TimelineSlot>{*target}:rows.rectangle(ar,ac,row,column);}else if(mode==1){auto at=std::find(slots.begin(),slots.end(),*target);if(at==slots.end())slots.push_back(*target);else slots.erase(at);}else slots={*target};
- virtualSlots_.clear();std::vector<std::string> real;for(const auto& slot:slots){int r=rows.index(slot.rowId),c=rows.frameIndex(slot.frameId);if(const auto* cel=rows.cel(r,c)){if(std::find(real.begin(),real.end(),cel->id)==real.end())real.push_back(cel->id);}else if(rows.group(r)&&c>=0&&std::find(virtualSlots_.begin(),virtualSlots_.end(),slot)==virtualSlots_.end())virtualSlots_.push_back(slot);}
- if(!real.empty()){const auto* focus=rows.cel(row,column);document.selectTimelineCel(focus&&std::find(real.begin(),real.end(),focus->id)!=real.end()?focus->id:real.back(),0,real);}else document.restoreTimelineSelection({},{});
- if(rows.group(row)){document.selectTimelineRow(*rows.at(row));auto formal=document.timelineSelection();formal.cels=real;formal.celAnchor=real.empty()?std::string{}:real.back();document.restoreTimelineSelection(std::move(formal),{});document.selectFrame(target->frameId);}
- if(mode!=2)virtualAnchor_=target;frameSelectionExplicit_=false;timelineSelectionIdentity_=document.identity();timelineSelectionGuidesVisible_=true;playing_=false;loopPlayback_={};
+void Editor::selectTimelineSlot(int row,int column,int mode,const std::vector<TimelineSlot>& replacement){if(selectMaskTimelineRow(row,column,mode))return;currentView().maskSlots.clear();currentDocument().exitAttachedMask();
+ TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);const auto target=rows.slot(row,column);if(!target)return;
+ std::vector<TimelineSlot> slots=currentView().virtualSlots;for(const auto& id:currentDocument().timelineSelection().cels)if(const auto* c=currentDocument().timeline().findCelById(id))slots.push_back({c->layerId,c->frameId});
+ if(!replacement.empty())slots=replacement;else if(mode==2){auto anchor=currentView().virtualAnchor;if(!anchor&&!currentDocument().timelineSelection().celAnchor.empty())if(const auto* c=currentDocument().timeline().findCelById(currentDocument().timelineSelection().celAnchor))anchor=TimelineSlot{c->layerId,c->frameId};const int ar=anchor?rows.index(anchor->rowId):-1,ac=anchor?rows.frameIndex(anchor->frameId):-1;slots=ar<0||ac<0?std::vector<TimelineSlot>{*target}:rows.rectangle(ar,ac,row,column);}else if(mode==1){auto at=std::find(slots.begin(),slots.end(),*target);if(at==slots.end())slots.push_back(*target);else slots.erase(at);}else slots={*target};
+ currentView().virtualSlots.clear();std::vector<std::string> real;for(const auto& slot:slots){int r=rows.index(slot.rowId),c=rows.frameIndex(slot.frameId);if(const auto* cel=rows.cel(r,c)){if(std::find(real.begin(),real.end(),cel->id)==real.end())real.push_back(cel->id);}else if(rows.group(r)&&c>=0&&std::find(currentView().virtualSlots.begin(),currentView().virtualSlots.end(),slot)==currentView().virtualSlots.end())currentView().virtualSlots.push_back(slot);}
+ if(!real.empty()){const auto* focus=rows.cel(row,column);currentDocument().selectTimelineCel(focus&&std::find(real.begin(),real.end(),focus->id)!=real.end()?focus->id:real.back(),0,real);}else currentDocument().restoreTimelineSelection({},{});
+ if(rows.group(row)){currentDocument().selectTimelineRow(*rows.at(row));auto formal=currentDocument().timelineSelection();formal.cels=real;formal.celAnchor=real.empty()?std::string{}:real.back();currentDocument().restoreTimelineSelection(std::move(formal),{});currentDocument().selectFrame(target->frameId);}
+ if(mode!=2)currentView().virtualAnchor=target;currentView().frameSelection=false;timelineSelectionIdentity_=currentDocument().identity();currentView().guides=true;currentPlayback().playing=false;currentPlayback().loop={};
 }
 }
 namespace moon::editor {
-gfx::Rect Editor::groupExpandBounds(int row)const{TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);const auto* node=rows.at(row);const int slot=row-layerScroll_;if(!node||node->kind!=LayerPanelKind::Group||slot<0||slot>=int(layerRows_.size())||!layerRows_[slot]->timelineVisible)return {};return layerAutoLinks_[slot]->bounds()&timelineRowViewport();}
+gfx::Rect Editor::groupExpandBounds(int row)const{TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);const auto* node=rows.at(row);const int slot=row-currentView().layers;if(!node||node->kind!=LayerPanelKind::Group||slot<0||slot>=int(layerRows_.size())||!layerRows_[slot]->timelineVisible)return {};return layerAutoLinks_[slot]->bounds()&timelineRowViewport();}
 bool Editor::processGroupExpandGesture(ui::Message* msg){
- auto finish=[&]{groupExpandGesture_.reset();if(hasCapture())releaseMouse();};if(groupExpandIdentity_!=document.identity()){if(groupExpandGesture_)finish();groupExpandSolo_.clear();groupExpandSoloOriginals_.clear();groupExpandIdentity_=document.identity();}
+ auto finish=[&]{groupExpandGesture_.reset();if(hasCapture())releaseMouse();};if(groupExpandIdentity_!=currentDocument().identity()){if(groupExpandGesture_)finish();groupExpandSolo_.clear();groupExpandSoloOriginals_.clear();groupExpandIdentity_=currentDocument().identity();}
  if(groupExpandGesture_&&(!hasCapture()||msg->type()==ui::kFocusLeaveMessage)){finish();return false;}if(groupExpandGesture_&&msg->type()==ui::kMouseUpMessage){finish();return true;}
- if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage)return false;auto m=static_cast<ui::MouseMessage*>(msg);if(groupExpandGesture_&&!m->left()){finish();return true;}if(!m->left()||pending_!=Pending::None||homeOpen_||!documentOpen_||!columnShown(2))return false;if(!groupExpandGesture_){const int floating=topFloatingColumnAt(m->position());if((floating>=0&&floating!=2)||timelineBorderHit(m->position()))return false;}TimelineRows rows(document.timeline(),document.collapsedGroupIds(),!timelineHidden_);std::string hit;for(int row=0;row<rows.size();++row)if(!rows.mask(row)&&groupExpandBounds(row).contains(m->position())){hit=rows.at(row)->id;break;}if(hit.empty())return bool(groupExpandGesture_);
- auto expanded=[&](const std::string& id){return std::find(document.collapsedGroupIds().begin(),document.collapsedGroupIds().end(),id)==document.collapsedGroupIds().end();};auto apply=[&](const std::string& id,bool value){if(document.findGroup(id)&&expanded(id)!=value)document.toggleGroupCollapsed(id);};std::vector<std::string> ids;for(int row=0;row<rows.size();++row)if(rows.group(row))ids.push_back(rows.at(row)->id);
- if(msg->type()==ui::kMouseDownMessage){if(groupExpandGesture_)finish();const bool value=!expanded(hit);auto modifiers=ids;const auto selectedCount=document.selectedGroupIds().size()+document.timelineSelection().layers.size();if(selectedCount>1)modifiers.erase(std::remove_if(modifiers.begin(),modifiers.end(),[&](const auto& id){return std::find(document.selectedGroupIds().begin(),document.selectedGroupIds().end(),id)==document.selectedGroupIds().end();}),modifiers.end());if(m->altPressed()){for(const auto& item:groupExpandSoloOriginals_)apply(item.first,item.second);if(groupExpandSolo_==hit){groupExpandSolo_.clear();groupExpandSoloOriginals_.clear();}else{groupExpandSoloOriginals_.clear();for(const auto& id:modifiers)groupExpandSoloOriginals_[id]=expanded(id);for(const auto& id:modifiers)apply(id,id==hit);groupExpandSolo_=hit;}refresh();return true;}if(m->ctrlPressed()){for(const auto& id:modifiers)apply(id,value);refresh();return true;}groupExpandGesture_=GroupExpandGesture{hit,value,{}};requestFocus();manager()->setCapture(this,true);}
+ if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseMoveMessage)return false;auto m=static_cast<ui::MouseMessage*>(msg);if(groupExpandGesture_&&!m->left()){finish();return true;}if(!m->left()||pending_!=Pending::None||homeOpen_||!documentOpen_||!columnShown(2))return false;if(!groupExpandGesture_){const int floating=topFloatingColumnAt(m->position());if((floating>=0&&floating!=2)||timelineBorderHit(m->position()))return false;}TimelineRows rows(currentDocument().timeline(),currentDocument().collapsedGroupIds(),!timelineHidden_);std::string hit;for(int row=0;row<rows.size();++row)if(!rows.mask(row)&&groupExpandBounds(row).contains(m->position())){hit=rows.at(row)->id;break;}if(hit.empty())return bool(groupExpandGesture_);
+ auto expanded=[&](const std::string& id){return std::find(currentDocument().collapsedGroupIds().begin(),currentDocument().collapsedGroupIds().end(),id)==currentDocument().collapsedGroupIds().end();};auto apply=[&](const std::string& id,bool value){if(currentDocument().findGroup(id)&&expanded(id)!=value)currentDocument().toggleGroupCollapsed(id);};std::vector<std::string> ids;for(int row=0;row<rows.size();++row)if(rows.group(row))ids.push_back(rows.at(row)->id);
+ if(msg->type()==ui::kMouseDownMessage){if(groupExpandGesture_)finish();const bool value=!expanded(hit);auto modifiers=ids;const auto selectedCount=currentDocument().selectedGroupIds().size()+currentDocument().timelineSelection().layers.size();if(selectedCount>1)modifiers.erase(std::remove_if(modifiers.begin(),modifiers.end(),[&](const auto& id){return std::find(currentDocument().selectedGroupIds().begin(),currentDocument().selectedGroupIds().end(),id)==currentDocument().selectedGroupIds().end();}),modifiers.end());if(m->altPressed()){for(const auto& item:groupExpandSoloOriginals_)apply(item.first,item.second);if(groupExpandSolo_==hit){groupExpandSolo_.clear();groupExpandSoloOriginals_.clear();}else{groupExpandSoloOriginals_.clear();for(const auto& id:modifiers)groupExpandSoloOriginals_[id]=expanded(id);for(const auto& id:modifiers)apply(id,id==hit);groupExpandSolo_=hit;}refresh();return true;}if(m->ctrlPressed()){for(const auto& id:modifiers)apply(id,value);refresh();return true;}groupExpandGesture_=GroupExpandGesture{hit,value,{}};requestFocus();manager()->setCapture(this,true);}
  if(groupExpandGesture_){auto& d=*groupExpandGesture_;auto a=std::find(ids.begin(),ids.end(),d.start),b=std::find(ids.begin(),ids.end(),hit);if(a!=ids.end()&&b!=ids.end()){auto first=std::min(a,b),last=std::max(a,b);for(auto it=first;it<=last;++it)d.originals.emplace(*it,expanded(*it));for(const auto& item:d.originals){auto p=std::find(ids.begin(),ids.end(),item.first);apply(item.first,p!=ids.end()&&p>=first&&p<=last?d.value:item.second);}}refresh();return true;}return false;
 }
 }

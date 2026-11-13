@@ -3,7 +3,7 @@
 #include <stdexcept>
 namespace moon {
 struct AsepriteDocumentBuilder {
- static void acceptSaved(Document& d,const std::filesystem::path& path,bool sourceOnly,bool exact){if(exact&&d.active())throw std::logic_error("Cannot accept a saved uncommitted preview");d.name_=path.filename().u32string();if(sourceOnly)d.setSourceFilePath(path);if(exact)d.markSaved();}
+ static void acceptSaved(Document& d,const std::filesystem::path& path,bool sourceOnly,bool exact){if(exact&&d.active())throw std::logic_error("Cannot accept a saved uncommitted preview");auto name=path.filename().u32string();auto source=sourceOnly?path:std::filesystem::path{};d.name_.swap(name);if(sourceOnly)d.sourceFilePath_.swap(source);if(exact)d.markSaved();}
 
  static Document build(AsepriteImport value){
   timeline::Timeline checked(std::move(value.timeline));

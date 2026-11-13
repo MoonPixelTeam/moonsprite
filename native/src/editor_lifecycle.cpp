@@ -1,10 +1,23 @@
+#include "editor.h"
+#include "interaction_profile.h"
+#include "task_poll_schedule.h"
+#include "animation_settings.h"
+#include "color_picker_scheme_ui.h"
+#include "pixel_text_area.h"
+#include "project_import.h"
+#include "project_file.h"
 #include "image_sequence_dialog.h"
 #include "aseprite_io.h"
 #include "psd_import.h"
-#include "editor.h"
 #include "image_resize_task.h"
 #include "lua_script_service.h"
-#include "editor_implementation.h"
+#include "tool_property_popup.h"
+#include "loop_number_entry.h"
+#include "frame_duration_palette_entry.h"
+#include "layer_label_separator.h"
+#include "preview_panel.h"
+#include "floating_column_surface.h"
+#include "dialog_background.h"
 #include "lua_script_window_host.h"
 #include "lua_mse_snapshot.h"
 #include "extension_menu_adapter.h"
@@ -20,13 +33,15 @@ public:
 };
 }
 
-Editor::~Editor() {flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngJob_)framePngJob_->cancel=true;floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(recovery_.worker.valid())recovery_.worker.wait();}
+Editor::~Editor() {panelStateTimer_.stop();flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngProgress_)framePngProgress_.cancel();floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(currentRecovery().worker.valid())currentRecovery().worker.wait();}
 
 Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std::function<void()> refreshCursor,std::filesystem::path recoveryRoot,bool skipWorkspaceRestore)
 
     : ui::Widget(ui::kGenericWidget),font_(font),skin_(skin),assets_(std::move(assets)),refreshCursor_(std::move(refreshCursor)),skipWorkspaceRestore_(skipWorkspaceRestore) {
 
-    openSheetOutput_=[this](const auto& path){openPath(path);for(std::size_t i=0;i<projects_.size();++i)if(sameProjectPath(path,projectDocument(i).sourceFilePath())||sameProjectPath(path,i==activeProject_?documentPath_:projects_[i]->path))return;throw std::runtime_error(utf8Text(status_));};
+    bindProjectDocument(activeDocument_);
+
+    openSheetOutput_=[this](const auto& path){openPath(path);for(std::size_t i=0;i<projects_.size();++i)if(sameProjectPath(path,projectDocument(i).sourceFilePath())||sameProjectPath(path,i==activeProject_?currentPath():projects_[i]->path))return;throw std::runtime_error(utf8Text(status_));};
       projectFolderLauncher_=[](const std::filesystem::path& directory){
 
     // Structured Windows Shell API: the directory is never parsed as a command.
@@ -64,14 +79,14 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     antsTimer_.Tick.connect([this]{
 
-      if(!showSelectionOutline_ || !document.selection() || !documentOpen_ || homeOpen_ || !isVisible()){antsTimer_.stop();return;}
+      if(!currentView().showSelectionOutline || !currentDocument().selection() || !documentOpen_ || homeOpen_ || !isVisible()){antsTimer_.stop();return;}
 
       antsOffset_=(antsOffset_+1)&7;
-      if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){invalidateRect(canvasViewport());return;}
+      if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){invalidateRect(canvasViewport());return;}
 
-      const auto& s=*document.selection();const double scale=canvasScale();
+      const auto& s=*currentDocument().selection();const double scale=canvasScale();
 
-      auto dirty=gfx::Rect(int(std::floor(canvas_.x+s.x*scale))-2,int(std::floor(canvas_.y+s.y*scale))-2,
+      auto dirty=gfx::Rect(int(std::floor(currentView().canvas.x+s.x*scale))-2,int(std::floor(currentView().canvas.y+s.y*scale))-2,
 
         int(std::ceil(s.width*scale))+5,int(std::ceil(s.height*scale))+5);
 
@@ -91,9 +106,9 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     preferenceContentBar_->changed=[this](int value){preferenceContentPixels_=value;layoutModal();invalidateRect(dialogDisplayBounds());};
 
-    timelineHorizontal_->changed=[this](int value){frameScroll_=value/(timelineFrameWidth()*uiScale);frameScrollRemainder_=value%(timelineFrameWidth()*uiScale);layoutLayers();invalidateTimelineGrid();};
+    timelineHorizontal_->changed=[this](int value){currentView().frames=value/(timelineFrameWidth()*uiScale);currentView().frameRemainder=value%(timelineFrameWidth()*uiScale);layoutLayers();invalidateTimelineGrid();};
 
-    timelineVertical_->changed=[this](int value){layerScroll_=value/(timelineRowHeight()*uiScale);layerScrollRemainder_=value%(timelineRowHeight()*uiScale);layoutLayers();invalidateTimelineGrid();};
+    timelineVertical_->changed=[this](int value){currentView().layers=value/(timelineRowHeight()*uiScale);currentView().layerRemainder=value%(timelineRowHeight()*uiScale);layoutLayers();invalidateTimelineGrid();};
 
     homeScrollBar_->changed=[this](int value){homeScrollPixels_=value;layoutHome();invalidate();};
 
@@ -105,25 +120,25 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     paletteGrowthHandle_=button(U"Ⅱ",[]{});paletteGrowthHandle_->centerCaption=true;paletteGrowthHandle_->skinStyle="button";paletteGrowthHandle_->pointerPress=[this](const ui::MouseMessage& mouse){beginPaletteGrowth(mouse);};paletteGrowthHandle_->paletteViewport=[this]{return paletteViewportBounds();};
 
-    paletteHorizontalBar_=scroll(false);paletteHorizontalBar_->changed=[this](int value){paletteScrollXPixels_=value;layoutPalette(0);invalidateRect(paletteContentBounds());};
+    paletteHorizontalBar_=scroll(false);paletteHorizontalBar_->changed=[this](int value){currentView().paletteScrollX=value;layoutPalette(0);invalidateRect(paletteContentBounds());};
 
-    paletteScrollBar_=scroll(true);paletteScrollBar_->changed=[this](int value){paletteScrollPixels_=value;layoutPalette(0);invalidateRect(paletteContentBounds());};
+    paletteScrollBar_=scroll(true);paletteScrollBar_->changed=[this](int value){currentView().paletteScroll=value;layoutPalette(0);invalidateRect(paletteContentBounds());};
 
     registerScrollDrag([this]{return columnShown(0)?paletteViewportBounds():gfx::Rect();},{
 
-      [this]{return SpaceDragScroll::Position{paletteScrollXPixels_,paletteScrollPixels_};},
+      [this]{return SpaceDragScroll::Position{currentView().paletteScrollX,currentView().paletteScroll};},
 
       [this]{const auto viewport=paletteViewportBounds();return SpaceDragScroll::Position{paletteHorizontalBar_&&paletteHorizontalBar_->isVisible()?std::max(0,paletteHorizontalBar_->size()-viewport.w):0,paletteScrollBar_&&paletteScrollBar_->isVisible()?std::max(0,paletteScrollBar_->size()-viewport.h):0};},
 
-      [this](SpaceDragScroll::Position p){if(paletteScrollXPixels_==p.x&&paletteScrollPixels_==p.y)return;paletteScrollXPixels_=p.x;paletteScrollPixels_=p.y;layoutPalette(0);invalidateRect(paletteContentBounds());}});
+      [this](SpaceDragScroll::Position p){if(currentView().paletteScrollX==p.x&&currentView().paletteScroll==p.y)return;currentView().paletteScrollX=p.x;currentView().paletteScroll=p.y;layoutPalette(0);invalidateRect(paletteContentBounds());}});
 
     registerScrollDrag([this]{return columnShown(2)?timelineRowViewport():gfx::Rect();},{
 
-      [this]{return SpaceDragScroll::Position{frameScroll_*timelineFrameWidth()*uiScale+frameScrollRemainder_,layerScroll_*timelineRowHeight()*uiScale+layerScrollRemainder_};},
+      [this]{return SpaceDragScroll::Position{currentView().frames*timelineFrameWidth()*uiScale+currentView().frameRemainder,currentView().layers*timelineRowHeight()*uiScale+currentView().layerRemainder};},
 
       [this]{const auto m=timelineScrollMetrics(columnLayout(uiLogical(clientBounds()),2));return SpaceDragScroll::Position{std::max(0,m.contentWidth-m.width),std::max(0,m.contentHeight-m.height)};},
 
-      [this](SpaceDragScroll::Position p){frameScroll_=p.x/(timelineFrameWidth()*uiScale);frameScrollRemainder_=p.x%(timelineFrameWidth()*uiScale);layerScroll_=p.y/(timelineRowHeight()*uiScale);layerScrollRemainder_=p.y%(timelineRowHeight()*uiScale);layoutLayers();invalidateTimelineGrid();}});
+      [this](SpaceDragScroll::Position p){currentView().frames=p.x/(timelineFrameWidth()*uiScale);currentView().frameRemainder=p.x%(timelineFrameWidth()*uiScale);currentView().layers=p.y/(timelineRowHeight()*uiScale);currentView().layerRemainder=p.y%(timelineRowHeight()*uiScale);layoutLayers();invalidateTimelineGrid();}});
 
     paletteSelectionOverlay_=new FloatingColumnSurface;paletteSelectionOverlay_->setTransparent(true);addChild(paletteSelectionOverlay_);
 
@@ -131,7 +146,28 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     paletteSelectionOverlay_->pointer=[this](ui::Message* msg){if(pending_!=Pending::None)return false;if(msg->type()==ui::kMouseDownMessage){const auto mouse=static_cast<ui::MouseMessage*>(msg);beginPalettePointer(paletteManual_?paletteSlotAt(mouse->position()):std::min(paletteSlotAt(mouse->position()),paletteButtonIds_.size()-1),*mouse);return true;}return false;};
 
-    recoveryTimer_=new ui::Timer(16,this);recoveryTimer_->Tick.connect([this]{galleryTick();homeFolderTick();homeRecoveryTick();timelapseTick();liquifyTick();if(brushFeedback_.brushPreferencesPending_ && !brushFeedback_.modifierBrushSize_ && std::chrono::steady_clock::now()>=brushFeedback_.brushPreferencesDue_)flushBrushSizePreferences();saveTick();framePngTick();if(paletteGesture_ && !paletteGesture_->active && !paletteGesture_->moving && !paletteGesture_->secondary && std::chrono::steady_clock::now()-paletteGesture_->began>=std::chrono::milliseconds(360))updatePalettePointer(paletteGesture_->origin);playbackTick();recoveryTick();usageStatisticsTick();convolutionTick();antiAliasTick();gradientMapTick();wandTick();gradientTick();shapeTick();});recoveryTimer_->start();
+    auto pollSchedule=std::make_shared<const workspace::TaskPollSchedule>(
+      workspace::TaskPollSchedule::Catalog{{[this]{galleryTick();}},
+       {[this]{homeFolderTick();}},
+       {[this]{homeRecoveryTick();},[this]{return std::size_t(recoveryCatalogWorker_.valid())+std::size_t(recoveryDiscardWorker_.valid());}}},
+      workspace::TaskPollSchedule::Capture{{[this]{timelapseTick();}},
+       {[this]{liquifyTick();}},
+       {[this]{if(brushFeedback_.brushPreferencesPending_ && !brushFeedback_.modifierBrushSize_ && std::chrono::steady_clock::now()>=brushFeedback_.brushPreferencesDue_)flushBrushSizePreferences();},[this]{return std::size_t(brushFeedback_.brushPreferencesPending_);}}},
+      workspace::TaskPollSchedule::Persistence{{[this]{saveTick();},[this]{return backgroundSaves_.size()+std::size_t(saveJob_.snapshot.has_value()||saveJob_.worker.valid());}},
+       {[this]{framePngTick();},[this]{return std::size_t(framePngTask_.busy());}}},
+      workspace::TaskPollSchedule::Interaction{{[this]{if(paletteGesture_ && !paletteGesture_->active && !paletteGesture_->moving && !paletteGesture_->secondary && std::chrono::steady_clock::now()-paletteGesture_->began>=std::chrono::milliseconds(360))updatePalettePointer(paletteGesture_->origin);}},
+       {[this]{playbackTick();}}},
+      workspace::TaskPollSchedule::Maintenance{{[this]{recoveryTick();}},
+       {[this]{usageStatisticsTick();}}},
+      workspace::TaskPollSchedule::Preview{{[this]{convolutionTick();},[this]{return convolution_.controller.pendingCount();}},
+       {[this]{antiAliasTick();},[this]{return antiAlias_.controller.pendingCount();}},
+       {[this]{gradientMapTick();},[this]{return gradientMap_.controller.pendingCount();}},
+       {[this]{wandTick();},[this]{return wand_.pendingCount();}},
+       {[this]{gradientTick();},[this]{return std::size_t(gradientRequest_);}},
+       {[this]{shapeTick();},[this]{return std::size_t(shapeRequest_);}}});
+    recoveryTimer_=new ui::Timer(16,this);recoveryTimer_->Tick.connect([pollSchedule]{
+      pollSchedule->poll(InteractionProfile::get().tasks);
+    });recoveryTimer_->start();
 
     commands_.push_back(button(U"新建",[this]{ask(Pending::New);}));
 
@@ -139,21 +175,21 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     documentTabClose_=button(U"",[this]{activateProject(0);ask(Pending::CloseDocument);});documentTabClose_->iconSkin=&toolIcons_;documentTabClose_->icon="close";documentTabClose_->bareTabIcon=true;
 
-    commands_.push_back(button(U"画笔",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=false;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"画笔",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().rotateTool=false;currentTools().textTool=false;currentTools().moveTool=false;currentTools().selectionTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=false;currentTools().eraser=false;updateNavigationCursor();refresh();}));
 
-    commands_.push_back(button(U"橡皮",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false;eraser_=true;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"橡皮",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().rotateTool=false;currentTools().textTool=false;currentTools().moveTool=false;currentTools().selectionTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=false;currentTools().eraser=true;updateNavigationCursor();refresh();}));
 
-    commands_.push_back(button(U"撤销",[this]{cancelStroke();document.undo();refresh();}));
+    commands_.push_back(button(U"撤销",[this]{requestHistoryAction(workspace::HistoryAction::Undo);}));
 
-    commands_.push_back(button(U"重做",[this]{cancelStroke();document.redo();refresh();}));
+    commands_.push_back(button(U"重做",[this]{requestHistoryAction(workspace::HistoryAction::Redo);}));
 
-    commands_.push_back(button(U"手",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;document.commitFloatingPaste();cancelStroke();liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;textTool_=false;moveTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=true;updateNavigationCursor();refresh();}));
+    commands_.push_back(button(U"手",[this]{if(shapeDragging_ || gradientPending_ || gradientDragging_)return;currentDocument().commitFloatingPaste();cancelStroke();currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().rotateTool=false;currentTools().textTool=false;currentTools().moveTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=true;updateNavigationCursor();refresh();}));
 
     createToolRail();
 
     loadPaletteSize();
 
-    try{const auto path=palettePreferencePath().parent_path()/"animation-playback.txt";if(std::filesystem::exists(path)){std::ifstream in(path);readPlaybackPreferences(in);}}catch(const std::exception& e){playbackRate_=1;playbackReturnToStart_=false;savedPlaybackMode_.reset();status_=U"播放偏好读取失败："+unicodeText(e.what());}
+    try{const auto path=palettePreferencePath().parent_path()/"animation-playback.txt";if(std::filesystem::exists(path)){std::ifstream in(path);readPlaybackPreferences(in);}}catch(const std::exception& e){savedPlaybackRate_=currentPlayback().rate=1;savedPlaybackReturnToStart_=currentPlayback().returnToStart=false;savedPlaybackMode_.reset();status_=U"播放偏好读取失败："+unicodeText(e.what());}
 
     layerLabelSeparator_=new LayerLabelSeparator;layerLabelSeparator_->process=[this](ui::Message* msg){return processLayerLabelResize(msg);};addChild(layerLabelSeparator_);
 
@@ -171,11 +207,11 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     for(const auto icon:{"selection-replace","selection-add","selection-subtract","selection-intersect","selection-shrink","selection-pivot-preset-0","selection-pivot-preset-1","selection-pivot-preset-2","selection-pivot-preset-3","selection-pivot-preset-4","selection-pivot-preset-5","selection-pivot-preset-6","selection-pivot-preset-7","selection-pivot-preset-8"})for(const auto suffix:{"","-disabled"}){const auto name=std::string(icon)+suffix;toolIcons_.assets.patches[name]=importSkinPng(assets_/"utility-icons"/(name+".png"),32);}
 
-    for(const auto icon:{"playback-first","playback-previous","playback-play","playback-next","playback-last","onion","plus","delete","plus","newFolder","lock","link"}){const auto index=timelineInactive_.size();auto b=timelineButton(U"",[this,index]{switch(index){case 0:toolbarSelectFrame(0);break;case 1:toolbarStepFrame(-1);break;case 2:togglePlayback();break;case 3:toolbarStepFrame(1);break;case 4:toolbarSelectFrame(document.timeline().state().frames.size()-1);break;case 5:toggleOnion();break;case 6:frameAction(1);break;case 7:deleteTimelineItems();break;case 8:createLayer();break;}});b->iconSkin=&toolIcons_;b->icon=icon;b->skinStyle=index<10?"icon_button":"timeline-row";if(index<10){b->iconGroupIndex=int(index<5?index:index<8?index-5:index-8);b->iconGroupCount=index<5?5:3;}timelineInactive_.push_back(b);if(index==5)b->context=[this]{showOnionMenu();};if(index==2)b->context=[this]{showPlaybackMenu();};}
+    for(const auto icon:{"playback-first","playback-previous","playback-play","playback-next","playback-last","onion","plus","delete","plus","newFolder","lock","link"}){const auto index=timelineInactive_.size();auto b=timelineButton(U"",[this,index]{switch(index){case 0:toolbarSelectFrame(0);break;case 1:toolbarStepFrame(-1);break;case 2:togglePlayback();break;case 3:toolbarStepFrame(1);break;case 4:toolbarSelectFrame(currentDocument().timeline().state().frames.size()-1);break;case 5:toggleOnion();break;case 6:frameAction(1);break;case 7:deleteTimelineItems();break;case 8:createLayer();break;}});b->iconSkin=&toolIcons_;b->icon=icon;b->skinStyle=index<10?"icon_button":"timeline-row";if(index<10){b->iconGroupIndex=int(index<5?index:index<8?index-5:index-8);b->iconGroupCount=index<5?5:3;}timelineInactive_.push_back(b);if(index==5)b->context=[this]{showOnionMenu();};if(index==2)b->context=[this]{showPlaybackMenu();};}
 
-    layerEye_=timelineButton(U"",[this]{const auto& layer=document.timeline().state().layers.at(layerScroll_);document.beginVisibilityGesture();document.previewVisibilityGesture(layer.id,!layer.visible);document.commitVisibilityGesture();refresh();});layerEye_->iconSkin=&toolIcons_;layerEye_->skinStyle="timeline-row";
+    layerEye_=timelineButton(U"",[this]{const auto& layer=currentDocument().timeline().state().layers.at(currentView().layers);currentDocument().beginVisibilityGesture();currentDocument().previewVisibilityGesture(layer.id,!layer.visible);currentDocument().commitVisibilityGesture();refresh();});layerEye_->iconSkin=&toolIcons_;layerEye_->skinStyle="timeline-row";
 
-    layerRow_=timelineButton(document.layer().name,[]{});
+    layerRow_=timelineButton(currentDocument().layer().name,[]{});
 
     layerRow_->skinStyle="timeline-row";
 
@@ -194,17 +230,17 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     layerHeaderOpacity_=new PixelSlider(font_,skin_);addChild(layerHeaderOpacity_);
 
-    layerHeaderOpacity_->interactionBegin=[this]{document.beginLayerOpacity();};
+    layerHeaderOpacity_->interactionBegin=[this]{currentDocument().beginLayerOpacity();};
 
-    layerHeaderOpacity_->changed=[this](int value){document.previewLayerOpacity(value/100.0);invalidate();};
+    layerHeaderOpacity_->changed=[this](int value){currentDocument().previewLayerOpacity(value/100.0);invalidate();};
 
-    layerHeaderOpacity_->interactionCommit=[this]{document.commitLayerOpacity();refresh();};
+    layerHeaderOpacity_->interactionCommit=[this]{currentDocument().commitLayerOpacity();refresh();};
 
-    layerHeaderOpacity_->interactionCancel=[this]{document.cancelLayerOpacity();refresh();};
+    layerHeaderOpacity_->interactionCancel=[this]{currentDocument().cancelLayerOpacity();refresh();};
 
     createToolOptions();createGradientOptions();connectLegacyPropertyRanges();createShapeOptions();createEyedropperOptions();createMoveOptions();createSliceOptions();initializePropertyEntryWidths();
 
-    try{std::ifstream in(palettePreferencePath().parent_path()/"symmetry.txt");if(in){for(int i=0;i<5;++i)in>>symmetryFlag(i);in>>symmetryLocked_>>symmetryThickness_>>symmetryColor_;symmetryThickness_=std::clamp(symmetryThickness_,1,8);persistedSymmetryAxes_=document.symmetryAxes;symmetryInitialized_=symmetryHas(document.symmetryAxes);}}catch(const std::exception& e){status_=U"对称偏好读取失败："+unicodeText(e.what());}createFillPatternOptions();migratePropertyDropdowns();
+    try{std::ifstream in(palettePreferencePath().parent_path()/"symmetry.txt");if(in){for(int i=0;i<5;++i)in>>symmetryFlag(i);in>>symmetryLocked_>>symmetryThickness_>>symmetryColor_;symmetryThickness_=std::clamp(symmetryThickness_,1,8);persistedSymmetryAxes_=currentDocument().symmetryAxes;symmetryInitialized_=symmetryHas(currentDocument().symmetryAxes);}}catch(const std::exception& e){status_=U"对称偏好读取失败："+unicodeText(e.what());}createFillPatternOptions();migratePropertyDropdowns();
 
     paletteActions_=button(U"",[this]{showPaletteActions();});
 
@@ -240,7 +276,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     createGradientMapControls();createAntiAliasControls();createConvolutionControls();createPreferencesControls();createReplaceControls();createResizeControls();createStaticExportControls();createSpriteSheetControls();createGifExportControls();createExportFormatControl();createExportScalePresets();createExportComponents();createSheetImportControls();
 
-    paletteInput_=new FrameDurationPaletteEntry(font_,skin_);static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationCommit=[this]{commitFrameDurationDraft();};static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationWheel=[this](int delta){if(pending_!=Pending::FrameDuration)return;const int duration=std::clamp(document.frame().duration+delta*10,1,60000);document.previewFrameDuration(duration);paletteInput_->setText(std::to_string(duration));refresh();};addChild(paletteInput_);paletteInput_->setVisible(false);
+    paletteInput_=new FrameDurationPaletteEntry(font_,skin_);static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationCommit=[this]{commitFrameDurationDraft();};static_cast<FrameDurationPaletteEntry*>(paletteInput_)->durationWheel=[this](int delta){if(pending_!=Pending::FrameDuration)return;const int duration=std::clamp(currentDocument().frame().duration+delta*10,1,60000);currentDocument().previewFrameDuration(duration);paletteInput_->setText(std::to_string(duration));refresh();};addChild(paletteInput_);paletteInput_->setVisible(false);
 
     for(int i=0;i<4;++i){auto& input=loopInputs_[i];input=i==0?new PixelEntry(font_,skin_):new LoopNumberEntry(font_,skin_);input->numeric=i!=0;addChild(input);input->setVisible(false);input->accept=[this]{resolve(true);};input->cancel=[this]{resolve(false);};if(i){auto number=static_cast<LoopNumberEntry*>(input);number->committed=[this]{invalidate();};input->Change.connect([number]{number->updateLiveValue();});}else input->Change.connect([this]{invalidate();});}
 
@@ -258,7 +294,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     paletteInput_->accept=[this]{resolve(pending_==Pending::PaletteSave || pending_==Pending::BrushFolderName || pending_==Pending::PaletteName || pending_==Pending::PaletteExtract || pending_==Pending::LayerOpacity);};
 
-    paletteInput_->Change.connect([this]{if(pending_==Pending::PaletteSave)paletteSaveName_=unicodeText(paletteInput_->text());if(pending_==Pending::LayerOpacity){document.previewLayerName(unicodeText(paletteInput_->text()));refresh();}if(pending_==Pending::OnionValue)previewOnionValue();});
+    paletteInput_->Change.connect([this]{if(pending_==Pending::PaletteSave)paletteSaveName_=unicodeText(paletteInput_->text());if(pending_==Pending::LayerOpacity){currentDocument().previewLayerName(unicodeText(paletteInput_->text()));refresh();}if(pending_==Pending::OnionValue)previewOnionValue();});
 
     paletteInput_->cancel=[this]{resolve(false);};
 
@@ -320,7 +356,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     pickerSecondary_=button(U"",[this]{showRoleColorEditor(true);});pickerSecondary_->colorRole=true;
 
-    pickerAdd_=button(U"",[this]{try{document.addPaletteColor(document.palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});
+    pickerAdd_=button(U"",[this]{try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});
 
     pickerAdd_->iconSkin=&toolIcons_;pickerAdd_->icon="plus";
 
@@ -345,23 +381,23 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     layerTooltips_=new ui::TooltipManager;addChild(layerTooltips_);
 
-    layerDescription_=new PixelTextArea(font_,skin_);addChild(layerDescription_);layerDescription_->setVisible(false);layerDescription_->changed=[this](const std::u32string& text){document.previewLayerDescription(text);refresh();};layerDescription_->cancel=[this]{resolve(false);};
+    layerDescription_=new PixelTextArea(font_,skin_);addChild(layerDescription_);layerDescription_->setVisible(false);layerDescription_->changed=[this](const std::u32string& text){currentDocument().previewLayerDescription(text);refresh();};layerDescription_->cancel=[this]{resolve(false);};
 
-    layerDisplayColor_=button(U"",[this]{if(pending_!=Pending::LayerOpacity)return;if(!colorEditorPopup_)colorEditorPopup_=std::make_unique<ColorEditorPopup>(font_,skin_,toolIcons_,smoke_?assets_.parent_path()/"color-editor-smoke-size.txt":palettePreferencePath().parent_path()/"color-editor-role-size.txt");std::vector<Pixel> colors;for(const auto& c:document.palette().entries)if(c.id)colors.push_back(c.color);colorEditorPopup_->open(layerDisplayColor_->bounds(),bounds(),layerDisplayColor_->swatch,U"图层显示颜色",colors,[this](Pixel color){if(pending_==Pending::LayerOpacity){document.previewLayerDisplayColor(color);layerDisplayColor_->swatch=color;refresh();}},{});});layerDisplayColor_->colorRole=true;layerDisplayColor_->setVisible(false);
+    layerDisplayColor_=button(U"",[this]{if(pending_!=Pending::LayerOpacity)return;if(!colorEditorPopup_)colorEditorPopup_=std::make_unique<ColorEditorPopup>(font_,skin_,toolIcons_,smoke_?assets_.parent_path()/"color-editor-smoke-size.txt":palettePreferencePath().parent_path()/"color-editor-role-size.txt");std::vector<Pixel> colors;for(const auto& c:currentDocument().palette().entries)if(c.id)colors.push_back(c.color);colorEditorPopup_->open(layerDisplayColor_->bounds(),bounds(),layerDisplayColor_->swatch,U"图层显示颜色",colors,[this](Pixel color){if(pending_==Pending::LayerOpacity){currentDocument().previewLayerDisplayColor(color);layerDisplayColor_->swatch=color;refresh();}},{});});layerDisplayColor_->colorRole=true;layerDisplayColor_->setVisible(false);
 
-    layerNoColor_=button(U"无色",[this]{document.previewLayerDisplayColor({});layerDisplayColor_->swatch=0;refresh();});layerNoColor_->setVisible(false);
+    layerNoColor_=button(U"无色",[this]{currentDocument().previewLayerDisplayColor({});layerDisplayColor_->swatch=0;refresh();});layerNoColor_->setVisible(false);
 
-    layerBlendMode_=new PixelDropdown(font_,skin_);addChild(layerBlendMode_);layerBlendMode_->setOptions({U"正常",U"变暗",U"正片叠底",U"颜色加深",U"线性加深",U"变亮",U"滤色",U"颜色减淡",U"线性减淡（添加）",U"叠加",U"柔光",U"强光",U"亮光",U"线性光",U"点光",U"实色混合",U"差值",U"排除",U"减去",U"划分",U"色相",U"饱和度",U"颜色",U"明度"});layerBlendMode_->setVisible(false);layerBlendMode_->changed=[this](int index){document.previewLayerBlendMode(std::string(layerBlendModeName(LayerBlendMode(index))));refresh();};
+    layerBlendMode_=new PixelDropdown(font_,skin_);addChild(layerBlendMode_);layerBlendMode_->setOptions({U"正常",U"变暗",U"正片叠底",U"颜色加深",U"线性加深",U"变亮",U"滤色",U"颜色减淡",U"线性减淡（添加）",U"叠加",U"柔光",U"强光",U"亮光",U"线性光",U"点光",U"实色混合",U"差值",U"排除",U"减去",U"划分",U"色相",U"饱和度",U"颜色",U"明度"});layerBlendMode_->setVisible(false);layerBlendMode_->changed=[this](int index){currentDocument().previewLayerBlendMode(std::string(layerBlendModeName(LayerBlendMode(index))));refresh();};
 
     layerOpacityRange_=new PixelSlider(font_,skin_);addChild(layerOpacityRange_);layerOpacityRange_->setVisible(false);
 
-    layerOpacityRange_->changed=[this](int value){document.previewLayerOpacity(value/100.0);invalidate();};
+    layerOpacityRange_->changed=[this](int value){currentDocument().previewLayerOpacity(value/100.0);invalidate();};
 
     brushRange_=new PixelSlider(font_,skin_);addChild(brushRange_);brushRange_->setVisible(false);
 
     brushRange_->changed=[this](int value){
 
-      auto& profile=brushFeedback_.brushProfiles_[eraser_?1:0];(brushRangeOpacity_?profile.opacity:profile.size)=value;
+      auto& profile=currentTools().brushProfiles[currentTools().eraser?1:0];(brushRangeOpacity_?profile.opacity:profile.size)=value;
 
       updatingBrushFields_=true;(brushRangeOpacity_?brushOpacityInput_:brushSizeInput_)->setText(std::to_string(value));updatingBrushFields_=false;
 
@@ -377,7 +413,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
     homeButton_=new PixelMenuItem(font_,skin_,U"首页");
 
-    homeButton_->available=[this]{return pending_==Pending::None && !document.active();};
+    homeButton_->available=[this]{return pending_==Pending::None && !currentDocument().active();};
 
     homeButton_->Click.connect([this]{showHome(true);});root->addChild(homeButton_);
 
@@ -401,7 +437,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
 
       entry->checked=std::move(checked);
 
-      entry->Click.connect([this,entry,action,id]{if(entry->available()) {if(id!="pasteAsNewDocument"&&id!="openAbout"&&id!="openLatestRelease"&&id!="userGuide"&&id!="tips"&&!gradientIoCommand(id))cancelStroke();const auto started=std::chrono::steady_clock::now();diagnostics::recordGlobal("operation-start","menu."+id);try{action();}catch(const std::exception& e){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string(e.what())}});throw;}catch(...){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string("non-standard exception")}});throw;}const double duration=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();diagnostics::recordGlobal("operation-end","menu."+id,{{"outcome",std::string("ok")},{"durationMs",duration}});if(duration>=5000)diagnostics::recordGlobal("operation-slow","menu."+id,{{"durationMs",duration}});refresh();}});
+      entry->Click.connect([this,entry,action,id]{if(entry->available()) {if(id!="undo"&&id!="redo"&&id!="pasteAsNewDocument"&&id!="openAbout"&&id!="openLatestRelease"&&id!="userGuide"&&id!="tips"&&!gradientIoCommand(id))cancelStroke();const auto started=std::chrono::steady_clock::now();diagnostics::recordGlobal("operation-start","menu."+id);try{action();}catch(const std::exception& e){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string(e.what())}});throw;}catch(...){diagnostics::recordGlobal("error","menu."+id,{{"message",std::string("non-standard exception")}});throw;}const double duration=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();diagnostics::recordGlobal("operation-end","menu."+id,{{"outcome",std::string("ok")},{"durationMs",duration}});if(duration>=5000)diagnostics::recordGlobal("operation-slow","menu."+id,{{"durationMs",duration}});refresh();}});
 
       menu->addChild(entry);menuItems_[id]=entry;
 
@@ -417,29 +453,29 @@ menuCommands_.bind("importSpriteSheet",{[this]{chooseSheetSource();},{},{}});
 
 menuCommands_.bind("importSpriteSheetDocument",{[this]{openSheetImport(false);},{},{}});
 
-menuCommands_.bind("importSpriteSheetSelection",{[this]{openSheetImport(true);},[this]{return document.selection().has_value();},{}});
+menuCommands_.bind("importSpriteSheetSelection",{[this]{openSheetImport(true);},[this]{return currentDocument().selection().has_value();},{}});
 
 menuCommands_.bind("exportSpriteSheet",{[this]{openSpriteSheet();},{},{}});
 
-menuCommands_.bind("exportAllFrames",{[this]{openFramePngExport();},[this]{return document.timeline().state().frames.size()>1;},{}});
+menuCommands_.bind("exportAllFrames",{[this]{openFramePngExport();},[this]{return currentDocument().timeline().state().frames.size()>1;},{}});
 
 menuCommands_.bind("exportDocument",{[this]{openDocumentExport();},{},{}});
 
-menuCommands_.bind("canvasResize",{[this]{openCanvasResize();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!document.active()||document.floating());},{}});
-for(const auto& definition:filterPresetDefinitions()){const auto preset=definition.preset;menuCommands_.bind("filter:"+std::string(definition.id),{[this,preset]{openFilterPreset(preset);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!document.active()||document.floating());},{}});}
-menuCommands_.bind("lcdScreen",{[this]{openFilterPreset(FilterPreset::CrtSubtle,0,true);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!document.active()||document.floating())&&document.timelineSelection().layers.size()==1;},{}});
+menuCommands_.bind("canvasResize",{[this]{openCanvasResize();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating());},{}});
+for(const auto& definition:filterPresetDefinitions()){const auto preset=definition.preset;menuCommands_.bind("filter:"+std::string(definition.id),{[this,preset]{openFilterPreset(preset);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating());},{}});}
+menuCommands_.bind("lcdScreen",{[this]{openFilterPreset(FilterPreset::CrtSubtle,0,true);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating())&&currentDocument().timelineSelection().layers.size()==1;},{}});
 menuCommands_.bind("imageResize",{[this]{openImageResize();},{},{}});
 
-menuCommands_.bind("invertColors",{[this]{try{if(document.beginColorAdjustment()){ColorAdjustment a;a.kind=ColorAdjustmentKind::Invert;document.updateColorAdjustment(a);{Document::HistoryLabelScope historyLabel(document,U"反相");document.commitColorAdjustment();}refresh();}}catch(const std::exception& e){document.cancelColorAdjustment();status_=U"颜色调整失败："+unicodeText(e.what());refresh();}},{},{}});
+menuCommands_.bind("invertColors",{[this]{try{if(currentDocument().beginColorAdjustment()){ColorAdjustment a;a.kind=ColorAdjustmentKind::Invert;currentDocument().updateColorAdjustment(a);{Document::HistoryLabelScope historyLabel(currentDocument(),U"反相");currentDocument().commitColorAdjustment();}refresh();}}catch(const std::exception& e){currentDocument().cancelColorAdjustment();status_=U"颜色调整失败："+unicodeText(e.what());refresh();}},{},{}});
 
 menuCommands_.bind("gradientMap",{[this]{openGradientMap();},{},{}});
 
 menuCommands_.bind("outline",{[this]{openOutline();},{},{}});
 menuCommands_.bind("quickOutline",{[this]{quickOutline();},{},{}});
-menuCommands_.bind("outlineSelectionInside",{[this]{quickOutline(true);},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("outlineSelectionInside",{[this]{quickOutline(true);},[this]{return bool(currentDocument().selection());},{}});
 menuCommands_.bind("quickAntiAlias",{[this]{openAntiAlias();},{},{}});
 
-menuCommands_.bind("cropCanvas",{[this]{cropCanvas();},[this]{return document.selection().has_value();},{}});
+menuCommands_.bind("cropCanvas",{[this]{cropCanvas();},[this]{return currentDocument().selection().has_value();},{}});
 
 menuCommands_.bind("trimCurrentFrame",{[this]{trimCanvas(false);},{},{}});
 
@@ -458,21 +494,21 @@ menuCommands_.bind("adjustmentHueSaturation",{[this]{openColorAdjustment(ColorAd
 menuCommands_.bind("transform",{[this]{beginLayerTransform();},{},{}});
 
 menuCommands_.bind("newBackgroundLayer",{[this]{showBackgroundLayer();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy();},{}});
-auto backgroundTarget=[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!document.hasSelectedGroups()&&document.timelineSelection().layers.size()<=1;};
-menuCommands_.bind("createLinkedLayer",{[this]{document.createLinkedLayer(document.layer().id);refresh();},[this,backgroundTarget]{return backgroundTarget()&&document.canCreateLinkedLayer(document.layer().id);},{}});
-menuCommands_.bind("convertLayerToBackground",{[this]{document.setLayerBackground(document.layer().id,true);refresh();},[this,backgroundTarget]{return backgroundTarget()&&document.layer().kind.empty()&&!document.layer().background;},{}});
-menuCommands_.bind("convertLayerToRaster",{[this]{document.rasterizeLayer(document.layer().id);refresh();},[this,backgroundTarget]{return backgroundTarget()&&document.canRasterizeLayer(document.layer().id);},{}});
+auto backgroundTarget=[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!currentDocument().hasSelectedGroups()&&currentDocument().timelineSelection().layers.size()<=1;};
+menuCommands_.bind("createLinkedLayer",{[this]{currentDocument().createLinkedLayer(currentDocument().layer().id);refresh();},[this,backgroundTarget]{return backgroundTarget()&&currentDocument().canCreateLinkedLayer(currentDocument().layer().id);},{}});
+menuCommands_.bind("convertLayerToBackground",{[this]{currentDocument().setLayerBackground(currentDocument().layer().id,true);refresh();},[this,backgroundTarget]{return backgroundTarget()&&currentDocument().layer().kind.empty()&&!currentDocument().layer().background;},{}});
+menuCommands_.bind("convertLayerToRaster",{[this]{currentDocument().rasterizeLayer(currentDocument().layer().id);refresh();},[this,backgroundTarget]{return backgroundTarget()&&currentDocument().canRasterizeLayer(currentDocument().layer().id);},{}});
 menuCommands_.bind("newLayer",{[this]{createLayer();},{},{}});
 
-menuCommands_.bind("mergeVisibleLayers",{[this]{try{document.mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{int count=0;for(const auto& l:document.timeline().state().layers)if(document.layerEffectivelyVisible(l)){if(document.layerEffectivelyLocked(l))return false;++count;}return count>=2;},{}});
+menuCommands_.bind("mergeVisibleLayers",{[this]{try{currentDocument().mergeVisibleLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{int count=0;for(const auto& l:currentDocument().timeline().state().layers)if(currentDocument().layerEffectivelyVisible(l)){if(currentDocument().layerEffectivelyLocked(l))return false;++count;}return count>=2;},{}});
 
-menuCommands_.bind("duplicateLayer",{[this]{document.duplicateSelectedLayers();refresh();},[this]{return document.canDuplicateSelectedLayers();},{}});
+menuCommands_.bind("duplicateLayer",{[this]{currentDocument().duplicateSelectedLayers();refresh();},[this]{return currentDocument().canDuplicateSelectedLayers();},{}});
 
-menuCommands_.bind("mergeLayerDown",{[this]{try{document.mergeLayerDown();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},{[this]{return document.canMergeLayerDown();}},{}});
+menuCommands_.bind("mergeLayerDown",{[this]{try{currentDocument().mergeLayerDown();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},{[this]{return currentDocument().canMergeLayerDown();}},{}});
 
-menuCommands_.bind("mergeSelectedLayers",{[this]{try{document.mergeSelectedLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{return document.canMergeSelectedLayers();},{}});
+menuCommands_.bind("mergeSelectedLayers",{[this]{try{currentDocument().mergeSelectedLayers();refresh();}catch(const std::exception& e){status_=unicodeText(e.what());}},[this]{return currentDocument().canMergeSelectedLayers();},{}});
 
-menuCommands_.bind("deleteLayer",{[this]{document.deleteSelectedLayers();},[this]{return document.canDeleteSelectedLayers();},{}});
+menuCommands_.bind("deleteLayer",{[this]{currentDocument().deleteSelectedLayers();},[this]{return currentDocument().canDeleteSelectedLayers();},{}});
 
 menuCommands_.bind("editDelete",{[this]{deleteWorkspaceContent(false);},[this]{return canDeleteWorkspaceContent();},{}});
 
@@ -486,9 +522,9 @@ menuCommands_.bind("save",{[this]{saveProject(false);},{},{}});
 
 menuCommands_.bind("saveAs",{[this]{saveProject(true);},{},{}});
 
-menuCommands_.bind("undo",{[this]{document.undo();},[this]{return document.canUndo();},{}});
+menuCommands_.bind("undo",{[this]{requestHistoryAction(workspace::HistoryAction::Undo);},[this]{return historyActionAvailable(workspace::HistoryAction::Undo);},{}});
 
-menuCommands_.bind("redo",{[this]{document.redo();},[this]{return document.canRedo();},{}});
+menuCommands_.bind("redo",{[this]{requestHistoryAction(workspace::HistoryAction::Redo);},[this]{return historyActionAvailable(workspace::HistoryAction::Redo);},{}});
 
 // Preferences and layer properties are partial migrations: title/description in
 
@@ -496,33 +532,33 @@ menuCommands_.bind("redo",{[this]{document.redo();},[this]{return document.canRe
 
 menuCommands_.bind("openPreferences",{[this]{showPreferences();},{},{}});
 
-menuCommands_.bind("createLayerGroup",{[this]{document.createLayerGroup();virtualSlots_.clear();virtualAnchor_.reset();refresh();},[this]{return pending_==Pending::None;},{}});
-menuCommands_.bind("ungroupLayers",{[this]{document.ungroupSelected();refresh();},[this]{return document.hasSelectedGroups();},{}});
-menuCommands_.bind("mergeLayerGroup",{[this]{document.mergeSelectedGroup();refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&document.canMergeSelectedGroup();},{}});
-menuCommands_.bind("toggleSelectedGroupCollapsed",{[this]{auto groups=document.selectedGroupIds();for(const auto& id:groups)document.toggleGroupCollapsed(id);refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!document.selectedGroupIds().empty();},{}});
-menuCommands_.bind("toggleClippingMask",{[this]{document.toggleClippingMask();refresh();},[this]{return document.canToggleClippingMask();},[this]{return document.activeClippingMask();}});
-menuCommands_.bind("toggleLayerMask",{[this]{const auto owner=selectedMaskPropertyOwner();if(owner.empty())return;if(document.layerEffectivelyLocked(document.timeline().state().layers[document.timeline().layerIndex(owner)])){status_=U"图层已锁定，无法创建蒙版";return;}if(document.createLayerMasksForLayer(owner)){selectedMaskSlots_.clear();if(!document.activeMaskId().empty())selectedMaskSlots_.push_back({owner,document.frame().id});virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;}refresh();},[this]{const auto owner=selectedMaskPropertyOwner();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!owner.empty()&&!document.findGroup(owner)&&document.canCreateLayerMasksForLayer(owner);},{}});
-menuCommands_.bind("toggleGroupMask",{[this]{const auto owner=selectedMaskPropertyOwner();const auto* group=document.findGroup(owner);if(!group)return;if(timeline::isGroupEffectivelyLocked(document.timeline().state(),*group)){status_=U"图层组已锁定，无法修改蒙版";return;}const auto frame=document.frame().id;if(timeline::directMask(document.timeline().state(),owner,frame))document.deleteAttachedMask(owner,frame);else document.createAttachedMask(owner,frame,true);selectedMaskSlots_.clear();if(!document.activeMaskId().empty())selectedMaskSlots_.push_back({owner,frame});virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;refresh();},[this]{const auto owner=selectedMaskPropertyOwner();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!owner.empty()&&document.findGroup(owner);},{}});
-menuCommands_.bind("maskMoveBinding",{[this]{if(const auto* slot=selectedOwnerMask()){const auto* mask=timeline::resolvedMask(document.timeline().state(),slot->ownerId,slot->frameId);if(mask)document.setMaskMoveWithOwner(slot->ownerId,slot->frameId,!mask->moveWithOwner);}refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&selectedOwnerMask();},{}});
-menuCommands_.bind("openLayerStyles",{[this]{showColorOverlay();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!document.active()&&!document.layerStyleTargets().empty();},{}});
-menuCommands_.bind("toggleLayerStyles",{[this]{auto ids=document.layerStyleTargets();if(ids.empty())return;document.setLayerStylesEnabled(ids,!timeline::styleVisible(document.layerStyle(ids.front())));refresh();},[this]{auto ids=document.layerStyleTargets();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!document.active()&&!ids.empty()&&timeline::styleConfigured(document.layerStyle(ids.front()));},[this]{auto ids=document.layerStyleTargets();return !ids.empty()&&timeline::styleVisible(document.layerStyle(ids.front()));}});
-menuCommands_.bind("copyLayerStyles",{[this]{auto ids=document.layerStyleTargets();if(!ids.empty()){copiedLayerStyle_=document.layerStyle(ids.front());layerStyleClipboard_=copiedLayerStyle_.has_value();}},[this]{auto ids=document.layerStyleTargets();return !document.active()&&!ids.empty()&&document.layerStyle(ids.front()).has_value();},{}});
-menuCommands_.bind("pasteLayerStyles",{[this]{if(layerStyleClipboard_&&document.beginLayerStyle())document.commitLayerStyle(copiedLayerStyle_);refresh();},[this]{return layerStyleClipboard_&&!document.active()&&!document.layerStyleTargets().empty();},{}});
-menuCommands_.bind("splitLayerStyles",{[this]{try{document.splitLayerStyles();refresh();}catch(const std::exception& e){showSaveError(e);}},[this]{return pending_==Pending::None&&document.canSplitLayerStyles();},{}});
-menuCommands_.bind("clearLayerStyles",{[this]{if(document.beginLayerStyle())document.commitLayerStyle({});refresh();},[this]{auto ids=document.layerStyleTargets();return !document.active()&&!ids.empty()&&document.layerStyle(ids.front()).has_value();},{}});
-menuCommands_.bind("newGradientMapLayer",{[this]{openGradientMapLayer(true);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!document.active();},{}});
-menuCommands_.bind("openLayerProperties",{[this]{openSelectedLayerProperties();},[this]{return !document.timelineSelection().layers.empty()||document.hasSelectedGroups();},{}});
+menuCommands_.bind("createLayerGroup",{[this]{currentDocument().createLayerGroup();currentView().virtualSlots.clear();currentView().virtualAnchor.reset();refresh();},[this]{return pending_==Pending::None;},{}});
+menuCommands_.bind("ungroupLayers",{[this]{currentDocument().ungroupSelected();refresh();},[this]{return currentDocument().hasSelectedGroups();},{}});
+menuCommands_.bind("mergeLayerGroup",{[this]{currentDocument().mergeSelectedGroup();refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&currentDocument().canMergeSelectedGroup();},{}});
+menuCommands_.bind("toggleSelectedGroupCollapsed",{[this]{auto groups=currentDocument().selectedGroupIds();for(const auto& id:groups)currentDocument().toggleGroupCollapsed(id);refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!currentDocument().selectedGroupIds().empty();},{}});
+menuCommands_.bind("toggleClippingMask",{[this]{currentDocument().toggleClippingMask();refresh();},[this]{return currentDocument().canToggleClippingMask();},[this]{return currentDocument().activeClippingMask();}});
+menuCommands_.bind("toggleLayerMask",{[this]{const auto owner=selectedMaskPropertyOwner();if(owner.empty())return;if(currentDocument().layerEffectivelyLocked(currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(owner)])){status_=U"图层已锁定，无法创建蒙版";return;}if(currentDocument().createLayerMasksForLayer(owner)){currentView().maskSlots.clear();if(!currentDocument().activeMaskId().empty())currentView().maskSlots.push_back({owner,currentDocument().frame().id});currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;}refresh();},[this]{const auto owner=selectedMaskPropertyOwner();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!owner.empty()&&!currentDocument().findGroup(owner)&&currentDocument().canCreateLayerMasksForLayer(owner);},{}});
+menuCommands_.bind("toggleGroupMask",{[this]{const auto owner=selectedMaskPropertyOwner();const auto* group=currentDocument().findGroup(owner);if(!group)return;if(timeline::isGroupEffectivelyLocked(currentDocument().timeline().state(),*group)){status_=U"图层组已锁定，无法修改蒙版";return;}const auto frame=currentDocument().frame().id;if(timeline::directMask(currentDocument().timeline().state(),owner,frame))currentDocument().deleteAttachedMask(owner,frame);else currentDocument().createAttachedMask(owner,frame,true);currentView().maskSlots.clear();if(!currentDocument().activeMaskId().empty())currentView().maskSlots.push_back({owner,frame});currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;refresh();},[this]{const auto owner=selectedMaskPropertyOwner();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!owner.empty()&&currentDocument().findGroup(owner);},{}});
+menuCommands_.bind("maskMoveBinding",{[this]{if(const auto* slot=selectedOwnerMask()){const auto* mask=timeline::resolvedMask(currentDocument().timeline().state(),slot->ownerId,slot->frameId);if(mask)currentDocument().setMaskMoveWithOwner(slot->ownerId,slot->frameId,!mask->moveWithOwner);}refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&selectedOwnerMask();},{}});
+menuCommands_.bind("openLayerStyles",{[this]{showColorOverlay();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!currentDocument().active()&&!currentDocument().layerStyleTargets().empty();},{}});
+menuCommands_.bind("toggleLayerStyles",{[this]{auto ids=currentDocument().layerStyleTargets();if(ids.empty())return;currentDocument().setLayerStylesEnabled(ids,!timeline::styleVisible(currentDocument().layerStyle(ids.front())));refresh();},[this]{auto ids=currentDocument().layerStyleTargets();return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!currentDocument().active()&&!ids.empty()&&timeline::styleConfigured(currentDocument().layerStyle(ids.front()));},[this]{auto ids=currentDocument().layerStyleTargets();return !ids.empty()&&timeline::styleVisible(currentDocument().layerStyle(ids.front()));}});
+menuCommands_.bind("copyLayerStyles",{[this]{auto ids=currentDocument().layerStyleTargets();if(!ids.empty()){copiedLayerStyle_=currentDocument().layerStyle(ids.front());layerStyleClipboard_=copiedLayerStyle_.has_value();}},[this]{auto ids=currentDocument().layerStyleTargets();return !currentDocument().active()&&!ids.empty()&&currentDocument().layerStyle(ids.front()).has_value();},{}});
+menuCommands_.bind("pasteLayerStyles",{[this]{if(layerStyleClipboard_&&currentDocument().beginLayerStyle())currentDocument().commitLayerStyle(copiedLayerStyle_);refresh();},[this]{return layerStyleClipboard_&&!currentDocument().active()&&!currentDocument().layerStyleTargets().empty();},{}});
+menuCommands_.bind("splitLayerStyles",{[this]{try{currentDocument().splitLayerStyles();refresh();}catch(const std::exception& e){showSaveError(e);}},[this]{return pending_==Pending::None&&currentDocument().canSplitLayerStyles();},{}});
+menuCommands_.bind("clearLayerStyles",{[this]{if(currentDocument().beginLayerStyle())currentDocument().commitLayerStyle({});refresh();},[this]{auto ids=currentDocument().layerStyleTargets();return !currentDocument().active()&&!ids.empty()&&currentDocument().layerStyle(ids.front()).has_value();},{}});
+menuCommands_.bind("newGradientMapLayer",{[this]{openGradientMapLayer(true);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!currentDocument().active();},{}});
+menuCommands_.bind("openLayerProperties",{[this]{openSelectedLayerProperties();},[this]{return !currentDocument().timelineSelection().layers.empty()||currentDocument().hasSelectedGroups();},{}});
 
 menuCommands_.bind("advancedMode",{[this]{cycleAdvancedMode();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None;},[this]{return advancedActive();}});
 menuCommands_.bind("resetView",{[this]{
 
- zoom_=16; const auto viewport=canvasViewport();
+ currentView().zoom=16; const auto viewport=canvasViewport();
 
- const int width=int(std::lround(document.width()*canvasScale()));
+ const int width=int(std::lround(currentDocument().width()*canvasScale()));
 
- const int height=int(std::lround(document.height()*canvasScale()));
+ const int height=int(std::lround(currentDocument().height()*canvasScale()));
 
- canvas_=gfx::Rect(viewport.x+(viewport.w-width)/2,viewport.y+(viewport.h-height)/2,width,height);
+ currentView().canvas=gfx::Rect(viewport.x+(viewport.w-width)/2,viewport.y+(viewport.h-height)/2,width,height);
 
  invalidate();
 
@@ -532,11 +568,11 @@ menuCommands_.bind("gridAlignment",{[this]{try{auto next=runtimePreferences_;nex
 menuCommands_.bind("smartAlignment",{[this]{try{auto next=runtimePreferences_;next.set("tools.smartAlignmentEnabled",next.flag("tools.smartAlignmentEnabled")?"false":"true");if(!smoke_){if(!runtimePreferencesReadable_)throw std::runtime_error("editor-preferences.txt unreadable");const auto text=next.encode();writeExportBytesAtomic(palettePreferencePath().parent_path()/"editor-preferences.txt",std::vector<std::uint8_t>(text.begin(),text.end()));}runtimePreferences_=std::move(next);refresh();}catch(const std::exception& e){status_=U"智能对齐保存失败："+unicodeText(e.what());refresh();}},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return runtimePreferences_.flag("tools.smartAlignmentEnabled");}});
 menuCommands_.bind("alignmentGuides",{[this]{try{auto next=runtimePreferences_;next.set("tools.alignmentGuidesVisible",next.flag("tools.alignmentGuidesVisible")?"false":"true");if(!smoke_){if(!runtimePreferencesReadable_)throw std::runtime_error("editor-preferences.txt unreadable");const auto text=next.encode();writeExportBytesAtomic(palettePreferencePath().parent_path()/"editor-preferences.txt",std::vector<std::uint8_t>(text.begin(),text.end()));}runtimePreferences_=std::move(next);refresh();}catch(const std::exception& e){status_=U"对齐辅助线保存失败："+unicodeText(e.what());refresh();}},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return runtimePreferences_.flag("tools.alignmentGuidesVisible");}});
 
-menuCommands_.bind("toggleCustomGrid",{[this]{document.setCustomGrid(!document.showCustomGrid(),document.customGrid());refresh();},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return document.showCustomGrid();}});
+menuCommands_.bind("toggleCustomGrid",{[this]{currentDocument().setCustomGrid(!currentDocument().showCustomGrid(),currentDocument().customGrid());refresh();},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return currentDocument().showCustomGrid();}});
 
 menuCommands_.bind("openGridSettings",{[this]{showCustomGridSettings();},[this]{return documentOpen_&&pending_==Pending::None;}});
 
-menuCommands_.bind("toggleGrid",{[this]{document.setPixelGrid(!document.showPixelGrid());refresh();},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return document.showPixelGrid();}});
+menuCommands_.bind("toggleGrid",{[this]{currentDocument().setPixelGrid(!currentDocument().showPixelGrid());refresh();},[this]{return documentOpen_&&pending_==Pending::None;},[this]{return currentDocument().showPixelGrid();}});
 
     menuCommands_.bind("toggleColorPanel",{[this]{togglePickerColumn(1);},{},[this]{return colorPickerOpen_;}});
     const char* pickerCommands[]{"toggleMoonRingPanel","toggleHsPanel","toggleWheelPanel","toggleNormalMapPanel"};
@@ -548,19 +584,19 @@ menuCommands_.bind("togglePalettePanel",{[this]{palettePanelOpen_=!palettePanelO
 
 menuCommands_.bind("togglePreviewPanel",{[this]{previewPanelOpen_=!previewPanelOpen_;if(previewPanelOpen_)docking_.select(3);refresh();saveWorkspaceSizes();},{},[this]{return previewPanelOpen_;}});
 
-menuCommands_.bind("relativeLuminance",{[this]{renderer_.setRelativeLuminance(!renderer_.relativeLuminance());document.setDeferredFloatingDisplaySupported(!renderer_.relativeLuminance());invalidateRect(canvasViewport());},{},[this]{return renderer_.relativeLuminance();}});
+menuCommands_.bind("relativeLuminance",{[this]{setRelativeLuminance(!currentView().relativeLuminance);invalidateRect(canvasViewport());},{},[this]{return currentView().relativeLuminance;}});
 
-menuCommands_.bind("toggleSelectionOutline",{[this]{toggleSelectionOutline();refresh();},[this]{return bool(document.selection());},[this]{return !showSelectionOutline_;}});
+menuCommands_.bind("toggleSelectionOutline",{[this]{toggleSelectionOutline();refresh();},[this]{return bool(currentDocument().selection());},[this]{return !currentView().showSelectionOutline;}});
 
-menuCommands_.bind("flipHorizontal",{[this]{document.flipContent(true);refresh();},{},{}});
+menuCommands_.bind("flipHorizontal",{[this]{currentDocument().flipContent(true);refresh();},{},{}});
 
-menuCommands_.bind("flipVertical",{[this]{document.flipContent(false);refresh();},{},{}});
+menuCommands_.bind("flipVertical",{[this]{currentDocument().flipContent(false);refresh();},{},{}});
 
-menuCommands_.bind("rotateContentClockwise",{[this]{if(document.rotateContent(90)){selectionPivot_.reset();playing_=false;}refresh();},{},{}});
+menuCommands_.bind("rotateContentClockwise",{[this]{if(currentDocument().rotateContent(90)){currentView().pivot.reset();currentPlayback().playing=false;}refresh();},{},{}});
 
-menuCommands_.bind("rotateContentCounterClockwise",{[this]{if(document.rotateContent(-90)){selectionPivot_.reset();playing_=false;}refresh();},{},{}});
+menuCommands_.bind("rotateContentCounterClockwise",{[this]{if(currentDocument().rotateContent(-90)){currentView().pivot.reset();currentPlayback().playing=false;}refresh();},{},{}});
 
-menuCommands_.bind("rotateContent180",{[this]{if(document.rotateContent180()){selectionPivot_.reset();playing_=false;}refresh();},{},{}});
+menuCommands_.bind("rotateContent180",{[this]{if(currentDocument().rotateContent180()){currentView().pivot.reset();currentPlayback().playing=false;}refresh();},{},{}});
 
 menuCommands_.bind("centerContentBoth",{[this]{centerContent(true,true);},{},{}});
 
@@ -568,25 +604,25 @@ menuCommands_.bind("centerContentHorizontal",{[this]{centerContent(true,false);}
 
 menuCommands_.bind("centerContentVertical",{[this]{centerContent(false,true);},{},{}});
 
-menuCommands_.bind("copyMerged",{[this]{copyMergedPixels();},[this]{return !document.active() || document.floating();},{}});
+menuCommands_.bind("copyMerged",{[this]{copyMergedPixels();},[this]{return !currentDocument().active() || currentDocument().floating();},{}});
 
-menuCommands_.bind("fillForeground",{[this]{playing_=false;document.fillSelectionOrCanvas(document.palette().primary);refresh();},[this]{return !document.active() || document.floating();},{}});
+menuCommands_.bind("fillForeground",{[this]{currentPlayback().playing=false;currentDocument().fillSelectionOrCanvas(currentDocument().palette().primary);refresh();},[this]{return !currentDocument().active() || currentDocument().floating();},{}});
 
-menuCommands_.bind("freeTransform",{[this]{startFreeSelectionTransform();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("freeTransform",{[this]{startFreeSelectionTransform();},[this]{return bool(currentDocument().selection());},{}});
 
-menuCommands_.bind("createBackgroundPresetFromSelection",{[this]{createSelectionBackgroundPreset();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("createBackgroundPresetFromSelection",{[this]{createSelectionBackgroundPreset();},[this]{return bool(currentDocument().selection());},{}});
 
-menuCommands_.bind("createBrushFromSelection",{[this]{createBrushFromSelection();},[this]{return bool(document.selection()) && !document.active();},{}});
+menuCommands_.bind("createBrushFromSelection",{[this]{createBrushFromSelection();},[this]{return bool(currentDocument().selection()) && !currentDocument().active();},{}});
 
 menuCommands_.bind("selectAll",{[this]{selectAllPixels();},{}, {}});
 
-menuCommands_.bind("deselect",{[this]{document.deselectPixels();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();refresh();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("deselect",{[this]{currentDocument().deselectPixels();selectionPropertiesActive_=false;currentView().freeTransform=false;currentView().pivot.reset();currentView().pivotMask.reset();refresh();},[this]{return bool(currentDocument().selection());},{}});
 
-menuCommands_.bind("invertSelection",{[this]{document.invertPixels();refresh();},[this]{return bool(document.selection());},{}});
+menuCommands_.bind("invertSelection",{[this]{currentDocument().invertPixels();refresh();},[this]{return bool(currentDocument().selection());},{}});
 
-menuCommands_.bind("copy",{[this]{copyEditorClipboard();},[this]{if(!paletteFocused_&&document.selection()&&document.layer().kind=="free-tile"&&document.activeMaskId().empty())return pixelClipboardContext();if(!paletteFocused_&&!document.selection()&&!selectedMaskSlots_.empty())return true;if(!paletteFocused_&&document.freeTileInstanceView()&&!document.selectedFreeTileInstances().empty())return true;return paletteFocused_?!document.palette().selected.empty():mixedPixelCopyContext()||!document.hasTilemapContent()||(!document.active()&&!document.selection()&&document.activeMaskId().empty());},{}});
+menuCommands_.bind("copy",{[this]{copyEditorClipboard();},[this]{if(!paletteFocused_&&currentDocument().selection()&&currentDocument().layer().kind=="free-tile"&&currentDocument().activeMaskId().empty())return pixelClipboardContext();if(!paletteFocused_&&!currentDocument().selection()&&!currentView().maskSlots.empty())return true;if(!paletteFocused_&&currentDocument().freeTileInstanceView()&&!currentDocument().selectedFreeTileInstances().empty())return true;return paletteFocused_?!currentDocument().palette().selected.empty():mixedPixelCopyContext()||!currentDocument().hasTilemapContent()||(!currentDocument().active()&&!currentDocument().selection()&&currentDocument().activeMaskId().empty());},{}});
 
-menuCommands_.bind("cut",{[this]{copyEditorClipboard(true);},[this]{if(!paletteFocused_&&document.selection()&&document.layer().kind=="free-tile"&&document.activeMaskId().empty())return pixelClipboardContext();if(!paletteFocused_&&!document.selection()&&!selectedMaskSlots_.empty())return true;if(!paletteFocused_&&document.freeTileInstanceView()&&!document.selectedFreeTileInstances().empty())return true;if(mixedPixelCopyContext(true))return true;if(document.hasTilemapContent())return !paletteFocused_&&!document.selection()&&document.activeMaskId().empty()&&(!celClipboardContext()||!document.active())&&(celClipboardContext()||frameSelectionExplicit_||document.canDeleteSelectedLayers());return !paletteFocused_&&(document.selection()||celClipboardContext()||frameSelectionExplicit_||document.canDeleteSelectedLayers());},{}});
+menuCommands_.bind("cut",{[this]{copyEditorClipboard(true);},[this]{if(!paletteFocused_&&currentDocument().selection()&&currentDocument().layer().kind=="free-tile"&&currentDocument().activeMaskId().empty())return pixelClipboardContext();if(!paletteFocused_&&!currentDocument().selection()&&!currentView().maskSlots.empty())return true;if(!paletteFocused_&&currentDocument().freeTileInstanceView()&&!currentDocument().selectedFreeTileInstances().empty())return true;if(mixedPixelCopyContext(true))return true;if(currentDocument().hasTilemapContent())return !paletteFocused_&&!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&(!celClipboardContext()||!currentDocument().active())&&(celClipboardContext()||currentView().frameSelection||currentDocument().canDeleteSelectedLayers());return !paletteFocused_&&(currentDocument().selection()||celClipboardContext()||currentView().frameSelection||currentDocument().canDeleteSelectedLayers());},{}});
 
 openScriptFolder_=[] {script::Service().openFolder();};
 menuCommands_.bind("openScriptFolder",{[this]{try{openScriptFolder_();}catch(const std::exception& e){status_=U"打开脚本文件夹失败："+unicodeText(e.what());invalidate();}},{},{}});
@@ -599,19 +635,19 @@ menuCommands_.bind("pasteAsNewDocument",{[this]{pasteAsNewDocument();},[this]{re
 // Explicit paste targets bypass palette/frame routing while preserving the
 // clipboard service's external-image versus structured-layer precedence.
 menuCommands_.bind("pasteToCurrentCell",{[this]{
- const bool palette=paletteFocused_,frames=frameSelectionExplicit_;paletteFocused_=false;frameSelectionExplicit_=false;
- try{const auto payload=pixelClipboard_.read();if(!payload&&layerClipboardSnapshot_)document.pasteLayerClipboard(*layerClipboardSnapshot_);else pasteSelectionPixels();}catch(...){paletteFocused_=palette;frameSelectionExplicit_=frames;throw;}
- paletteFocused_=palette;frameSelectionExplicit_=frames;refresh();
-},[this]{return !historyGestureBusy()&&(document.layer().kind.empty()||document.layer().kind=="free-tile"||!document.activeMaskId().empty());},{}});
+ const bool palette=paletteFocused_,frames=currentView().frameSelection;paletteFocused_=false;currentView().frameSelection=false;
+ try{const auto payload=pixelClipboard_.read();if(!payload&&layerClipboardSnapshot_)currentDocument().pasteLayerClipboard(*layerClipboardSnapshot_);else pasteSelectionPixels();}catch(...){paletteFocused_=palette;currentView().frameSelection=frames;throw;}
+ paletteFocused_=palette;currentView().frameSelection=frames;refresh();
+},[this]{return !historyGestureBusy()&&(currentDocument().layer().kind.empty()||currentDocument().layer().kind=="free-tile"||!currentDocument().activeMaskId().empty());},{}});
 menuCommands_.bind("pasteAsNewLayer",{[this]{
  const auto system=pixelClipboard_.readSystemSelection();
- if(layerClipboardSnapshot_&&pixelClipboard_.preferStructuredCopy(system)){document.pasteLayerClipboard(*layerClipboardSnapshot_);virtualSlots_.clear();virtualAnchor_.reset();refresh();return;}
- const auto payload=pixelClipboard_.read();if(!payload){if(layerClipboardSnapshot_)document.pasteLayerClipboard(*layerClipboardSnapshot_);else status_=U"剪贴板没有可粘贴内容";refresh();return;}
+ if(layerClipboardSnapshot_&&pixelClipboard_.preferStructuredCopy(system)){currentDocument().pasteLayerClipboard(*layerClipboardSnapshot_);currentView().virtualSlots.clear();currentView().virtualAnchor.reset();refresh();return;}
+ const auto payload=pixelClipboard_.read();if(!payload){if(layerClipboardSnapshot_)currentDocument().pasteLayerClipboard(*layerClipboardSnapshot_);else status_=U"剪贴板没有可粘贴内容";refresh();return;}
  const auto viewport=canvasViewport();const double scale=canvasScale();
- const auto placement=PixelClipboard::resolvePlacement(*payload,document.width(),document.height(),int(std::floor((viewport.x-canvas_.x)/scale)),int(std::floor((viewport.y-canvas_.y)/scale)),int(std::ceil((viewport.x2()-canvas_.x)/scale)),int(std::ceil((viewport.y2()-canvas_.y)/scale)));
- if(document.pastePixelsAsNewLayer(*payload,placement,selectionPivot_)){playing_=false;liquifyTool_=smoothTool_=airbrushTool_=textTool_=moveTool_=shapeTool_=gradientTool_=fillTool_=eraser_=eyedropperTool_=handTool_=false;navigation_.zoomTool_=false;selectionTool_=true;selectionKind_=selectionMode_=0;selectionPropertiesActive_=selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();selectedMaskSlots_.clear();virtualSlots_.clear();virtualAnchor_.reset();frameSelectionExplicit_=false;paletteFocused_=false;status_=U"已粘贴为新图层。";}refresh();
+ const auto placement=PixelClipboard::resolvePlacement(*payload,currentDocument().width(),currentDocument().height(),int(std::floor((viewport.x-currentView().canvas.x)/scale)),int(std::floor((viewport.y-currentView().canvas.y)/scale)),int(std::ceil((viewport.x2()-currentView().canvas.x)/scale)),int(std::ceil((viewport.y2()-currentView().canvas.y)/scale)));
+ if(currentDocument().pastePixelsAsNewLayer(*payload,placement,currentView().pivot)){currentPlayback().playing=false;currentTools().liquifyTool=currentTools().smoothTool=currentTools().airbrushTool=currentTools().textTool=currentTools().moveTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().eraser=currentTools().eyedropperTool=currentTools().handTool=false;currentTools().zoomTool=false;currentTools().selectionTool=true;currentTools().selectionKind=currentTools().selectionMode=0;selectionPropertiesActive_=currentView().freeTransform=false;currentView().pivot.reset();currentView().pivotMask.reset();currentView().maskSlots.clear();currentView().virtualSlots.clear();currentView().virtualAnchor.reset();currentView().frameSelection=false;paletteFocused_=false;status_=U"已粘贴为新图层。";}refresh();
 },[this]{return !historyGestureBusy();},{}});
-menuCommands_.bind("paste",{[this]{pasteEditorClipboard();},[this]{if(!paletteFocused_&&!document.selection()&&document.hasMaskClipboard()&&(!selectedMaskSlots_.empty()||celClipboardContext()))return true;if(mixedPixelPasteContext())return true;if(!paletteFocused_&&document.layer().kind=="free-tile"&&document.layer().freeTiles&&document.freeTileCel().freeTiles&&document.activeMaskId().empty()&&!document.layerEffectivelyLocked(document.layer())&&!document.active()&&!frameSelectionExplicit_)return true;if(document.hasTilemapContent()&&!paletteFocused_)return document.activeMaskId().empty()&&(layerClipboardSnapshot_||(celClipboardContext()?!document.active()&&!document.selection()&&hasApplicationCelClipboard()&&!applicationCelSelectionOnly():frameSelectionExplicit_&&hasApplicationFrameClipboard()));return bool(layerClipboardSnapshot_)||paletteFocused_||(celClipboardContext()?hasApplicationCelClipboard()&&(applicationCelSelectionOnly()||!document.selection()):frameSelectionExplicit_?hasApplicationFrameClipboard():pixelClipboardContext());},{}});
+menuCommands_.bind("paste",{[this]{pasteEditorClipboard();},[this]{if(!paletteFocused_&&!currentDocument().selection()&&currentDocument().hasMaskClipboard()&&(!currentView().maskSlots.empty()||celClipboardContext()))return true;if(mixedPixelPasteContext())return true;if(!paletteFocused_&&currentDocument().layer().kind=="free-tile"&&currentDocument().layer().freeTiles&&currentDocument().freeTileCel().freeTiles&&currentDocument().activeMaskId().empty()&&!currentDocument().layerEffectivelyLocked(currentDocument().layer())&&!currentDocument().active()&&!currentView().frameSelection)return true;if(currentDocument().hasTilemapContent()&&!paletteFocused_)return currentDocument().activeMaskId().empty()&&(layerClipboardSnapshot_||(celClipboardContext()?!currentDocument().active()&&!currentDocument().selection()&&hasApplicationCelClipboard()&&!applicationCelSelectionOnly():currentView().frameSelection&&hasApplicationFrameClipboard()));return bool(layerClipboardSnapshot_)||paletteFocused_||(celClipboardContext()?hasApplicationCelClipboard()&&(applicationCelSelectionOnly()||!currentDocument().selection()):currentView().frameSelection?hasApplicationFrameClipboard():pixelClipboardContext());},{}});
 
 // Existing item(...) helper owns pending/dialog checks and cancelStroke.
 
@@ -651,7 +687,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
 
     sizeTimer_.Tick.connect([this]{flushSizeGeometry();});
 
-    auto preview=new DialogBackground<PreviewPanel>(font_,skin_,toolIcons_,document);configureDialogBackground(preview);configureDialogBackground(preview->closeButton());previewPanel_=preview;columnClose_[3]=preview->closeButton();addChild(previewPanel_);
+    auto preview=new DialogBackground<PreviewPanel>(font_,skin_,toolIcons_,currentDocument());configureDialogBackground(preview);configureDialogBackground(preview->closeButton());previewPanel_=preview;columnClose_[3]=preview->closeButton();addChild(previewPanel_);
 
     initializeReferencePanel();initializeProjectRollback();
     createHistoryPanel();
@@ -688,7 +724,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
     initializeWorkspacePresets();
     initializeShortcuts();
 
-    try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);recovery_.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();applyWorkspacePreferences();initializeColorRoles();refresh();
+    try {recoveryPreferences_=recovery::loadPreferences(recoveryDirectory().parent_path()/"recovery-preferences.txt");currentRecovery().queue.setIntervalMinutes(recoveryPreferences_.minutes);currentRecovery().due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(recoveryPreferences_.minutes*60000));}catch(const std::exception&e){status_=U"恢复设置读取失败："+unicodeText(e.what());}loadRecoveries(true);createHome();applyWorkspacePreferences();initializeColorRoles();refresh();
 
   }
 
@@ -707,7 +743,7 @@ void Editor::initializeScripts(const std::filesystem::path& root){
   state->host->setNotificationHost([weak=std::weak_ptr<ScriptState>(state)](const std::u32string& message){if(auto active=weak.lock())active->notifications.push_back(message);});
   state->host->setStyleClipboardHost({[this]{return layerStyleClipboard_?copiedLayerStyle_:std::optional<timeline::ColorOverlayStyle>{};},[this](const auto& style){copiedLayerStyle_=style;layerStyleClipboard_=true;}});
   state->host->setPanelHost([this](Document& d,const script::PanelRequest& request){
-   if(&d!=&document||!documentOpen_||homeOpen_)return;
+   if(&d!=&currentDocument()||!documentOpen_||homeOpen_)return;
    const std::map<std::string,int> columns{{"color",1},{"palette",0},{"layers",2},{"freeTileInstances",13},{"history",8},{"preview",3},{"reference",9},{"tileset",11},{"brushes",12},{"tabletAssist",10}};const auto id=columns.at(request.id);
    if(request.visible&&columnVisibility()[id]!=*request.visible){
     if(id==13){freeTileInstancesOpen_=*request.visible;if(*request.visible){initializeDocking();docking_.custom=true;docking_.select(id);}refresh();saveWorkspaceSizes();}
@@ -716,12 +752,12 @@ void Editor::initializeScripts(const std::filesystem::path& root){
    if(request.dock){const std::map<std::string,panels::Dock> docks{{"left",panels::Dock::Left},{"right",panels::Dock::Right},{"bottom",panels::Dock::Bottom},{"floating",panels::Dock::Floating}};dockColumn(id,docks.at(*request.dock));}
   });
   state->host->setBrushHost([this](Document& d,const script::BrushRequest& request){
-   if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua brush target changed");
+   if(&d!=&currentDocument()||!documentOpen_||homeOpen_)throw std::logic_error("Lua brush target changed");
    if(request.kind==script::BrushRequest::Kind::CreateFromSelection){
     if(!request.error.empty()){status_=unicodeText(request.error);invalidate();return;}
     try{if(!request.brush)throw std::logic_error("Missing selection brush");const auto& brush=*request.brush;
-     PatternBrushLibrary captureLibrary(fillBrushLibraryDirectory());auto stored=captureLibrary.save("笔刷",encodePatternBrushPng(brush),true,brush.sourceX,brush.sourceY);
-     if(!temporaryBrushReturnProfile_)temporaryBrushReturnProfile_=brushFeedback_.brushProfiles_[0];temporaryBrushActive_=true;brushFeedback_.brushProfiles_[0].imagePaintMode=PatternPaintMode::Paint;pencilImageBrushAngle_=0;pencilImageBrushId_=stored.id;pencilImageBrush_=brush;fillPattern_.brushes.clear();fillLibrarySelection_={};fillImageName_.clear();d.previewSelection({});selectionPivot_.reset();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;brushLibraryNeedsReload_=true;
+     PatternBrushLibrary captureLibrary(fillBrushLibraryDirectory());auto value=captureLibrary.save("笔刷",encodePatternBrushPng(brush),true,brush.sourceX,brush.sourceY);
+     if(!currentTools().temporaryBrushReturnProfile)currentTools().temporaryBrushReturnProfile=currentTools().brushProfiles[0];currentTools().temporaryBrushActive=true;currentTools().brushProfiles[0].imagePaintMode=PatternPaintMode::Paint;currentTools().pencilImageBrushAngle=0;currentTools().pencilImageBrushId=value.id;currentTools().pencilImageBrush=brush;currentTools().fillPattern.brushes.clear();currentTools().fillLibrarySelection={};currentTools().fillImageName.clear();d.previewSelection({});currentView().pivot.reset();selectionPropertiesActive_=false;currentView().freeTransform=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=false;brushLibraryNeedsReload_=true;
      status_=U"选区笔刷已保存到本地库";scripts_->localBrushes=captureLibrary.list().brushes;
     }catch(const std::exception& e){status_=U"创建选区笔刷失败："+unicodeText(e.what());}refresh();return;
    }
@@ -735,20 +771,20 @@ void Editor::initializeScripts(const std::filesystem::path& root){
     for(const auto& path:paths)try{auto imported=importPatternBrush(path);library.save(utf8Text(imported.name),encodePatternBrushPng(imported.brush));}catch(const std::exception&){}
    }else{
     const auto& id=request.id;const auto project=std::find_if(d.projectBrushes().begin(),d.projectBrushes().end(),[&](const auto& b){return b.metadata.id==id;});
-    if(project!=d.projectBrushes().end()){d.deleteProjectBrush(id);fillLibrarySelection_.removed("project:"+id);if(pencilImageBrushId_=="project:"+id){pencilImageBrushId_.clear();pencilImageBrush_.reset();}applyFillLibrarySelection();}
+    if(project!=d.projectBrushes().end()){d.deleteProjectBrush(id);currentTools().fillLibrarySelection.removed("project:"+id);if(currentTools().pencilImageBrushId=="project:"+id){currentTools().pencilImageBrushId.clear();currentTools().pencilImageBrush.reset();}applyFillLibrarySelection();}
     else library.remove(id);
    }
    brushLibraryNeedsReload_=true;scripts_->localBrushes=library.list().brushes;refresh();
   });
   script::WorkspaceHost workspace;
-  workspace.current=[this]()->Document*{return documentOpen_&&!homeOpen_?&document:nullptr;};
-  workspace.find=[this](std::uint64_t id)->Document*{if(documentOpen_&&document.identity()==id)return &document;for(auto& slot:projects_)if(slot->stored&&slot->stored->identity()==id)return &*slot->stored;return nullptr;};
-  workspace.focus=[this](std::uint64_t id)->Document*{ensureProjects();for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).identity()==id){activateProject(i);return documentOpen_&&document.identity()==id?&document:nullptr;}return nullptr;};
+  workspace.current=[this]()->Document*{return documentOpen_&&!homeOpen_?&currentDocument():nullptr;};
+  workspace.find=[this](std::uint64_t id)->Document*{const auto owner=resolveSession(id);return owner?&owner->value:nullptr;};
+  workspace.focus=[this](std::uint64_t id)->Document*{ensureProjects();for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).identity()==id){activateProject(i);return documentOpen_&&currentDocument().identity()==id?&currentDocument():nullptr;}return nullptr;};
   workspace.execute=[this](const std::string& path,const std::string& options){runScriptWorkspace(path,options);};
   state->host->setWorkspaceHost(std::move(workspace));
-  state->host->setExportHost([this](Document& d,const std::string& options){if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua export target changed");runScriptExport(options);});
+  state->host->setExportHost([this](Document& d,const std::string& options){if(&d!=&currentDocument()||!documentOpen_||homeOpen_)throw std::logic_error("Lua export target changed");runScriptExport(options);});
   state->host->setSaveHost([this](Document& d,const script::SaveRequest& request){
-   if(&d!=&document||!documentOpen_||homeOpen_)throw std::logic_error("Lua save target changed");
+   if(&d!=&currentDocument()||!documentOpen_||homeOpen_)throw std::logic_error("Lua save target changed");
    scriptSaving_=true;struct SaveGuard{bool& value;~SaveGuard(){value=false;}} savingGuard{scriptSaving_};
    const auto identity=d.identity();saveProject(request.saveAs,identity,request.optionsJson);
    // Pump the established bounded snapshot/worker save until it publishes. The
@@ -764,22 +800,22 @@ void Editor::initializeScripts(const std::filesystem::path& root){
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
 }
 void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->host.reset();scripts_.reset();}
-void Editor::runScript(const std::string& id){if(!scripts_||scripts_->client.busy()||!scripts_->queued.empty()||pending_!=Pending::None||!documentOpen_||homeOpen_)return;cancelStroke();if(!scripts_->brushes.valid())scripts_->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});scripts_->queued=id;scripts_->queuedIdentity=document.identity();scripts_->queuedLayer=document.layer().id;scripts_->queuedFrame=document.frame().id;}
+void Editor::runScript(const std::string& id){if(!scripts_||scripts_->client.busy()||!scripts_->queued.empty()||pending_!=Pending::None||!documentOpen_||homeOpen_)return;cancelStroke();if(!scripts_->brushes.valid())scripts_->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});scripts_->queued=id;scripts_->queuedIdentity=currentDocument().identity();scripts_->queuedLayer=currentDocument().layer().id;scripts_->queuedFrame=currentDocument().frame().id;}
 bool Editor::escapeScript(){if(!scripts_||(!scripts_->client.session()&&!scripts_->host->hasReport()))return false;scripts_->host->queueEscape();return true;}
 void Editor::pumpScripts(){
  if(!scripts_||scripts_->pumping)return;auto state=scripts_;state->pumping=true;struct Guard{bool& value;~Guard(){value=false;}} guard{state->pumping};
  if(state->brushes.valid()&&state->brushes.wait_for(std::chrono::seconds(0))==std::future_status::ready){try{state->localBrushes=state->brushes.get().brushes;}catch(const std::exception& e){state->queued.clear();state->client.failRequest(e.what());}}
  if(pending_!=Pending::None)return;
  if(state->menus)state->menus->pump();
- auto* active=documentOpen_&&!homeOpen_?&document:nullptr;
- const auto identity=document.identity(),content=document.contentRevision(),history=document.historyRevision(),overlay=document.floatingOverlayRevision();const auto frame=document.frame().id,layer=document.layer().id;
- if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==document.identity()&&state->queuedLayer==document.layer().id&&state->queuedFrame==document.frame().id)state->host->run(active,std::move(id));}
+ auto* active=documentOpen_&&!homeOpen_?&currentDocument():nullptr;
+ const auto identity=currentDocument().identity(),content=currentDocument().contentRevision(),history=currentDocument().historyRevision(),overlay=currentDocument().floatingOverlayRevision();const auto frame=currentDocument().frame().id,layer=currentDocument().layer().id;
+ if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==currentDocument().identity()&&state->queuedLayer==currentDocument().layer().id&&state->queuedFrame==currentDocument().frame().id)state->host->run(active,std::move(id));}
  state->host->pump(active,std::chrono::steady_clock::now()+std::chrono::milliseconds(3));
  // Publish discovery only after reception; do not enqueue another scan here.
  if(state->menuRevision!=state->client.listingRevision()){struct Publishing{bool& flag;Publishing(bool& f):flag(f){flag=true;}~Publishing(){flag=false;}} publishing(state->publishingMenu);updateScriptsMenu();}
  // Legacy setTimeout(0): deliver after result handling and any tab adoption.
  if(!state->notifications.empty()){status_=std::move(state->notifications.back());state->notifications.clear();invalidate();}
- if(identity!=document.identity()||content!=document.contentRevision()||history!=document.historyRevision()||overlay!=document.floatingOverlayRevision()||frame!=document.frame().id||layer!=document.layer().id)refresh();
+ if(identity!=currentDocument().identity()||content!=currentDocument().contentRevision()||history!=currentDocument().historyRevision()||overlay!=currentDocument().floatingOverlayRevision()||frame!=currentDocument().frame().id||layer!=currentDocument().layer().id)refresh();
 }
 void Editor::updateScriptsMenu(){
  if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;if(!scripts_->publishingMenu)client.refresh();scripts_->menuRevision=client.listingRevision();auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
@@ -806,53 +842,53 @@ __declspec(noinline) void Editor::smokeScriptWorkspace(const std::filesystem::pa
   using namespace winrt::Windows::Data::Json;
   auto runBoundary=[&](const std::string& code,bool fail=false){std::ofstream(root/"workspace-check-trace.txt",std::ios::app)<<"\n"<<code<<std::endl;std::ofstream(root/"scripts/workspace-entry.lua")<<code;runScript("workspace-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(30);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(scripts_->client.running()||(!scripts_->client.error().empty())!=fail)throw std::runtime_error("Formal workspace boundary failed: "+scripts_->client.error());if(fail){if(!escapeScript())throw std::runtime_error("Boundary report missing");pumpScripts();}};
   std::ofstream(root/"workspace-check-trace.txt")<<"start";
-  const auto sourceId=document.identity();const auto originalCount=projects_.size();const auto originalPalette=document.palette().entries.size();const std::size_t freshPalette=32; // native builtin palette contract
+  const auto sourceId=currentDocument().identity();const auto originalCount=projects_.size();const auto originalPalette=currentDocument().palette().entries.size();const std::size_t freshPalette=32; // native builtin palette contract
   runBoundary("app.transaction('create boundary',function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.create{name='Script boundary',width=4,height=2}; mse.palette.create{r=14,g=15,b=16} end)");
-  if(document.identity()==sourceId||document.name()!=U"Script boundary"||document.width()!=4||document.height()!=2||projects_.size()!=originalCount+1||document.palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal create did not switch active session");
-  const auto createdId=document.identity();auto source=saveProjectIndex(sourceId);if(!source)throw std::runtime_error("Formal boundary source lost");activateProject(*source);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal boundary source prefix missing");document.undo();if(document.pixels()[0])throw std::runtime_error("Formal boundary source undo failed");document.redo();
+  if(currentDocument().identity()==sourceId||currentDocument().name()!=U"Script boundary"||currentDocument().width()!=4||currentDocument().height()!=2||projects_.size()!=originalCount+1||currentDocument().palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal create did not switch active session");
+  const auto createdId=currentDocument().identity();auto source=saveProjectIndex(sourceId);if(!source)throw std::runtime_error("Formal boundary source lost");activateProject(*source);if(currentDocument().pixels()[0]!=0xff123456)throw std::runtime_error("Formal boundary source prefix missing");currentDocument().undo();if(currentDocument().pixels()[0])throw std::runtime_error("Formal boundary source undo failed");currentDocument().redo();
   runBoundary("app.transaction(function() mse.document.create{name='Next batch',width=2,height=1}; mse.palette.create{r=2,g=3,b=4} end); app.transaction(function() mse.palette.create{r=5,g=6,b=7} end)");
-  if(document.identity()!=sourceId||document.palette().entries.size()!=originalPalette+1)throw std::runtime_error("Formal next batch did not refocus source");
-  const auto beforeFail=document.palette().entries.size(),history=document.historyPosition();runBoundary("app.transaction(function() mse.palette.create{r=21,g=22,b=23}; mse.document.create{name='Survive failure',width=2,height=1}; mse.palette.create{r=24,g=25,b=26}; mse.workspace.showPanel('invalid-panel') end)",true);
-  if(document.name()!=U"Survive failure"||document.palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal failure lost new session effects");source=saveProjectIndex(sourceId);activateProject(*source);if(document.palette().entries.size()!=beforeFail||document.historyPosition()!=history)throw std::runtime_error("Formal failure did not rollback background source");
+  if(currentDocument().identity()!=sourceId||currentDocument().palette().entries.size()!=originalPalette+1)throw std::runtime_error("Formal next batch did not refocus source");
+  const auto beforeFail=currentDocument().palette().entries.size(),history=currentDocument().historyPosition();runBoundary("app.transaction(function() mse.palette.create{r=21,g=22,b=23}; mse.document.create{name='Survive failure',width=2,height=1}; mse.palette.create{r=24,g=25,b=26}; mse.workspace.showPanel('invalid-panel') end)",true);
+  if(currentDocument().name()!=U"Survive failure"||currentDocument().palette().entries.size()!=freshPalette+1)throw std::runtime_error("Formal failure lost new session effects");source=saveProjectIndex(sourceId);activateProject(*source);if(currentDocument().palette().entries.size()!=beforeFail||currentDocument().historyPosition()!=history)throw std::runtime_error("Formal failure did not rollback background source");
   const auto dir=root/("workspace-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(dir);auto image=std::make_unique<Document>(2,1);image->beginStroke({0,0},0xffabcdef);image->commitStroke();writeExportBytesAtomic(dir/"open.png",encodeStaticImagePng(*image,{}).png);
   const auto imported=std::make_unique<Document>(openRasterImage(dir/"open.png"));const auto importedPalette=imported->palette().entries.size();
   auto quote=[](const std::filesystem::path& p){return winrt::to_string(JsonValue::CreateStringValue(winrt::to_hstring(p.u8string())).Stringify());};
-  runBoundary("mse.document.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=31,g=32,b=33}");if(document.pixels()[0]!=0xffabcdef||document.palette().entries.size()!=importedPalette+1)throw std::runtime_error("Formal explicit open boundary failed");
-  const auto openedId=document.identity();runBoundary("mse.io.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=34,g=35,b=36}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+2)throw std::runtime_error("Formal open existing tab alias failed");
-  const auto oldChooser=chooseOpenFile_;chooseOpenFile_=[&](OPENFILENAMEW* chooser){const auto path=(dir/L"open.png").wstring();std::copy(path.begin(),path.end(),chooser->lpstrFile);chooser->lpstrFile[path.size()]=0;chooser->lpstrFile[path.size()+1]=0;return true;};runBoundary("mse.io.open(); mse.palette.create{r=46,g=47,b=48}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+3)throw std::runtime_error("Formal chooser success did not use open path");
-  chooseOpenFile_=[](OPENFILENAMEW*){return false;};runBoundary("mse.io.open(); mse.palette.create{r=37,g=38,b=39}");chooseOpenFile_=oldChooser;if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+4)throw std::runtime_error("Formal chooser cancellation did not continue");
-  runBoundary("mse.document.open{path="+quote(dir/"missing.moonsprite")+"}; mse.palette.create{r=40,g=41,b=42}");if(pending_!=Pending::None||document.identity()!=openedId||document.palette().entries.size()!=importedPalette+5)throw std::runtime_error("Formal failed open did not continue");
+  runBoundary("mse.document.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=31,g=32,b=33}");if(currentDocument().pixels()[0]!=0xffabcdef||currentDocument().palette().entries.size()!=importedPalette+1)throw std::runtime_error("Formal explicit open boundary failed");
+  const auto openedId=currentDocument().identity();runBoundary("mse.io.open{path="+quote(dir/"open.png")+"}; mse.palette.create{r=34,g=35,b=36}");if(currentDocument().identity()!=openedId||currentDocument().palette().entries.size()!=importedPalette+2)throw std::runtime_error("Formal open existing tab alias failed");
+  const auto oldChooser=chooseOpenFile_;chooseOpenFile_=[&](OPENFILENAMEW* chooser){const auto path=(dir/L"open.png").wstring();std::copy(path.begin(),path.end(),chooser->lpstrFile);chooser->lpstrFile[path.size()]=0;chooser->lpstrFile[path.size()+1]=0;return true;};runBoundary("mse.io.open(); mse.palette.create{r=46,g=47,b=48}");if(currentDocument().identity()!=openedId||currentDocument().palette().entries.size()!=importedPalette+3)throw std::runtime_error("Formal chooser success did not use open path");
+  chooseOpenFile_=[](OPENFILENAMEW*){return false;};runBoundary("mse.io.open(); mse.palette.create{r=37,g=38,b=39}");chooseOpenFile_=oldChooser;if(currentDocument().identity()!=openedId||currentDocument().palette().entries.size()!=importedPalette+4)throw std::runtime_error("Formal chooser cancellation did not continue");
+  runBoundary("mse.document.open{path="+quote(dir/"missing.moonsprite")+"}; mse.palette.create{r=40,g=41,b=42}");if(pending_!=Pending::None||currentDocument().identity()!=openedId||currentDocument().palette().entries.size()!=importedPalette+5)throw std::runtime_error("Formal failed open did not continue");
   // Unsupported color modes remain explicit; do not advertise full create.
-  runBoundary("mse.document.create{colorMode='indexed'}; mse.palette.create{r=43,g=44,b=45}");if(document.identity()!=openedId||document.palette().entries.size()!=importedPalette+6)throw std::runtime_error("Formal create rejection did not continue");
-  const auto ioSource=document.identity();const auto ioSourcePalette=document.palette().entries.size();
+  runBoundary("mse.document.create{colorMode='indexed'}; mse.palette.create{r=43,g=44,b=45}");if(currentDocument().identity()!=openedId||currentDocument().palette().entries.size()!=importedPalette+6)throw std::runtime_error("Formal create rejection did not continue");
+  const auto ioSource=currentDocument().identity();const auto ioSourcePalette=currentDocument().palette().entries.size();
   runBoundary("assert(mse.isSupported('document.open') and mse.isSupported('io.open')); app.transaction(function() mse.document.create{name='Boundary IO',width=2,height=1}; mse.palette.create{r=70,g=71,b=72}; mse.document.save{saveAs=true,options={name='boundary-saved',format='moonsprite',directory="+quote(dir)+"}}; mse.io.export{format='png-rgba',name='boundary-export',directory="+quote(dir)+"}; mse.palette.create{r=73,g=74,b=75} end)");
-  const auto ioId=document.identity();auto saved=readScriptBoundaryProject(dir/"boundary-saved.moonsprite");
-  if(ioId==ioSource||saved->name()!=U"Boundary IO"||saved->palette().entries.size()!=freshPalette+1||document.palette().entries.size()!=freshPalette+2||!document.dirty()||!std::filesystem::is_regular_file(dir/"boundary-export.png"))throw std::runtime_error("Formal boundary save/export prefix wrong");
-  source=saveProjectIndex(ioSource);activateProject(*source);if(document.palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary I/O modified original palette");
+  const auto ioId=currentDocument().identity();auto saved=readScriptBoundaryProject(dir/"boundary-saved.moonsprite");
+  if(ioId==ioSource||saved->name()!=U"Boundary IO"||saved->palette().entries.size()!=freshPalette+1||currentDocument().palette().entries.size()!=freshPalette+2||!currentDocument().dirty()||!std::filesystem::is_regular_file(dir/"boundary-export.png"))throw std::runtime_error("Formal boundary save/export prefix wrong");
+  source=saveProjectIndex(ioSource);activateProject(*source);if(currentDocument().palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary I/O modified original palette");
   runBoundary("app.transaction(function() mse.palette.create{r=80,g=81,b=82}; mse.document.create{name='Boundary failed IO',width=2,height=1}; mse.palette.create{r=83,g=84,b=85}; mse.io.save{saveAs=true,options={name='boundary-failed-saved',format='moonsprite',directory="+quote(dir)+"}}; mse.io.export{format='png-rgba',name='boundary-failed-export',directory="+quote(dir)+"}; mse.palette.create{r=86,g=87,b=88}; mse.workspace.showPanel('invalid-panel') end)",true);
   auto failedSaved=readScriptBoundaryProject(dir/"boundary-failed-saved.moonsprite");
-  if(document.name()!=U"Boundary failed IO"||document.palette().entries.size()!=freshPalette+2||failedSaved->palette().entries.size()!=freshPalette+1||!std::filesystem::is_regular_file(dir/"boundary-failed-export.png"))throw std::runtime_error("Formal boundary failed I/O lost external effects");
-  source=saveProjectIndex(ioSource);activateProject(*source);if(document.palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary failed I/O did not rollback source");
+  if(currentDocument().name()!=U"Boundary failed IO"||currentDocument().palette().entries.size()!=freshPalette+2||failedSaved->palette().entries.size()!=freshPalette+1||!std::filesystem::is_regular_file(dir/"boundary-failed-export.png"))throw std::runtime_error("Formal boundary failed I/O lost external effects");
+  source=saveProjectIndex(ioSource);activateProject(*source);if(currentDocument().palette().entries.size()!=ioSourcePalette)throw std::runtime_error("Formal boundary failed I/O did not rollback source");
   auto checkFloatingBoundary=[&]() __declspec(noinline) {
   for(int side:{5,257})for(bool fail:{false,true})for(bool canceled:{false,true}){
-   auto candidate=std::make_unique<Document>(side,side);candidate->beginStroke({0,0},0xff123456);candidate->commitStroke();candidate->clearHistory();document=std::move(*candidate);documentPath_.clear();document.previewSelection(SelectionMask{0,0,1,1,{}});document.nudgeSelectionContent(1,0);refresh();
-   const auto floatingSource=document.identity();const auto floatBefore=document.pixels();const auto floatHistory=document.historyPosition();const auto chooser=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
+   auto candidate=std::make_unique<Document>(side,side);candidate->beginStroke({0,0},0xff123456);candidate->commitStroke();candidate->clearHistory();replaceDocumentForSmoke(std::move(*candidate));currentPath().clear();currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});currentDocument().nudgeSelectionContent(1,0);refresh();
+   const auto floatingSource=currentDocument().identity();const auto floatBefore=currentDocument().pixels();const auto floatHistory=currentDocument().historyPosition();const auto chooser=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
    std::string code="app.transaction(function() app.activeImage:drawPixel(3,0,0xffabcdef); ";code+=canceled?"mse.io.open()":"mse.document.open{path="+quote(dir/"open.png")+"}";code+="; mse.palette.create{r=91,g=92,b=93}";if(fail)code+="; mse.workspace.showPanel('invalid-panel')";code+=" end)";runBoundary(code,fail);chooseOpenFile_=chooser;
    const auto slot=saveProjectIndex(floatingSource);if(!slot)throw std::runtime_error("Formal floating boundary source lost");
    // Inspect background state before tab activation commits a pending preview.
    const auto& state=projectDocument(*slot);
    if(fail){if(!state.floating()||state.pixels()!=floatBefore||state.historyPosition()!=floatHistory)throw std::runtime_error("Formal floating boundary rollback lost preview/history");}
-   else if(canceled){if(document.identity()!=floatingSource||!state.floating()||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary lost preview/outside write");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456||document.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary cancel lost pixels");}
+   else if(canceled){if(currentDocument().identity()!=floatingSource||!state.floating()||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary lost preview/outside write");currentDocument().cancelFloatingPaste();if(currentDocument().pixels()[0]!=0xff123456||currentDocument().pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal canceled boundary cancel lost pixels");}
    else if(state.floating()||state.pixels()[1]!=0xff123456||state.pixels()[3]!=0xffabcdef)throw std::runtime_error("Formal open boundary lost committed preview/outside write");
   }
   };checkFloatingBoundary();
   auto checkLayerTail=[&]() __declspec(noinline) {
    for(int scenario=0;scenario<4;++scenario){
-    document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();refresh();const auto id=document.identity();const auto layer=document.layer().id;const auto picker=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
+    replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));currentPath().clear();refresh();const auto id=currentDocument().identity();const auto layer=currentDocument().layer().id;const auto picker=chooseOpenFile_;chooseOpenFile_=[](OPENFILENAMEW*){return false;};
     std::string code="app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); ";if(scenario>=2)code+="mse.layers.create{name='Survivor'}; mse.layers.remove('"+layer+"'); ";code+=scenario==1?"mse.io.open()":"mse.document.create{name='Layer tail boundary',width=2,height=1}";code+="; mse.palette.create{r=101,g=102,b=103} end); ";if(scenario!=3)code+="local l=app.activeSprite:newLayer(); l.name='Tail layer'; app.activeLayer=nil; app.activeFrame=nil";else code+="app.transaction(function() mse.palette.create{r=104,g=105,b=106} end)";
     runBoundary(code,scenario>=2);chooseOpenFile_=picker;const auto slot=saveProjectIndex(id);if(!slot)throw std::runtime_error("Formal layer tail source lost");const auto& state=projectDocument(*slot);
     if(scenario>=2){if(state.timeline().hasLayer(layer)||state.timeline().state().layers.size()!=1||state.layer().name!=U"Survivor")throw std::runtime_error("Formal missing source layer tail altered survivor");}
-    else{if(document.identity()!=id||document.layer().name!=U"Tail layer"||document.timeline().state().layers.size()!=2||document.historySize()!=2)throw std::runtime_error("Formal layer tail source/history wrong");document.undo();if(document.layer().id!=layer||document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal layer tail undo failed");document.undo();if(document.pixels()[0])throw std::runtime_error("Formal layer tail source undo failed");document.redo();document.redo();if(document.layer().name!=U"Tail layer")throw std::runtime_error("Formal layer tail redo failed");}
+    else{if(currentDocument().identity()!=id||currentDocument().layer().name!=U"Tail layer"||currentDocument().timeline().state().layers.size()!=2||currentDocument().historySize()!=2)throw std::runtime_error("Formal layer tail source/history wrong");currentDocument().undo();if(currentDocument().layer().id!=layer||currentDocument().pixels()[0]!=0xff123456)throw std::runtime_error("Formal layer tail undo failed");currentDocument().undo();if(currentDocument().pixels()[0])throw std::runtime_error("Formal layer tail source undo failed");currentDocument().redo();currentDocument().redo();if(currentDocument().layer().name!=U"Tail layer")throw std::runtime_error("Formal layer tail redo failed");}
    }
   };checkLayerTail();
   if(!saveProjectIndex(createdId))throw std::runtime_error("Earlier created session lost");
@@ -860,70 +896,70 @@ __declspec(noinline) void Editor::smokeScriptWorkspace(const std::filesystem::pa
 }
 void Editor::smokeScriptEntry(){
  using namespace winrt::Windows::Data::Json;
- smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;playing_=false;document=std::move(*std::make_unique<Document>(3,1));refresh();const auto root=script::executableDirectory()/"script-entry-test-owned";std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script entry fixture";std::ofstream(root/"scripts/entry.lua")<<"app.activeImage:drawPixel(1,0,0xff123456); print('entry'); local d=Dialog('Entry'); d:button{id='done',text='Done',onclick=function() app.activeImage:drawPixel(2,0,0xffabcdef); d:close() end}; d:show{wait=false}";
+ smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;currentPlayback().playing=false;replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));refresh();const auto root=script::executableDirectory()/"script-entry-test-owned";std::filesystem::create_directories(root/"scripts");std::ofstream(root/"test-owned.marker")<<"script entry fixture";std::ofstream(root/"scripts/entry.lua")<<"app.activeImage:drawPixel(1,0,0xff123456); print('entry'); local d=Dialog('Entry'); d:button{id='done',text='Done',onclick=function() app.activeImage:drawPixel(2,0,0xffabcdef); d:close() end}; d:show{wait=false}";
  brushLibraryTestDirectory_=root/"brushes";initializeScripts(root);if(!scripts_)throw std::runtime_error("Script initialization failed");const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);while((scripts_->client.loading()||scripts_->brushes.valid())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}updateScriptsMenu();bool found=false;for(auto child:scriptsMenu_->children())if(auto row=dynamic_cast<PixelMenuItem*>(child);row&&row->id()=="entry.lua"){row->Click();found=true;break;}if(!found)throw std::runtime_error("Discovered script missing from menu");
- while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}if(document.pixels()[1]!=0xff123456||!scripts_->client.session()||scripts_->host->windowCount()!=1||!scripts_->host->hasReport())throw std::runtime_error("Menu run did not apply/show native dialog");runScript("entry.lua");if(!scripts_->queued.empty())throw std::runtime_error("Modeless session allowed rerun");
+ while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<end){pumpScripts();std::this_thread::yield();}if(currentDocument().pixels()[1]!=0xff123456||!scripts_->client.session()||scripts_->host->windowCount()!=1||!scripts_->host->hasReport())throw std::runtime_error("Menu run did not apply/show native dialog");runScript("entry.lua");if(!scripts_->queued.empty())throw std::runtime_error("Modeless session allowed rerun");
  if(auto manager=ui::Manager::getDefault())manager->invalidate();
- auto models=winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson));auto id=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id"));scripts_->host->window(id)->clickForCheck("done");do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<end);if(document.pixels()[2]!=0xffabcdef||scripts_->client.session())throw std::runtime_error("Native menu dialog callback failed");document.undo();if(document.pixels()[2])throw std::runtime_error("Menu script undo failed");document.redo();if(document.pixels()[2]!=0xffabcdef)throw std::runtime_error("Menu script redo failed");
+ auto models=winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson));auto id=winrt::to_string(models.GetObjectAt(0).GetNamedString(L"id"));scripts_->host->window(id)->clickForCheck("done");do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<end);if(currentDocument().pixels()[2]!=0xffabcdef||scripts_->client.session())throw std::runtime_error("Native menu dialog callback failed");currentDocument().undo();if(currentDocument().pixels()[2])throw std::runtime_error("Menu script undo failed");currentDocument().redo();if(currentDocument().pixels()[2]!=0xffabcdef)throw std::runtime_error("Menu script redo failed");
  // Production dialog callbacks must repaint deferred overlays without pixel/history changes.
  for(int side:{5,257}){
-  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();refresh();
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(side,side)));currentDocument().beginStroke({0,0},0xff123456);currentDocument().commitStroke();currentDocument().clearHistory();refresh();
   std::ofstream(root/"scripts/transform-dialog.lua")<<"app.transaction(function() mse.selection.set{x=0,y=0,width=1,height=1}; mse.selection.transform{dx=1} end); local d=Dialog('Transform'); d:button{id='move',text='Move',onclick=function() mse.selection.transform{dx=1} end}; d:button{id='finish',text='Finish',onclick=function() d:close() end}; d:button{id='fail',text='Fail',onclick=function() app.transaction(function() mse.selection.transform{dx=1}; mse.palette.update(999,{name='bad'}) end) end}; d:show{wait=false}";
   auto pumpTransform=[&]{const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal transform callback failed");};
-  runScript("transform-dialog.lua");pumpTransform();if(!document.floating()||!document.selection()||document.selection()->x!=1||!scripts_->client.session())throw std::runtime_error("Formal transform initial state missing");
-  const auto dialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto contentBefore=document.contentRevision(),historyBefore=document.historyRevision(),refreshBefore=panelFullRefreshes_;
-  scripts_->host->window(dialog)->clickForCheck("move");pumpTransform();if(document.selection()->x!=2||!document.floating()||panelFullRefreshes_==refreshBefore)throw std::runtime_error("Formal transform callback did not refresh");if(side==257&&(document.contentRevision()!=contentBefore||document.historyRevision()!=historyBefore))throw std::runtime_error("Deferred transform callback changed content/history");
-  scripts_->host->window(dialog)->clickForCheck("finish");pumpTransform();if(scripts_->client.session()||scripts_->host->windowCount()||!document.floating())throw std::runtime_error("Formal transform close lost pending selection");document.commitFloatingPaste();if(document.pixels()[2]!=0xff123456||document.pixels()[0])throw std::runtime_error("Formal transform commit wrong");document.undo();if(document.pixels()[0]!=0xff123456||document.pixels()[2])throw std::runtime_error("Formal transform undo wrong");document.redo();if(document.pixels()[2]!=0xff123456)throw std::runtime_error("Formal transform redo wrong");
-  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();runScript("transform-dialog.lua");pumpTransform();const auto failedDialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto failHistory=document.historyPosition();scripts_->host->window(failedDialog)->clickForCheck("fail");const auto failureUntil=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<failureUntil);if(scripts_->client.running()||scripts_->client.error().empty()||scripts_->client.session()||scripts_->host->windowCount()||!scripts_->host->hasReport()||!document.floating()||document.selection()->x!=1||document.historyPosition()!=failHistory)throw std::runtime_error("Formal transform failure cleanup/rollback wrong");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal transform failure cancel wrong");if(!escapeScript())throw std::runtime_error("Formal transform failure report Escape refused");pumpScripts();
+  runScript("transform-dialog.lua");pumpTransform();if(!currentDocument().floating()||!currentDocument().selection()||currentDocument().selection()->x!=1||!scripts_->client.session())throw std::runtime_error("Formal transform initial state missing");
+  const auto dialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto contentBefore=currentDocument().contentRevision(),historyBefore=currentDocument().historyRevision(),refreshBefore=panelFullRefreshes_;
+  scripts_->host->window(dialog)->clickForCheck("move");pumpTransform();if(currentDocument().selection()->x!=2||!currentDocument().floating()||panelFullRefreshes_==refreshBefore)throw std::runtime_error("Formal transform callback did not refresh");if(side==257&&(currentDocument().contentRevision()!=contentBefore||currentDocument().historyRevision()!=historyBefore))throw std::runtime_error("Deferred transform callback changed content/history");
+  scripts_->host->window(dialog)->clickForCheck("finish");pumpTransform();if(scripts_->client.session()||scripts_->host->windowCount()||!currentDocument().floating())throw std::runtime_error("Formal transform close lost pending selection");currentDocument().commitFloatingPaste();if(currentDocument().pixels()[2]!=0xff123456||currentDocument().pixels()[0])throw std::runtime_error("Formal transform commit wrong");currentDocument().undo();if(currentDocument().pixels()[0]!=0xff123456||currentDocument().pixels()[2])throw std::runtime_error("Formal transform undo wrong");currentDocument().redo();if(currentDocument().pixels()[2]!=0xff123456)throw std::runtime_error("Formal transform redo wrong");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(side,side)));currentDocument().beginStroke({0,0},0xff123456);currentDocument().commitStroke();currentDocument().clearHistory();runScript("transform-dialog.lua");pumpTransform();const auto failedDialog=winrt::to_string(JsonArray::Parse(winrt::to_hstring(scripts_->client.session()->dialogsJson)).GetObjectAt(0).GetNamedString(L"id"));const auto failHistory=currentDocument().historyPosition();scripts_->host->window(failedDialog)->clickForCheck("fail");const auto failureUntil=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while(scripts_->client.running()&&std::chrono::steady_clock::now()<failureUntil);if(scripts_->client.running()||scripts_->client.error().empty()||scripts_->client.session()||scripts_->host->windowCount()||!scripts_->host->hasReport()||!currentDocument().floating()||currentDocument().selection()->x!=1||currentDocument().historyPosition()!=failHistory)throw std::runtime_error("Formal transform failure cleanup/rollback wrong");currentDocument().cancelFloatingPaste();if(currentDocument().pixels()[0]!=0xff123456)throw std::runtime_error("Formal transform failure cancel wrong");if(!escapeScript())throw std::runtime_error("Formal transform failure report Escape refused");pumpScripts();
  }
  // Fresh invocations must retain the existing floating transaction through async discovery.
  std::ofstream(root/"scripts/continue-floating.lua")<<"assert(mse.isSupported('selection.transform')); assert(mse.capabilities.selection.status=='stable'); mse.selection.transform{dx=1}";
  std::ofstream(root/"scripts/fail-floating.lua")<<"app.transaction(function() mse.selection.transform{dx=1}; mse.palette.update(999,{name='bad'}) end)";
  for(int side:{5,257})for(bool fail:{false,true}){
-  document=std::move(*std::make_unique<Document>(side,side));document.beginStroke({0,0},0xff123456);document.commitStroke();document.clearHistory();document.previewSelection(SelectionMask{0,0,1,1,{}});if(!document.nudgeSelectionContent(1,0)||!document.floating())throw std::runtime_error("Fresh script floating setup failed");refresh();
-  const auto launchHistory=document.historyRevision(),launchContent=document.contentRevision(),launchOverlay=document.floatingOverlayRevision();const auto launchPosition=document.historyPosition();
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(side,side)));currentDocument().beginStroke({0,0},0xff123456);currentDocument().commitStroke();currentDocument().clearHistory();currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});if(!currentDocument().nudgeSelectionContent(1,0)||!currentDocument().floating())throw std::runtime_error("Fresh script floating setup failed");refresh();
+  const auto launchHistory=currentDocument().historyRevision(),launchContent=currentDocument().contentRevision(),launchOverlay=currentDocument().floatingOverlayRevision();const auto launchPosition=currentDocument().historyPosition();
   std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript(fail?"fail-floating.lua":"continue-floating.lua");
-  if(scripts_->queued.empty()||!document.floating()||document.selection()->x!=1||document.historyRevision()!=launchHistory||document.contentRevision()!=launchContent||document.floatingOverlayRevision()!=launchOverlay)throw std::runtime_error("Fresh script launch committed floating state");
-  pumpScripts();if(scripts_->queued.empty()||!document.floating()||document.historyPosition()!=launchPosition)throw std::runtime_error("Brush wait lost floating state");wait.set_value(PatternBrushListing{});
+  if(scripts_->queued.empty()||!currentDocument().floating()||currentDocument().selection()->x!=1||currentDocument().historyRevision()!=launchHistory||currentDocument().contentRevision()!=launchContent||currentDocument().floatingOverlayRevision()!=launchOverlay)throw std::runtime_error("Fresh script launch committed floating state");
+  pumpScripts();if(scripts_->queued.empty()||!currentDocument().floating()||currentDocument().historyPosition()!=launchPosition)throw std::runtime_error("Brush wait lost floating state");wait.set_value(PatternBrushListing{});
   const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);
-  if(!scripts_->queued.empty()||scripts_->client.running()||!document.floating()||!document.selection()||document.selection()->x!=(fail?1:2)||scripts_->client.session()||scripts_->host->windowCount())throw std::runtime_error("Fresh script floating completion wrong");
-  if(fail){if(scripts_->client.error().empty()||!scripts_->host->hasReport()||document.historyPosition()!=launchPosition)throw std::runtime_error("Fresh script failure changed history or lost report");document.cancelFloatingPaste();if(document.pixels()[0]!=0xff123456||document.pixels()[1]||document.pixels()[2])throw std::runtime_error("Fresh script failure cancel lost source");if(!escapeScript())throw std::runtime_error("Fresh script failure report Escape refused");pumpScripts();}
-  else{if(!scripts_->client.error().empty())throw std::runtime_error("Fresh script transform failed");if(side==257&&(document.contentRevision()!=launchContent||document.historyRevision()!=launchHistory))throw std::runtime_error("Fresh deferred script materialized floating state");document.commitFloatingPaste();if(document.pixels()[0]||document.pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script commit lost source");document.undo();if(document.pixels()[0]!=0xff123456||document.pixels()[2])throw std::runtime_error("Fresh script undo split floating transaction");document.redo();if(document.pixels()[0]||document.pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script redo wrong");}
+  if(!scripts_->queued.empty()||scripts_->client.running()||!currentDocument().floating()||!currentDocument().selection()||currentDocument().selection()->x!=(fail?1:2)||scripts_->client.session()||scripts_->host->windowCount())throw std::runtime_error("Fresh script floating completion wrong");
+  if(fail){if(scripts_->client.error().empty()||!scripts_->host->hasReport()||currentDocument().historyPosition()!=launchPosition)throw std::runtime_error("Fresh script failure changed history or lost report");currentDocument().cancelFloatingPaste();if(currentDocument().pixels()[0]!=0xff123456||currentDocument().pixels()[1]||currentDocument().pixels()[2])throw std::runtime_error("Fresh script failure cancel lost source");if(!escapeScript())throw std::runtime_error("Fresh script failure report Escape refused");pumpScripts();}
+  else{if(!scripts_->client.error().empty())throw std::runtime_error("Fresh script transform failed");if(side==257&&(currentDocument().contentRevision()!=launchContent||currentDocument().historyRevision()!=launchHistory))throw std::runtime_error("Fresh deferred script materialized floating state");currentDocument().commitFloatingPaste();if(currentDocument().pixels()[0]||currentDocument().pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script commit lost source");currentDocument().undo();if(currentDocument().pixels()[0]!=0xff123456||currentDocument().pixels()[2])throw std::runtime_error("Fresh script undo split floating transaction");currentDocument().redo();if(currentDocument().pixels()[0]||currentDocument().pixels()[2]!=0xff123456)throw std::runtime_error("Fresh script redo wrong");}
  }
  // Formal save aliases must wait for the existing async save and preserve MSE order.
- {const auto picker=chooseSaveFile_;const auto savedPath=documentPath_;const auto preferences=runtimePreferences_;const auto async=asyncSaveForSmoke_;const auto decision=asepriteSaveDecisionForSmoke_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseSaveFile_=picker;documentPath_=savedPath;runtimePreferences_=preferences;asyncSaveForSmoke_=async;asepriteSaveDecisionForSmoke_=decision;}};asyncSaveForSmoke_=true;runtimePreferences_.set("files.saveOriginalFormat","true");asepriteSaveDecisionForSmoke_=[](bool,const auto&){return 2;};
+ {const auto picker=chooseSaveFile_;const auto savedPath=currentPath();const auto preferences=runtimePreferences_;const auto async=asyncSaveForSmoke_;const auto decision=asepriteSaveDecisionForSmoke_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseSaveFile_=picker;currentPath()=savedPath;runtimePreferences_=preferences;asyncSaveForSmoke_=async;asepriteSaveDecisionForSmoke_=decision;}};asyncSaveForSmoke_=true;runtimePreferences_.set("files.saveOriginalFormat","true");asepriteSaveDecisionForSmoke_=[](bool,const auto&){return 2;};
   auto runSave=[&](const std::string& source){std::ofstream(root/"scripts/save-entry.lua")<<source;runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(!scripts_->queued.empty()||scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal script save failed: "+scripts_->client.error());};
-  document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();refresh();const auto path=root/"script-saved.moonsprite";chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=path.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=1;return true;};
-  runSave("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.save(); mse.palette.create{r=3,g=4,b=5} end)");auto read=[&](const auto& path){std::ifstream file(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>();bytes->assign(std::istreambuf_iterator<char>(file),{});return bytes;};auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path))));if(opened.pixels()[0]!=0xff123456||opened.palette().entries.size()+1!=document.palette().entries.size()||!document.dirty()||pending_!=Pending::None)throw std::runtime_error("Formal save did not wait before next operation");document.undo();if(document.pixels()[0]||document.palette().entries.size()!=opened.palette().entries.size())throw std::runtime_error("Formal saved script undo wrong");document.redo();
-  runSave("mse.io.save()");if(document.dirty()||project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path)))).palette().entries.size()!=document.palette().entries.size())throw std::runtime_error("Formal io save alias failed");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));currentPath().clear();refresh();const auto path=root/"script-saved.moonsprite";chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=path.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=1;return true;};
+  runSave("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.document.save(); mse.palette.create{r=3,g=4,b=5} end)");auto read=[&](const auto& path){std::ifstream file(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>();bytes->assign(std::istreambuf_iterator<char>(file),{});return bytes;};auto opened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path))));if(opened.pixels()[0]!=0xff123456||opened.palette().entries.size()+1!=currentDocument().palette().entries.size()||!currentDocument().dirty()||pending_!=Pending::None)throw std::runtime_error("Formal save did not wait before next operation");currentDocument().undo();if(currentDocument().pixels()[0]||currentDocument().palette().entries.size()!=opened.palette().entries.size())throw std::runtime_error("Formal saved script undo wrong");currentDocument().redo();
+  runSave("mse.io.save()");if(currentDocument().dirty()||project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(path)))).palette().entries.size()!=currentDocument().palette().entries.size())throw std::runtime_error("Formal io save alias failed");
   JsonObject options;options.Insert(L"directory",JsonValue::CreateStringValue(root.wstring()));const auto encodedDirectory=winrt::to_string(options.GetNamedValue(L"directory").Stringify());
-  runSave("mse.document.save{saveAs=true,options={name='scaled.png',format='png',scalePercent=200,directory="+encodedDirectory+"}}");auto png=openRasterImage(root/"scaled.png");if(png.width()!=6||png.height()!=2||document.width()!=3||document.height()!=1)throw std::runtime_error("Formal script save options scaling wrong");
+  runSave("mse.document.save{saveAs=true,options={name='scaled.png',format='png',scalePercent=200,directory="+encodedDirectory+"}}");auto png=openRasterImage(root/"scaled.png");if(png.width()!=6||png.height()!=2||currentDocument().width()!=3||currentDocument().height()!=1)throw std::runtime_error("Formal script save options scaling wrong");
   for(bool image:{false,true}){
-   document=std::move(*std::make_unique<Document>(3,1));documentPath_.clear();document.markSaved();refresh();const auto failurePath=root/(image?"saved-before-error.png":"saved-before-error.moonsprite");
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));currentPath().clear();currentDocument().markSaved();refresh();const auto failurePath=root/(image?"saved-before-error.png":"saved-before-error.moonsprite");
    chooseSaveFile_=[&](OPENFILENAMEW* chooser){auto text=failurePath.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;chooser->nFilterIndex=image?4:1;return true;};
    std::ofstream(root/"scripts/save-entry.lua")<<"app.transaction(function() app.activeImage:drawPixel(2,0,0xffabcdef); mse.document.save{saveAs=true,options={format='"<<(image?"png":"moonsprite")<<"'}}; mse.palette.update(999,{name='bad'}) end)";
    runScript("save-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(20);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);
-   if(scripts_->client.running()||!scripts_->queued.empty()||scripts_->client.error().empty()||document.pixels()[2]||document.dirty()||document.historyPosition()!=0)throw std::runtime_error("Formal save failure did not restore batch baseline");
-   if(image){if(documentPath_!=failurePath||document.name()!=failurePath.filename().u32string()||openRasterImage(failurePath).pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal image save failure lost persisted metadata");}
-   else{auto persisted=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(failurePath))));if(documentPath_!=failurePath||document.projectId().empty()||document.projectId()!=persisted.projectId()||!document.sourceArchive()||persisted.pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal native save failure lost persisted identity");}
+   if(scripts_->client.running()||!scripts_->queued.empty()||scripts_->client.error().empty()||currentDocument().pixels()[2]||currentDocument().dirty()||currentDocument().historyPosition()!=0)throw std::runtime_error("Formal save failure did not restore batch baseline");
+   if(image){if(currentPath()!=failurePath||currentDocument().name()!=failurePath.filename().u32string()||openRasterImage(failurePath).pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal image save failure lost persisted metadata");}
+   else{auto persisted=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(read(failurePath))));if(currentPath()!=failurePath||currentDocument().projectId().empty()||currentDocument().projectId()!=persisted.projectId()||!currentDocument().sourceArchive()||persisted.pixels()[2]!=0xffabcdef)throw std::runtime_error("Formal native save failure lost persisted identity");}
    if(!escapeScript())throw std::runtime_error("Formal save failure report Escape refused");pumpScripts();
-   runSave("app.activeImage:drawPixel(1,0,0xff112233); mse.document.save()");if(document.dirty()||document.pixels()[1]!=0xff112233)throw std::runtime_error("Formal save failed to recover after rollback");
+   runSave("app.activeImage:drawPixel(1,0,0xff112233); mse.document.save()");if(currentDocument().dirty()||currentDocument().pixels()[1]!=0xff112233)throw std::runtime_error("Formal save failed to recover after rollback");
   }
-  chooseSaveFile_=[](OPENFILENAMEW*){return false;};const auto revision=document.revision();runSave("mse.io.save{saveAs=true}; mse.palette.create{r=7,g=8,b=9}");if(document.revision()==revision||pending_!=Pending::None)throw std::runtime_error("Formal save cancellation stopped later operation");
+  chooseSaveFile_=[](OPENFILENAMEW*){return false;};const auto revision=currentDocument().revision();runSave("mse.io.save{saveAs=true}; mse.palette.create{r=7,g=8,b=9}");if(currentDocument().revision()==revision||pending_!=Pending::None)throw std::runtime_error("Formal save cancellation stopped later operation");
  }
  // Full export host uses the production chooser, snapshot, worker and encoders.
- {const auto picker=chooseExportFile_;const auto originalPath=documentPath_;const auto previousMemory=exportMemoryPathOverride_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseExportFile_=picker;documentPath_=originalPath;exportMemoryPathOverride_=previousMemory;}};
+ {const auto picker=chooseExportFile_;const auto originalPath=currentPath();const auto previousMemory=exportMemoryPathOverride_;struct Restore{std::function<void()> run;~Restore(){run();}} restore{[&]{chooseExportFile_=picker;currentPath()=originalPath;exportMemoryPathOverride_=previousMemory;}};
   // Unique fixture destinations avoid prompting over earlier test-owned exports.
   const auto directory=root/("exports-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(directory);exportMemoryPathOverride_=directory/"settings.txt";
   JsonObject value;value.Insert(L"directory",JsonValue::CreateStringValue(directory.wstring()));const auto encodedDirectory=winrt::to_string(value.GetNamedValue(L"directory").Stringify());
   auto run=[&](const std::string& source,bool fail=false){std::ofstream(root/"scripts/export-entry.lua")<<source;runScript("export-entry.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(30);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(!scripts_->queued.empty()||scripts_->client.running()||scripts_->client.error().empty()==fail)throw std::runtime_error("Formal script export failed: "+scripts_->client.error());if(fail){if(!escapeScript())throw std::runtime_error("Export error report Escape refused");pumpScripts();}};
   auto bytes=[&](const auto& path){std::ifstream input(path,std::ios::binary);return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),{});};
-  document=std::move(*std::make_unique<Document>(3,2));documentPath_.clear();refresh();
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,2)));currentPath().clear();refresh();
   for(const std::string format:{"png-rgba","png-auto","bmp","ico","svg","jpeg","gif","webp","psd","ase","aseprite","moonsprite"}){
    const auto extension=format=="png-rgba"||format=="png-auto"?"png":format=="jpeg"?"jpg":format;
-   const auto name="format-"+format;const auto output=directory/(name+"."+extension);const auto identity=document.identity();const auto projectId=document.projectId();const auto archive=document.sourceArchive();const auto source=document.sourceFilePath();const auto savedName=document.name();
+   const auto name="format-"+format;const auto output=directory/(name+"."+extension);const auto identity=currentDocument().identity();const auto projectId=currentDocument().projectId();const auto archive=currentDocument().sourceArchive();const auto source=currentDocument().sourceFilePath();const auto savedName=currentDocument().name();
    run("app.transaction(function() app.activeImage:drawPixel(0,0,0xff123456); mse.io.export{format='"+format+"',name='"+name+"',directory="+encodedDirectory+",scalePercent=200}; mse.palette.create{r=1,g=2,b=3} end)");
-   if(!std::filesystem::is_regular_file(output)||document.identity()!=identity||document.projectId()!=projectId||document.sourceArchive()!=archive||document.sourceFilePath()!=source||document.name()!=savedName||!documentPath_.empty()||!document.dirty()||pending_!=Pending::None)throw std::runtime_error("Export mutated persistence state or omitted file: "+format);
+   if(!std::filesystem::is_regular_file(output)||currentDocument().identity()!=identity||currentDocument().projectId()!=projectId||currentDocument().sourceArchive()!=archive||currentDocument().sourceFilePath()!=source||currentDocument().name()!=savedName||!currentPath().empty()||!currentDocument().dirty()||pending_!=Pending::None)throw std::runtime_error("Export mutated persistence state or omitted file: "+format);
    auto memory=readExportMemory();if(memory.empty()||memory.front().filename!=output.filename().u8string()||std::filesystem::u8path(memory.front().directory)!=directory)throw std::runtime_error("Script export memory missing: "+format);
    openDocumentExport();if(exportDirectory_!=directory||exportFilename_->text()!=output.filename().u8string()||exportExtension()!=output.extension().wstring()||(format=="moonsprite"?exportOptions_.scalePercent!=100:format=="gif"||format=="webp"?gifOptions_.scalePercent!=200:exportOptions_.scalePercent!=200))throw std::runtime_error("Script export memory restoration wrong: "+format);resolve(false);
    if(format=="png-rgba"||format=="png-auto"||format=="bmp"||format=="jpeg"||format=="webp"){auto image=std::make_unique<Document>(openRasterImage(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export format scale wrong: "+format);}
@@ -931,30 +967,30 @@ void Editor::smokeScriptEntry(){
    if(format=="gif"){auto image=std::make_unique<Document>(openGifAnimation(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export GIF scale wrong");}
    if(format=="psd"){auto image=std::make_unique<Document>(openPsd(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export PSD scale wrong");}
    if(format=="ase"||format=="aseprite"){auto image=std::make_unique<Document>(openAseprite(output));if(image->width()!=6||image->height()!=4)throw std::runtime_error("Export ASE scale wrong");}
-   if(format=="moonsprite"){auto file=std::make_shared<project::Bytes>(bytes(output));auto image=std::make_unique<Document>(project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(file))));if(image->width()!=3||image->height()!=2||image->palette().entries.size()+1!=document.palette().entries.size())throw std::runtime_error("Native export changed dimensions or operation order");}
+   if(format=="moonsprite"){auto file=std::make_shared<project::Bytes>(bytes(output));auto image=std::make_unique<Document>(project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(file))));if(image->width()!=3||image->height()!=2||image->palette().entries.size()+1!=currentDocument().palette().entries.size())throw std::runtime_error("Native export changed dimensions or operation order");}
   }
   // Production chooser path is used when no directory is supplied.
   const auto chosen=directory/"chosen-output";chooseExportFile_=[&](OPENFILENAMEW* chooser){auto text=chosen.wstring();std::copy(text.begin(),text.end(),chooser->lpstrFile);chooser->lpstrFile[text.size()]=0;return true;};run("mse.io.export{format='png-rgba'}");if(!std::filesystem::is_regular_file(directory/"chosen-output.png"))throw std::runtime_error("Export chooser did not normalize extension");
   // Selection mask and transformed prefix, subsequent failure leaves export on disk.
-  document=std::move(*std::make_unique<Document>(3,1));refresh();run("app.transaction(function() app.activeImage:drawPixel(0,0,0xffabcdef); mse.selection.set{x=0,y=0,width=2,height=1,mask={1,0}}; mse.selection.transform{dx=1}; mse.io.export{format='png-rgba',target='selection',name='masked-prefix',directory="+encodedDirectory+"}; mse.palette.update(999,{name='bad'}) end)",true);
-  auto masked=std::make_unique<Document>(openRasterImage(directory/"masked-prefix.png"));if(masked->width()!=2||masked->height()!=1||masked->pixels()[0]!=0xffabcdef||masked->pixels()[1]||document.pixels()[0]||document.historyPosition()!=0||document.selection())throw std::runtime_error("Export mask/prefix/rollback wrong "+std::to_string(masked->width())+"x"+std::to_string(masked->height())+" p="+std::to_string(masked->pixels()[0])+","+std::to_string(masked->pixels().back())+" live="+std::to_string(document.pixels()[0])+" history="+std::to_string(document.historyPosition())+" selection="+std::to_string(bool(document.selection())));
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));refresh();run("app.transaction(function() app.activeImage:drawPixel(0,0,0xffabcdef); mse.selection.set{x=0,y=0,width=2,height=1,mask={1,0}}; mse.selection.transform{dx=1}; mse.io.export{format='png-rgba',target='selection',name='masked-prefix',directory="+encodedDirectory+"}; mse.palette.update(999,{name='bad'}) end)",true);
+  auto masked=std::make_unique<Document>(openRasterImage(directory/"masked-prefix.png"));if(masked->width()!=2||masked->height()!=1||masked->pixels()[0]!=0xffabcdef||masked->pixels()[1]||currentDocument().pixels()[0]||currentDocument().historyPosition()!=0||currentDocument().selection())throw std::runtime_error("Export mask/prefix/rollback wrong "+std::to_string(masked->width())+"x"+std::to_string(masked->height())+" p="+std::to_string(masked->pixels()[0])+","+std::to_string(masked->pixels().back())+" live="+std::to_string(currentDocument().pixels()[0])+" history="+std::to_string(currentDocument().historyPosition())+" selection="+std::to_string(bool(currentDocument().selection())));
   // Layers, invalid requested layer fallback, slices and directed frame range.
-  document=std::move(*std::make_unique<Document>(3,2));document.beginStroke({0,0},0xff123456);document.commitStroke();const auto bottom=document.layer().id;document.addLayer();document.beginStroke({2,1},0xffabcdef);document.commitStroke();document.createSlices({{0,0,1,1}});refresh();
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,2)));currentDocument().beginStroke({0,0},0xff123456);currentDocument().commitStroke();const auto bottom=currentDocument().layer().id;currentDocument().addLayer();currentDocument().beginStroke({2,1},0xffabcdef);currentDocument().commitStroke();currentDocument().createSlices({{0,0,1,1}});refresh();
   run("mse.io.export{format='png-rgba',target='layer',layerId='missing',name='layers',directory="+encodedDirectory+"}");std::size_t layerFiles=0;for(const auto& entry:std::filesystem::directory_iterator(directory))if(entry.path().filename().u8string().rfind("layers-",0)==0)++layerFiles;if(layerFiles!=2)throw std::runtime_error("Export layer fallback omitted layers");
   run("mse.io.export{format='png-rgba',target='slices',directory="+encodedDirectory+"}");bool sliceFile=false;for(const auto& entry:std::filesystem::directory_iterator(directory))if(entry.path().filename().u8string().rfind("layers-",0)!=0&&entry.path().extension()==L".png"){auto image=std::make_unique<Document>(openRasterImage(entry.path()));sliceFile|=image->width()==1&&image->height()==1;}if(!sliceFile)throw std::runtime_error("Export slice output missing");
   openDocumentExport();if(!exportSlices_||exportDirectory_!=directory)throw std::runtime_error("Slice export memory lost target/directory");resolve(false);
-  document=std::move(*std::make_unique<Document>(3,1));document.beginStroke({0,0},0xff112233);document.commitStroke();document.addFrame(true);document.beginStroke({0,0},0xff445566);document.commitStroke();document.addFrame(true);document.beginStroke({0,0},0xff778899);document.commitStroke();refresh();
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));currentDocument().beginStroke({0,0},0xff112233);currentDocument().commitStroke();currentDocument().addFrame(true);currentDocument().beginStroke({0,0},0xff445566);currentDocument().commitStroke();currentDocument().addFrame(true);currentDocument().beginStroke({0,0},0xff778899);currentDocument().commitStroke();refresh();
   run("mse.io.export{format='png-rgba',target='frames',name='sequence',directory="+encodedDirectory+",gifFrameRange='range',gifFrameStart=2,gifFrameEnd=3,gifDirection='reverse'}");if(openRasterImage(directory/"sequence-001.png").pixels()[0]!=0xff778899||openRasterImage(directory/"sequence-002.png").pixels()[0]!=0xff445566)throw std::runtime_error("Export sequence order/range wrong");
   run("mse.io.export{format='webp',target='frames',name='frames-webp',directory="+encodedDirectory+"}");if(!std::filesystem::is_regular_file(directory/"frames-webp.webp"))throw std::runtime_error("WebP frames document fallback missing");
   // Directed GIF range and static crop use the same production option decoding.
   run("mse.io.export{format='gif',name='reverse-range',directory="+encodedDirectory+",gifFrameRange='range',gifFrameStart=2,gifFrameEnd=3,gifDirection='reverse'}");auto directed=std::make_unique<Document>(openGifAnimation(directory/"reverse-range.gif"));if(directed->timeline().state().frames.size()!=2||directed->pixels()[0]!=0xff778899)throw std::runtime_error("Export GIF directed range wrong");
-  document=std::move(*std::make_unique<Document>(5,4));document.beginStroke({2,1},0xff123456);document.commitStroke();refresh();run("mse.io.export{format='png-rgba',name='trimmed',directory="+encodedDirectory+",trimMode='individual',scalePercent=200}");auto trimmed=std::make_unique<Document>(openRasterImage(directory/"trimmed.png"));if(trimmed->width()!=2||trimmed->height()!=2||trimmed->pixels()[0]!=0xff123456)throw std::runtime_error("Export trim/scale wrong");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(5,4)));currentDocument().beginStroke({2,1},0xff123456);currentDocument().commitStroke();refresh();run("mse.io.export{format='png-rgba',name='trimmed',directory="+encodedDirectory+",trimMode='individual',scalePercent=200}");auto trimmed=std::make_unique<Document>(openRasterImage(directory/"trimmed.png"));if(trimmed->width()!=2||trimmed->height()!=2||trimmed->pixels()[0]!=0xff123456)throw std::runtime_error("Export trim/scale wrong");
   // Cancel while bounded capture/worker is active; later MSE must still run.
-  document=std::move(*std::make_unique<Document>(257,257));refresh();bool canceled=false;ui::Timer cancelExport(1,this);cancelExport.Tick.connect([&]{if(scriptExporting_){canceled=true;cancelExport.stop();resolve(false);}});cancelExport.start();run("mse.io.export{format='png-rgba',name='canceled',directory="+encodedDirectory+"}; mse.palette.create{r=22,g=33,b=44}");cancelExport.stop();if(!canceled||pending_!=Pending::None||document.palette().entries.back().color!=0xff2c2116)throw std::runtime_error("Export active cancellation did not continue");
-  chooseExportFile_=[](OPENFILENAMEW*){return false;};auto count=document.palette().entries.size();run("mse.io.export{}; mse.palette.create{r=9,g=8,b=7}");if(document.palette().entries.size()!=count+1||pending_!=Pending::None)throw std::runtime_error("Export cancellation stopped script");
-  count=document.palette().entries.size();run("mse.io.export{format='moonsprite',target='selection',directory="+encodedDirectory+"}; mse.palette.create{r=6,g=5,b=4}");if(document.palette().entries.size()!=count+1)throw std::runtime_error("Export workspace failure aborted script");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(257,257)));refresh();bool canceled=false;ui::Timer cancelExport(1,this);cancelExport.Tick.connect([&]{if(scriptExporting_){canceled=true;cancelExport.stop();resolve(false);}});cancelExport.start();run("mse.io.export{format='png-rgba',name='canceled',directory="+encodedDirectory+"}; mse.palette.create{r=22,g=33,b=44}");cancelExport.stop();if(!canceled||pending_!=Pending::None||currentDocument().palette().entries.back().color!=0xff2c2116)throw std::runtime_error("Export active cancellation did not continue");
+  chooseExportFile_=[](OPENFILENAMEW*){return false;};auto count=currentDocument().palette().entries.size();run("mse.io.export{}; mse.palette.create{r=9,g=8,b=7}");if(currentDocument().palette().entries.size()!=count+1||pending_!=Pending::None)throw std::runtime_error("Export cancellation stopped script");
+  count=currentDocument().palette().entries.size();run("mse.io.export{format='moonsprite',target='selection',directory="+encodedDirectory+"}; mse.palette.create{r=6,g=5,b=4}");if(currentDocument().palette().entries.size()!=count+1)throw std::runtime_error("Export workspace failure aborted script");
  }
- document=std::move(*std::make_unique<Document>(3,1));refresh();
+ replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));refresh();
  // Production menu receives completed discovery without a second open.
  auto menuHas=[&](const std::string& id){for(auto child:scriptsMenu_->children())if(child->id()==id)return true;return false;};
  auto awaitMenu=[&]{const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<until){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Menu discovery timeout");};
@@ -974,18 +1010,18 @@ void Editor::smokeScriptEntry(){
  smokeScriptWorkspace(root);
  // A slow brush listing must not prevent list reception or native report pumping.
  std::promise<PatternBrushListing> delayed;auto ready=delayed.get_future();scripts_->brushes=std::move(ready);scripts_->client.refresh();const auto listEnd=std::chrono::steady_clock::now()+std::chrono::seconds(5);while(scripts_->client.loading()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.loading())throw std::runtime_error("Brush loading blocked script discovery");
- runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=document.identity();document=std::move(*std::make_unique<Document>(3,1));delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||document.identity()==oldIdentity||document.pixels()[1])throw std::runtime_error("Queued run changed new document");
+ runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Delayed run was not queued");auto oldIdentity=currentDocument().identity();replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));delayed.set_value(PatternBrushListing{});while(!scripts_->queued.empty()&&std::chrono::steady_clock::now()<listEnd){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||currentDocument().identity()==oldIdentity||currentDocument().pixels()[1])throw std::runtime_error("Queued run changed new document");
  // Layer/frame changes during deferred discovery cancel the queued original target.
- auto cancelAfterSwitch=[&](bool layer){document=std::move(*std::make_unique<Document>(3,1));const auto originalLayer=document.layer().id;document.addLayer();document.addFrame();const auto originalFrame=document.timeline().state().frames.front().id;std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Target-switch run was not queued");if(layer)document.selectLayer(originalLayer);else document.selectFrame(originalFrame);wait.set_value(PatternBrushListing{});pumpScripts();if(!scripts_->queued.empty()||scripts_->client.running())throw std::runtime_error("Queued run followed changed layer/frame");};
+ auto cancelAfterSwitch=[&](bool layer){replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));const auto originalLayer=currentDocument().layer().id;currentDocument().addLayer();currentDocument().addFrame();const auto originalFrame=currentDocument().timeline().state().frames.front().id;std::promise<PatternBrushListing> wait;scripts_->brushes=wait.get_future();runScript("entry.lua");if(scripts_->queued.empty())throw std::runtime_error("Target-switch run was not queued");if(layer)currentDocument().selectLayer(originalLayer);else currentDocument().selectFrame(originalFrame);wait.set_value(PatternBrushListing{});pumpScripts();if(!scripts_->queued.empty()||scripts_->client.running())throw std::runtime_error("Queued run followed changed layer/frame");};
  cancelAfterSwitch(true);cancelAfterSwitch(false);
  // Selection alone does not publish a content/history revision; the Editor must still refresh.
- document=std::move(*std::make_unique<Document>(3,1));document.addLayer();const auto otherLayer=document.timeline().state().layers.back().id;const auto originalHistory=document.historyRevision();const auto originalContent=document.contentRevision();const auto refreshes=panelFullRefreshes_;
- std::ofstream(root/"scripts/select-layer.lua")<<"app.activeLayer=app.activeSprite.layers[1]";runScript("select-layer.lua");const auto selectionEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<selectionEnd){pumpScripts();std::this_thread::yield();}if(document.layer().id!=otherLayer||document.historyRevision()!=originalHistory||document.contentRevision()!=originalContent||panelFullRefreshes_==refreshes)throw std::runtime_error("Layer-only script selection did not refresh without history");
+ replaceDocumentForSmoke(std::move(*std::make_unique<Document>(3,1)));currentDocument().addLayer();const auto otherLayer=currentDocument().timeline().state().layers.back().id;const auto originalHistory=currentDocument().historyRevision();const auto originalContent=currentDocument().contentRevision();const auto refreshes=panelFullRefreshes_;
+ std::ofstream(root/"scripts/select-layer.lua")<<"app.activeLayer=app.activeSprite.layers[1]";runScript("select-layer.lua");const auto selectionEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<selectionEnd){pumpScripts();std::this_thread::yield();}if(currentDocument().layer().id!=otherLayer||currentDocument().historyRevision()!=originalHistory||currentDocument().contentRevision()!=originalContent||panelFullRefreshes_==refreshes)throw std::runtime_error("Layer-only script selection did not refresh without history");
  auto folder=menuItems_.at("openScriptFolder");for(int pass=0;pass<3;++pass){updateScriptsMenu();const auto rows=scriptsMenu_->children();if(std::count(rows.begin(),rows.end(),folder)!=1||menuItems_.at("openScriptFolder")!=folder)throw std::runtime_error("Script menu lost original folder command");}
  std::ofstream(root/"scripts/broken.lua")<<"error('entry-failure')";runScript("broken.lua");const auto failureEnd=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(scripts_->client.error().empty()||!scripts_->host->hasReport())throw std::runtime_error("Menu script error not shown");if(!escapeScript())throw std::runtime_error("Script report Escape refused");pumpScripts();if(scripts_->host->hasReport())throw std::runtime_error("Script report Escape retained report");
- std::ofstream(root/"scripts/recover.lua")<<"app.activeImage:drawPixel(0,0,0xff112233)";runScript("recover.lua");while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(document.pixels()[0]!=0xff112233||!scripts_->client.error().empty())throw std::runtime_error("Menu script did not recover after failure");
+ std::ofstream(root/"scripts/recover.lua")<<"app.activeImage:drawPixel(0,0,0xff112233)";runScript("recover.lua");while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<failureEnd){pumpScripts();std::this_thread::yield();}if(currentDocument().pixels()[0]!=0xff112233||!scripts_->client.error().empty())throw std::runtime_error("Menu script did not recover after failure");
  // Exercise the production host for every panel and all four dock destinations.
- const auto savedDocking=docking_;const auto savedVisible=columnVisibility();const auto panelHistory=document.historyPosition();const auto panelIdentity=document.identity();
+ const auto savedDocking=docking_;const auto savedVisible=columnVisibility();const auto panelHistory=currentDocument().historyPosition();const auto panelIdentity=currentDocument().identity();
  auto runPanelCheck=[&](const std::string& source){std::ofstream(root/"scripts/workspace-panels.lua")<<source;runScript("workspace-panels.lua");const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until){pumpScripts();std::this_thread::yield();}if(!scripts_->queued.empty()||scripts_->client.running()||!scripts_->client.error().empty())throw std::runtime_error("Formal workspace panel script failed: "+scripts_->client.error());};
  for(const auto& [name,index]:std::initializer_list<std::pair<const char*,int>>{{"color",1},{"palette",0},{"layers",2},{"history",8},{"preview",3},{"reference",9},{"tileset",11},{"brushes",12},{"tabletAssist",10}}){
   runPanelCheck(std::string("mse.workspace.hidePanel('")+name+"')");if(columnVisibility()[index])throw std::runtime_error("Script hide panel ignored");
@@ -993,58 +1029,58 @@ void Editor::smokeScriptEntry(){
   for(const auto& [dock,expected]:std::initializer_list<std::pair<const char*,panels::Dock>>{{"left",panels::Dock::Left},{"right",panels::Dock::Right},{"bottom",panels::Dock::Bottom},{"floating",panels::Dock::Floating}}){runPanelCheck(std::string("mse.workspace.setPanel('")+name+"',{dock='"+dock+"',visible=true})");if(docking_.groups[docking_.groupOf(index)].dock!=expected)throw std::runtime_error("Script panel docking ignored");}
  }
  runPanelCheck("mse.workspace.showPanel('freeTileInstances')");if(freeTileInstancesOpen_)throw std::runtime_error("Empty raster instance panel bypassed existing availability");
- if(document.identity()!=panelIdentity||document.historyPosition()!=panelHistory||document.pixels()[0]!=0xff112233)throw std::runtime_error("Panel script edited document");
+ if(currentDocument().identity()!=panelIdentity||currentDocument().historyPosition()!=panelHistory||currentDocument().pixels()[0]!=0xff112233)throw std::runtime_error("Panel script edited document");
  palettePanelOpen_=savedVisible[0];colorPickerOpen_=savedVisible[1];layersPanelOpen_=savedVisible[2];previewPanelOpen_=savedVisible[3];historyPanelOpen_=savedVisible[8];referencePanelOpen_=savedVisible[9];tabletVisibility_.visible=savedVisible[10];tilesetPanelOpen_=savedVisible[11];brushLibraryPanelOpen_=savedVisible[12];docking_=savedDocking;
  // Styles share one document transaction and the native menu clipboard.
- const auto savedStyleClipboard=copiedLayerStyle_;const auto savedStyleClipboardValid=layerStyleClipboard_;const auto styleHistory=document.historyPosition();
+ const auto savedStyleClipboard=copiedLayerStyle_;const auto savedStyleClipboardValid=layerStyleClipboard_;const auto styleHistory=currentDocument().historyPosition();
  runPanelCheck("app.transaction(function() app.activeImage:drawPixel(1,0,0xff765432); mse.styles.apply{styles={colorOverlay={enabled=true,color={r=17,g=34,b=51,a=255}},shadow={enabled=true,offsetX=-3}}}; mse.styles.copy(); mse.styles.setEnabled{enabled=false} end)");
- if(document.historyPosition()!=styleHistory+1||!document.layer().layerStyles||document.layer().layerStyles->enabled||document.layer().layerStyles->color!=0xff332211||!layerStyleClipboard_||!copiedLayerStyle_||!copiedLayerStyle_->enabled)throw std::runtime_error("Formal script style transaction/clipboard failed");
- document.undo();if(document.layer().layerStyles||document.pixels()[1])throw std::runtime_error("Formal script style undo failed");document.redo();
- runPanelCheck("mse.styles.clear()");if(document.layer().layerStyles)throw std::runtime_error("Formal style clear ignored");
- if(!menuCommands_.invoke("pasteLayerStyles")||!document.layer().layerStyles||!document.layer().layerStyles->enabled)throw std::runtime_error("Native paste did not use script clipboard");
- if(!menuCommands_.invoke("copyLayerStyles"))throw std::runtime_error("Native copy style refused");runPanelCheck("mse.styles.clear(); mse.styles.paste()");if(!document.layer().layerStyles||document.layer().layerStyles->shadow.offsetX!=-3)throw std::runtime_error("Script paste did not use native clipboard");
+ if(currentDocument().historyPosition()!=styleHistory+1||!currentDocument().layer().layerStyles||currentDocument().layer().layerStyles->enabled||currentDocument().layer().layerStyles->color!=0xff332211||!layerStyleClipboard_||!copiedLayerStyle_||!copiedLayerStyle_->enabled)throw std::runtime_error("Formal script style transaction/clipboard failed");
+ currentDocument().undo();if(currentDocument().layer().layerStyles||currentDocument().pixels()[1])throw std::runtime_error("Formal script style undo failed");currentDocument().redo();
+ runPanelCheck("mse.styles.clear()");if(currentDocument().layer().layerStyles)throw std::runtime_error("Formal style clear ignored");
+ if(!menuCommands_.invoke("pasteLayerStyles")||!currentDocument().layer().layerStyles||!currentDocument().layer().layerStyles->enabled)throw std::runtime_error("Native paste did not use script clipboard: active="+std::to_string(currentDocument().active())+" targets="+std::to_string(currentDocument().layerStyleTargets().size())+" valid="+std::to_string(layerStyleClipboard_)+" copied="+std::to_string(bool(copiedLayerStyle_))+" enabled="+std::to_string(copiedLayerStyle_&&copiedLayerStyle_->enabled)+" style="+std::to_string(bool(currentDocument().layer().layerStyles))+" group="+currentDocument().selectedGroupId().value_or("none"));
+ if(!menuCommands_.invoke("copyLayerStyles"))throw std::runtime_error("Native copy style refused");runPanelCheck("mse.styles.clear(); mse.styles.paste()");if(!currentDocument().layer().layerStyles||currentDocument().layer().layerStyles->shadow.offsetX!=-3)throw std::runtime_error("Script paste did not use native clipboard");
  copiedLayerStyle_=savedStyleClipboard;layerStyleClipboard_=savedStyleClipboardValid;
- const auto propertyHistory=document.historyPosition();const auto propertyName=document.layer().name;const auto propertyPixel=document.pixels()[0];
+ const auto propertyHistory=currentDocument().historyPosition();const auto propertyName=currentDocument().layer().name;const auto propertyPixel=currentDocument().pixels()[0];
  runPanelCheck("app.transaction(function() app.activeImage:drawPixel(0,0,0xffaabbcc); mse.layers.update{name='  Script properties  ',description=' raw ',opacity=128,blendMode='multiply',x=4,y=5,displayColor={r=1,g=2,b=3}} end)");
- if(document.historyPosition()!=propertyHistory+1||document.layer().name!=U"Script properties"||document.layer().description!=U" raw "||document.layer().opacity!=128./255.||document.activeSurfaceIfPresent()->offsetX!=4||document.pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
- document.undo();if(document.layer().name!=propertyName||document.activeSurfaceIfPresent()->offsetX!=0||document.pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");document.redo();if(document.layer().name!=U"Script properties"||document.activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");document.undo();
+ if(currentDocument().historyPosition()!=propertyHistory+1||currentDocument().layer().name!=U"Script properties"||currentDocument().layer().description!=U" raw "||currentDocument().layer().opacity!=128./255.||currentDocument().activeSurfaceIfPresent()->offsetX!=4||currentDocument().pixels()[0]!=0xffaabbcc)throw std::runtime_error("Formal script layer properties failed");
+ currentDocument().undo();if(currentDocument().layer().name!=propertyName||currentDocument().activeSurfaceIfPresent()->offsetX!=0||currentDocument().pixels()[0]!=propertyPixel)throw std::runtime_error("Formal script layer properties undo failed");currentDocument().redo();if(currentDocument().layer().name!=U"Script properties"||currentDocument().activeSurfaceIfPresent()->offsetY!=5)throw std::runtime_error("Formal script layer properties redo failed");currentDocument().undo();
 
  // Project brush removal uses the real script host and persists without history.
- ProjectBrushResource scriptBrush;scriptBrush.metadata.id="script-owned-brush";scriptBrush.metadata.name="Script brush";scriptBrush.metadata.width=scriptBrush.metadata.height=1;scriptBrush.metadata.dataFile="brushes/script-owned.gray";scriptBrush.brush.width=scriptBrush.brush.height=1;scriptBrush.brush.coverage={255};scriptBrush.brush.colors={0xff123456};document.setImportedProjectBrushes({scriptBrush});const auto brushHistory=document.historyPosition();
- runPanelCheck("mse.brushes.remove('script-owned-brush')");if(!document.projectBrushes().empty()||document.historyPosition()!=brushHistory||!project::readProjectManifest(project::encodeEditableProject(document).bytes).customBrushes.empty())throw std::runtime_error("Formal script project brush removal failed");
- PatternBrushLibrary scriptLibrary(fillBrushLibraryDirectory());const auto localScriptBrush=scriptLibrary.save("script-owned-local",encodePatternBrushPng(scriptBrush.brush));const auto localBrushHistory=document.historyPosition();runPanelCheck("mse.brushes.remove('"+localScriptBrush.id+"')");if(std::filesystem::exists(std::filesystem::u8path(localScriptBrush.filePath))||document.historyPosition()!=localBrushHistory)throw std::runtime_error("Formal script local brush deletion failed");
+ ProjectBrushResource scriptBrush;scriptBrush.metadata.id="script-owned-brush";scriptBrush.metadata.name="Script brush";scriptBrush.metadata.width=scriptBrush.metadata.height=1;scriptBrush.metadata.dataFile="brushes/script-owned.gray";scriptBrush.brush.width=scriptBrush.brush.height=1;scriptBrush.brush.coverage={255};scriptBrush.brush.colors={0xff123456};currentDocument().setImportedProjectBrushes({scriptBrush});const auto brushHistory=currentDocument().historyPosition();
+ runPanelCheck("mse.brushes.remove('script-owned-brush')");if(!currentDocument().projectBrushes().empty()||currentDocument().historyPosition()!=brushHistory||!project::readProjectManifest(project::encodeEditableProject(currentDocument()).bytes).customBrushes.empty())throw std::runtime_error("Formal script project brush removal failed");
+ PatternBrushLibrary scriptLibrary(fillBrushLibraryDirectory());const auto localScriptBrush=scriptLibrary.save("script-owned-local",encodePatternBrushPng(scriptBrush.brush));const auto localBrushHistory=currentDocument().historyPosition();runPanelCheck("mse.brushes.remove('"+localScriptBrush.id+"')");if(std::filesystem::exists(std::filesystem::u8path(localScriptBrush.filePath))||currentDocument().historyPosition()!=localBrushHistory)throw std::runtime_error("Formal script local brush deletion failed");
  // Selection brush creation uses the operation-time raster and the formal host.
- document.previewSelection(SelectionMask{0,0,1,1,{}});const auto captureHistory=document.historyPosition();
+ currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});const auto captureHistory=currentDocument().historyPosition();
  runPanelCheck("app.transaction(function() app.activeImage:drawPixel(0,0,0xff2468ac); mse.brushes.createFromSelection() end)");
- const auto capturedBrushId=pencilImageBrushId_;const auto captureListing=scriptLibrary.list();if(std::none_of(captureListing.brushes.begin(),captureListing.brushes.end(),[&](const auto& b){return b.id==capturedBrushId&&b.intrinsicSize&&b.sourceX==0&&b.sourceY==0;}))throw std::runtime_error("Formal captured brush metadata missing");
- if(document.selection()||!pencilImageBrush_||pencilImageBrush_->colors!=std::vector<Pixel>{0xff2468ac}||document.historyPosition()!=captureHistory+1||selectionTool_||eraser_)throw std::runtime_error("Formal selection brush capture failed");
- document.undo();document.redo();if(document.pixels()[0]!=0xff2468ac)throw std::runtime_error("Formal selection brush history failed");document.undo();scriptLibrary.remove(capturedBrushId);pencilImageBrushId_.clear();pencilImageBrush_.reset();document.previewSelection({});
+ const auto capturedBrushId=currentTools().pencilImageBrushId;const auto captureListing=scriptLibrary.list();if(std::none_of(captureListing.brushes.begin(),captureListing.brushes.end(),[&](const auto& b){return b.id==capturedBrushId&&b.intrinsicSize&&b.sourceX==0&&b.sourceY==0;}))throw std::runtime_error("Formal captured brush metadata missing");
+ if(currentDocument().selection()||!currentTools().pencilImageBrush||currentTools().pencilImageBrush->colors!=std::vector<Pixel>{0xff2468ac}||currentDocument().historyPosition()!=captureHistory+1||currentTools().selectionTool||currentTools().eraser)throw std::runtime_error("Formal selection brush capture failed");
+ currentDocument().undo();currentDocument().redo();if(currentDocument().pixels()[0]!=0xff2468ac)throw std::runtime_error("Formal selection brush history failed");currentDocument().undo();scriptLibrary.remove(capturedBrushId);currentTools().pencilImageBrushId.clear();currentTools().pencilImageBrush.reset();currentDocument().previewSelection({});
  // Free source and instance mutations use the production async script host.
- const auto freeScriptRaster=document.layer().id,freeScriptFrame=document.frame().id;const auto freeHistory=document.historyPosition();
+ const auto freeScriptRaster=currentDocument().layer().id,freeScriptFrame=currentDocument().frame().id;const auto freeHistory=currentDocument().historyPosition();
  runPanelCheck("app.transaction(function() mse.freeTiles.createLayer{name='Script free'}; mse.freeTiles.createSource{name='Script source'} end)");
- auto freeLayer=std::find_if(document.timeline().state().layers.begin(),document.timeline().state().layers.end(),[](const auto& l){return l.name==U"Script free";});if(freeLayer==document.timeline().state().layers.end()||freeLayer->freeTiles->sources.size()!=2||document.historyPosition()!=freeHistory+1)throw std::runtime_error("Formal free source creation failed");
+ auto freeLayer=std::find_if(currentDocument().timeline().state().layers.begin(),currentDocument().timeline().state().layers.end(),[](const auto& l){return l.name==U"Script free";});if(freeLayer==currentDocument().timeline().state().layers.end()||freeLayer->freeTiles->sources.size()!=2||currentDocument().historyPosition()!=freeHistory+1)throw std::runtime_error("Formal free source creation failed");
  const auto freeLayerId=freeLayer->id,freeSourceId=freeLayer->freeTiles->sources.back().id;
- runPanelCheck("app.transaction(function() mse.freeTiles.edit{sourceId='"+freeSourceId+"',pixels={4279383126}}; mse.freeTiles.place{layerId='"+freeLayerId+"',sourceId='"+freeSourceId+"',x=1,y=0} end)");document.selectLayer(freeLayerId);if(document.pixels()[1]!=0xff123456||document.cel().freeTiles->instances.size()!=1)throw std::runtime_error("Formal free edit/place failed");const auto freeInstanceId=document.cel().freeTiles->instances.front().id;document.undo();document.selectLayer(freeLayerId);if(!document.cel().freeTiles->instances.empty())throw std::runtime_error("Formal free undo failed");document.redo();document.selectLayer(freeLayerId);if(document.cel().freeTiles->instances.front().id!=freeInstanceId||document.pixels()[1]!=0xff123456)throw std::runtime_error("Formal free redo failed");document.undo();document.undo();document.selectLayer(freeScriptRaster);document.selectFrame(freeScriptFrame);
+ runPanelCheck("app.transaction(function() mse.freeTiles.edit{sourceId='"+freeSourceId+"',pixels={4279383126}}; mse.freeTiles.place{layerId='"+freeLayerId+"',sourceId='"+freeSourceId+"',x=1,y=0} end)");currentDocument().selectLayer(freeLayerId);if(currentDocument().pixels()[1]!=0xff123456||currentDocument().cel().freeTiles->instances.size()!=1)throw std::runtime_error("Formal free edit/place failed");const auto freeInstanceId=currentDocument().cel().freeTiles->instances.front().id;currentDocument().undo();currentDocument().selectLayer(freeLayerId);if(!currentDocument().cel().freeTiles->instances.empty())throw std::runtime_error("Formal free undo failed");currentDocument().redo();currentDocument().selectLayer(freeLayerId);if(currentDocument().cel().freeTiles->instances.front().id!=freeInstanceId||currentDocument().pixels()[1]!=0xff123456)throw std::runtime_error("Formal free redo failed");currentDocument().undo();currentDocument().undo();currentDocument().selectLayer(freeScriptRaster);currentDocument().selectFrame(freeScriptFrame);
  // Grid-tile script operations enter the same production host and history.
- const auto tileScriptRaster=document.layer().id;const auto tileScriptHistory=document.historyPosition();
+ const auto tileScriptRaster=currentDocument().layer().id;const auto tileScriptHistory=currentDocument().historyPosition();
  runPanelCheck("app.transaction(function() mse.tiles.createLayer{name='Script tiles',tileWidth=1,tileHeight=1}; mse.tiles.place{x=0,y=0} end)");
- auto scriptTile=std::find_if(document.timeline().state().layers.begin(),document.timeline().state().layers.end(),[](const auto& l){return l.name==U"Script tiles";});
- if(scriptTile==document.timeline().state().layers.end()||document.historyPosition()!=tileScriptHistory+1||!tilesetPanelOpen_)throw std::runtime_error("Formal grid script create/place failed");
- const auto scriptTileLayer=scriptTile->id,scriptSet=scriptTile->tilemapTilesetId;auto scriptSetIt=std::find_if(document.timeline().state().tilesets.begin(),document.timeline().state().tilesets.end(),[&](const auto& t){return t.id==scriptSet;});const auto scriptTileId=scriptSetIt->tileIds.front();
- document.selectLayer(tileScriptRaster);runPanelCheck("mse.tiles.edit{tilesetId='"+scriptSet+"',tileId='"+scriptTileId+"',pixels={4279383126}}");document.selectLayer(scriptTileLayer);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source edit failed");
- document.undo();document.selectLayer(scriptTileLayer);if(document.pixels()[0])throw std::runtime_error("Formal grid source undo failed");document.redo();document.selectLayer(scriptTileLayer);if(document.pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source redo failed");document.undo();document.undo();document.selectLayer(tileScriptRaster);
- const auto structureCount=document.timeline().state().layers.size(),structureHistory=document.historyPosition();
+ auto scriptTile=std::find_if(currentDocument().timeline().state().layers.begin(),currentDocument().timeline().state().layers.end(),[](const auto& l){return l.name==U"Script tiles";});
+ if(scriptTile==currentDocument().timeline().state().layers.end()||currentDocument().historyPosition()!=tileScriptHistory+1||!tilesetPanelOpen_)throw std::runtime_error("Formal grid script create/place failed");
+ const auto scriptTileLayer=scriptTile->id,scriptSet=scriptTile->tilemapTilesetId;auto scriptSetIt=std::find_if(currentDocument().timeline().state().tilesets.begin(),currentDocument().timeline().state().tilesets.end(),[&](const auto& t){return t.id==scriptSet;});const auto scriptTileId=scriptSetIt->tileIds.front();
+ currentDocument().selectLayer(tileScriptRaster);runPanelCheck("mse.tiles.edit{tilesetId='"+scriptSet+"',tileId='"+scriptTileId+"',pixels={4279383126}}");currentDocument().selectLayer(scriptTileLayer);if(currentDocument().pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source edit failed");
+ currentDocument().undo();currentDocument().selectLayer(scriptTileLayer);if(currentDocument().pixels()[0])throw std::runtime_error("Formal grid source undo failed");currentDocument().redo();currentDocument().selectLayer(scriptTileLayer);if(currentDocument().pixels()[0]!=0xff123456)throw std::runtime_error("Formal grid source redo failed");currentDocument().undo();currentDocument().undo();currentDocument().selectLayer(tileScriptRaster);
+ const auto structureCount=currentDocument().timeline().state().layers.size(),structureHistory=currentDocument().historyPosition();
  runPanelCheck("app.transaction(function() mse.layers.create{name='Script created'}; mse.layers.duplicate(); mse.layers.update{name='Script copied'} end)");
- if(document.timeline().state().layers.size()!=structureCount+2||document.historyPosition()!=structureHistory+1)throw std::runtime_error("Formal script layer structure failed");
- document.undo();if(document.timeline().state().layers.size()!=structureCount)throw std::runtime_error("Formal script structure undo failed");document.redo();if(document.timeline().state().layers.size()!=structureCount+2)throw std::runtime_error("Formal script structure redo failed");document.undo();
+ if(currentDocument().timeline().state().layers.size()!=structureCount+2||currentDocument().historyPosition()!=structureHistory+1)throw std::runtime_error("Formal script layer structure failed");
+ currentDocument().undo();if(currentDocument().timeline().state().layers.size()!=structureCount)throw std::runtime_error("Formal script structure undo failed");currentDocument().redo();if(currentDocument().timeline().state().layers.size()!=structureCount+2)throw std::runtime_error("Formal script structure redo failed");currentDocument().undo();
 
  runPanelCheck("mse.ui.notify{message='Native notification 🌙'}");if(status_!=U"Native notification 🌙")throw std::runtime_error("Formal script notification failed");
  runPanelCheck("mse.ui.notify{message=false,text='ignored'}");if(!status_.empty())throw std::runtime_error("Formal script empty notification failed");
 
  // Panel requests finish on the original tab before created documents are adopted.
- ensureProjects();const auto sourceIdentity=document.identity();const auto sourceTab=activeProject_,tabs=projects_.size();
+ ensureProjects();const auto sourceIdentity=currentDocument().identity();const auto sourceTab=activeProject_,tabs=projects_.size();
  runPanelCheck("mse.workspace.hidePanel('palette'); local s=Sprite(2,2); s.name='Script adopted'; app.activeImage:drawPixel(0,0,0xff556677)");
- if(projects_.size()!=tabs+1||document.identity()==sourceIdentity||document.width()!=2||document.height()!=2||document.name()!=U"Script adopted"||document.pixels()[0]!=0xff556677||palettePanelOpen_||projectDocument(sourceTab).identity()!=sourceIdentity||projectDocument(sourceTab).pixels()[0]!=0xff112233)throw std::runtime_error("Script panel/document adoption boundary lost original tab or pixels");
+ if(projects_.size()!=tabs+1||currentDocument().identity()==sourceIdentity||currentDocument().width()!=2||currentDocument().height()!=2||currentDocument().name()!=U"Script adopted"||currentDocument().pixels()[0]!=0xff556677||palettePanelOpen_||projectDocument(sourceTab).identity()!=sourceIdentity||projectDocument(sourceTab).pixels()[0]!=0xff112233)throw std::runtime_error("Script panel/document adoption boundary lost original tab or pixels");
  palettePanelOpen_=savedVisible[0];
  // Verify the production discovery -> contributed menu -> Lua path, including
  // the real shared More overflow layout rather than a separate test menu tree.
@@ -1057,10 +1093,10 @@ void Editor::smokeScriptEntry(){
   auto publish=[&](bool visible){updateScriptsMenu();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();manager()->dispatchMessages();std::this_thread::yield();}while((scripts_->client.loading()||bool(find(menuBar_->getMenu(),topId))!=visible)&&std::chrono::steady_clock::now()<until);if(scripts_->client.loading()||bool(find(menuBar_->getMenu(),topId))!=visible)throw std::runtime_error("Formal contribution discovery/publication timeout");};
   publish(true);for(auto child:scriptsMenu_->children())if(child->id()=="extension:menu-entry:paint")throw std::runtime_error("Placed Lua duplicated in Scripts");
   const auto ordinaryBar=menuBar_->bounds();layoutTopMenu({ordinaryBar.x,ordinaryBar.y,170*uiScale,ordinaryBar.h});auto top=find(menuBar_->getMenu(),topId);if(!top||top->parent()==menuBar_->getMenu())throw std::runtime_error("Contributed top menu not retained in More");
-  auto action=find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint");if(!action)throw std::runtime_error("Formal builtin contribution missing");action->Click();manager()->dispatchMessages();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(document.pixels()[1]!=0xff765432)throw std::runtime_error("Formal contributed Lua did not execute");
+  auto action=find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint");if(!action)throw std::runtime_error("Formal builtin contribution missing");action->Click();manager()->dispatchMessages();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(currentDocument().pixels()[1]!=0xff765432)throw std::runtime_error("Formal contributed Lua did not execute");
   extension::RuntimeDirectory::setEnabled(root/"extensions","menu-entry",false);publish(false);if(find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint"))throw std::runtime_error("Disabled formal contribution retained builtin command");refresh();std::ofstream(root/"menu-contributions-passed.txt")<<"production discovery, placement, More, Lua execution and disable passed";
  };checkContributions();
- stopScripts();document=std::move(*std::make_unique<Document>());refresh();
+ stopScripts();replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();
 }
 
 }

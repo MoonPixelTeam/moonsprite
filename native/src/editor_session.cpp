@@ -1,3 +1,10 @@
+#include "editor.h"
+#include "selection_pattern_brush.h"
+#include "recovery_store.h"
+#include "project_import.h"
+#include "project_file.h"
+#include "webp_export.h"
+#include "new_document_dialog.h"
 #include <winrt/Windows.Data.Json.h>
 #include "recovery_commit.h"
 #include "image_sequence_dialog.h"
@@ -5,21 +12,36 @@
 #include "aseprite_io.h"
 #include "psd_import.h"
 #include "psd_export.h"
-#include "editor_implementation.h"
-#include "editor.h"
+#include "preview_panel.h"
+#include "ui_frame_capture.h"
+#include "free_tile_instances_panel.h"
 #include "extension_install_dialog.h"
 #include "lua_script_service.h"
 #include "image_save.h"
 #include "document_save_policy.h"
+#include "save_decision.h"
+#include "captured_save.h"
 #include "image_file_signature.h"
 #include "save_format_dialog.h"
 #include "timelapse_session.h"
 #include "project_restore_report.h"
 #include "runtime_diagnostics.h"
-#include <tuple>
+#include <utility>
 
 namespace moon::editor {
 namespace {
+// Observe settled selection state only; this helper never mutates Document.
+template<class View> void projectOrdinarySelectionPivot(View& view,const Document& source){
+ const bool transient=source.floating()||source.paintCellMoving()||source.layerMoveActive();
+ if(view.pivotIdentity!=source.identity()||(!transient&&view.pivotObservedRevision!=source.selectionRevision()&&!selectionEqual(view.pivotMask,source.selection()))){view.pivot.reset();view.pivotIdentity=source.identity();view.pivotMask=source.selection();}
+ if(!transient)view.pivotObservedRevision=source.selectionRevision();
+}
+template<class Windows,class Sessions>
+void releaseProjectReferenceViews(std::uint64_t identity,Windows& windows,Sessions& sessions){
+ for(auto& entry:windows)if(entry.identity==identity){entry.window->panel().releaseDisplayCaches();entry.window->closeWindow(nullptr);}
+ windows.erase(std::remove_if(windows.begin(),windows.end(),[identity](const auto& entry){return entry.identity==identity;}),windows.end());
+ sessions.erase(identity);
+}
 std::u32string timelapseRestoreWarning(const project::TimelapseRestoreReport& report){
  std::string reasons;for(const auto& reason:report.dropReasons){if(!reasons.empty())reasons+=",";reasons+=reason;}
  diagnostics::recordGlobal("error","project.timelapse.restore",{{"declaredFrames",std::int64_t(report.droppedTimelapseFrames+report.timelapseFrames)},{"droppedFrames",std::int64_t(report.droppedTimelapseFrames)},{"restoredFrames",std::int64_t(report.timelapseFrames)},{"reasons",reasons}});
@@ -28,21 +50,131 @@ std::u32string timelapseRestoreWarning(const project::TimelapseRestoreReport& re
 }
 
 
-void Editor::ensureProjects(){if(documentOpen_ && projects_.empty()){projects_.push_back(std::make_unique<ProjectSession>());activeProject_=0;}}
+void Editor::bindProjectDocument(std::shared_ptr<Document> value){
+ if(!value)throw std::logic_error("Missing session document");
+ // Keep the old owner alive until all persistent active-document views detach.
+ const auto previous=activeDocument_;activeDocument_=std::move(value);activeSession_->value=activeDocument_;
+ // Bind display policy before a gesture can start, independently of refresh/paint.
+ auto& view=currentView();
+ if(view.displayIdentity!=currentDocument().identity()){
+  view.relativeLuminance=false;view.showSelectionOutline=true;view.displayIdentity=currentDocument().identity();
+ }
+ auto& playback=currentPlayback();
+ if(playback.modeIdentity!=currentDocument().identity()){
+  playback={};playback.rate=savedPlaybackRate_;playback.returnToStart=savedPlaybackReturnToStart_;
+  workspace::initializePlaybackMode(playback,currentDocument(),savedPlaybackMode_);
+ }else if(previous!=activeDocument_ && playback.playing){
+  // The native UI timer drives only the active document. Do not catch up time
+  // spent in another tab; keep its loop stack and playhead exactly as paused.
+  playback.due=std::chrono::steady_clock::now()+playbackFrameDelay();
+ }
+ bindSessionAnimationObservation();bindTimelineSelection();
+ setRelativeLuminance(view.relativeLuminance);
+ if(!view.showSelectionOutline)antsTimer_.stop();
+ if(previewPanel_)previewPanel_->bindDocument(*activeDocument_);
+ if(referencePanel_)referencePanel_->bindDocument(*activeDocument_);
+ if(freeTileInstancesPanel_)freeTileInstancesPanel_->bindDocument(*activeDocument_);
+ if(tilesetPanel_)tilesetPanel_->bindDocument(*activeDocument_);
+}
+void Editor::projectMaskSelectionHistory(ProjectViewState& view,const Document& document){
+ if(view.maskIdentity!=document.identity())return;
+ const auto& history=document.maskSelectionHistory();
+ if(view.maskSerial==history.serial)return;
+ view.maskSerial=history.serial;view.maskSlots=history.slots;
+ view.maskAnchor=history.anchor?*history.anchor:(view.maskSlots.empty()?std::nullopt:std::optional<Document::MaskSlotKey>(view.maskSlots.back()));
+}
+void Editor::projectSelectionPivotHistory(ProjectViewState& view,const Document& document){
+ if(view.pivotHistoryIdentity!=document.identity())return;
+ const auto& history=document.selectionPivotHistory();
+ if(view.pivotHistorySerial==history.serial)return;
+ view.pivotHistorySerial=history.serial;view.pivot=history.pivot;
+ view.pivotMask=document.selection();view.pivotIdentity=document.identity();
+}
+void Editor::bindTimelineSelection(){
+ auto& view=currentView();
+ if(view.maskIdentity!=currentDocument().identity()){
+  view.maskSlots.clear();view.maskAnchor.reset();
+  view.virtualSlots.clear();view.virtualAnchor.reset();
+  view.recent={};recentDrag_.reset();
+  view.maskIdentity=currentDocument().identity();
+  view.maskSerial=currentDocument().maskSelectionHistory().serial;
+ }
+ projectMaskSelectionHistory(view,currentDocument());
+ if(view.pivotHistoryIdentity!=currentDocument().identity()){
+  view.freeTransform=false;
+  view.pivotHistoryIdentity=currentDocument().identity();view.pivotHistorySerial=0;
+  view.pivot.reset();view.pivotMask=currentDocument().selection();
+  view.pivotIdentity=currentDocument().identity();view.pivotObservedRevision=0;
+ }
+ projectSelectionPivotHistory(view,currentDocument());
+ projectOrdinarySelectionPivot(view,currentDocument());
+ if(!currentDocument().floating())view.freeTransform=false;
+}
+void Editor::bindSessionAnimationObservation(){
+ if(currentPlayback().modeIdentity!=currentDocument().identity())
+  workspace::initializePlaybackMode(currentPlayback(),currentDocument(),savedPlaybackMode_);
+ workspace::observePlaybackChange(currentPlayback(),currentDocument(),{AnimationChange::Kind::LoopChanged});
+ currentDocument().setAnimationSelectionAccess({
+  [owner=std::weak_ptr<ProjectSession>(activeSession_)](const Document& source)->std::optional<AnimationSessionSelection>{
+   const auto session=owner.lock();if(!session||session->value.get()!=&source||session->view.maskIdentity!=source.identity())return {};
+   const auto& view=session->view;AnimationSessionSelection value{view.maskSlots,view.maskAnchor,view.virtualSlots,view.virtualAnchor,view.frameSelection};
+   const auto& journal=source.maskSelectionHistory();if(view.maskSerial!=journal.serial){value.masks=journal.slots;value.maskAnchor=journal.anchor?*journal.anchor:(value.masks.empty()?std::nullopt:std::optional<Document::MaskSlotKey>(value.masks.back()));}
+   return value;
+  },
+  [owner=std::weak_ptr<ProjectSession>(activeSession_)](const Document& source,AnimationSessionSelection value){
+   const auto session=owner.lock();if(!session||session->value.get()!=&source||session->view.maskIdentity!=source.identity())return;
+   auto& view=session->view;view.maskSlots.swap(value.masks);view.maskAnchor.swap(value.maskAnchor);view.virtualSlots.swap(value.groups);view.virtualAnchor.swap(value.groupAnchor);view.frameSelection=value.frameSelection;
+   // A complete selection history snapshot supersedes the narrower mask
+   // journal for this replay; the final observer must not overwrite it again.
+   view.maskSerial=source.maskSelectionHistory().serial;
+  }
+ });
+ currentDocument().setAnimationChangeListener([owner=std::weak_ptr<ProjectSession>(activeSession_)](const Document& source,const AnimationChange& change){
+  if(auto session=owner.lock();session&&session->value.get()==&source){
+   // Script adapters can temporarily detach floating content while publishing
+   // ordinary history pushes. Only completed operations describe final state.
+   const bool finalFloating=change.kind==AnimationChange::Kind::FloatingSettled ||change.kind==AnimationChange::Kind::SelectionPreviewChanged ||
+    (change.kind==AnimationChange::Kind::HistoryChanged &&
+     (change.historyKind==HistoryStackChange::Kind::Undo||change.historyKind==HistoryStackChange::Kind::Redo));
+   if(finalFloating&&!change.selectionProjectionDeferred&&!source.floating())session->view.freeTransform=false;
+   workspace::observePlaybackChange(session->playback,source,change);
+   projectMaskSelectionHistory(session->view,source);
+   if(!change.selectionProjectionDeferred)projectSelectionPivotHistory(session->view,source);
+   if(!change.selectionProjectionDeferred&&
+      (change.kind==AnimationChange::Kind::SelectionPreviewChanged||finalFloating||
+       (change.kind==AnimationChange::Kind::HistoryChanged&&change.historyKind==HistoryStackChange::Kind::Push)))projectOrdinarySelectionPivot(session->view,source);
+  }
+ });
+}
+void Editor::replaceDocumentForSmoke(Document&& next){
+ // Preserve stable addresses and the existing heap allocation of large fixtures.
+ currentDocument()=std::move(next);bindSessionAnimationObservation();bindTimelineSelection();
+}
+void Editor::replaceDocumentForSmoke(const Document& next){
+ currentDocument()=next;bindSessionAnimationObservation();bindTimelineSelection();
+}
+void Editor::ensureProjects(){if(documentOpen_ && projects_.empty()){
+ activeSession_->value=activeDocument_;projects_.push_back(activeSession_);activeProject_=0;
+}}
 
-const Document& Editor::projectDocument(std::size_t index)const{return index==activeProject_?document:*projects_[index]->stored;}
+const Document& Editor::projectDocument(std::size_t index)const{return *projects_.at(index)->value;}
+Document& Editor::projectDocument(std::size_t index){return const_cast<Document&>(std::as_const(*this).projectDocument(index));}
+std::filesystem::path& Editor::projectPath(std::size_t index){return projects_.at(index)->path;}
+RecoverySession& Editor::projectRecovery(std::size_t index){return projects_.at(index)->recovery;}
+std::optional<Editor::ResolvedSession> Editor::resolveSession(std::uint64_t identity){
+ ensureProjects();const auto index=saveProjectIndex(identity);if(!index)return {};
+ return ResolvedSession{*index,projectDocument(*index),projectPath(*index),projectRecovery(*index)};
+}
+
 
 int Editor::projectWidth(const Document& value)const{return std::min(180,font_.inkBounds(value.name()).w+2*Layout::inset+11+uiGap+(value.dirty()?3+uiGap:0));}
 
-int Editor::documentTabWidth(const Layout&)const{return projectWidth(document);}
-
-void Editor::swapRecovery(ProjectSession& slot){
-
-    using std::swap;swap(recovery_,slot.recovery);
-
-  }
+int Editor::documentTabWidth(const Layout&)const{return projectWidth(currentDocument());}
 
 void Editor::settleProjectGesture(){
+
+    const bool resumePlayback=currentPlayback().playing;
+    const auto playbackDocument=currentDocument().identity(),playbackRevision=currentDocument().revision();
 
     for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();
 
@@ -52,10 +184,15 @@ void Editor::settleProjectGesture(){
 
     if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);
 
-    if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}
-    auto capture=temporaryBrushCapture_;temporaryBrushCapture_.reset();
-    document.cancelFilterPreview();document.cancelGradient();document.commitFloatingPaste();cancelStroke();++wandGeneration_;wandRequest_.reset();
-    temporaryBrushCapture_=capture;
+    if(drawingAnchorDragging_){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}
+    auto capture=currentTools().temporaryBrushCapture;currentTools().temporaryBrushCapture.reset();
+    currentDocument().cancelFilterPreview();currentDocument().cancelGradient();currentDocument().commitFloatingPaste();cancelStroke();wand_.cancel();
+    currentTools().temporaryBrushCapture=capture;
+    // Legacy setActive settles transactions without pausing a valid session.
+    // cancelStroke is also used by edit commands and normally stops playback.
+    // Restore only an unchanged document; committing a floating edit must keep
+    // the existing revision stop guard rather than revive stale playback.
+    if(resumePlayback&&currentDocument().identity()==playbackDocument&&currentDocument().revision()==playbackRevision)currentPlayback().playing=true;
 
     heldCelNavigation_.clear();spaceHeld_=false;
 
@@ -63,47 +200,23 @@ void Editor::settleProjectGesture(){
 
 void Editor::storeActiveProject(){
 
-    auto& slot=*projects_[activeProject_];slot.path=documentPath_;slot.canvas=canvas_;slot.zoom=zoom_;slot.rotation=viewRotation_;slot.tileRepeat=tileRepeatIdentity_==document.identity()?tileRepeat_:repeat::Mode::Off;saveLayerPanelState();saveDocumentView();
+    saveLayerPanelState();saveDocumentView();
 
-    // Copy configuration only. Gesture jobs, capture, preview caches and UI
-    // pointers retain their existing settleProjectGesture lifecycle.
-#define MOON_SESSION_TOOLS \
- selectionTool_,shapeTool_,eyedropperTool_,navigation_.zoomTool_,gradientTool_,fillTool_,handTool_,eraser_,moveTool_,textTool_,rotateTool_,smoothTool_,airbrushTool_,liquifyTool_,magicEraserTool_,sliceMode_, \
- selectionMode_,selectionKind_,selectionRounded_,selectionCornerRadius_,selectionRotSprite_,selectionBrushAngle_,wandOptions_, \
- shapeSpec_.kind,shapeRounded_,shapeRatio_,shapeRadius_,shapeRatioWidth_,shapeRatioHeight_,curveAnchorCount_, \
- fillOptions_,fillPattern_,fillLibrarySelection_,fillImageName_,rememberGradientTool_,gradientSpec_.radial,gradientSpec_.dither,gradientOptions_,gradientStops_,gradientConfirm_,gradientFreeform_, \
- brushFeedback_.brushProfiles_[0],brushFeedback_.brushProfiles_[1],inkProfiles_,syncInkAcrossTools_,pencilImageBrushId_,pencilImageBrushAngle_,pencilImageBrush_, \
- brushDynamics_,airbrushSettings_,liquifyOptions_,smoothStrength_,smoothAngle_,smoothBrush_,temporaryBrushReturnProfile_,moveAutoSelect_,eyedropperSource_,magicEraserContiguous_
-    auto settings=std::make_tuple(MOON_SESSION_TOOLS);
-    slot.restoreTools=[this,settings=std::move(settings)]{std::tie(MOON_SESSION_TOOLS)=settings;remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);};
-#undef MOON_SESSION_TOOLS
-
-    slot.layers=layerScroll_;slot.frames=frameScroll_;slot.layerRemainder=layerScrollRemainder_;slot.frameRemainder=frameScrollRemainder_;slot.paletteScroll=paletteScrollPixels_;
-
-    slot.frameSelection=frameSelectionExplicit_;slot.guides=timelineSelectionGuidesVisible_;slot.recent=std::move(recentColors_);slot.pivot=selectionPivot_;slot.drawingAnchor=drawingAnchor_;slot.drawingAnchorVisible=drawingAnchorVisible_;slot.drawFromCanvasCenter=drawFromCanvasCenter_;
-
-    slot.brushCapture=temporaryBrushCapture_;slot.brushReturnProfile=temporaryBrushReturnProfile_;slot.temporaryBrushActive=temporaryBrushActive_;
-    if(temporaryBrushCapture_||temporaryBrushActive_){slot.temporaryBrush=pencilImageBrush_;slot.temporaryBrushId=pencilImageBrushId_;slot.temporaryBrushAngle=pencilImageBrushAngle_;}
-    swapRecovery(slot);slot.stored.emplace(std::move(document));
 
   }
 
 void Editor::restoreProject(std::size_t index){
 
-    if(temporaryBrushCapture_||temporaryBrushActive_)exitTemporaryBrushCapture();
-    activeProject_=index;auto& slot=*projects_[index];document=std::move(*slot.stored);applyDocumentPreferences(document);slot.stored.reset();documentPath_=slot.path;
-    if(slot.restoreTools)slot.restoreTools();
+    activeProject_=index;activeSession_=projects_.at(index);auto& slot=*activeSession_;bindProjectDocument(slot.value);applyDocumentPreferences(currentDocument());
+    if(!currentTools().temporaryBrushCapture&&!currentTools().temporaryBrushActive)remapSelectionPatternBrush(currentTools().pencilImageBrush,currentDocument().palette().primary,currentDocument().palette().secondary);
 
-    canvas_=slot.canvas;zoom_=slot.zoom;viewRotation_=slot.rotation;tileRepeat_=slot.tileRepeat;tileRepeatIdentity_=document.identity();layerScroll_=slot.layers;frameScroll_=slot.frames;layerScrollRemainder_=slot.layerRemainder;frameScrollRemainder_=slot.frameRemainder;paletteScrollPixels_=slot.paletteScroll;
+    bindTileRepeat(slot.view.tileRepeat);
 
-    frameSelectionExplicit_=slot.frameSelection;timelineSelectionGuidesVisible_=slot.guides;timelineSelectionIdentity_=document.identity();timelineLastActiveFrame_=document.frame().id;
+    timelineSelectionIdentity_=currentDocument().identity();timelineLastActiveFrame_=currentDocument().frame().id;
 
-    recentColors_=std::move(slot.recent);recentColorsIdentity_=document.identity();selectionPivot_=slot.pivot;drawingAnchor_=slot.drawingAnchor;drawingAnchorVisible_=slot.drawingAnchorVisible;drawFromCanvasCenter_=slot.drawFromCanvasCenter;selectionPivotMask_=document.selection();selectionPivotIdentity_=document.identity();trimPivotIdentity_=document.identity();trimPivotSerial_=document.selectionPivotHistory().serial;
 
-    symmetryIdentity_=document.identity();ink_=document.palette().primary;paletteFocused_=false;swapRecovery(slot);
+    symmetryIdentity_=currentDocument().identity();ink_=currentDocument().palette().primary;paletteFocused_=false;
 
-    temporaryBrushCapture_=slot.brushCapture;temporaryBrushReturnProfile_=slot.brushReturnProfile;temporaryBrushActive_=slot.temporaryBrushActive;
-    if(temporaryBrushCapture_||temporaryBrushActive_){pencilImageBrush_=slot.temporaryBrush;pencilImageBrushId_=slot.temporaryBrushId;pencilImageBrushAngle_=slot.temporaryBrushAngle;selectionTool_=bool(temporaryBrushCapture_);shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=false;if(temporaryBrushCapture_){selectionKind_=0;selectionMode_=0;selectionRounded_=false;}}
     documentOpen_=true;homeOpen_=false;revealProjectTab_=true;constrainCanvas();refresh();
 
   }
@@ -151,20 +264,19 @@ void Editor::addProject(Document next,std::filesystem::path path){
 
     ensureProjects();settleProjectGesture();if(documentOpen_)storeActiveProject();
 
-    if(temporaryBrushCapture_||temporaryBrushActive_)exitTemporaryBrushCapture();
-    projects_.push_back(std::make_unique<ProjectSession>());activeProject_=projects_.size()-1;
+    projects_.push_back(std::make_shared<ProjectSession>());activeProject_=projects_.size()-1;activeSession_=projects_.back();
 
-    drawingAnchor_=drawingAnchorDefaults_;drawingAnchorVisible_=drawingAnchorDefaultVisible_;drawFromCanvasCenter_=drawingAnchorDefaultEnabled_;document=std::move(next);if(colorRolesReady_){document.setPaletteRole(sharedPrimary_,false,true);document.setPaletteRole(sharedSecondary_,true,true);}applyDocumentPreferences(document,true);documentPath_=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
+    currentView().drawingAnchor=drawingAnchorDefaults_;currentView().drawingAnchorVisible=drawingAnchorDefaultVisible_;currentView().drawFromCanvasCenter=drawingAnchorDefaultEnabled_;bindProjectDocument(std::make_shared<Document>(std::move(next)));if(colorRolesReady_){currentDocument().setPaletteRole(sharedPrimary_,false,true);currentDocument().setPaletteRole(sharedSecondary_,true,true);}applyDocumentPreferences(currentDocument(),true);currentPath()=std::move(path);documentOpen_=true;homeOpen_=false;closingWorkspace_=false;
     // createSession starts at pencil; switching an existing tab restores its
     // own tool instead of inheriting the previously active document's flags.
-    selectionTool_=shapeTool_=eyedropperTool_=navigation_.zoomTool_=gradientTool_=fillTool_=handTool_=eraser_=moveTool_=textTool_=rotateTool_=smoothTool_=airbrushTool_=liquifyTool_=magicEraserTool_=sliceMode_=false;
+    currentTools().selectionTool=currentTools().shapeTool=currentTools().eyedropperTool=currentTools().zoomTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=currentTools().moveTool=currentTools().textTool=currentTools().rotateTool=currentTools().smoothTool=currentTools().airbrushTool=currentTools().liquifyTool=currentTools().magicEraserTool=currentTools().sliceMode=false;
     loadSessionToolPreferences(true);
 
-    layerScroll_=frameScroll_=layerScrollRemainder_=frameScrollRemainder_=paletteScrollPixels_=0;
+    currentView().layers=currentView().frames=currentView().layerRemainder=currentView().frameRemainder=currentView().paletteScroll=0;
 
-    frameSelectionExplicit_=false;timelineSelectionGuidesVisible_=true;ink_=document.palette().primary;
+    currentView().frameSelection=false;currentView().guides=true;ink_=currentDocument().palette().primary;
 
-    recovery_.queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;tileRepeat_=repeat::Mode::Off;tileRepeatIdentity_=document.identity();viewRotation_={};fitCanvas();loadDocumentView();loadLayerPanelState();refresh();
+    currentRecovery().queue.setIntervalMinutes(recoveryPreferences_.minutes);revealProjectTab_=true;bindTileRepeat(repeat::Mode::Off);currentView().rotation={};fitCanvas();loadDocumentView();loadLayerPanelState();refresh();
 
   }
 
@@ -203,15 +315,16 @@ void Editor::closeDocumentTab() {
 
     // Complete only this session's recovery before removing its owned record.
 
-    try{if(recovery_.worker.valid())recovery_.worker.get();if(recovery_.originId.empty()&&!recovery_.ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);}catch(const std::exception& e){closingWorkspace_=false;showSaveError(e);return;}
+    try{if(currentRecovery().worker.valid())currentRecovery().worker.get();if(currentRecovery().originId.empty()&&!currentRecovery().ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),currentRecovery().ownedId);}catch(const std::exception& e){closingWorkspace_=false;showSaveError(e);return;}
 
-    recovery_.snapshot.reset();recovery_.ticket.reset();recovery_.cleanup.reset();recovery_.queue=recovery::Scheduler(recoveryPreferences_.minutes);recovery_.ownedId.clear();recovery_.originId.clear();recovery_.suppressed=false;recovery_.ownedIdentity=recovery_.identity=0;
+    currentRecovery().snapshot.reset();currentRecovery().ticket.reset();currentRecovery().cleanup.reset();currentRecovery().cleanupError.reset();currentRecovery().queue=recovery::Scheduler(recoveryPreferences_.minutes);currentRecovery().ownedId.clear();currentRecovery().originId.clear();currentRecovery().suppressed=false;currentRecovery().ownedIdentity=currentRecovery().identity=0;
 
+    releaseProjectReferenceViews(currentDocument().identity(),referenceWindows_,referenceSessions_);
     projects_.erase(projects_.begin()+activeProject_);
 
     if(!projects_.empty()){restoreProject(projects_.size()-1);}
 
-    else{closedControlStates_.clear();for(auto child:children())closedControlStates_.push_back({child,child->isEnabled()});document=Document::withBuiltinPalette();documentPath_.clear();documentOpen_=false;showHome(true);layoutDocumentTab();}
+    else{closedControlStates_.clear();for(auto child:children())closedControlStates_.push_back({child,child->isEnabled()});activeSession_=std::make_shared<ProjectSession>();bindProjectDocument(std::make_shared<Document>(Document::withBuiltinPalette()));currentPath().clear();documentOpen_=false;showHome(true);layoutDocumentTab();}
 
   }
 
@@ -243,7 +356,7 @@ bool Editor::processProjectTabs(ui::Message* msg){
 
   }
 
-std::filesystem::path Editor::projectFolderSource()const{return documentPath_.empty()?document.sourceFilePath():documentPath_;}
+std::filesystem::path Editor::projectFolderSource()const{return currentPath().empty()?currentDocument().sourceFilePath():currentPath();}
 
 bool Editor::fullscreen()const{return display() && display()->nativeWindow() && display()->nativeWindow()->isFullscreen();}
 
@@ -302,11 +415,11 @@ void Editor::acceptOpen() {
     if(!candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
 
     auto next=std::make_unique<Document>(std::move(*openCandidate_));if(candidateRecovery_)next->markRecovered(next->name()+U"（恢复）");const auto origin=candidateRecovery_?candidateRecoveryId_:std::string{};const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;candidateRecoveryId_.clear();openCandidate_.reset();addProject(std::move(*next),path);
-    if(!origin.empty()){recovery_.originId=origin;recovery_.ownedId=origin;recovery_.ownedIdentity=document.identity();}
+    if(!origin.empty()){currentRecovery().originId=origin;currentRecovery().ownedId=origin;currentRecovery().ownedIdentity=currentDocument().identity();}
 
-    recordHomeRecent(documentPath_.empty()?document.sourceFilePath():documentPath_);
+    recordHomeRecent(currentPath().empty()?currentDocument().sourceFilePath():currentPath());
 
-    paletteScrollPixels_=0;paletteFocused_=false;ink_=document.palette().primary;
+    currentView().paletteScroll=0;paletteFocused_=false;ink_=currentDocument().palette().primary;
 
     status_=U"工程已打开";fitCanvas();if(recentKeepHome_){recentKeepHome_=false;showHome(true);}refresh();if(importAfterOpen_){importAfterOpen_=false;openSheetImport(false);}
 
@@ -320,9 +433,9 @@ void Editor::openPath(const std::filesystem::path& path) {
     try {
       auto packageExtension=path.extension().wstring();std::transform(packageExtension.begin(),packageExtension.end(),packageExtension.begin(),[](wchar_t c){return ::towlower(c);});
       if(packageExtension==L".msext"){if(installExtensionPackage(font_,skin_,toolIcons_,display(),bounds(),path,script::executableDirectory()/"extensions",[this]{updateScriptsMenu();}))status_=U"扩展已安装";requestFocus();refresh();return;}
-      for(const auto& job:backgroundSaves_)if(sameProjectPath(path,job.path)){if(const auto owner=saveProjectIndex(job.identity))activateProject(*owner);return;}
+      for(const auto& job:backgroundSaves_)if(sameProjectPath(path,job.save.path)){if(const auto owner=saveProjectIndex(job.save.version.identity))activateProject(*owner);return;}
 
-      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
+      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
 
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
 
@@ -359,9 +472,9 @@ void Editor::openPath(const std::filesystem::path& path) {
       },U"打开文件",&toolIcons_);
       loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);
       loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
-      auto loaded=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+      auto loaded=loading.run([this]{return pending_==Pending::None&&!currentDocument().strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
-      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=i==activeProject_?documentPath_:projects_[i]->path;if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
+      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
       openCandidate_=std::move(loaded);candidatePath_=backup||ase||raster||ext==L".psd"||(*detectedGif&&ext!=L".moonsprite"&&ext!=L".bak")?std::filesystem::path{}:path;
       candidateRecovery_=false;ask(Pending::Open);
       if(backup&&pending_==Pending::None)recordHomeRecent(path);
@@ -397,12 +510,12 @@ void Editor::showSaveError(const std::exception& error) {
   }
 
 std::optional<std::size_t> Editor::saveProjectIndex(std::uint64_t identity)const{
- for(std::size_t i=0;i<projects_.size();++i)if((i==activeProject_?document.identity():projects_[i]->stored?projects_[i]->stored->identity():0)==identity)return i;
+ for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).identity()==identity)return i;
  return {};
 }
 
 bool Editor::backgroundSaveBusy(std::uint64_t identity)const{
- return std::any_of(backgroundSaves_.begin(),backgroundSaves_.end(),[&](const auto& job){return job.identity==identity;});
+ return std::any_of(backgroundSaves_.begin(),backgroundSaves_.end(),[&](const auto& job){return job.save.version.identity==identity;});
 }
 
 void Editor::dismissSaveProgress(){
@@ -411,61 +524,83 @@ void Editor::dismissSaveProgress(){
  saveDismissRequested_=true;
  // Snapshot capture reads live storage in bounded ticks. Release editing only
  // after ownership has moved to the encoder; never race capture with a stroke.
- if(!saveWorker_.valid())return;
- BackgroundSave job;job.worker=std::move(saveWorker_);job.path=savingPath_;job.identity=savingIdentity_;job.revision=savingRevision_;job.contentRevision=savingContentRevision_;job.symmetry=savingSymmetryCenter_;job.panel=savingLayerPanelState_;job.ase=savingAseprite_;job.sourceOnly=savingSourceOnly_;job.resume=saveResume_;job.close=closeAfterSave_;backgroundSaves_.push_back(std::move(job));
+ if(!saveJob_.worker.valid())return;
+ backgroundSaves_.reserve(backgroundSaves_.size()+1);
+ BackgroundSave job;job.save=std::move(saveJob_);job.resume=saveResume_;job.close=closeAfterSave_;backgroundSaves_.push_back(std::move(job));
  closeAfterSave_=false;saveResume_=Pending::None;pending_=Pending::None;restoreSaveControls();
  // A save started from the unsaved-changes prompt captured disabled controls.
  menuBar_->setEnabled(true);paletteActions_->setEnabled(true);for(auto b:commands_)b->setEnabled(true);for(auto b:swatches_)b->setEnabled(true);for(auto b:panelTabs_)b->setEnabled(true);
  discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);dialogClose_->setVisible(false);saveBeforeClose_->setVisible(false);discard_->setVisible(false);keep_->setVisible(false);requestFocus();refresh();
 }
 
+bool Editor::completeSaveJob(const SaveJob& job,project::EncodedProject result,bool background){
+ const auto owner=resolveSession(job.version.identity);
+ if(!owner)throw std::runtime_error("Saving project no longer exists");
+ auto savedStatus=background?(job.image?job.path.filename().u32string():owner->value.name())+U"：":std::u32string{};
+ savedStatus.reserve(savedStatus.size()+32);
+ const bool exact=workspace::acceptSaveResult(owner->value,owner->path,job,std::move(result),acceptAsepriteSaved);
+ savedStatus+=exact?U"工程已保存":U"已保存先前版本；当前修改尚未保存";status_.swap(savedStatus);
+ if(exact){
+  queuedSaves_.erase(std::remove_if(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==job.version.identity&&!q.saveAs&&!q.optionsJson;}),queuedSaves_.end());
+  const auto cleanup=owner->recovery.scheduleSavedCleanup(recoveryDirectory(),job.version.identity);
+  if(cleanup.cleanupFailure)status_+=U"；恢复清理失败："+unicodeText(cleanup.error);
+ }
+ // The file and its save point are already accepted. Ancillary persistence
+ // must not skip recovery cleanup or masquerade as an encoding/write failure.
+ try{recordHomeRecent(job.path);usageStatistics_.recordEvent("save");}catch(const std::exception& error){status_+=U"；保存后记录失败："+unicodeText(error.what());}
+ if(!smoke_)try{auto bytes=job.path.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
+ return exact;
+}
+
 void Editor::backgroundSaveTick(){
  // Modal previews and gestures may own live state. Publish at a safe UI boundary.
- if(pending_!=Pending::None||document.active()||document.strokeActive()||ui::Manager::getDefault()->getCapture())return;
+ if(pending_!=Pending::None||currentDocument().active()||currentDocument().strokeActive()||ui::Manager::getDefault()->getCapture())return;
  for(std::size_t i=0;i<backgroundSaves_.size();){
-  if(backgroundSaves_[i].worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){++i;continue;}
+  if(!backgroundSaves_[i].save.ready()){++i;continue;}
   auto job=std::move(backgroundSaves_[i]);backgroundSaves_.erase(backgroundSaves_.begin()+i);
   try{
-   auto result=job.worker.get();const auto owner=saveProjectIndex(job.identity);if(!owner)throw std::runtime_error("Saving project no longer exists");
-   auto& value=*owner==activeProject_?document:*projects_[*owner]->stored;
-   auto& path=*owner==activeProject_?documentPath_:projects_[*owner]->path;
-   auto& recovery=*owner==activeProject_?recovery_:projects_[*owner]->recovery;
-   const auto center=value.symmetryCenter();const bool exact=value.revision()==job.revision&&value.contentRevision()==job.contentRevision&&center.x==job.symmetry.x&&center.y==job.symmetry.y&&value.layerPanelState()==job.panel&&!value.active();
-   if(job.ase){acceptAsepriteSaved(value,job.path,job.sourceOnly,exact);if(!job.sourceOnly)path=job.path;}
-   else{value.acceptSaved(std::move(result.projectId),std::move(result.bytes),exact);path=job.path;}
-   status_=value.name()+(exact?U"：工程已保存":U"：已保存先前版本；当前修改尚未保存");recordHomeRecent(job.path);usageStatistics_.recordEvent("save");
-   if(!smoke_)try{auto bytes=job.path.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
-   if(exact){
-    queuedSaves_.erase(std::remove_if(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==job.identity&&!q.saveAs;}),queuedSaves_.end());
-    if(recovery.ownedIdentity==job.identity&&!recovery.ownedId.empty()){
-     const auto directory=recoveryDirectory();const auto id=recovery.ownedId;
-     recovery.worker=std::async(std::launch::async,[previous=std::move(recovery.worker),directory,id]()mutable{if(previous.valid())previous.get();project::removeOwnedRecovery(directory,id);});recovery.snapshot.reset();recovery.cleanup=std::make_pair(job.identity,id);
-    }
-   }
-   if(job.resume!=Pending::None)deferredSaveCloses_.push_back({job.identity,job.resume,true});
+   completeSaveJob(job.save,job.save.worker.get(),true);
+   if(job.resume!=Pending::None)deferredSaveCloses_.push_back({job.save.version.identity,job.resume,true});
    if(job.close)closeAfterBackgroundSaves_=true;
    refresh();
   }catch(const std::exception& error){
-   closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==job.identity;}),deferredSaveCloses_.end());
-   const auto context=job.path.u8string()+": "+error.what();showSaveError(std::runtime_error(context));return;
+   closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==job.save.version.identity;}),deferredSaveCloses_.end());
+   const auto context=job.save.path.u8string()+": "+error.what();showSaveError(std::runtime_error(context));return;
   }
  }
  for(auto it=deferredSaveCloses_.begin();it!=deferredSaveCloses_.end();){
   const auto owner=saveProjectIndex(it->identity);if(!owner){it=deferredSaveCloses_.erase(it);continue;}
   if(backgroundSaveBusy(it->identity)||std::any_of(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==it->identity;})){++it;continue;}
-  auto& recovery=*owner==activeProject_?recovery_:projects_[*owner]->recovery;
+  auto& recovery=projectRecovery(*owner);
+  if(recovery.cleanupError&&recovery.cleanupError->first==it->identity){
+   const auto identity=it->identity;const auto error=recovery.cleanupError->second;
+   deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==identity;}),deferredSaveCloses_.end());
+   closeAfterBackgroundSaves_=false;closingWorkspace_=false;
+   showSaveError(std::runtime_error(error));errorTitle_=U"工程已保存；恢复清理失败";return;
+  }
   if(recovery.worker.valid()&&recovery.worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){++it;continue;}
   const auto intent=*it;deferredSaveCloses_.erase(it);
   if(*owner!=activeProject_&&!projectDocument(*owner).dirty()&&intent.action==Pending::CloseDocument){
    try{if(recovery.worker.valid())recovery.worker.get();if(recovery.originId.empty()&&!recovery.ownedId.empty())project::removeOwnedRecovery(recoveryDirectory(),recovery.ownedId);}catch(const std::exception& e){showSaveError(e);return;}
+   releaseProjectReferenceViews(intent.identity,referenceWindows_,referenceSessions_);
    projects_.erase(projects_.begin()+*owner);if(*owner<activeProject_)--activeProject_;refresh();return;
   }
   activateProject(*owner);
-  if(intent.saveChanges&&document.dirty()){pending_=intent.action;saveProject(false);}
+  if(intent.saveChanges&&currentDocument().dirty()){pending_=intent.action;saveProject(false);}
   else ask(intent.action);
   return;
  }
- if(closeAfterBackgroundSaves_&&backgroundSaves_.empty()&&queuedSaves_.empty()&&deferredSaveCloses_.empty()){closeAfterBackgroundSaves_=false;requestClose();}
+ if(closeAfterBackgroundSaves_&&backgroundSaves_.empty()&&queuedSaves_.empty()&&deferredSaveCloses_.empty()){
+  for(std::size_t i=0;i<projects_.size();++i){
+   auto& recovery=projectRecovery(i);
+   if(recovery.cleanupError&&recovery.cleanupError->first==projectDocument(i).identity()){
+    const auto error=recovery.cleanupError->second;closeAfterBackgroundSaves_=false;closingWorkspace_=false;
+    showSaveError(std::runtime_error(error));errorTitle_=U"工程已保存；恢复清理失败";return;
+   }
+   if(recovery.worker.valid()&&recovery.worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
+  }
+  closeAfterBackgroundSaves_=false;requestClose();
+ }
 }
 
 void Editor::saveTick(){
@@ -473,58 +608,47 @@ void Editor::saveTick(){
  backgroundSaveTick();
  if(pending_!=Pending::Saving){
   if(pending_!=Pending::None)return;
-  if(document.active()||document.strokeActive()||ui::Manager::getDefault()->getCapture())return;
+  if(currentDocument().active()||currentDocument().strokeActive()||ui::Manager::getDefault()->getCapture())return;
   // One bounded pass: a deferred owner must not spin by re-enqueuing itself.
   const auto count=queuedSaves_.size();
-  for(std::size_t n=0;n<count&&!queuedSaves_.empty();++n){auto next=queuedSaves_.front();queuedSaves_.erase(queuedSaves_.begin());const auto owner=saveProjectIndex(next.identity);if(!owner)continue;if(backgroundSaveBusy(next.identity)||projectDocument(*owner).active()||projectDocument(*owner).strokeActive()){queuedSaves_.push_back(next);continue;}if(*owner!=activeProject_){if(auto recording=projects_[*owner]->stored->recordingSession()){try{recording->beginFlush(*projects_[*owner]->stored);if(!recording->flushReady(*projects_[*owner]->stored)){queuedSaves_.push_back(next);continue;}}catch(const std::exception& error){queuedSaves_.insert(queuedSaves_.begin(),next);closeAfterBackgroundSaves_=false;showSaveError(error);return;}}}saveProject(next.saveAs,next.identity,next.optionsJson);if(pending_!=Pending::None)return;}
+  for(std::size_t n=0;n<count&&!queuedSaves_.empty();++n){auto next=queuedSaves_.front();queuedSaves_.erase(queuedSaves_.begin());const auto owner=saveProjectIndex(next.identity);if(!owner)continue;if(backgroundSaveBusy(next.identity)||projectDocument(*owner).active()||projectDocument(*owner).strokeActive()){queuedSaves_.push_back(next);continue;}if(*owner!=activeProject_){if(auto recording=projectDocument(*owner).recordingSession()){try{recording->beginFlush(projectDocument(*owner));if(!recording->flushReady(projectDocument(*owner))){queuedSaves_.push_back(next);continue;}}catch(const std::exception& error){queuedSaves_.insert(queuedSaves_.begin(),next);closeAfterBackgroundSaves_=false;showSaveError(error);return;}}}saveProject(next.saveAs,next.identity,next.optionsJson);if(pending_!=Pending::None)return;}
   if(!queuedSaves_.empty()||!backgroundSaves_.empty())return;
   if(queuedSaveResume_!=Pending::None||queuedSaveClose_){auto resume=queuedSaveResume_;bool close=queuedSaveClose_;queuedSaveResume_=Pending::None;queuedSaveClose_=false;pending_=resume;if(pending_!=Pending::None)resolve(true);if(close)requestClose();}
   return;
  }
  try{
-  const auto owner=saveProjectIndex(savingIdentity_);if(!owner)throw std::runtime_error("Saving project no longer exists");
-  auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
-  auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
-  auto& recovery_=*owner==activeProject_?this->recovery_:projects_[*owner]->recovery;
-  if(saveSnapshot_){
-   if(!saveSnapshot_->advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
-   auto snapshot=std::move(*saveSnapshot_);saveSnapshot_.reset();const auto path=savingPath_;const auto backup=projectBackupPolicy();const bool ase=savingAseprite_;const bool portable=savingPortableTimelapse_;const auto scale=savingScale_;const auto recordingReader=document.recordingSession()?document.recordingSession()->reader():timelapse::Reader{};
-   saveWorker_=std::async(std::launch::async,[snapshot=std::move(snapshot),path,backup,ase,portable,scale,recordingReader]()mutable{auto copy=snapshot.finish();if(portable){auto settings=copy.timelapseSettings();for(auto& frame:settings.snapshots){if(recordingReader){frame.data=recordingReader(frame);frame.historyDataBacking.reset();}else if(frame.data.empty())throw std::runtime_error("Cannot carry unavailable recording frames");frame.local.reset();}copy.setImportedTimelapse(std::move(settings));}if(ase){auto bytes=encodeSaveImage(copy,saveImageFormat(path),scale);writeExportBytesAtomic(path,bytes);return project::EncodedProject{};}project::saveDocumentAtomic(copy,path,backup);return project::EncodedProject{copy.sourceArchive(),copy.projectId()};});if(saveDismissRequested_)dismissSaveProgress();return;
+  const auto owner=saveProjectIndex(saveJob_.version.identity);if(!owner)throw std::runtime_error("Saving project no longer exists");
+  auto& value=projectDocument(*owner);
+  if(saveJob_.snapshot){
+   if(!saveJob_.snapshot->advance(value,std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
+   auto snapshot=std::move(*saveJob_.snapshot);saveJob_.snapshot.reset();
+   const workspace::CapturedSaveRequest request{saveJob_.path,saveJob_.image?saveImageFormat(saveJob_.path):SaveImageFormat::Native,saveJob_.portableTimelapse,saveJob_.scale,projectBackupPolicy()};
+   const auto recordingReader=value.recordingSession()?value.recordingSession()->reader():timelapse::Reader{};
+   saveJob_.worker=std::async(std::launch::async,[snapshot=std::move(snapshot),request,recordingReader]()mutable{return workspace::runCapturedSave(std::move(snapshot),request,recordingReader);});if(saveDismissRequested_)dismissSaveProgress();return;
   }
-  if(!saveWorker_.valid()||saveWorker_.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
-  if(!saveDismissRequested_&&std::chrono::steady_clock::now()-saveStarted_<std::chrono::milliseconds(100))return;
-  auto result=saveWorker_.get();if(document.identity()!=savingIdentity_)throw std::runtime_error("Document changed during save");
-  const auto center=document.symmetryCenter();
-  const bool exact=document.revision()==savingRevision_&&document.contentRevision()==savingContentRevision_&&center.x==savingSymmetryCenter_.x&&center.y==savingSymmetryCenter_.y&&savingLayerPanelState_==document.layerPanelState()&&!document.active();
-  if(savingAseprite_){acceptAsepriteSaved(document,savingPath_,savingSourceOnly_,exact);if(!savingSourceOnly_)documentPath_=savingPath_;}
-  else{document.acceptSaved(std::move(result.projectId),std::move(result.bytes),exact);documentPath_=savingPath_;}
-  status_=exact?U"工程已保存":U"已保存先前版本；当前修改尚未保存";recordHomeRecent(savingPath_);usageStatistics_.recordEvent("save");
-  if(!smoke_)try{auto bytes=savingPath_.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
-  if(exact)queuedSaves_.erase(std::remove_if(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& q){return q.identity==document.identity()&&!q.saveAs;}),queuedSaves_.end());
-  if(exact&&recovery_.ownedIdentity==document.identity()&&!recovery_.ownedId.empty()){
-   const auto directory=recoveryDirectory();const auto id=recovery_.ownedId;
-   recovery_.worker=std::async(std::launch::async,[previous=std::move(recovery_.worker),directory,id]()mutable{if(previous.valid())previous.get();project::removeOwnedRecovery(directory,id);});recovery_.snapshot.reset();recovery_.cleanup=std::make_pair(document.identity(),id);
-  }
+  if(!saveJob_.worker.valid()||saveJob_.worker.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready)return;
+  if(!saveDismissRequested_&&std::chrono::steady_clock::now()-saveJob_.started<std::chrono::milliseconds(100))return;
+  const bool exact=completeSaveJob(saveJob_,saveJob_.worker.get(),false);
   const auto resume=saveResume_;const bool close=closeAfterSave_;saveResume_=Pending::None;closeAfterSave_=false;
   pending_=Pending::None;restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);
-  if(resume!=Pending::None){menuBar_->setEnabled(true);paletteActions_->setEnabled(true);for(auto b:commands_)b->setEnabled(true);for(auto b:swatches_)b->setEnabled(true);for(auto b:panelTabs_)b->setEnabled(true);deferredSaveCloses_.push_back({document.identity(),resume,true});}
-  if(!exact&&(resume!=Pending::None||close))queuedSaves_.push_back({document.identity(),false});
+  if(resume!=Pending::None){menuBar_->setEnabled(true);paletteActions_->setEnabled(true);for(auto b:commands_)b->setEnabled(true);for(auto b:swatches_)b->setEnabled(true);for(auto b:panelTabs_)b->setEnabled(true);deferredSaveCloses_.push_back({value.identity(),resume,true});}
+  if(!exact&&(resume!=Pending::None||close))queuedSaves_.push_back({value.identity(),false});
   if(close)closeAfterBackgroundSaves_=true;
   refresh();
- }catch(const std::exception& e){saveSnapshot_.reset();closeAfterSave_=false;closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==savingIdentity_;}),deferredSaveCloses_.end());restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);showSaveError(e);}
+ }catch(const std::exception& e){saveJob_.snapshot.reset();closeAfterSave_=false;closeAfterBackgroundSaves_=false;closingWorkspace_=false;deferredSaveCloses_.erase(std::remove_if(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& c){return c.identity==saveJob_.version.identity;}),deferredSaveCloses_.end());restoreSaveControls();discard_->setEnabled(true);keep_->setEnabled(true);dialogClose_->setEnabled(true);showSaveError(e);}
 }
 
 bool Editor::savePath(const std::filesystem::path& path,bool background,bool sourceOnly,std::uint64_t identity) {
- ensureProjects();const auto owner=saveProjectIndex(identity?identity:document.identity());if(!owner)return false;
- auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
- auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
- auto& recovery_=*owner==activeProject_?this->recovery_:projects_[*owner]->recovery;
- if(document.gradientActive()&&(*owner!=activeProject_||!resolveGradientForIo()))return false;
+ ensureProjects();const auto owner=saveProjectIndex(identity?identity:currentDocument().identity());if(!owner)return false;
+ auto& value=projectDocument(*owner);
+ auto& saveOwnerPath=projectPath(*owner);
+ auto& saveOwnerRecovery=projectRecovery(*owner);
+ if(value.gradientActive()&&(*owner!=activeProject_||!resolveGradientForIo()))return false;
  const bool ase=saveImageFormat(path)!=SaveImageFormat::Native;
 
-    for(std::size_t i=0;i<projects_.size();++i)if(i!=*owner && (sameProjectPath(path,i==activeProject_?this->documentPath_:projects_[i]->path)||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
+    for(std::size_t i=0;i<projects_.size();++i)if(i!=*owner && (sameProjectPath(path,projectPath(i))||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
 
-    for(const auto& job:backgroundSaves_)if(job.identity!=document.identity()&&sameProjectPath(path,job.path)){showSaveError(std::runtime_error("该路径正在由另一个工程保存，请选择其它名称"));return false;}
+    for(const auto& job:backgroundSaves_)if(job.save.version.identity!=value.identity()&&sameProjectPath(path,job.save.path)){showSaveError(std::runtime_error("该路径正在由另一个工程保存，请选择其它名称"));return false;}
 
     if(!smoke_ || background || ase || portableTimelapseSave_ || asyncSaveForSmoke_){
 
@@ -532,9 +656,8 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
       try{
 
-        document.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=document.recordingSession())session->flush(document);savingScale_=requestedSaveScale_;savingPortableTimelapse_=portableTimelapseSave_;portableTimelapseSave_=false;saveResume_=pending_;savingPath_=path;savingAseprite_=ase;savingSourceOnly_=ase&&sourceOnly;savingIdentity_=document.identity();savingRevision_=document.revision();savingContentRevision_=document.contentRevision();
-
-        saveStarted_=std::chrono::steady_clock::now();saveDismissRequested_=*owner!=activeProject_;savingSymmetryCenter_=document.symmetryCenter();savingLayerPanelState_=document.layerPanelState();saveSnapshot_.emplace(document);savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
+        value.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=value.recordingSession())session->flush(value);saveJob_.begin(value,path,ase,sourceOnly,portableTimelapseSave_,requestedSaveScale_);portableTimelapseSave_=false;saveResume_=pending_;
+        saveDismissRequested_=*owner!=activeProject_;savingControlStates_.clear();for(auto child:children())savingControlStates_.push_back({child,child->isEnabled()});pending_=Pending::Saving;refresh();
 
         for(auto child:children())child->setEnabled(false);
 
@@ -542,19 +665,19 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
 
         invalidate();saveTick();
 
-      }catch(const std::exception& e){saveSnapshot_.reset();restoreSaveControls();showSaveError(e);}
+      }catch(const std::exception& e){saveJob_.snapshot.reset();restoreSaveControls();showSaveError(e);}
 
       return false; // Completion owns the pending close/new/open continuation.
 
     }
 
-    try {document.commitFloatingPaste();if(!flushTimelapse())return false;project::saveDocumentAtomic(document,path);documentPath_=path;status_=U"工程已保存";recordHomeRecent(path);
+    try {value.commitFloatingPaste();if(!flushTimelapse())return false;project::saveDocumentAtomic(value,path);saveOwnerPath=path;status_=U"工程已保存";recordHomeRecent(path);
 
-      if(recovery_.ownedIdentity==document.identity() && !recovery_.ownedId.empty()) {
+      if(saveOwnerRecovery.ownedIdentity==value.identity() && !saveOwnerRecovery.ownedId.empty()) {
 
-        try {if(recovery_.worker.valid()){recovery_.worker.get();if(recovery_.ticket)recovery_.queue.complete(*recovery_.ticket,true);recovery_.ticket.reset();}
+        try {if(saveOwnerRecovery.worker.valid()){saveOwnerRecovery.worker.get();if(saveOwnerRecovery.ticket)saveOwnerRecovery.queue.complete(*saveOwnerRecovery.ticket,true);saveOwnerRecovery.ticket.reset();}
 
-          project::removeOwnedRecovery(recoveryDirectory(),recovery_.ownedId);if(recovery_.originId==recovery_.ownedId)recovery_.originId.clear();recovery_.ownedId.clear();
+          project::removeOwnedRecovery(recoveryDirectory(),saveOwnerRecovery.ownedId);if(saveOwnerRecovery.originId==saveOwnerRecovery.ownedId)saveOwnerRecovery.originId.clear();saveOwnerRecovery.ownedId.clear();
 
         } catch(const std::exception&e){status_=U"工程已保存；恢复清理失败："+unicodeText(e.what());}
 
@@ -567,47 +690,62 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
   }
 
 bool Editor::saveProject(bool saveAs,std::uint64_t identity,std::optional<std::string> optionsJson) {
- if(!documentOpen_)return false;ensureProjects();const auto owner=saveProjectIndex(identity?identity:document.identity());if(!owner)return false;
- auto& document=*owner==activeProject_?this->document:*projects_[*owner]->stored;
- auto& documentPath_=*owner==activeProject_?this->documentPath_:projects_[*owner]->path;
+ if(!documentOpen_)return false;ensureProjects();const auto owner=saveProjectIndex(identity?identity:currentDocument().identity());if(!owner)return false;
+ // Nested native dialogs can dispatch tab close/replacement. Keep both owners
+ // alive, then re-resolve membership before using their results.
+ const auto saveSession=projects_.at(*owner);const auto saveDocument=saveSession->value;
+ auto& value=*saveDocument;
+ auto& saveOwnerPath=saveSession->path;
  if(*owner==activeProject_&&!resolveGradientForIo())return false;
- if(pending_==Pending::Saving||backgroundSaveBusy(document.identity())){queuedSaves_.push_back({document.identity(),saveAs,optionsJson});return false;}
- if(document.active()||document.strokeActive()){if(*owner!=activeProject_){queuedSaves_.push_back({document.identity(),saveAs,optionsJson});return false;}}
+ if(pending_==Pending::Saving||backgroundSaveBusy(value.identity())){queuedSaves_.push_back({value.identity(),saveAs,optionsJson});return false;}
+ if(value.active()||value.strokeActive()){if(*owner!=activeProject_){queuedSaves_.push_back({value.identity(),saveAs,optionsJson});return false;}}
  if(*owner==activeProject_){for(auto& picker:pickerColumns_)if(picker.picker)picker.picker->finishInteraction();cancelStroke();}
- document.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=document.recordingSession())session->flush(document);portableTimelapseSave_=false;
+ value.commitFloatingPaste();if(*owner==activeProject_){if(!flushTimelapse())return false;}else if(auto session=value.recordingSession())session->flush(value);portableTimelapseSave_=false;
  using namespace winrt::Windows::Data::Json;
  JsonObject scriptOptions;if(optionsJson)scriptOptions=JsonObject::Parse(winrt::to_hstring(*optionsJson));
  const auto oldScale=requestedSaveScale_;struct RestoreScale{int& value;int old;~RestoreScale(){value=old;}} restoreScale{requestedSaveScale_,oldScale};requestedSaveScale_=100;
  if(scriptOptions.HasKey(L"scalePercent")){const auto value=scriptOptions.GetNamedValue(L"scalePercent");if(value.ValueType()==JsonValueType::Number&&std::isfinite(value.GetNumber()))requestedSaveScale_=int(std::clamp(std::floor(value.GetNumber()+.5),1.,6400.));}
- const auto targetPolicy=documentSaveTarget(documentPath_,document.sourceFilePath());
+ const auto targetPolicy=documentSaveTarget(saveOwnerPath,value.sourceFilePath());
  auto target=targetPolicy?targetPolicy->path:std::filesystem::path{};
  auto format=targetPolicy?targetPolicy->format:SaveImageFormat::Native;const bool sourceImage=format!=SaveImageFormat::Native;
  const bool original=runtimePreferences_.flag("files.saveOriginalFormat");
- if(!optionsJson&&!saveAs&&!document.dirty()&&!target.empty()&&(sourceImage?original:!documentPath_.empty())){status_=U"工程已保存";refresh();return true;}
+ if(!optionsJson&&!saveAs&&!value.dirty()&&!target.empty()&&(sourceImage?original:!saveOwnerPath.empty())){status_=U"工程已保存";refresh();return true;}
+ const auto requestContext=workspace::SaveDecisionContext::capture(value,saveOwnerPath,format);
+ auto validateOwner=[&]{
+  const auto present=std::find(projects_.begin(),projects_.end(),saveSession);
+  if(present==projects_.end()||saveSession->value!=saveDocument||!requestContext.matchesOwnerTarget(value,saveOwnerPath))
+   throw std::runtime_error("保存所属工程或目标在确认期间发生变化，请重试。");
+ };
+ auto persist=[&](const std::filesystem::path& destination,bool sourceOnly){validateOwner();return savePath(destination,false,sourceOnly,requestContext.identity);};
  auto decide=[&](bool preferred,const std::vector<std::string>& issues){
-  if(format==SaveImageFormat::Psd||format==SaveImageFormat::Ase||format==SaveImageFormat::Aseprite)return confirmAsepriteSave(preferred,issues,format==SaveImageFormat::Psd);
+  if(format==SaveImageFormat::Psd||format==SaveImageFormat::Ase||format==SaveImageFormat::Aseprite){const int choice=confirmAsepriteSave(preferred,issues,format==SaveImageFormat::Psd);if(choice)validateOwner();return choice;}
   SaveFormatDecisionDialog popup(font_,skin_,toolIcons_,preferred,issues,saveImageLabel(format));popup.setDisplay(display(),false);auto size=popup.initialSize();auto center=bounds().center();popup.setBounds({center.x-size.w/2,center.y-size.h/2,size.w,size.h});ui::Timer check(40,&popup);
   if(smoke_&&asepriteSaveDecisionForSmoke_){check.Tick.connect([&]{check.stop();popup.smokeChoose(asepriteSaveDecisionForSmoke_(preferred,issues));});check.start();}
-  popup.openWindowInForeground();requestFocus();refresh();return popup.result();
+  popup.openWindowInForeground();requestFocus();refresh();const int choice=popup.result();if(choice)validateOwner();return choice;
  };
  bool forceProject=!optionsJson&&!original&&(sourceImage||target.empty());
- if(forceProject&&targetPolicy&&!saveAs){if(decide(true,{})!=1)return false;}
- std::vector<std::string> approved;
- auto confirm=[&]()->int{approved=imageSaveIssues(document,format);if(approved.empty())return 2;auto identity=document.identity();int choice=decide(false,approved);if(document.identity()!=identity||!asepriteApprovalCovers(approved,imageSaveIssues(document,format)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;};
+ std::optional<workspace::SaveDecisionContext> approval;
+ auto confirm=[&]()->int{
+  validateOwner();const auto context=workspace::SaveDecisionContext::capture(value,saveOwnerPath,format,imageSaveIssues(value,format));approval=context;
+  if(context.approvedIssues.empty())return 2;
+  const int choice=decide(false,context.approvedIssues);if(!choice)return 0;
+  if(!context.covers(format,imageSaveIssues(value,format)))throw std::runtime_error("工程在格式确认期间发生变化，请重新保存。");return choice;
+ };
  try{
-  if(!optionsJson&&!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(const auto current=documentSaveTarget(documentPath_,document.sourceFilePath());!current||current->path!=target||current->format!=format)throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return savePath(target,false,documentPath_.empty(),document.identity());}forceProject=true;}
-  if(!optionsJson&&!saveAs&&!forceProject&&targetPolicy&&!documentPath_.empty())return savePath(target,false,false,document.identity());
+  if(forceProject&&targetPolicy&&!saveAs){if(decide(true,{})!=1)return false;}
+  if(!optionsJson&&!saveAs&&sourceImage&&!forceProject){int choice=confirm();if(!choice)return false;if(choice==2){if(const auto current=documentSaveTarget(saveOwnerPath,value.sourceFilePath());!current||current->path!=target||current->format!=format)throw std::runtime_error("保存目标在确认期间发生变化，请重试。");return persist(target,saveOwnerPath.empty());}forceProject=true;}
+  if(!optionsJson&&!saveAs&&!forceProject&&targetPolicy&&!saveOwnerPath.empty())return persist(target,false);
   if(forceProject)format=SaveImageFormat::Native;
   else if(target.empty())format=preferredSaveImageFormat(runtimePreferences_.index("files.saveFormat.Select"));
   if(optionsJson&&!forceProject&&scriptOptions.HasKey(L"format")&&scriptOptions.GetNamedValue(L"format").ValueType()==JsonValueType::String){auto name=winrt::to_string(scriptOptions.GetNamedString(L"format"));if(name=="moonsprite")format=SaveImageFormat::Native;else{auto selected=saveImageFormat(std::filesystem::u8path("file."+name));if(selected!=SaveImageFormat::Native)format=selected;}}
-  std::filesystem::path initial=target.empty()?std::filesystem::path(document.name()):target;
+  std::filesystem::path initial=target.empty()?std::filesystem::path(value.name()):target;
   if(optionsJson&&scriptOptions.HasKey(L"name")&&scriptOptions.GetNamedValue(L"name").ValueType()==JsonValueType::String){auto name=scriptOptions.GetNamedString(L"name");std::wstring stem(name.c_str(),name.size());auto extension=std::filesystem::path(stem).extension().wstring();auto lower=extension;for(auto& c:lower)c=std::towlower(c);if(lower==L".moonsprite"||saveImageFormat(std::filesystem::path(L"file"+lower))!=SaveImageFormat::Native)stem.resize(stem.size()-extension.size());for(auto& c:stem)if(std::wstring(L"\\/:*?\"<>|").find(c)!=std::wstring::npos)c=L'_';auto first=stem.find_first_not_of(L" \t\r\n"),last=stem.find_last_not_of(L" \t\r\n");if(first!=std::wstring::npos)initial=stem.substr(first,last-first+1);}
   if(initial.filename().empty())initial=L"未命名";
   if(format!=SaveImageFormat::Native)initial=normalizedImageSavePath(initial,format);else initial.replace_extension(L".moonsprite");
   if(format!=SaveImageFormat::Native){int choice=confirm();if(!choice)return false;if(choice==1){format=SaveImageFormat::Native;initial.replace_extension(L".moonsprite");}}
   const bool portable=optionsJson&&scriptOptions.HasKey(L"includeTimelapse")&&scriptOptions.GetNamedValue(L"includeTimelapse").ValueType()==JsonValueType::Boolean&&scriptOptions.GetNamedBoolean(L"includeTimelapse");
-  if(optionsJson&&(!target.empty()&&!saveAs&&!forceProject)){portableTimelapseSave_=portable;return savePath(target,false,false,document.identity());}
-  if(optionsJson&&scriptOptions.HasKey(L"directory")&&scriptOptions.GetNamedValue(L"directory").ValueType()==JsonValueType::String){auto directory=winrt::to_string(scriptOptions.GetNamedString(L"directory"));auto first=directory.find_first_not_of(" \t\r\n"),last=directory.find_last_not_of(" \t\r\n");if(first!=std::string::npos){portableTimelapseSave_=portable;return savePath(std::filesystem::u8path(directory.substr(first,last-first+1))/initial.filename(),false,false,document.identity());}}
+  if(optionsJson&&(!target.empty()&&!saveAs&&!forceProject)){portableTimelapseSave_=portable;return persist(target,false);}
+  if(optionsJson&&scriptOptions.HasKey(L"directory")&&scriptOptions.GetNamedValue(L"directory").ValueType()==JsonValueType::String){auto directory=winrt::to_string(scriptOptions.GetNamedString(L"directory"));auto first=directory.find_first_not_of(" \t\r\n"),last=directory.find_last_not_of(" \t\r\n");if(first!=std::string::npos){portableTimelapseSave_=portable;return persist(std::filesystem::u8path(directory.substr(first,last-first+1))/initial.filename(),false);}}
   static constexpr SaveImageFormat filterFormats[]={SaveImageFormat::Native,SaveImageFormat::Aseprite,SaveImageFormat::Psd,SaveImageFormat::Png,SaveImageFormat::Jpeg,SaveImageFormat::Webp,SaveImageFormat::Svg,SaveImageFormat::Ico,SaveImageFormat::Bmp,SaveImageFormat::Gif};
   for(;;){
    wchar_t filename[32768]{};wcsncpy_s(filename,initial.c_str(),_TRUNCATE);
@@ -619,7 +757,9 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity,std::optional<std::s
    if(runtimePreferences_.index("files.saveLocationMode.Select")!=1){std::ifstream in(palettePreferencePath().parent_path()/"last-save-directory.txt",std::ios::binary);std::string value((std::istreambuf_iterator<char>(in)),{});if(!value.empty())preferred=std::filesystem::u8path(value);else preferred=target.parent_path();}
    if(optionsJson&&scriptOptions.HasKey(L"directory")&&scriptOptions.GetNamedValue(L"directory").ValueType()==JsonValueType::String){auto value=winrt::to_string(scriptOptions.GetNamedString(L"directory"));if(!value.empty())preferred=std::filesystem::u8path(value);}
    if(!preferred.empty())dialog.lpstrInitialDir=preferred.c_str();dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT;
+   validateOwner();
    if(!chooseSaveFile_(&dialog)){if(CommDlgExtendedError())showSaveError(std::runtime_error("Cannot open save dialog"));return false;}
+   validateOwner();
    if(dialog.nFilterIndex<1||dialog.nFilterIndex>10)throw std::runtime_error("保存格式无效。");
    auto selected=filterFormats[dialog.nFilterIndex-1];
    if(dialog.nFilterIndex==2&&format==SaveImageFormat::Ase)selected=SaveImageFormat::Ase;
@@ -627,10 +767,10 @@ bool Editor::saveProject(bool saveAs,std::uint64_t identity,std::optional<std::s
    if(selected!=SaveImageFormat::Native)path=normalizedImageSavePath(path,selected);
    else {auto lower=path.extension().wstring();for(auto& c:lower)c=std::towlower(c);if(lower!=L".moonsprite")path.replace_extension(L".moonsprite");}
    if(path!=requested&&std::filesystem::exists(path)){showSaveError(std::runtime_error("请选择完整文件名以确认覆盖目标。"));return false;}
-   if(selected!=SaveImageFormat::Native){bool changedFormat=format!=selected;format=selected;if(changedFormat||!asepriteApprovalCovers(approved,imageSaveIssues(document,format))){int choice=confirm();if(!choice)return false;if(choice==1){format=SaveImageFormat::Native;initial=path;initial.replace_extension(L".moonsprite");continue;}}return savePath(path,false,false,document.identity());}
+   if(selected!=SaveImageFormat::Native){bool changedFormat=format!=selected;format=selected;if(changedFormat||(!approval||!approval->covers(format,imageSaveIssues(value,format)))){int choice=confirm();if(!choice)return false;if(choice==1){format=SaveImageFormat::Native;initial=path;initial.replace_extension(L".moonsprite");continue;}}return persist(path,false);}
    if(optionsJson)portableTimelapseSave_=portable;
-   if(!optionsJson&&saveAs&&!document.timelapseSettings().snapshots.empty()){const int choice=chooseTimelapsePortability();if(!choice)return false;portableTimelapseSave_=choice==2;}
-   return savePath(path,false,false,document.identity());
+   if(!optionsJson&&saveAs&&!value.timelapseSettings().snapshots.empty()){const int choice=chooseTimelapsePortability();if(!choice)return false;validateOwner();portableTimelapseSave_=choice==2;}
+   return persist(path,false);
   }
  }catch(const std::exception& e){showSaveError(e);return false;}
 }
@@ -641,7 +781,7 @@ void Editor::runScriptExport(const std::string& optionsJson){
  using namespace winrt::Windows::Data::Json;
  if(pending_!=Pending::None||framePngBusy())return;
  scriptSaving_=true;
- struct Guard{std::function<void()> done;~Guard(){done();}} guard{[&]{scriptExporting_=false;scriptSaving_=false;framePngJob_.reset();if(pending_==Pending::StaticExport||pending_==Pending::GifExport)resolve(false);if(scriptSaveClose_){scriptSaveClose_=false;auto message=new ui::CallbackMessage([this]{requestClose();});message->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(message);}}};
+ struct Guard{std::function<void()> done;~Guard(){done();}} guard{[&]{scriptExporting_=false;scriptSaving_=false;framePngProgress_=workspace::ExportProgress{};if(pending_==Pending::StaticExport||pending_==Pending::GifExport)resolve(false);if(scriptSaveClose_){scriptSaveClose_=false;auto message=new ui::CallbackMessage([this]{requestClose();});message->setRecipient(ui::Manager::getDefault());ui::Manager::getDefault()->enqueueMessage(message);}}};
  try{
   const auto spec=JsonObject::Parse(winrt::to_hstring(optionsJson));
   auto string=[&](const wchar_t* key,const std::string& fallback=std::string{}){auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());return v.ValueType()==JsonValueType::String?winrt::to_string(v.GetString()):fallback;};
@@ -654,23 +794,23 @@ void Editor::runScriptExport(const std::string& optionsJson){
   if(target!="document"&&target!="selection"&&target!="layer"&&target!="slices"&&target!="frames")target="document";
   if(project&&target!="document")throw std::invalid_argument("Project export requires the document target");
   if(target=="frames"&&animated)throw std::invalid_argument("GIF frame sequence export is unsupported");
-  if(target=="selection"&&!document.selection())throw std::invalid_argument("No pixel selection to export");
+  if(target=="selection"&&!currentDocument().selection())throw std::invalid_argument("No pixel selection to export");
   const int scale=native?100:std::clamp(number(L"scalePercent",100),1,6400);
   const auto trimMode=string(L"trimMode");const auto trimValue=spec.GetNamedValue(L"trim",JsonValue::CreateNullValue());
   const bool trim=(trimMode.empty()&&trimValue.ValueType()==JsonValueType::Boolean&&trimValue.GetBoolean())||trimMode=="individual",common=trimMode=="common";
   const auto protection=ExportProtection(runtimePreferences_.index("files.exportProtection.Select"));
   StaticImageExportOptions image;image.scalePercent=scale;image.trim=trim;image.trimCommon=common;image.automatic=format=="png-auto";image.selection=target=="selection";image.protection=protection;
-  GifExportOptions animation;animation.scalePercent=scale;animation.trim=trim;animation.trimCommon=common;animation.selection=image.selection;animation.protection=protection;animation.frameEnd=int(document.timeline().state().frames.size());
+  GifExportOptions animation;animation.scalePercent=scale;animation.trim=trim;animation.trimCommon=common;animation.selection=image.selection;animation.protection=protection;animation.frameEnd=int(currentDocument().timeline().state().frames.size());
   const auto range=string(L"gifFrameRange");if(range=="range"){animation.frameStart=std::clamp(number(L"gifFrameStart",1),1,animation.frameEnd);animation.frameEnd=std::clamp(number(L"gifFrameEnd",animation.frameEnd),animation.frameStart,animation.frameEnd);}else if(range=="loop-section")animation.loopSectionId=string(L"gifLoopSectionId");
   const auto direction=string(L"gifDirection");animation.direction=direction=="reverse"?GifDirection::Reverse:direction=="forward-ping-pong"?GifDirection::ForwardPingPong:direction=="reverse-ping-pong"?GifDirection::ReversePingPong:GifDirection::Forward;
   // Reuse the existing modal's layout/cancel controls and export memory fields.
   if(animated||target=="frames")openGifExport();else openStaticExport();
   if(pending_!=Pending::StaticExport&&pending_!=Pending::GifExport)return;
   animationLayerJob_=target=="layer"||target=="slices";gifWebp_=format=="webp";framePngMode_=target=="frames";framePngAutomatic_=image.automatic;frameBmp_=staticBmp_=format=="bmp";frameIco_=staticIco_=format=="ico";frameSvg_=staticSvg_=format=="svg";frameJpeg_=staticJpeg_=format=="jpeg";
-  exportProjectFormat_=native?10:format=="psd"?7:format=="ase"?8:format=="aseprite"?9:0;exportPresets_.name->setText(string(L"presetName"));exportOptions_=image;gifOptions_=animation;gifExplicitRange_=range=="range";exportAllLayers_=target=="layer"&&(!document.timeline().hasLayer(string(L"layerId")));exportSlices_=target=="slices";exportSliceId_=string(L"sliceId");
+  exportProjectFormat_=native?10:format=="psd"?7:format=="ase"?8:format=="aseprite"?9:0;exportPresets_.name->setText(string(L"presetName"));exportOptions_=image;gifOptions_=animation;gifExplicitRange_=range=="range";exportAllLayers_=target=="layer"&&(!currentDocument().timeline().hasLayer(string(L"layerId")));exportSlices_=target=="slices";exportSliceId_=string(L"sliceId");
   if(target=="layer"&&!exportAllLayers_)exportOptions_.layerId=gifOptions_.layerId=string(L"layerId");
   exportScaleInput_->setText(std::to_string(scale));gifInputs_[0]->setText(std::to_string(scale));gifInputs_[1]->setText(std::to_string(animation.frameStart));gifInputs_[2]->setText(std::to_string(animation.frameEnd));
-  const auto fallback=framePngExportStem(document.name());auto stem=framePngExportStem(unicodeText(string(L"name",utf8Text(fallback))),fallback);
+  const auto fallback=framePngExportStem(currentDocument().name());auto stem=framePngExportStem(unicodeText(string(L"name",utf8Text(fallback))),fallback);
   const auto extension=native?L".moonsprite":format=="psd"?L".psd":format=="ase"?L".ase":format=="aseprite"?L".aseprite":animated?(format=="webp"?L".webp":L".gif"):format=="jpeg"?L".jpg":format=="bmp"?L".bmp":format=="ico"?L".ico":format=="svg"?L".svg":L".png";
   std::filesystem::path directory;
   // Trim directory whitespace without altering separators or dots.
@@ -686,18 +826,18 @@ void Editor::runScriptExport(const std::string& optionsJson){
   auto conflict=[this](const auto& path,const auto& suggested){return framePngConflict(path,suggested);};
   std::optional<AnimationLayerExportPlan> layers;std::optional<std::vector<std::filesystem::path>> paths;
   FramePngExportOptions frames{animation,image.automatic,format=="bmp",format=="ico",format=="svg",format=="jpeg"};
-  if(target=="layer")layers=animated?planAnimationLayerExport(document,string(L"layerId"),directory,requested.filename().u32string(),format=="webp",conflict):planStaticLayerExport(document,string(L"layerId"),directory,requested.filename().u32string(),staticFormat,conflict);
-  else if(target=="slices")layers=planSliceExport(document,string(L"sliceId"),directory,std::filesystem::path(extension).u32string(),conflict);
-  else if(target=="frames")paths=planFrameSequencePaths(directory,requested.filename().u32string(),framePngExportFrameIds(document.timeline().state(),frames).size(),conflict,format=="jpeg"?FrameSequenceFormat::Jpeg:format=="bmp"?FrameSequenceFormat::Bmp:format=="ico"?FrameSequenceFormat::Ico:format=="svg"?FrameSequenceFormat::Svg:FrameSequenceFormat::Png);
+  if(target=="layer")layers=animated?planAnimationLayerExport(currentDocument(),string(L"layerId"),directory,requested.filename().u32string(),format=="webp",conflict):planStaticLayerExport(currentDocument(),string(L"layerId"),directory,requested.filename().u32string(),staticFormat,conflict);
+  else if(target=="slices")layers=planSliceExport(currentDocument(),string(L"sliceId"),directory,std::filesystem::path(extension).u32string(),conflict);
+  else if(target=="frames")paths=planFrameSequencePaths(directory,requested.filename().u32string(),framePngExportFrameIds(currentDocument().timeline().state(),frames).size(),conflict,format=="jpeg"?FrameSequenceFormat::Jpeg:format=="bmp"?FrameSequenceFormat::Bmp:format=="ico"?FrameSequenceFormat::Ico:format=="svg"?FrameSequenceFormat::Svg:FrameSequenceFormat::Png);
   else paths=resolveExportDestinations({requested},conflict);
   if((target=="layer"||target=="slices")?!layers:!paths){status_=U"已取消导出";return;}
   if(native&&!flushTimelapse())return;
-  framePngJob_=std::make_shared<FramePngJobState>();auto job=framePngJob_;job->total=layers?layers->paths.size():paths->size();
-  const auto selection=document.selection();const auto reader=document.recordingSession()?document.recordingSession()->reader():timelapse::Reader{};
-  DocumentSnapshot snapshot(document);scriptExporting_=true;refresh();ui::MessageLoop loop(ui::Manager::getDefault());
-  while(!snapshot.advance(document,std::chrono::steady_clock::now()+std::chrono::milliseconds(2))){loop.pumpMessages();if(job->cancel){status_=U"已取消导出";return;}}
+  framePngProgress_=workspace::ExportProgress(layers?layers->paths.size():paths->size());auto job=framePngProgress_;
+  const auto selection=currentDocument().selection();const auto reader=currentDocument().recordingSession()?currentDocument().recordingSession()->reader():timelapse::Reader{};
+  DocumentSnapshot snapshot(currentDocument());scriptExporting_=true;refresh();ui::MessageLoop loop(ui::Manager::getDefault());
+  while(!snapshot.advance(currentDocument(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2))){loop.pumpMessages();if(job.cancelled()){status_=U"已取消导出";return;}}
   auto work=std::async(std::launch::async,[snapshot=std::move(snapshot),selection,reader,job,native,project,animated,format,scale,image,animation,frames,layers,paths,target]()mutable{
-   auto copy=snapshot.finish();copy.previewSelection(selection);auto cancelled=[job]{return job->cancel.load();};auto progress=[job](std::size_t n,std::size_t){job->written=n;};
+   auto copy=snapshot.finish();copy.previewSelection(selection);auto cancelled=[job]{return job.cancelled();};auto progress=[job](std::size_t n,std::size_t){job.report(n);};
    if(cancelled())return std::size_t(0);
    if(layers){AnimationLayerExportOptions options;options.animation=animation;options.webp=format=="webp";options.staticImage=!animated;options.image=image;options.format=format=="jpeg"?5:format=="svg"?3:format=="ico"?2:format=="bmp"?1:format=="png-auto"?4:0;return writeAnimationLayerExport(copy,options,*layers,cancelled,progress);}
    if(target=="frames")return writeFramePngSequence(copy,frames,*paths,cancelled,progress);
@@ -710,12 +850,12 @@ void Editor::runScriptExport(const std::string& optionsJson){
    else if(format=="ico")bytes=encodeStaticImageIco(copy,image).bytes;
    else if(format=="bmp")bytes=encodeStaticImageBmp(copy,image).bytes;
    else bytes=encodeStaticImagePng(copy,image).png;
-   if(cancelled())return std::size_t(0);writeExportBytesAtomic(paths->front(),bytes);job->written=1;return std::size_t(1);
+   if(cancelled())return std::size_t(0);writeExportBytesAtomic(paths->front(),bytes);job.report(1);return std::size_t(1);
   });
   // Await encoding without consuming a UI core. Keep pumping between bounded
   // waits so progress, cancellation and deferred close remain responsive.
   while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();work.wait_for(std::chrono::milliseconds(4));}
-  const auto written=work.get();if(job->cancel){status_=U"已取消导出，保留已写入的文件";return;}
+  const auto written=work.get();if(job.cancelled()){status_=U"已取消导出，保留已写入的文件";return;}
   if(written){const auto lastPath=layers?layers->paths.back():paths->back();rememberSuccessfulExport(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
  }catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}catch(const winrt::hresult_error& e){status_=U"导出失败："+unicodeText(winrt::to_string(e.message()));}
 }
@@ -735,13 +875,13 @@ void Editor::recoveryTick(bool force) {
     if(projects_.size()<2 || pending_==Pending::Saving || (smoke_ && !force))return;
     const auto count=force?projects_.size():std::size_t(1);
     for(std::size_t n=0;n<count;++n){const auto index=recoveryProject_++%projects_.size();if(index==activeProject_)continue;auto& slot=*projects_[index];
-      const auto result=slot.recovery.tick(*slot.stored,recoveryPreferences_,recoveryDirectory(),force);
+      const auto result=slot.recovery.tick(projectDocument(index),recoveryPreferences_,recoveryDirectory(),force);
       if(!result.error.empty()){status_=(result.cleanupFailure?U"工程已保存；恢复清理失败：":U"自动恢复保存失败：")+unicodeText(result.error);invalidate();}
     }
 }
 void Editor::activeRecoveryTick(bool force) {
     if((pending_==Pending::Saving || smoke_) && !force)return;
-    const auto result=recovery_.tick(document,recoveryPreferences_,recoveryDirectory(),force);
+    const auto result=currentRecovery().tick(currentDocument(),recoveryPreferences_,recoveryDirectory(),force);
     if(!result.error.empty()){status_=(result.cleanupFailure?U"工程已保存；恢复清理失败：":U"自动恢复保存失败：")+unicodeText(result.error);invalidate();}
 }
 
@@ -764,14 +904,14 @@ void Editor::restoreRecovery(const std::filesystem::path& archive,const std::str
         if(!fallback||imported.name.empty())imported.name=name;return project::createEditableDocument(std::move(imported));
       },U"恢复工程",&toolIcons_);
       loading.setDisplay(display(),false);const auto size=loading.minimumDialogSize(bounds().w);loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
-      openCandidate_=loading.run([this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});candidateRecovery_=true;candidateRecoveryId_=id;ask(Pending::Open);
+      openCandidate_=loading.run([this]{return pending_==Pending::None&&!currentDocument().strokeActive()&&!ui::Manager::getDefault()->getCapture();});candidateRecovery_=true;candidateRecoveryId_=id;ask(Pending::Open);
       if(report->droppedTimelapseFrames){status_=timelapseRestoreWarning(*report);refresh();}
     }catch(const std::exception& e){showSaveError(e);errorTitle_=U"无法恢复工程";}
 }
 
 void Editor::setRecoveryPreferences(recovery::Preferences preferences) {
 
-    try {preferences=recovery::normalizePreferences(preferences);if(!smoke_)recovery::savePreferencesAtomic(recoveryDirectory().parent_path()/"recovery-preferences.txt",preferences);recoveryPreferences_=preferences;for(auto& slot:projects_){slot->recovery.queue.setIntervalMinutes(preferences.minutes);slot->recovery.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));}recovery_.queue.setIntervalMinutes(preferences.minutes);recovery_.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));status_=U"恢复设置已保存";refresh();}
+    try {preferences=recovery::normalizePreferences(preferences);if(!smoke_)recovery::savePreferencesAtomic(recoveryDirectory().parent_path()/"recovery-preferences.txt",preferences);recoveryPreferences_=preferences;for(auto& slot:projects_)if(slot!=activeSession_){slot->recovery.queue.setIntervalMinutes(preferences.minutes);slot->recovery.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));}currentRecovery().queue.setIntervalMinutes(preferences.minutes);currentRecovery().due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(preferences.minutes*60000));status_=U"恢复设置已保存";refresh();}
 
     catch(const std::exception&e){showSaveError(e);errorTitle_=U"恢复设置保存失败";}
 
@@ -843,7 +983,7 @@ void Editor::chooseProject() {
       // A single file never asks for sequence import in legacy. Avoid entering
       // the large assembly stack when called from an in-flight Lua result.
       if(sequencePaths.size()==1)host.open(sequencePaths.front());
-      else openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+      else openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",sequencePaths,std::move(host),{},[this]{return pending_==Pending::None&&!currentDocument().strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开选择的文件";refresh();}
     }
 

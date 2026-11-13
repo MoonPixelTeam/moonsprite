@@ -1,7 +1,7 @@
 #pragma once
-#include "extension_contributions.h"
 #include "native_widgets.h"
 #include <memory>
+namespace moon::extension { struct RuntimeCandidate; struct ManifestCommand; }
 namespace moon::editor {
 // Legacy ExtensionPanelHost: floating command lists, independent of JS engine.
 class ExtensionPanelHost {

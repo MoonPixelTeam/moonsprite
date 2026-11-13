@@ -10,6 +10,7 @@
 #include <string_view>
 namespace moon {
 enum class FilterPreset{CrtSubtle,CrtMedium,CrtStrong,VhsColorFringe,Vignette,PhosphorGlow};
+struct PresetFilterOptions {FilterPreset preset=FilterPreset::CrtSubtle;double opacity=1;bool lcd=false;int lcdWidth=1,lcdHeight=1;};
 struct FilterPresetDefinition{FilterPreset preset;std::string_view id;std::u32string_view name,description;std::string_view blendMode;double opacity;};
 inline const std::array<FilterPresetDefinition,6>& filterPresetDefinitions(){static const std::array<FilterPresetDefinition,6> values{{
  {FilterPreset::CrtSubtle,"crt-scanlines-subtle",U"CRT 扫描线（经典隔行）",U"传统隔行扫描：每隔一行压暗，形成最干净的 CRT 线条。","soft-light",1},

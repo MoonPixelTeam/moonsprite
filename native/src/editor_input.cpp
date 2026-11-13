@@ -1,8 +1,8 @@
+#include "editor.h"
 #include "image_resize_task.h"
 #include "image_sequence_dialog.h"
 #include "free_tile_selection_target.h"
-#include "editor_implementation.h"
-#include "editor.h"
+#include "preview_panel.h"
 #include "free_tile_instances_panel.h"
 
 namespace moon::editor {
@@ -54,7 +54,7 @@ void Editor::observeModifierRelease(ui::Message* msg){
     observeTabletInput(msg);observeDynamicsInput(msg);
     observeShortcutInputs(msg);syncShortcutTools(*msg);
 
-    brushFeedback_.brushPreviewShift_=msg->shiftPressed();if(liquifyTool_)layoutToolOptions();invalidateRect(canvasViewport());
+    brushFeedback_.brushPreviewShift_=msg->shiftPressed();if(currentTools().liquifyTool)layoutToolOptions();invalidateRect(canvasViewport());
 
     if(brushFeedback_.modifierBrushSize_ && !brushFeedback_.modifierBrushSize_->pressed && !moveModifierHeld("brushSizeAdjust",*msg))finishModifierBrushSize();
 
@@ -150,7 +150,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg,shortcutEvent]{if(shortcutEvent)syncShortcutTools(*msg);}};
     // The source toolbar is a sibling for column chrome layout, but belongs
     // to the legacy tileset command scope. Delete must never reach layer delete.
-    if(tilesetPanel_&&msg->type()==ui::kKeyDownMessage&&document.layer().kind=="free-tile"){
+    if(tilesetPanel_&&msg->type()==ui::kKeyDownMessage&&currentDocument().layer().kind=="free-tile"){
       auto key=static_cast<ui::KeyMessage*>(msg);auto focus=ui::Manager::getDefault()->getFocus();
       if((focus==tilesetAdd_||focus==tilesetDelete_)&&(key->scancode()==ui::kKeyDel||key->scancode()==ui::kKeyBackspace)){if(pending_==Pending::None)tilesetPanel_->deleteSelection();return true;}
     }
@@ -158,7 +158,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     if(brushLibraryPanel_&&brushLibraryPanel_->handleCommand(msg))return true;
     if(freeTileInstancesPanel_&&freeTileInstancesPanel_->handleCommand(msg))return true;
     if(routePointerShortcut(msg))return true;
-    if(document.freeTilePlacementActive()&&processFreeTileInput(msg))return true;
+    if(currentDocument().freeTilePlacementActive()&&processFreeTileInput(msg))return true;
     if(processViewRotation(msg))return true;
     if(processTextInput(msg))return true;
     if(processSliceInput(msg))return true;
@@ -223,7 +223,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
           };
           host.add=[this](Document value){addProject(std::move(value));};
           host.error=[&failures](const std::string& error){if(!failures.empty())failures+=U"\n";failures+=unicodeText(error);};
-          openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",paths,std::move(host),{},[this]{return pending_==Pending::None&&!document.strokeActive()&&!ui::Manager::getDefault()->getCapture();});
+          openImageSequenceDocuments(font_,skin_,toolIcons_,display(),bounds(),palettePreferencePath().parent_path()/"image-sequence-v1.txt",paths,std::move(host),{},[this]{return pending_==Pending::None&&!currentDocument().strokeActive()&&!ui::Manager::getDefault()->getCapture();});
           if(!failures.empty()){showSaveError(std::runtime_error(utf8Text(failures)));errorTitle_=U"无法打开拖入的文件";refresh();}
           return true;
         }
@@ -232,7 +232,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage){
 
-      brushFeedback_.brushPreviewShift_=msg->shiftPressed();if(liquifyTool_)layoutToolOptions();if(!homeOpen_ && documentOpen_)invalidateRect(canvasViewport());
+      brushFeedback_.brushPreviewShift_=msg->shiftPressed();if(currentTools().liquifyTool)layoutToolOptions();if(!homeOpen_ && documentOpen_)invalidateRect(canvasViewport());
 
       brushFeedback_.modifierCtrl_=msg->ctrlPressed() || msg->cmdPressed();brushFeedback_.modifierAlt_=msg->altPressed();
 
@@ -244,7 +244,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    if(msg->type()==ui::kFocusLeaveMessage){if(drawingAnchorDragging_&&!static_cast<ui::FocusMessage*>(msg)->newFocus()){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if((magicEraserDragging_||airbrushDragging_||smoothDragging_)&&!static_cast<ui::FocusMessage*>(msg)->newFocus())cancelStroke();if(!static_cast<ui::FocusMessage*>(msg)->newFocus()){usageStatistics_.flush();persistUsageStatistics();}panelScrollSpace_=false;finishModifierBrushSize();flushBrushSizePreferences();brushFeedback_.brushPreviewShift_=false;brushFeedback_.modifierCtrl_=brushFeedback_.modifierAlt_=selectionShift_=selectionCtrl_=false;eyedropperHeld_=paletteSamplingHeld_=spaceHeld_=false;}
+    if(msg->type()==ui::kFocusLeaveMessage){if(drawingAnchorDragging_&&!static_cast<ui::FocusMessage*>(msg)->newFocus()){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if((magicEraserDragging_||airbrushDragging_||smoothDragging_)&&!static_cast<ui::FocusMessage*>(msg)->newFocus())cancelStroke();if(!static_cast<ui::FocusMessage*>(msg)->newFocus()){usageStatistics_.flush();persistUsageStatistics();}panelScrollSpace_=false;finishModifierBrushSize();flushBrushSizePreferences();brushFeedback_.brushPreviewShift_=false;brushFeedback_.modifierCtrl_=brushFeedback_.modifierAlt_=selectionShift_=selectionCtrl_=false;eyedropperHeld_=paletteSamplingHeld_=spaceHeld_=false;}
 
     if(processPaletteInput(msg))return true;
 
@@ -323,7 +323,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(eyedropperGesture_.active() && !hasCapture()){eyedropperGesture_.finish();eyedropperLensSurface_.reset();invalidateRect(canvasViewport());}
 
-    if(selectionTool_ && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){selectionShift_=msg->shiftPressed();selectionCtrl_=msg->ctrlPressed() || msg->cmdPressed();layoutToolOptions();invalidateRect(canvasViewport());updateNavigationCursor();}
+    if(currentTools().selectionTool && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){selectionShift_=msg->shiftPressed();selectionCtrl_=msg->ctrlPressed() || msg->cmdPressed();layoutToolOptions();invalidateRect(canvasViewport());updateNavigationCursor();}
 
     if((selectionDragging_ || floatingDragging_) && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){const auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()>=ui::kKeyLShift && key->scancode()<=ui::kKeyCommand){ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,selectionRight_?ui::kButtonRight:ui::kButtonLeft,key->modifiers(),selectionPointerPosition_);selectionSyntheticMove_=true;onProcessMessage(&move);selectionSyntheticMove_=false;return true;}}
 
@@ -335,7 +335,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     // Legacy cancelPendingGradientEdit restores the edit snapshot, retaining confirmation.
     const auto restorePendingGradientPointer=[&]{
-      if(!gradientPending_ || !document.gradientActive())return false;
+      if(!gradientPending_ || !currentDocument().gradientActive())return false;
       if(gradientDragging_){
         if(gradientHandle_<0)return false;
         gradientSpec_=gradientHandleBefore_;gradientDragging_=false;gradientHandle_=-1;
@@ -355,15 +355,15 @@ bool Editor::onProcessMessage(ui::Message* msg) {
     const bool enteringGradientStops=gradientStopsFocusOwner_&&(inOwner(gradientStopsFocusOwner_)||inOwner(gradientStopsColorFocusOwner_)||inOwner(this));
     if(msg->type()==ui::kFocusLeaveMessage && !enteringAbout && !enteringGradientStops && !gradientIoDialogOpen_) {
 
-      if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// Owned free-tile property dialogs keep previews until their normal close.
+      if(symmetryDragging_)finishSymmetryDrag(true);eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){currentView().pivot=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);// Owned free-tile property dialogs keep previews until their normal close.
       // A released confirmation gradient is not an in-progress pointer stroke.
       // Legacy keeps it registered through menu/window focus changes until a choice/context invalidates it.
-      if(!restorePendingGradientPointer()&&!document.freeTileInstancePropertiesActive()&&!document.freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
+      if(!restorePendingGradientPointer()&&!currentDocument().freeTileInstancePropertiesActive()&&!currentDocument().freeTileSourcePropertiesActive())cancelStroke();updateNavigationCursor();
 
     }
 
-    if(drawingAnchorDragging_&&!hasCapture()){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;invalidateRect(canvasViewport());}
-    if(gradientDragging_ && !hasCapture() && !restorePendingGradientPointer())cancelStroke();if((magicEraserDragging_ || fillDragging_ || (shapeDragging_&&shapeSpec_.kind!=ShapeKind::Polygon&&!(shapeSpec_.kind==ShapeKind::Curve&&!curveEndpoint_))) && !hasCapture())cancelStroke();
+    if(drawingAnchorDragging_&&!hasCapture()){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;invalidateRect(canvasViewport());}
+    if(gradientDragging_ && !hasCapture() && !restorePendingGradientPointer())cancelStroke();if((magicEraserDragging_ || fillDragging_ || (shapeDragging_&&currentTools().shapeKind!=ShapeKind::Polygon&&!(currentTools().shapeKind==ShapeKind::Curve&&!curveEndpoint_))) && !hasCapture())cancelStroke();
 
     if(navigation_.pan_.active && !hasCapture()) finishPan(true);
 
@@ -375,10 +375,10 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    if(drawingAnchorDragging_&&msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();invalidateRect(canvasViewport());return true;}
-    if(selectionPivotDragging_ && msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();invalidateRect(canvasViewport());return true;}
+    if(drawingAnchorDragging_&&msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();invalidateRect(canvasViewport());return true;}
+    if(selectionPivotDragging_ && msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){currentView().pivot=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();invalidateRect(canvasViewport());return true;}
 
-    if(shapeDragging_ && shapeSpec_.kind!=ShapeKind::Polygon && shapeSpec_.kind!=ShapeKind::Freeform && shapeSpec_.kind!=ShapeKind::Curve && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();if(code>=ui::kKeyLShift && code<=ui::kKeyCommand){if(shapeSpec_.kind==ShapeKind::Line){const auto raw=key->shiftPressed()?constrainShapeLine(shapeSpec_.start,shapePointer_,runtimePreferences_.index("tools.lineDirectionStep.Number")):shapePointer_;const auto end=gridSnapPoint({int(raw.x),int(raw.y)});shapeSpec_.end={double(end.x),double(end.y)};}else shapeGeometry_.update(shapeSpec_,shapePointer_,key->shiftPressed(),bool(shapeDrawingAnchor_)||key->ctrlPressed() || key->cmdPressed(),key->altPressed(),shapeRatio_?shapeRatioWidth_/shapeRatioHeight_:0);shapeRequest_=true;shapeTick();return true;}}
+    if(shapeDragging_ && currentTools().shapeKind!=ShapeKind::Polygon && currentTools().shapeKind!=ShapeKind::Freeform && currentTools().shapeKind!=ShapeKind::Curve && (msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage)){const auto key=static_cast<ui::KeyMessage*>(msg);const auto code=key->scancode();if(code>=ui::kKeyLShift && code<=ui::kKeyCommand){if(currentTools().shapeKind==ShapeKind::Line){const auto raw=key->shiftPressed()?constrainShapeLine(shapeSpec_.start,shapePointer_,runtimePreferences_.index("tools.lineDirectionStep.Number")):shapePointer_;const auto end=gridSnapPoint({int(raw.x),int(raw.y)});shapeSpec_.end={double(end.x),double(end.y)};}else shapeGeometry_.update(shapeSpec_,shapePointer_,key->shiftPressed(),bool(shapeDrawingAnchor_)||key->ctrlPressed() || key->cmdPressed(),key->altPressed(),currentTools().shapeRatio?currentTools().shapeRatioWidth/currentTools().shapeRatioHeight:0);shapeRequest_=true;shapeTick();return true;}}
 
     if(msg->type()==ui::kKeyDownMessage) {
 
@@ -396,7 +396,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(eyedropperHeld_)return true;
 
-      if(moveModifierHeld("tool.hand.quick",*key) && !marqueeDrawingAnchor_ && selectionDragging_ && !selectionBoxDragging_ && selectionKind_<=1 && marqueeTarget_){if(!marqueeSpaceTarget_){marqueeSpaceTarget_=marqueeTarget_;marqueeSpacePointer_={double(selectionLast_.x),double(selectionLast_.y)};marqueeSpaceHadResize_=bool(marqueeResizeStart_);}return true;}
+      if(moveModifierHeld("tool.hand.quick",*key) && !marqueeDrawingAnchor_ && selectionDragging_ && !selectionBoxDragging_ && currentTools().selectionKind<=1 && marqueeTarget_){if(!marqueeSpaceTarget_){marqueeSpaceTarget_=marqueeTarget_;marqueeSpacePointer_={double(selectionLast_.x),double(selectionLast_.y)};marqueeSpaceHadResize_=bool(marqueeResizeStart_);}return true;}
 
       if(spaceHeld_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())) {updateNavigationCursor();return true;}
 
@@ -410,47 +410,47 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyH && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat()){toggleSelectionOutline();refresh();}return true;}
 
-      if(!key->ctrlPressed() && !key->cmdPressed() && !key->altPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()) && columnShown(2) && document.timeline().state().frames.size()>1){const auto code=key->scancode();if(code==ui::kKeyComma || code==ui::kKeyStop){keyboardStepFrame(code==ui::kKeyComma?-1:1);return true;}}
+      if(!key->ctrlPressed() && !key->cmdPressed() && !key->altPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()) && columnShown(2) && currentDocument().timeline().state().frames.size()>1){const auto code=key->scancode();if(code==ui::kKeyComma || code==ui::kKeyStop){keyboardStepFrame(code==ui::kKeyComma?-1:1);return true;}}
 
       if(paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()) && (key->scancode()==ui::kKeyDel || key->scancode()==ui::kKeyBackspace)) {
 
-        const auto ids=document.palette().selected;document.deletePaletteColors(ids);refresh();return true;
+        const auto ids=currentDocument().palette().selected;currentDocument().deletePaletteColors(ids);refresh();return true;
 
       }
 
-      if(shapeDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();else if(shapeSpec_.kind==ShapeKind::Polygon&&key->scancode()==ui::kKeyEnter)finishPolygonShape();else if(shapeSpec_.kind==ShapeKind::Curve&&key->scancode()==ui::kKeyEnter)finishCurveShape();return true;}
+      if(shapeDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();else if(currentTools().shapeKind==ShapeKind::Polygon&&key->scancode()==ui::kKeyEnter)finishPolygonShape();else if(currentTools().shapeKind==ShapeKind::Curve&&key->scancode()==ui::kKeyEnter)finishCurveShape();return true;}
 
       if(gradientDragging_ || gradientPending_){if(key->scancode()==ui::kKeyEsc){if(gradientDragging_ && gradientPending_ && gradientHandle_>=0){gradientSpec_=gradientHandleBefore_;gradientDragging_=false;gradientHandle_=-1;gradientRequest_=true;if(hasCapture())releaseMouse();gradientTick();refresh();}else cancelGradientGesture();}else if(key->scancode()==ui::kKeyEnter)applyGradientGesture();return true;}
 
       if(magicEraserDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();return true;}
       if(fillDragging_){if(key->scancode()==ui::kKeyEsc)cancelStroke();return true;}
 
-      if(key->scancode()==ui::kKeyEsc && (temporaryBrushCapture_ || temporaryBrushActive_ || pencilImageBrush_)){if(selectionDragging_)endSelectionGesture(true);exitTemporaryBrushCapture();saveBrushPreferences();refresh();return true;}
-      if(selectionDragging_ || floatingDragging_){if(key->scancode()==ui::kKeyEsc || ((key->ctrlPressed() || key->cmdPressed()) && key->scancode()==ui::kKeyD))endSelectionGesture(true);else if(polygonPending_ && (key->ctrlPressed() || key->cmdPressed()) && (key->scancode()==ui::kKeyZ || key->scancode()==ui::kKeyY))polygonStep(key->scancode()==ui::kKeyY || key->shiftPressed());else if(key->scancode()==ui::kKeyEnter && polygonPending_)endSelectionGesture(false);else if(key->scancode()==ui::kKeyEnter && selectionKind_==4){wandReleased_=true;if(hasCapture())releaseMouse();if(wandPreviewReady_)endSelectionGesture(false);else wandTick();}return true;}
+      if(key->scancode()==ui::kKeyEsc && (currentTools().temporaryBrushCapture || currentTools().temporaryBrushActive || currentTools().pencilImageBrush)){if(selectionDragging_)endSelectionGesture(true);exitTemporaryBrushCapture();saveBrushPreferences();refresh();return true;}
+      if(selectionDragging_ || floatingDragging_){if(key->scancode()==ui::kKeyEsc || ((key->ctrlPressed() || key->cmdPressed()) && key->scancode()==ui::kKeyD))endSelectionGesture(true);else if(polygonPending_ && (key->ctrlPressed() || key->cmdPressed()) && (key->scancode()==ui::kKeyZ || key->scancode()==ui::kKeyY))polygonStep(key->scancode()==ui::kKeyY || key->shiftPressed());else if(key->scancode()==ui::kKeyEnter && polygonPending_)endSelectionGesture(false);else if(key->scancode()==ui::kKeyEnter && currentTools().selectionKind==4){if(hasCapture())releaseMouse();if(wand_.release())endSelectionGesture(false);else wandTick();}return true;}
 
-      if((ordinaryBrushTool() || (selectionTool_ && selectionKind_==5) || shapeTool_) && !paletteFocused_ && !key->altPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){
+      if((ordinaryBrushTool() || (currentTools().selectionTool && currentTools().selectionKind==5) || currentTools().shapeTool) && !paletteFocused_ && !key->altPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){
 
-        if((key->ctrlPressed() || key->cmdPressed()) && key->scancode()>=ui::kKey1 && key->scancode()<=ui::kKey3){if(!key->repeat()){brushFeedback_.brushProfiles_[eraser_?1:0].shape=BrushShape(key->scancode()-ui::kKey1);if(pencilImageBrush_){pencilImageBrushId_.clear();pencilImageBrush_.reset();}saveBrushPreferences();refresh();}return true;}
+        if((key->ctrlPressed() || key->cmdPressed()) && key->scancode()>=ui::kKey1 && key->scancode()<=ui::kKey3){if(!key->repeat()){currentTools().brushProfiles[currentTools().eraser?1:0].shape=BrushShape(key->scancode()-ui::kKey1);if(currentTools().pencilImageBrush){currentTools().pencilImageBrushId.clear();currentTools().pencilImageBrush.reset();}saveBrushPreferences();refresh();}return true;}
 
-        if(!key->ctrlPressed() && !key->cmdPressed() && (key->scancode()==ui::kKeyOpenbrace || key->scancode()==ui::kKeyClosebrace)){if(!pencilImageBrush_ || !pencilImageBrush_->intrinsicSize){setModifierBrushSize((liquifyTool_?liquifyOptions_.radius:airbrushTool_?airbrushSettings_.scatterRadius:smoothTool_?smoothBrush_.size:brushFeedback_.brushProfiles_[eraser_?1:0].size)+(key->scancode()==ui::kKeyClosebrace?1:-1));}return true;}
+        if(!key->ctrlPressed() && !key->cmdPressed() && (key->scancode()==ui::kKeyOpenbrace || key->scancode()==ui::kKeyClosebrace)){if(!currentTools().pencilImageBrush || !currentTools().pencilImageBrush->intrinsicSize){setModifierBrushSize((currentTools().liquifyTool?currentTools().liquifyOptions.radius:currentTools().airbrushTool?currentTools().airbrushSettings.scatterRadius:currentTools().smoothTool?currentTools().smoothBrush.size:currentTools().brushProfiles[currentTools().eraser?1:0].size)+(key->scancode()==ui::kKeyClosebrace?1:-1));}return true;}
 
       }
 
       // Legacy text-tool arrows take priority even when the layer list has focus.
-      if(textTool_ && document.layer().kind=="text" && !document.hasSelectedGroups() && !shortcutInputBlocked() && !hasCapture() && !historyGestureBusy() && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
+      if(currentTools().textTool && currentDocument().layer().kind=="text" && !currentDocument().hasSelectedGroups() && !shortcutInputBlocked() && !hasCapture() && !historyGestureBusy() && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
         int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;
-        if(dx||dy){if(document.nudgeTextLayer(dx,dy)){playing_=false;refresh();}return true;}
+        if(dx||dy){if(currentDocument().nudgeTextLayer(dx,dy)){currentPlayback().playing=false;refresh();}return true;}
       }
 
-      if(document.selection() && !paletteFocused_ && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
+      if(currentDocument().selection() && !paletteFocused_ && !key->ctrlPressed() && !key->cmdPressed() && !key->altPressed()){
 
         int dx=0,dy=0;if(key->scancode()==ui::kKeyLeft)dx=-1;else if(key->scancode()==ui::kKeyRight)dx=1;else if(key->scancode()==ui::kKeyUp)dy=-1;else if(key->scancode()==ui::kKeyDown)dy=1;
 
         if(dx || dy){
-          const bool paintCells=document.layer().kind=="tilemap"&&document.activeMaskId().empty()&&document.tilemapMode()==tiles::Mode::Paint&&!selectionFreeTransform_&&!document.floating();
-          if(selectionFreeTransform_&&document.activeMaskId().empty()&&!document.floating()&&document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint&&!document.beginSelectionContentMove(false,frameSelectionExplicit_))return true;
-          if(paintCells){const auto resolved=document.timeline().resolveSurface(document.cel().id);if(!resolved.source||!resolved.source->tilemap)return true;dx*=resolved.source->tilemap->tileWidth;dy*=resolved.source->tilemap->tileHeight;}
-          if(document.nudgeSelectionContent(dx,dy,frameSelectionExplicit_)){playing_=false;hideTimelineSelectionGuides();refresh();}return true;}
+          const bool paintCells=currentDocument().layer().kind=="tilemap"&&currentDocument().activeMaskId().empty()&&currentDocument().tilemapMode()==tiles::Mode::Paint&&!currentView().freeTransform&&!currentDocument().floating();
+          if(currentView().freeTransform&&currentDocument().activeMaskId().empty()&&!currentDocument().floating()&&currentDocument().layer().kind=="tilemap"&&currentDocument().tilemapMode()==tiles::Mode::Paint&&!currentDocument().beginSelectionContentMove(false,currentView().frameSelection))return true;
+          if(paintCells){const auto resolved=currentDocument().timeline().resolveSurface(currentDocument().cel().id);if(!resolved.source||!resolved.source->tilemap)return true;dx*=resolved.source->tilemap->tileWidth;dy*=resolved.source->tilemap->tileHeight;}
+          if(currentDocument().nudgeSelectionContent(dx,dy,currentView().frameSelection)){currentPlayback().playing=false;hideTimelineSelectionGuides();refresh();}return true;}
 
       }
 
@@ -458,9 +458,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(key->scancode()==ui::kKeyEnter && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){
 
-        if(document.selection()){document.commitFloatingPaste();if(document.selection())document.commitSelection(document.selection(),{});refresh();return true;}
+        if(currentDocument().selection()){currentDocument().commitFloatingPaste();if(currentDocument().selection())currentDocument().commitSelection(currentDocument().selection(),{});refresh();return true;}
 
-        auto focus=ui::Manager::getDefault()->getFocus();if(!key->repeat() && !key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && !key->altPressed() && columnShown(2) && document.timeline().state().frames.size()>1 && !dynamic_cast<ui::Button*>(focus) && !celNavigationBlocked()){togglePlayback();return true;}
+        auto focus=ui::Manager::getDefault()->getFocus();if(!key->repeat() && !key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && !key->altPressed() && columnShown(2) && currentDocument().timeline().state().frames.size()>1 && !dynamic_cast<ui::Button*>(focus) && !celNavigationBlocked()){togglePlayback();return true;}
 
       }
 
@@ -482,21 +482,21 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       // Legacy Ctrl+D resolves pixel deselect first, then explicit Cel copy.
 
-      if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyD && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(document.selection()){if(!key->repeat()){document.deselectPixels();selectionPropertiesActive_=false;selectionFreeTransform_=false;selectionPivot_.reset();selectionPivotMask_.reset();refresh();}return true;}if(!document.timelineSelection().cels.empty()){if(!key->repeat())copyTimelineCels();return true;}}
+      if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !key->altPressed() && key->scancode()==ui::kKeyD && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(currentDocument().selection()){if(!key->repeat()){currentDocument().deselectPixels();selectionPropertiesActive_=false;currentView().freeTransform=false;currentView().pivot.reset();currentView().pivotMask.reset();refresh();}return true;}if(!currentDocument().timelineSelection().cels.empty()){if(!key->repeat())copyTimelineCels();return true;}}
 
-      if((key->ctrlPressed()||key->cmdPressed())&&!key->altPressed()&&!dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyC){if(key->shiftPressed())copyMergedPixels();else copyEditorClipboard();return true;}if(key->scancode()==ui::kKeyX&&!key->shiftPressed()){copyEditorClipboard(true);return true;}if(key->scancode()==ui::kKeyV&&!key->shiftPressed()){pasteEditorClipboard();return true;}if(!paletteFocused_&&!frameSelectionExplicit_){if(key->scancode()==ui::kKeyA&&!key->shiftPressed()){selectAllPixels();return true;}if(key->shiftPressed()&&key->scancode()==ui::kKeyI){document.invertPixels();refresh();return true;}}}
+      if((key->ctrlPressed()||key->cmdPressed())&&!key->altPressed()&&!dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyC){if(key->shiftPressed())copyMergedPixels();else copyEditorClipboard();return true;}if(key->scancode()==ui::kKeyX&&!key->shiftPressed()){copyEditorClipboard(true);return true;}if(key->scancode()==ui::kKeyV&&!key->shiftPressed()){pasteEditorClipboard();return true;}if(!paletteFocused_&&!currentView().frameSelection){if(key->scancode()==ui::kKeyA&&!key->shiftPressed()){selectAllPixels();return true;}if(key->shiftPressed()&&key->scancode()==ui::kKeyI){currentDocument().invertPixels();refresh();return true;}}}
 
-      if(!key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyZ && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useZoomTool();return true;}if(key->scancode()==ui::kKeyI && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useEyedropperTool();return true;}if(key->scancode()==ui::kKeyU && !key->shiftPressed()){useShapeTool(shapeSpec_.kind==ShapeKind::Line?ShapeKind::Rectangle:shapeSpec_.kind);return true;}if(key->scancode()==ui::kKeyG){if(key->shiftPressed())useGradientTool();else useFillTool();return true;}if(key->scancode()==ui::kKeyM){useSelectionTool(key->shiftPressed()?1:0);return true;}if(key->scancode()==ui::kKeyQ){useSelectionTool(key->shiftPressed()?3:2);return true;}if(key->scancode()==ui::kKeyW && !key->shiftPressed()){useSelectionTool(4);return true;}}
+      if(!key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !paletteFocused_ && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(key->scancode()==ui::kKeyZ && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useZoomTool();return true;}if(key->scancode()==ui::kKeyI && !key->shiftPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){useEyedropperTool();return true;}if(key->scancode()==ui::kKeyU && !key->shiftPressed()){useShapeTool(currentTools().shapeKind==ShapeKind::Line?ShapeKind::Rectangle:currentTools().shapeKind);return true;}if(key->scancode()==ui::kKeyG){if(key->shiftPressed())useGradientTool();else useFillTool();return true;}if(key->scancode()==ui::kKeyM){useSelectionTool(key->shiftPressed()?1:0);return true;}if(key->scancode()==ui::kKeyQ){useSelectionTool(key->shiftPressed()?3:2);return true;}if(key->scancode()==ui::kKeyW && !key->shiftPressed()){useSelectionTool(4);return true;}}
 
       if(key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && key->scancode()==ui::kKeyC && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat() && columnShown(2))deleteTimelineItems();return true;}
 
-      if(key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){const auto code=key->scancode();if(code==ui::kKeyM || code==ui::kKeyN || code==ui::kKeyB){if(!key->repeat() && columnShown(2)){if(code==ui::kKeyM){playing_=false;document.addLinkedFrame(frameSelectionExplicit_);refresh();}else frameAction(code==ui::kKeyN?1:0);}return true;}}
+      if(key->altPressed() && !key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){const auto code=key->scancode();if(code==ui::kKeyM || code==ui::kKeyN || code==ui::kKeyB){if(!key->repeat() && columnShown(2)){if(code==ui::kKeyM){currentPlayback().playing=false;currentDocument().addLinkedFrame(currentView().frameSelection);refresh();}else frameAction(code==ui::kKeyN?1:0);}return true;}}
 
       if((key->ctrlPressed() || key->cmdPressed()) && !key->shiftPressed() && !dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){
 
         if(key->scancode()==ui::kKeyI && key->altPressed()){if(!key->repeat())openImageResize();return true;}
 
-        if(!key->altPressed() && key->scancode()==ui::kKeyB){if(!key->repeat()){if(document.selection())menuCommands_.invoke("createBrushFromSelection");else beginTemporaryBrushCapture();}return true;}
+        if(!key->altPressed() && key->scancode()==ui::kKeyB){if(!key->repeat()){if(currentDocument().selection())menuCommands_.invoke("createBrushFromSelection");else beginTemporaryBrushCapture();}return true;}
 
         if(!key->altPressed() && key->scancode()==ui::kKeyW){if(!key->repeat())ask(Pending::CloseDocument);return true;}
 
@@ -506,21 +506,21 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         case ui::kKeyC: if(!key->ctrlPressed()&&!key->cmdPressed()&&!key->altPressed()&&!key->shiftPressed()&&!dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat())menuCommands_.invoke("canvasResize");return true;}break;
 
-        case ui::kKeyH: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;cancelStroke();textTool_=false;moveTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=true;updateNavigationCursor();refresh();return true;
+        case ui::kKeyH: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;cancelStroke();currentTools().textTool=false;currentTools().moveTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=true;updateNavigationCursor();refresh();return true;
 
         case ui::kKeyTab: if(!key->ctrlPressed()){layersPanelOpen_=!layersPanelOpen_;if(layersPanelOpen_)docking_.select(2);refresh();saveWorkspaceSizes();return true;}break;
 
         case ui::kKeyF: if(!key->ctrlPressed() && !key->cmdPressed() && !key->shiftPressed() && !key->altPressed() && !dynamic_cast<PixelEntry*>(ui::Manager::getDefault()->getFocus())){if(!key->repeat())menuCommands_.invoke("fillForeground");return true;}break;
 
-        case ui::kKeyEsc: playing_=false;if(document.floating())document.cancelFloatingPaste();cancelStroke();refresh();return true;
+        case ui::kKeyEsc: currentPlayback().playing=false;if(currentDocument().floating())currentDocument().cancelFloatingPaste();cancelStroke();refresh();return true;
 
-        case ui::kKeyB: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;document.commitFloatingPaste();cancelStroke();textTool_=false;moveTool_=false; selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false; eraser_=false; updateNavigationCursor();refresh(); return true;
+        case ui::kKeyB: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;currentDocument().commitFloatingPaste();cancelStroke();currentTools().textTool=false;currentTools().moveTool=false; currentTools().selectionTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=false; currentTools().eraser=false; updateNavigationCursor();refresh(); return true;
 
-        case ui::kKeyE: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;document.commitFloatingPaste();cancelStroke();textTool_=false;moveTool_=false; selectionTool_=false;shapeTool_=false;eyedropperTool_=false;navigation_.zoomTool_=false;gradientTool_=false;fillTool_=false;handTool_=false; eraser_=true; updateNavigationCursor();refresh(); return true;
+        case ui::kKeyE: if(key->ctrlPressed() || key->cmdPressed() || key->altPressed() || key->shiftPressed() || dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))break;currentDocument().commitFloatingPaste();cancelStroke();currentTools().textTool=false;currentTools().moveTool=false; currentTools().selectionTool=false;currentTools().shapeTool=false;currentTools().eyedropperTool=false;currentTools().zoomTool=false;currentTools().gradientTool=false;currentTools().fillTool=false;currentTools().handTool=false; currentTools().eraser=true; updateNavigationCursor();refresh(); return true;
 
-        case ui::kKeyZ: if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed()) { cancelStroke(); if(key->shiftPressed()) document.redo(); else document.undo(); refresh(); return true; } break;
+        case ui::kKeyZ: if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed()) { runShortcutCommand(key->shiftPressed()?"redo":"undo"); return true; } break;
 
-        case ui::kKeyY: if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed() && !key->shiftPressed()) {cancelStroke();document.redo();refresh();return true;} break;
+        case ui::kKeyY: if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed() && !key->shiftPressed()) {runShortcutCommand("redo");return true;} break;
 
         case ui::kKeyS: if((key->ctrlPressed() || key->cmdPressed()) && !key->altPressed()) {saveProject(key->shiftPressed());return true;} break;
 
@@ -538,14 +538,14 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    if(shapeDragging_&&shapeSpec_.kind==ShapeKind::Polygon&&msg->type()==ui::kDoubleClickMessage&&static_cast<ui::MouseMessage*>(msg)->left()&&shapeSpec_.polygonPath.size()>=3){finishPolygonShape();return true;}
+    if(shapeDragging_&&currentTools().shapeKind==ShapeKind::Polygon&&msg->type()==ui::kDoubleClickMessage&&static_cast<ui::MouseMessage*>(msg)->left()&&shapeSpec_.polygonPath.size()>=3){finishPolygonShape();return true;}
     if(polygonPending_ && msg->type()==ui::kDoubleClickMessage){if(static_cast<ui::MouseMessage*>(msg)->left() && selectionPath_.size()>=3)endSelectionGesture(false);return true;}
 
     if(pending_==Pending::None && msg->type()==ui::kDoubleClickMessage &&
 
       columnShown(0) && paletteViewportBounds().contains(static_cast<ui::MouseMessage*>(msg)->position())&&(!paletteManual_||static_cast<ui::MouseMessage*>(msg)->left())) {
 
-      cancelStroke();if(paletteManual_)addManualPaletteColor(paletteSlotAt(static_cast<ui::MouseMessage*>(msg)->position()));else try{document.addPaletteColor(ink_,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}paletteFocused_=true;refresh();return true;
+      cancelStroke();if(paletteManual_)addManualPaletteColor(paletteSlotAt(static_cast<ui::MouseMessage*>(msg)->position()));else try{currentDocument().addPaletteColor(ink_,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}paletteFocused_=true;refresh();return true;
 
     }
 
@@ -561,15 +561,15 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    if(pending_==Pending::None && msg->type()==ui::kMouseDownMessage && !document.active()) {
+    if(pending_==Pending::None && msg->type()==ui::kMouseDownMessage && !currentDocument().active()) {
 
       const auto mouse=static_cast<ui::MouseMessage*>(msg);
 
       if(brushRange_) brushRange_->setVisible(false);
 
-      if(columnShown(0) && paletteViewportBounds().contains(mouse->position())) {document.clearPaletteSelection();paletteFocused_=true;paletteFocusedSlot_=paletteSlotAt(mouse->position());refresh();}
+      if(columnShown(0) && paletteViewportBounds().contains(mouse->position())) {currentDocument().clearPaletteSelection();paletteFocused_=true;paletteFocusedSlot_=paletteSlotAt(mouse->position());refresh();}
 
-      else {paletteFocused_=false;paletteFocusedSlot_.reset();document.clearPaletteSelection();refresh();}
+      else {paletteFocused_=false;paletteFocusedSlot_.reset();currentDocument().clearPaletteSelection();refresh();}
 
     }
 
@@ -579,9 +579,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(uiPhysical(gfx::Rect(rc.x+l.workX,rc.y+l.layerTop,l.workW,l.bottom-l.layerTop)).contains(mouse->position())){
 
-        const auto point=mouse->position();const int row=(point.y/uiScale-rc.y-l.layerTop-timelineRowsOffset())/timelineRowHeight()+layerScroll_;
+        const auto point=mouse->position();const int row=(point.y/uiScale-rc.y-l.layerTop-timelineRowsOffset())/timelineRowHeight()+currentView().layers;
 
-        if(point.y/uiScale>=rc.y+l.layerTop+timelineRowsOffset() && point.x/uiScale>=rc.x+l.workX+5 && point.x/uiScale<rc.x+l.workX+5+timelineLabelWidth() && row>=0 && row<int(document.timeline().state().layers.size())){prepareLayerContext(document.timeline().state().layers[row].id);showLayerContextMenu(1);}else showLayerContextMenu(0);
+        if(point.y/uiScale>=rc.y+l.layerTop+timelineRowsOffset() && point.x/uiScale>=rc.x+l.workX+5 && point.x/uiScale<rc.x+l.workX+5+timelineLabelWidth() && row>=0 && row<int(currentDocument().timeline().state().layers.size())){prepareLayerContext(currentDocument().timeline().state().layers[row].id);showLayerContextMenu(1);}else showLayerContextMenu(0);
 
         return true;
 
@@ -589,7 +589,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     }
 
-    if(pending_==Pending::None&&msg->type()==ui::kDoubleClickMessage&&selectionTool_&&selectionKind_==0&&!selectionFreeTransform_&&!spaceHeld_&&!handTool_&&!eyedropperTool_&&!eyedropperHeld_){auto mouse=static_cast<ui::MouseMessage*>(msg);if(mouse->left()&&canvasOwnsPointer(mouse->position())&&canvasViewport().contains(mouse->position())){if(selectionDragging_||floatingDragging_)return true;ui::MouseMessage down(ui::kMouseDownMessage,mouse->pointerType(),mouse->button(),mouse->modifiers(),mouse->position());quickSelectionExplicitDouble_=true;const bool handled=onProcessMessage(&down);quickSelectionExplicitDouble_=false;return handled;}}
+    if(pending_==Pending::None&&msg->type()==ui::kDoubleClickMessage&&currentTools().selectionTool&&currentTools().selectionKind==0&&!currentView().freeTransform&&!spaceHeld_&&!currentTools().handTool&&!currentTools().eyedropperTool&&!eyedropperHeld_){auto mouse=static_cast<ui::MouseMessage*>(msg);if(mouse->left()&&canvasOwnsPointer(mouse->position())&&canvasViewport().contains(mouse->position())){if(selectionDragging_||floatingDragging_)return true;ui::MouseMessage down(ui::kMouseDownMessage,mouse->pointerType(),mouse->button(),mouse->modifiers(),mouse->position());quickSelectionExplicitDouble_=true;const bool handled=onProcessMessage(&down);quickSelectionExplicitDouble_=false;return handled;}}
 
     if(pending_==Pending::None && columnShown(2) && msg->type()==ui::kMouseWheelMessage) {
 
@@ -603,9 +603,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         const auto m=timelineScrollMetrics(l);const int step=(mouse->shiftPressed() || delta.x?timelineFrameWidth():timelineRowHeight())*uiScale;
 
-        if(mouse->shiftPressed() || delta.x){const int direction=delta.x?delta.x:delta.y;const int offset=std::clamp(frameScroll_*step+frameScrollRemainder_+(direction>0?-step:direction<0?step:0)*(mouse->altPressed()?5:1),0,std::max(0,m.contentWidth-m.width));frameScroll_=offset/step;frameScrollRemainder_=offset%step;}
+        if(mouse->shiftPressed() || delta.x){const int direction=delta.x?delta.x:delta.y;const int offset=std::clamp(currentView().frames*step+currentView().frameRemainder+(direction>0?-step:direction<0?step:0)*(mouse->altPressed()?5:1),0,std::max(0,m.contentWidth-m.width));currentView().frames=offset/step;currentView().frameRemainder=offset%step;}
 
-        else {const int offset=std::clamp(layerScroll_*step+layerScrollRemainder_+(delta.y>0?step:delta.y<0?-step:0)*(mouse->altPressed()?5:1),0,std::max(0,m.contentHeight-m.height));layerScroll_=offset/step;layerScrollRemainder_=offset%step;}
+        else {const int offset=std::clamp(currentView().layers*step+currentView().layerRemainder+(delta.y>0?step:delta.y<0?-step:0)*(mouse->altPressed()?5:1),0,std::max(0,m.contentHeight-m.height));currentView().layers=offset/step;currentView().layerRemainder=offset%step;}
 
         layoutLayers();invalidateTimelineGrid();return true;
 
@@ -651,15 +651,15 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(canvasViewport().contains(mouse->position())) {
 
-        if(moveModifierHeld("brushSizeWheelAdjust",*mouse) && modifierBrushSupported() && !document.active() && !selectionDragging_ && !floatingDragging_ && !shapeDragging_ && mouse->wheelDelta().y){
+        if(moveModifierHeld("brushSizeWheelAdjust",*mouse) && modifierBrushSupported() && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && !shapeDragging_ && mouse->wheelDelta().y){
 
-          setModifierBrushSize((liquifyTool_?liquifyOptions_.radius:airbrushTool_?airbrushSettings_.scatterRadius:smoothTool_?smoothBrush_.size:brushFeedback_.brushProfiles_[eraser_?1:0].size)+(mouse->wheelDelta().y<0?1:-1)*(runtimePreferences_.flag("editing.brushSizeWheelReversed")?-1:1));return true;
+          setModifierBrushSize((currentTools().liquifyTool?currentTools().liquifyOptions.radius:currentTools().airbrushTool?currentTools().airbrushSettings.scatterRadius:currentTools().smoothTool?currentTools().smoothBrush.size:currentTools().brushProfiles[currentTools().eraser?1:0].size)+(mouse->wheelDelta().y<0?1:-1)*(runtimePreferences_.flag("editing.brushSizeWheelReversed")?-1:1));return true;
 
         }
 
         // Keep the coordinate mapping stable until the current stroke ends.
 
-        if(!smoothDragging_ && (!document.active() || (document.floating() && !floatingDragging_ && !selectionDragging_)) && !navigation_.pan_.active && !navigation_.zoomDragging_ && runtimePreferences_.flag("editing.wheelZoomEnabled") && mouse->wheelDelta().y!=0)
+        if(!smoothDragging_ && (!currentDocument().active() || (currentDocument().floating() && !floatingDragging_ && !selectionDragging_)) && !navigation_.pan_.active && !navigation_.zoomDragging_ && runtimePreferences_.flag("editing.wheelZoomEnabled") && mouse->wheelDelta().y!=0)
 
           zoomCanvas(mouse->position(),mouse->wheelDelta().y<0?1:-1);
 
@@ -675,12 +675,12 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       auto mouse=static_cast<ui::MouseMessage*>(msg);
 
-      const bool canvasGesture=drawingAnchorDragging_||selectionDragging_||floatingDragging_||selectionPivotDragging_||navigation_.pan_.active||navigation_.zoomDragging_||symmetryDragging_||eyedropperGesture_.active()||shapeDragging_||gradientDragging_||fillDragging_||brushFeedback_.modifierBrushSize_||document.active();
+      const bool canvasGesture=drawingAnchorDragging_||selectionDragging_||floatingDragging_||selectionPivotDragging_||navigation_.pan_.active||navigation_.zoomDragging_||symmetryDragging_||eyedropperGesture_.active()||shapeDragging_||gradientDragging_||fillDragging_||brushFeedback_.modifierBrushSize_||currentDocument().active();
 
       if(!canvasOwnsPointer(mouse->position()) && !(canvasGesture && hasCapture()))return ui::Widget::onProcessMessage(msg);
 
       if(msg->type()==ui::kMouseMoveMessage && !selectionSyntheticMove_)selectionAutoPan(mouse->position());selectionPointerPosition_=mouse->position();brushFeedback_.brushPreviewShift_=mouse->shiftPressed();brushFeedback_.modifierCtrl_=mouse->ctrlPressed() || mouse->cmdPressed(); auto p=canvasPoint(mouse->position());
-      if(selectionTool_&&(selectionKind_==4||selectionKind_==3)&&!floatingDragging_&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(mapped)p={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage)return true;}
+      if(currentTools().selectionTool&&(currentTools().selectionKind==4||currentTools().selectionKind==3)&&!floatingDragging_&&tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(mapped)p={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage)return true;}
 
       if(brushFeedback_.modifierBrushSize_ && brushFeedback_.modifierBrushSize_->pressed){
 
@@ -690,13 +690,13 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       }
 
-      if(!document.active() && !shapeDragging_ && !selectionDragging_ && !floatingDragging_ && !gradientDragging_ && !spaceHeld_ && modifierBrushSupported() && moveModifierHeld("brushSizeAdjust",*mouse) && canvasViewport().contains(mouse->position())){
+      if(!currentDocument().active() && !shapeDragging_ && !selectionDragging_ && !floatingDragging_ && !gradientDragging_ && !spaceHeld_ && modifierBrushSupported() && moveModifierHeld("brushSizeAdjust",*mouse) && canvasViewport().contains(mouse->position())){
 
         if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseDownMessage && mouse->left())){
 
-          if(!brushFeedback_.modifierBrushSize_)brushFeedback_.modifierBrushSize_=ModifierBrushSize{mouse->position(),(liquifyTool_?liquifyOptions_.radius:airbrushTool_?airbrushSettings_.scatterRadius:smoothTool_?smoothBrush_.size:brushFeedback_.brushProfiles_[eraser_?1:0].size)};
+          if(!brushFeedback_.modifierBrushSize_)brushFeedback_.modifierBrushSize_=ModifierBrushSize{mouse->position(),(currentTools().liquifyTool?currentTools().liquifyOptions.radius:currentTools().airbrushTool?currentTools().airbrushSettings.scatterRadius:currentTools().smoothTool?currentTools().smoothBrush.size:currentTools().brushProfiles[currentTools().eraser?1:0].size)};
 
-          if(msg->type()==ui::kMouseDownMessage){brushFeedback_.modifierBrushSize_->start=mouse->position();brushFeedback_.modifierBrushSize_->size=(liquifyTool_?liquifyOptions_.radius:airbrushTool_?airbrushSettings_.scatterRadius:smoothTool_?smoothBrush_.size:brushFeedback_.brushProfiles_[eraser_?1:0].size);brushFeedback_.modifierBrushSize_->pressed=true;requestFocus();captureMouse();}
+          if(msg->type()==ui::kMouseDownMessage){brushFeedback_.modifierBrushSize_->start=mouse->position();brushFeedback_.modifierBrushSize_->size=(currentTools().liquifyTool?currentTools().liquifyOptions.radius:currentTools().airbrushTool?currentTools().airbrushSettings.scatterRadius:currentTools().smoothTool?currentTools().smoothBrush.size:currentTools().brushProfiles[currentTools().eraser?1:0].size);brushFeedback_.modifierBrushSize_->pressed=true;requestFocus();captureMouse();}
 
           else setModifierBrushSize(brushFeedback_.modifierBrushSize_->size+int(std::floor(double(mouse->position().x-brushFeedback_.modifierBrushSize_->start.x)/(4*uiScale)+.5)));
 
@@ -722,29 +722,29 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       }
 
-      if(navigation_.zoomTool_ && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !mouse->altPressed() && !spaceHeld_ && canvasViewport().contains(mouse->position()) && (!document.active() || document.floating()) && !selectionDragging_ && !floatingDragging_){requestFocus();navigation_.zoomDragging_=true;navigation_.zoomStartPointer_=mouse->position();navigation_.zoomStartScale_=zoom_;navigation_.zoomButton_=mouse->button();captureMouse();updateNavigationCursor();return true;}
+      if(currentTools().zoomTool && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !mouse->altPressed() && !spaceHeld_ && canvasViewport().contains(mouse->position()) && (!currentDocument().active() || currentDocument().floating()) && !selectionDragging_ && !floatingDragging_){requestFocus();navigation_.zoomDragging_=true;navigation_.zoomStartPointer_=mouse->position();navigation_.zoomStartScale_=currentView().zoom;navigation_.zoomButton_=mouse->button();captureMouse();updateNavigationCursor();return true;}
 
-      if(symmetryDragging_){if(msg->type()==ui::kMouseMoveMessage){if(!symmetryAxisDragAllowed(symmetryLocked_,mouse->ctrlPressed())){finishSymmetryDrag();return true;}document.setSymmetryCenter(moveSymmetryCenter(document.symmetryCenter(),symmetryDragAxis_,{canvasDocumentPoint(mouse->position()).x,canvasDocumentPoint(mouse->position()).y},document.width(),document.height()),false);invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage)finishSymmetryDrag();return true;}
+      if(symmetryDragging_){if(msg->type()==ui::kMouseMoveMessage){if(!symmetryAxisDragAllowed(symmetryLocked_,mouse->ctrlPressed())){finishSymmetryDrag();return true;}currentDocument().setSymmetryCenter(moveSymmetryCenter(currentDocument().symmetryCenter(),symmetryDragAxis_,{canvasDocumentPoint(mouse->position()).x,canvasDocumentPoint(mouse->position()).y},currentDocument().width(),currentDocument().height()),false);invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage)finishSymmetryDrag();return true;}
 
-      if(msg->type()==ui::kMouseDownMessage && mouse->left() && !document.active() && !selectionDragging_ && !floatingDragging_ && !spaceHeld_ && !handTool_ && !navigation_.zoomTool_ && !eyedropperTool_ && !eyedropperHeld_){if(auto hit=symmetryHit(mouse->position(),mouse->ctrlPressed())){symmetryDragging_=true;symmetryDragAxis_=*hit;symmetryDragBefore_=document.symmetryCenter();captureMouse();return true;}}
+      if(msg->type()==ui::kMouseDownMessage && mouse->left() && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && !spaceHeld_ && !currentTools().handTool && !currentTools().zoomTool && !currentTools().eyedropperTool && !eyedropperHeld_){if(auto hit=symmetryHit(mouse->position(),mouse->ctrlPressed())){symmetryDragging_=true;symmetryDragAxis_=*hit;symmetryDragBefore_=currentDocument().symmetryCenter();captureMouse();return true;}}
 
-      if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && canvasViewport().contains(mouse->position())){updateEyedropperLens(mouse->position(),sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_));sampleEyedropperAt(p);}if(msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)finishEyedropper();return true;}
+      if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && canvasViewport().contains(mouse->position())){updateEyedropperLens(mouse->position(),sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),p.x,p.y,currentTools().eyedropperSource));sampleEyedropperAt(p);}if(msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)finishEyedropper();return true;}
 
-      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && (eyedropperTool_ || eyedropperHeld_ || paletteSamplingHeld_) && !spaceHeld_ && !document.active() && !selectionDragging_ && !floatingDragging_ && canvasViewport().contains(mouse->position())){paletteFocused_=false;requestFocus();playing_=false;strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),!eyedropperTool_ || eyedropperHeld_ || paletteSamplingHeld_);captureMouse();updateEyedropperLens(mouse->position(),sampleEyedropper(document.timeline(),document.frame().id,document.layer().id,document.width(),document.height(),p.x,p.y,eyedropperSource_));sampleEyedropperAt(p);updateNavigationCursor();return true;}
+      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && (currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_) && !spaceHeld_ && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && canvasViewport().contains(mouse->position())){paletteFocused_=false;requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),!currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_);captureMouse();updateEyedropperLens(mouse->position(),sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),p.x,p.y,currentTools().eyedropperSource));sampleEyedropperAt(p);updateNavigationCursor();return true;}
 
-      if(drawingAnchorDragging_){if(msg->type()==ui::kMouseMoveMessage){auto at=transformCanvasPoint(mouse->position());const auto before=TransformPoint{std::floor(drawingAnchorDragBefore_.x*document.width()*2+.5)/2,std::floor(drawingAnchorDragBefore_.y*document.height()*2+.5)/2};auto round=[](double v){return std::copysign(std::floor(std::abs(v)+.5),v);};drawingAnchor_={(before.x+round(at.x-drawingAnchorPointerStart_.x))/document.width(),(before.y+round(at.y-drawingAnchorPointerStart_.y))/document.height()};invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)drawingAnchor_=drawingAnchorDragBefore_;else saveBrushPreferences();drawingAnchorDragging_=false;if(hasCapture())releaseMouse();refresh();}return true;}
-      if(msg->type()==ui::kMouseDownMessage&&mouse->left()&&drawingAnchorActive()&&drawingAnchorVisible_&&!document.active()&&!shapeDragging_&&!selectionDragging_&&!spaceHeld_&&!handTool_&&!eyedropperHeld_&&!mouse->shiftPressed()&&!mouse->ctrlPressed()&&!mouse->cmdPressed()&&!mouse->altPressed()&&canvasViewport().contains(mouse->position())){const auto anchor=canvasDocumentToDisplay(drawingAnchorPoint());if(std::abs(mouse->position().x-anchor.x)<=10&&std::abs(mouse->position().y-anchor.y)<=10){drawingAnchorDragging_=true;drawingAnchorDragBefore_=drawingAnchor_;drawingAnchorPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}}
-      if(msg->type()==ui::kMouseDownMessage && mouse->left() && !spaceHeld_ && !handTool_ && !document.active() && !mouse->shiftPressed() && !mouse->ctrlPressed() && !mouse->cmdPressed() && !mouse->altPressed() && canvasViewport().contains(mouse->position()) && selectionPivotHit(mouse->position())){selectionPivotDragging_=true;selectionPivotStart_=selectionPivotPoint();selectionPivotPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}
+      if(drawingAnchorDragging_){if(msg->type()==ui::kMouseMoveMessage){auto at=transformCanvasPoint(mouse->position());const auto before=TransformPoint{std::floor(drawingAnchorDragBefore_.x*currentDocument().width()*2+.5)/2,std::floor(drawingAnchorDragBefore_.y*currentDocument().height()*2+.5)/2};auto round=[](double v){return std::copysign(std::floor(std::abs(v)+.5),v);};currentView().drawingAnchor={(before.x+round(at.x-drawingAnchorPointerStart_.x))/currentDocument().width(),(before.y+round(at.y-drawingAnchorPointerStart_.y))/currentDocument().height()};invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)currentView().drawingAnchor=drawingAnchorDragBefore_;else saveBrushPreferences();drawingAnchorDragging_=false;if(hasCapture())releaseMouse();refresh();}return true;}
+      if(msg->type()==ui::kMouseDownMessage&&mouse->left()&&drawingAnchorActive()&&currentView().drawingAnchorVisible&&!currentDocument().active()&&!shapeDragging_&&!selectionDragging_&&!spaceHeld_&&!currentTools().handTool&&!eyedropperHeld_&&!mouse->shiftPressed()&&!mouse->ctrlPressed()&&!mouse->cmdPressed()&&!mouse->altPressed()&&canvasViewport().contains(mouse->position())){const auto anchor=canvasDocumentToDisplay(drawingAnchorPoint());if(std::abs(mouse->position().x-anchor.x)<=10&&std::abs(mouse->position().y-anchor.y)<=10){drawingAnchorDragging_=true;drawingAnchorDragBefore_=currentView().drawingAnchor;drawingAnchorPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}}
+      if(msg->type()==ui::kMouseDownMessage && mouse->left() && !spaceHeld_ && !currentTools().handTool && !currentDocument().active() && !mouse->shiftPressed() && !mouse->ctrlPressed() && !mouse->cmdPressed() && !mouse->altPressed() && canvasViewport().contains(mouse->position()) && selectionPivotHit(mouse->position())){selectionPivotDragging_=true;selectionPivotStart_=selectionPivotPoint();selectionPivotPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}
 
-      if(selectionPivotDragging_){if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->left())){auto at=transformCanvasPoint(mouse->position());auto round=[](double v){return std::copysign(std::floor(std::abs(v)+.5),v);};selectionPivot_=TransformPoint{selectionPivotStart_.x+round(at.x-selectionPivotPointerStart_.x),selectionPivotStart_.y+round(at.y-selectionPivotPointerStart_.y)};invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();}return true;}
+      if(selectionPivotDragging_){if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->left())){auto at=transformCanvasPoint(mouse->position());auto round=[](double v){return std::copysign(std::floor(std::abs(v)+.5),v);};currentView().pivot=TransformPoint{selectionPivotStart_.x+round(at.x-selectionPivotPointerStart_.x),selectionPivotStart_.y+round(at.y-selectionPivotPointerStart_.y)};invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)currentView().pivot=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();updateNavigationCursor();}return true;}
 
-      if(selectionTool_){selectionShift_=mouse->shiftPressed();selectionCtrl_=mouse->ctrlPressed() || mouse->cmdPressed();selectionRight_=mouse->right();layoutToolOptions();invalidateRect(canvasViewport());}
+      if(currentTools().selectionTool){selectionShift_=mouse->shiftPressed();selectionCtrl_=mouse->ctrlPressed() || mouse->cmdPressed();selectionRight_=mouse->right();layoutToolOptions();invalidateRect(canvasViewport());}
 
-      if(selectionTool_ && selectionKind_==5){selectionBrushPointer_=canvasViewport().contains(mouse->position()) || selectionDragging_?std::optional<gfx::Point>{mouse->position()}:std::optional<gfx::Point>{};invalidateRect(canvasViewport());if(selectionDragging_ && !selectionBoxDragging_ && selectionBrushIdentity_!=document.identity()){selectionDragging_=false;selectionBrushStroke_={};if(hasCapture())releaseMouse();return true;}}
+      if(currentTools().selectionTool && currentTools().selectionKind==5){selectionBrushPointer_=canvasViewport().contains(mouse->position()) || selectionDragging_?std::optional<gfx::Point>{mouse->position()}:std::optional<gfx::Point>{};invalidateRect(canvasViewport());if(selectionDragging_ && !selectionBoxDragging_ && selectionBrushIdentity_!=currentDocument().identity()){selectionDragging_=false;selectionBrushStroke_={};if(hasCapture())releaseMouse();return true;}}
 
       if(msg->type()==ui::kMouseUpMessage && mouse->button()==ui::kButtonNone) {
 
-        eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){drawingAnchor_=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){selectionPivot_=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);if(!restorePendingGradientPointer())cancelStroke();updateNavigationCursor();return true;
+        eyedropperHeld_=false;paletteSamplingHeld_=false;if(eyedropperGesture_.active())finishEyedropper();spaceHeld_=false;if(drawingAnchorDragging_){currentView().drawingAnchor=drawingAnchorDragBefore_;drawingAnchorDragging_=false;if(hasCapture())releaseMouse();}if(selectionPivotDragging_){currentView().pivot=selectionPivotStart_;selectionPivotDragging_=false;if(hasCapture())releaseMouse();}if(selectionDragging_ || floatingDragging_)endSelectionGesture(true);if(!restorePendingGradientPointer())cancelStroke();updateNavigationCursor();return true;
 
       }
 
@@ -756,11 +756,11 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
           const auto origin=navigation_.pan_.move({navigation_.pan_.pointer.x+int(std::lround((mouse->position().x-navigation_.pan_.pointer.x)*factor)),navigation_.pan_.pointer.y+int(std::lround((mouse->position().y-navigation_.pan_.pointer.y)*factor))});
 
-          const auto previous=canvas_;
+          const auto previous=currentView().canvas;
 
-          if(runtimePreferences_.index("editing.rotationIndicatorPosition.Select")!=1){const auto d=viewRotation_.inverse({double(origin.x-navigation_.pan_.origin.x),double(origin.y-navigation_.pan_.origin.y)},{0,0});canvas_.x=navigation_.pan_.origin.x+int(std::lround(d.x));canvas_.y=navigation_.pan_.origin.y+int(std::lround(d.y));}else{canvas_.x=origin.x;canvas_.y=origin.y;}constrainCanvas();if(msg->type()==ui::kMouseUpMessage)saveDocumentView();
+          if(runtimePreferences_.index("editing.rotationIndicatorPosition.Select")!=1){const auto d=currentView().rotation.inverse({double(origin.x-navigation_.pan_.origin.x),double(origin.y-navigation_.pan_.origin.y)},{0,0});currentView().canvas.x=navigation_.pan_.origin.x+int(std::lround(d.x));currentView().canvas.y=navigation_.pan_.origin.y+int(std::lround(d.y));}else{currentView().canvas.x=origin.x;currentView().canvas.y=origin.y;}constrainCanvas();if(msg->type()==ui::kMouseUpMessage)saveDocumentView();
 
-          if(canvas_!=previous) invalidatePanMovement(canvas_.origin()-previous.origin());
+          if(currentView().canvas!=previous) invalidatePanMovement(currentView().canvas.origin()-previous.origin());
 
           if(msg->type()==ui::kMouseUpMessage) finishPan(false);
 
@@ -772,19 +772,19 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       Point toolPoint=p;bool gradientPointerValid=true;
       // Legacy gradient geometry receives localPoint, before grid snapping.
-      if((gradientTool_||shapeTool_)&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(mapped)toolPoint={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseMoveMessage)return true;else if(gradientTool_)gradientPointerValid=false;else if(shapeDragging_)toolPoint={int(shapePointer_.x),int(shapePointer_.y)};}
+      if((currentTools().gradientTool||currentTools().shapeTool)&&tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(mapped)toolPoint={int(mapped->local.x),int(mapped->local.y)};else if(msg->type()==ui::kMouseMoveMessage)return true;else if(currentTools().gradientTool)gradientPointerValid=false;else if(shapeDragging_)toolPoint={int(shapePointer_.x),int(shapePointer_.y)};}
       const auto drawPoint=gridSnapPoint(toolPoint);
 
-      if(shapeDragging_&&shapeSpec_.kind==ShapeKind::Curve){
+      if(shapeDragging_&&currentTools().shapeKind==ShapeKind::Curve){
         try{
           if(msg->type()==ui::kMouseMoveMessage){if(curveEndpoint_)shapeSpec_.end={double(drawPoint.x),double(drawPoint.y)};else for(std::size_t i=curveAnchorIndex_;i<curveControls_.size();++i)curveControls_[i]={double(drawPoint.x),double(drawPoint.y)};shapeRequest_=true;shapeTick();}
           else if(msg->type()==ui::kMouseUpMessage&&(mouse->left()||mouse->right())){
-            if(curveEndpoint_){curveControls_.assign(curveAnchorCount_,shapeSpec_.end);curveAnchorIndex_=0;curveEndpoint_=false;if(hasCapture())releaseMouse();shapeRequest_=true;shapeTick();refresh();}
+            if(curveEndpoint_){curveControls_.assign(currentTools().curveAnchorCount,shapeSpec_.end);curveAnchorIndex_=0;curveEndpoint_=false;if(hasCapture())releaseMouse();shapeRequest_=true;shapeTick();refresh();}
             else if(++curveAnchorIndex_>=int(curveControls_.size()))finishCurveShape();
           }
         }catch(const std::exception& e){cancelStroke();status_=U"曲线失败："+unicodeText(e.what());refresh();}return true;
       }
-      if(shapeDragging_&&shapeSpec_.kind==ShapeKind::Freeform){
+      if(shapeDragging_&&currentTools().shapeKind==ShapeKind::Freeform){
         if(msg->type()==ui::kMouseMoveMessage){
           auto& path=shapeSpec_.polygonPath;const SelectionPoint next{drawPoint.x,drawPoint.y};
           if(path.empty()||path.back().x!=next.x||path.back().y!=next.y){path.push_back(next);polygonShapeRedo_.clear();}
@@ -792,39 +792,39 @@ bool Editor::onProcessMessage(ui::Message* msg) {
         }else if(msg->type()==ui::kMouseUpMessage&&mouse->button()==strokeButton_)finishPolygonShape();
         return true;
       }
-      if(shapeDragging_&&shapeSpec_.kind==ShapeKind::Polygon){
+      if(shapeDragging_&&currentTools().shapeKind==ShapeKind::Polygon){
         shapePointer_={double(drawPoint.x),double(drawPoint.y)};
         if(msg->type()==ui::kMouseDownMessage){if(mouse->right())polygonShapeStep(false);else if(mouse->left()){auto& path=shapeSpec_.polygonPath;if(path.empty()||path.back().x!=drawPoint.x||path.back().y!=drawPoint.y){path.push_back({drawPoint.x,drawPoint.y});polygonShapeRedo_.clear();}polygonShapePreview();}}
         else if(msg->type()==ui::kMouseMoveMessage)polygonShapePreview();
         else if(msg->type()==ui::kMouseUpMessage&&hasCapture())releaseMouse();
         return true;
       }
-      if(shapeDragging_){const auto geometryKey=[&]{const auto& s=shapeSpec_;const auto& b=s.bounds;return std::make_tuple(s.start.x,s.start.y,s.end.x,s.end.y,b.x,b.y,b.width,b.height,b.angle);};const auto before=geometryKey();shapePointer_=shapeSpec_.kind==ShapeKind::Line?TransformPoint{double(toolPoint.x),double(toolPoint.y)}:TransformPoint{double(drawPoint.x),double(drawPoint.y)};if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)){if(shapeSpec_.kind==ShapeKind::Line){const auto raw=mouse->shiftPressed()?constrainShapeLine(shapeSpec_.start,{double(toolPoint.x),double(toolPoint.y)},runtimePreferences_.index("tools.lineDirectionStep.Number")):TransformPoint{double(toolPoint.x),double(toolPoint.y)};const auto end=gridSnapPoint({int(raw.x),int(raw.y)});shapeSpec_.end={double(end.x),double(end.y)};}else shapeGeometry_.update(shapeSpec_,{double(drawPoint.x),double(drawPoint.y)},mouse->shiftPressed(),bool(shapeDrawingAnchor_)||mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed(),shapeRatio_?shapeRatioWidth_/shapeRatioHeight_:0);if(shapeDrawingAnchor_)shapeSpec_.bounds=centerDrawingBounds(shapeSpec_.bounds,*shapeDrawingAnchor_);const bool changed=before!=geometryKey();shapeRequest_|=changed;if(msg->type()==ui::kMouseUpMessage){shapeTick();try{if(document.shapeActive())([&]{Document::HistoryLabelScope historyLabel(document,shapeSpec_.kind==ShapeKind::Line?U"绘制直线":(shapeSpec_.kind==ShapeKind::Ellipse||shapeSpec_.kind==ShapeKind::EllipseOutline)?U"绘制椭圆":U"绘制矩形");return document.commitShapePreview();})();}catch(const std::exception& e){document.cancelShapePreview();status_=U"形状失败："+unicodeText(e.what());}shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();refresh();}else if(changed)invalidateRect(canvasViewport());}return true;}
+      if(shapeDragging_){const auto geometryKey=[&]{const auto& s=shapeSpec_;const auto& b=s.bounds;return std::make_tuple(s.start.x,s.start.y,s.end.x,s.end.y,b.x,b.y,b.width,b.height,b.angle);};const auto before=geometryKey();shapePointer_=currentTools().shapeKind==ShapeKind::Line?TransformPoint{double(toolPoint.x),double(toolPoint.y)}:TransformPoint{double(drawPoint.x),double(drawPoint.y)};if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)){if(currentTools().shapeKind==ShapeKind::Line){const auto raw=mouse->shiftPressed()?constrainShapeLine(shapeSpec_.start,{double(toolPoint.x),double(toolPoint.y)},runtimePreferences_.index("tools.lineDirectionStep.Number")):TransformPoint{double(toolPoint.x),double(toolPoint.y)};const auto end=gridSnapPoint({int(raw.x),int(raw.y)});shapeSpec_.end={double(end.x),double(end.y)};}else shapeGeometry_.update(shapeSpec_,{double(drawPoint.x),double(drawPoint.y)},mouse->shiftPressed(),bool(shapeDrawingAnchor_)||mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed(),currentTools().shapeRatio?currentTools().shapeRatioWidth/currentTools().shapeRatioHeight:0);if(shapeDrawingAnchor_)shapeSpec_.bounds=centerDrawingBounds(shapeSpec_.bounds,*shapeDrawingAnchor_);const bool changed=before!=geometryKey();shapeRequest_|=changed;if(msg->type()==ui::kMouseUpMessage){shapeTick();try{if(currentDocument().shapeActive())([&]{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().shapeKind==ShapeKind::Line?U"绘制直线":(currentTools().shapeKind==ShapeKind::Ellipse||currentTools().shapeKind==ShapeKind::EllipseOutline)?U"绘制椭圆":U"绘制矩形");return currentDocument().commitShapePreview();})();}catch(const std::exception& e){currentDocument().cancelShapePreview();status_=U"形状失败："+unicodeText(e.what());}shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();refresh();}else if(changed)invalidateRect(canvasViewport());}return true;}
 
-      if(shapeTool_ && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();try{if(document.beginShapePreview(drawPoint)){shapePointer_=shapeSpec_.start=shapeSpec_.end={double(drawPoint.x),double(drawPoint.y)};shapeSpec_.bounds={double(drawPoint.x),double(drawPoint.y),1,1};shapeGeometry_={};shapeGeometry_.viewAngle=shapeViewAlignedAngle(viewRotation_.degrees,viewRotation_.mirrorX,viewRotation_.mirrorY);shapeSpec_.bounds.angle=shapeGeometry_.viewAngle;shapeDrawingAnchor_.reset();if(drawingAnchorActive()){shapeDrawingAnchor_=drawingAnchorPoint();shapeSpec_.start={shapeDrawingAnchor_->x-.5,shapeDrawingAnchor_->y-.5};shapeGeometry_.update(shapeSpec_,shapePointer_,mouse->shiftPressed(),true,false,shapeRatio_?shapeRatioWidth_/shapeRatioHeight_:0);shapeSpec_.bounds=centerDrawingBounds(shapeSpec_.bounds,*shapeDrawingAnchor_);}shapeColor_=(shapeSpec_.kind==ShapeKind::Line||shapeSpec_.kind==ShapeKind::Polygon||shapeSpec_.kind==ShapeKind::Freeform||shapeSpec_.kind==ShapeKind::Curve) && mouse->right()?document.palette().secondary:ink_;shapeIdentity_=document.identity();shapeDragging_=shapeRequest_=true;curveEndpoint_=true;curveAnchorIndex_=0;curveControls_.clear();captureMouse();if(shapeSpec_.kind==ShapeKind::Polygon||shapeSpec_.kind==ShapeKind::Freeform){shapeSpec_.polygonPath={{drawPoint.x,drawPoint.y}};polygonShapeRedo_.clear();polygonShapeCachePath_.clear();polygonShapeCache_.clear();polygonShapePreview();}else shapeTick();refresh();}}catch(const std::exception& e){document.cancelShapePreview();shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();status_=U"形状失败："+unicodeText(e.what());refresh();}return true;}
+      if(currentTools().shapeTool && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !currentTools().handTool && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;currentDocument().clearPaletteSelection();requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();try{if(currentDocument().beginShapePreview(drawPoint)){shapePointer_=shapeSpec_.start=shapeSpec_.end={double(drawPoint.x),double(drawPoint.y)};shapeSpec_.bounds={double(drawPoint.x),double(drawPoint.y),1,1};shapeGeometry_={};shapeGeometry_.viewAngle=shapeViewAlignedAngle(currentView().rotation.degrees,currentView().rotation.mirrorX,currentView().rotation.mirrorY);shapeSpec_.bounds.angle=shapeGeometry_.viewAngle;shapeDrawingAnchor_.reset();if(drawingAnchorActive()){shapeDrawingAnchor_=drawingAnchorPoint();shapeSpec_.start={shapeDrawingAnchor_->x-.5,shapeDrawingAnchor_->y-.5};shapeGeometry_.update(shapeSpec_,shapePointer_,mouse->shiftPressed(),true,false,currentTools().shapeRatio?currentTools().shapeRatioWidth/currentTools().shapeRatioHeight:0);shapeSpec_.bounds=centerDrawingBounds(shapeSpec_.bounds,*shapeDrawingAnchor_);}shapeColor_=(currentTools().shapeKind==ShapeKind::Line||currentTools().shapeKind==ShapeKind::Polygon||currentTools().shapeKind==ShapeKind::Freeform||currentTools().shapeKind==ShapeKind::Curve) && mouse->right()?currentDocument().palette().secondary:ink_;shapeIdentity_=currentDocument().identity();shapeDragging_=shapeRequest_=true;curveEndpoint_=true;curveAnchorIndex_=0;curveControls_.clear();captureMouse();if(currentTools().shapeKind==ShapeKind::Polygon||currentTools().shapeKind==ShapeKind::Freeform){shapeSpec_.polygonPath={{drawPoint.x,drawPoint.y}};polygonShapeRedo_.clear();polygonShapeCachePath_.clear();polygonShapeCache_.clear();polygonShapePreview();}else shapeTick();refresh();}}catch(const std::exception& e){currentDocument().cancelShapePreview();shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();status_=U"形状失败："+unicodeText(e.what());refresh();}return true;}
 
       if(gradientDragging_){if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)){
         // Keep geometry state-machine updates, but do not rasterize identical previews.
         // Stops/colors are handled separately by gradientChanged/gradientTick.
-        const auto geometryKey=[&]{const auto& s=gradientSpec_;const auto g=s.geometry.value_or(GradientGeometry{});return std::make_tuple(s.start.x,s.start.y,s.end.x,s.end.y,s.radial,s.fromCenter,s.proportional,s.angle,bool(s.geometry),g.center.x,g.center.y,g.radiusX,g.radiusY);};
-        const auto before=geometryKey();if(gradientPointerValid){const TransformPoint at{double(drawPoint.x),double(drawPoint.y)};if(gradientHandle_>=0){const TransformPoint delta{at.x-gradientHandlePress_.x,at.y-gradientHandlePress_.y};gradientSpec_=gradientHandleBefore_;if(gradientHandle_==0){gradientSpec_.start={gradientHandleBefore_.start.x+delta.x,gradientHandleBefore_.start.y+delta.y};gradientSpec_.geometry.reset();}else if(gradientHandle_==1){gradientGeometry_.update(gradientSpec_,at,mouse->shiftPressed(),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed());}else{gradientSpec_.start={gradientHandleBefore_.start.x+delta.x,gradientHandleBefore_.start.y+delta.y};gradientSpec_.end={gradientHandleBefore_.end.x+delta.x,gradientHandleBefore_.end.y+delta.y};if(gradientSpec_.geometry){gradientSpec_.geometry->center.x+=delta.x;gradientSpec_.geometry->center.y+=delta.y;}}}else gradientGeometry_.update(gradientSpec_,at,mouse->shiftPressed(),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed());}const bool changed=before!=geometryKey();gradientRequest_|=changed;if(msg->type()==ui::kMouseUpMessage){gradientTick();gradientDragging_=false;if(hasCapture())releaseMouse();if(gradientConfirm_){if(gradientSpec_.start.x==gradientSpec_.end.x && gradientSpec_.start.y==gradientSpec_.end.y)cancelGradientGesture();else{gradientPending_=true;refresh();}}else applyGradientGesture();}else if(changed)invalidateRect(canvasViewport());}return true;}
+        const auto geometryKey=[&]{const auto& s=gradientSpec_;const auto g=s.geometry.value_or(GradientGeometry{});return std::make_tuple(s.start.x,s.start.y,s.end.x,s.end.y,currentTools().gradientRadial,s.fromCenter,s.proportional,s.angle,bool(s.geometry),g.center.x,g.center.y,g.radiusX,g.radiusY);};
+        const auto before=geometryKey();if(gradientPointerValid){const TransformPoint at{double(drawPoint.x),double(drawPoint.y)};if(gradientHandle_>=0){const TransformPoint delta{at.x-gradientHandlePress_.x,at.y-gradientHandlePress_.y};gradientSpec_=gradientHandleBefore_;if(gradientHandle_==0){gradientSpec_.start={gradientHandleBefore_.start.x+delta.x,gradientHandleBefore_.start.y+delta.y};gradientSpec_.geometry.reset();}else if(gradientHandle_==1){updateGradientGeometry(at,mouse->shiftPressed(),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed());}else{gradientSpec_.start={gradientHandleBefore_.start.x+delta.x,gradientHandleBefore_.start.y+delta.y};gradientSpec_.end={gradientHandleBefore_.end.x+delta.x,gradientHandleBefore_.end.y+delta.y};if(gradientSpec_.geometry){gradientSpec_.geometry->center.x+=delta.x;gradientSpec_.geometry->center.y+=delta.y;}}}else updateGradientGeometry(at,mouse->shiftPressed(),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed());}const bool changed=before!=geometryKey();gradientRequest_|=changed;if(msg->type()==ui::kMouseUpMessage){gradientTick();gradientDragging_=false;if(hasCapture())releaseMouse();if(currentTools().gradientConfirm){if(gradientSpec_.start.x==gradientSpec_.end.x && gradientSpec_.start.y==gradientSpec_.end.y)cancelGradientGesture();else{gradientPending_=true;refresh();}}else applyGradientGesture();}else if(changed)invalidateRect(canvasViewport());}return true;}
 
-      if(gradientPending_ && gradientPointerValid && msg->type()==ui::kMouseDownMessage && mouse->left() && !mouse->ctrlPressed() && !mouse->cmdPressed() && !spaceHeld_ && canvasViewport().contains(mouse->position())){const auto at=TransformPoint{double(drawPoint.x),double(drawPoint.y)};gradientHandle_=gradientEditHandle(gradientSpec_,at,canvasScale());if(gradientHandle_<0)return true;gradientHandlePress_=at;gradientHandleBefore_=gradientSpec_;gradientGeometry_={};gradientDragging_=true;strokeButton_=mouse->button();captureMouse();return true;}
+      if(gradientPending_ && gradientPointerValid && msg->type()==ui::kMouseDownMessage && mouse->left() && !mouse->ctrlPressed() && !mouse->cmdPressed() && !spaceHeld_ && canvasViewport().contains(mouse->position())){const auto at=TransformPoint{double(drawPoint.x),double(drawPoint.y)};gradientSpec_.radial=currentTools().gradientRadial;gradientHandle_=gradientEditHandle(gradientSpec_,at,canvasScale());if(gradientHandle_<0)return true;gradientHandlePress_=at;gradientHandleBefore_=gradientSpec_;gradientGeometry_={};gradientDragging_=true;strokeButton_=mouse->button();captureMouse();return true;}
 
-      if(gradientTool_ && !gradientPending_ && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();gradientRight_=mouse->right();if(document.beginGradient(drawPoint,gradientOptions_)){gradientSpec_.start=gradientSpec_.end={double(drawPoint.x),double(drawPoint.y)};gradientSpec_.angle=0;gradientSpec_.geometry.reset();gradientGeometry_={};gradientDragging_=true;gradientIdentity_=document.identity();gradientContent_=document.contentRevision();gradientLayer_=document.layer().id;gradientFrame_=document.frame().id;gradientRequest_=true;captureMouse();gradientTick();refresh();}return true;}
+      if(currentTools().gradientTool && !gradientPending_ && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !currentTools().handTool && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;currentDocument().clearPaletteSelection();requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();gradientRight_=mouse->right();if(currentDocument().beginGradient(drawPoint,currentTools().gradientOptions)){gradientSpec_.start=gradientSpec_.end={double(drawPoint.x),double(drawPoint.y)};gradientSpec_.angle=0;gradientSpec_.geometry.reset();gradientGeometry_={};gradientDragging_=true;gradientIdentity_=currentDocument().identity();gradientContent_=currentDocument().contentRevision();gradientLayer_=currentDocument().layer().id;gradientFrame_=currentDocument().frame().id;gradientRequest_=true;captureMouse();gradientTick();refresh();}return true;}
 
       if(processMagicEraserInput(msg))return true;
       if(fillDragging_){if(msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_){fillDragging_=false;fillCommitted_=false;if(hasCapture())releaseMouse();refresh();}return true;}
 
-      if(fillTool_ && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;document.clearPaletteSelection();requestFocus();playing_=false;strokeButton_=mouse->button();try{Point fillPoint=p;if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_);if(!mapped)return true;fillPoint={int(mapped->local.x),int(mapped->local.y)};}fillPoint=gridSnapPoint(fillPoint);fillCommitted_=document.fillPatternPixels(fillPoint,mouse->right()?document.palette().secondary:ink_,fillPattern_,fillOptions_);fillDragging_=fillCommitted_;if(fillDragging_)captureMouse();}catch(const std::exception& e){status_=U"填充失败："+unicodeText(e.what());}refresh();return true;}
+      if(currentTools().fillTool && msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !currentTools().handTool && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position())){hideTimelineSelectionGuides();paletteFocused_=false;currentDocument().clearPaletteSelection();requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();try{Point fillPoint=p;if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return true;fillPoint={int(mapped->local.x),int(mapped->local.y)};}fillPoint=gridSnapPoint(fillPoint);fillCommitted_=currentDocument().fillPatternPixels(fillPoint,mouse->right()?currentDocument().palette().secondary:ink_,currentTools().fillPattern,currentTools().fillOptions);fillDragging_=fillCommitted_;if(fillDragging_)captureMouse();}catch(const std::exception& e){status_=U"填充失败："+unicodeText(e.what());}refresh();return true;}
 
-      if(msg->type()==ui::kMouseDownMessage && !document.active() && canvasViewport().contains(mouse->position()) &&
+      if(msg->type()==ui::kMouseDownMessage && !currentDocument().active() && canvasViewport().contains(mouse->position()) &&
 
-         (mouse->middle() || (mouse->left() && (spaceHeld_ || handTool_)))) {
+         (mouse->middle() || (mouse->left() && (spaceHeld_ || currentTools().handTool)))) {
 
         requestFocus();captureMouse();
 
-        navigation_.pan_.begin({mouse->position().x,mouse->position().y},{canvas_.x,canvas_.y});
+        navigation_.pan_.begin({mouse->position().x,mouse->position().y},{currentView().canvas.x,currentView().canvas.y});
 
         invalidateRect(canvasViewport()); // Remove the old brush preview before reuse.
 
@@ -832,92 +832,92 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       }
 
-      if((selectionDragging_ || floatingDragging_) && msg->type()==ui::kMouseMoveMessage){selectionMoved_|=std::abs(mouse->position().x-selectionPress_.x)>3 || std::abs(mouse->position().y-selectionPress_.y)>3;if(floatingDragging_ && !transformHandle_.empty()){const auto current=transformCanvasPoint(mouse->position());auto target=transformGestureStart_;if(selectionFreeTransform_ && target.quad){const int index=transformHandle_=="nw"?0:transformHandle_=="ne"?1:transformHandle_=="se"?2:3;auto quad=*target.quad;quad[index]={std::floor(current.x+.5),std::floor(current.y+.5)};if(selectionQuadConvex(quad)){target.quad=quad;const auto box=transformBounds(target);target.x=box.x;target.y=box.y;target.width=box.width;target.height=box.height;target.angle=0;target.shearX=target.shearY=0;}}
+      if((selectionDragging_ || floatingDragging_) && msg->type()==ui::kMouseMoveMessage){selectionMoved_|=std::abs(mouse->position().x-selectionPress_.x)>3 || std::abs(mouse->position().y-selectionPress_.y)>3;if(floatingDragging_ && !transformHandle_.empty()){const auto current=transformCanvasPoint(mouse->position());auto target=transformGestureStart_;if(currentView().freeTransform && target.quad){const int index=transformHandle_=="nw"?0:transformHandle_=="ne"?1:transformHandle_=="se"?2:3;auto quad=*target.quad;quad[index]={std::floor(current.x+.5),std::floor(current.y+.5)};if(selectionQuadConvex(quad)){target.quad=quad;const auto box=transformBounds(target);target.x=box.x;target.y=box.y;target.width=box.width;target.height=box.height;target.angle=0;target.shearX=target.shearY=0;}}
 
-          else if(transformHandle_.rfind("shear-",0)==0)target=shearSelectionTransform(transformGestureStart_,{current.x-transformPointerStart_.x,current.y-transformPointerStart_.y},transformHandle_.back(),selectionPivotStart_,symmetryHas(document.symmetryAxes)&&document.activeMaskId().empty()&&document.layer().kind!="tilemap");
+          else if(transformHandle_.rfind("shear-",0)==0)target=shearSelectionTransform(transformGestureStart_,{current.x-transformPointerStart_.x,current.y-transformPointerStart_.y},transformHandle_.back(),selectionPivotStart_,symmetryHas(currentDocument().symmetryAxes)&&currentDocument().activeMaskId().empty()&&currentDocument().layer().kind!="tilemap");
 
-          else if(transformHandle_.rfind("rotate-",0)==0){const double cx=selectionPivotStart_.x,cy=selectionPivotStart_.y;const double delta=(std::atan2(current.y-cy,current.x-cx)-std::atan2(transformPointerStart_.y-cy,transformPointerStart_.x-cx))*180/3.141592653589793;target.angle=transformGestureStart_.angle+delta;if(mouse->shiftPressed()||tabletAssist_.modifier(document.identity(),0))target.angle=std::floor(target.angle/45+.5)*45;const double radians=(target.angle-transformGestureStart_.angle)*3.141592653589793/180,dx=transformGestureStart_.x+target.width/2-cx,dy=transformGestureStart_.y+target.height/2-cy;target.x=cx+dx*std::cos(radians)-dy*std::sin(radians)-target.width/2;target.y=cy+dx*std::sin(radians)+dy*std::cos(radians)-target.height/2;}else {target=resizeSelectionTransform(transformGestureStart_,{double(p.x-selectionStart_.x),double(p.y-selectionStart_.y)},transformHandle_,mouse->shiftPressed()||tabletAssist_.modifier(document.identity(),0),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed()||tabletAssist_.modifier(document.identity(),1),selectionPivotStart_);if(selectionPivot_ && !mouse->altPressed()&&!tabletAssist_.modifier(document.identity(),1)){const auto local=transformLocalPoint(transformGestureStart_,selectionPivotStart_);selectionPivot_=transformPoint(target,(local.x-transformGestureStart_.x)/transformGestureStart_.width,(local.y-transformGestureStart_.y)/transformGestureStart_.height);}}document.transformFloatingPaste(target,selectionRotSprite_);}else if(floatingDragging_&&document.paintCellMoving()){Point delta{p.x-selectionStart_.x,p.y-selectionStart_.y};if(selectionBefore_){const auto mapped=symmetrySelectionDragDelta(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{delta.x,delta.y},document.width(),document.height(),document.symmetryAxes,document.symmetryCenter());delta={mapped.x,mapped.y};}const auto distance=constrainedSelectionDelta(delta,mouse->shiftPressed()||tabletAssist_.modifier(document.identity(),0));document.updatePaintCellMove(distance.x,distance.y);if(selectionPivot_&&document.selection())selectionPivot_=TransformPoint{selectionPivotStart_.x+document.selection()->x-transformGestureStart_.x,selectionPivotStart_.y+document.selection()->y-transformGestureStart_.y};}else if(floatingDragging_){Point dragPoint=p;if(document.freeTileSelectionPlacementMoving()&&tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},document.width(),document.height(),tileRepeat_,true);if(!mapped)return true;dragPoint={int(mapped->local.x),int(mapped->local.y)};}int dx=dragPoint.x-selectionStart_.x,dy=dragPoint.y-selectionStart_.y;const auto mappedDistance=document.symmetryContentDragDelta({dx,dy});const auto rawDistance=constrainedSelectionDelta({mappedDistance.x,mappedDistance.y},mouse->shiftPressed()||tabletAssist_.modifier(document.identity(),0));const auto box=transformBounds(transformGestureStart_);const auto distance=gridSnapMove(rawDistance,{double(box.x),double(box.y),double(box.width),double(box.height)});dx=distance.x;dy=distance.y;auto target=transformGestureStart_;target.x+=dx;target.y+=dy;if(target.quad)for(auto& point:*target.quad){point.x+=dx;point.y+=dy;}if(selectionPivot_)selectionPivot_=TransformPoint{selectionPivotStart_.x+dx,selectionPivotStart_.y+dy};if(target.flipOriginX)*target.flipOriginX+=dx;if(target.flipOriginY)*target.flipOriginY+=dy;document.transformFloatingPaste(target,selectionRotSprite_);}else if(selectionBoxDragging_){int dx=p.x-selectionStart_.x,dy=p.y-selectionStart_.y;const bool symmetric=document.layer().kind!="tilemap"&&symmetryHas(document.symmetryAxes);if(symmetric){const auto mapped=symmetrySelectionDragDelta(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{dx,dy},document.width(),document.height(),document.symmetryAxes,document.symmetryCenter());dx=mapped.x;dy=mapped.y;}const auto distance=gridSnapMove(constrainedSelectionDelta({dx,dy},mouse->shiftPressed()||tabletAssist_.modifier(document.identity(),0)),{double(selectionBefore_->x),double(selectionBefore_->y),double(selectionBefore_->width),double(selectionBefore_->height)});dx=distance.x;dy=distance.y;auto moved=selectionBefore_;if(symmetric)moved=translateSymmetrySelection(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{dx,dy},document.width(),document.height(),document.symmetryAxes,document.symmetryCenter(),false);else{moved->x+=dx;moved->y+=dy;}document.previewSelection(std::move(moved));}else updateSelectionCreation(p,tabletAssist_.modifier(document.identity(),0)||(mouse->shiftPressed() && !(selectionBefore_ && gestureSelectionMode_==1)),tabletAssist_.modifier(document.identity(),1)||mouse->ctrlPressed() || mouse->cmdPressed(),tabletAssist_.modifier(document.identity(),2)||mouse->altPressed());invalidateRect(canvasViewport());return true;}
+          else if(transformHandle_.rfind("rotate-",0)==0){const double cx=selectionPivotStart_.x,cy=selectionPivotStart_.y;const double delta=(std::atan2(current.y-cy,current.x-cx)-std::atan2(transformPointerStart_.y-cy,transformPointerStart_.x-cx))*180/3.141592653589793;target.angle=transformGestureStart_.angle+delta;if(mouse->shiftPressed()||tabletAssist_.modifier(currentDocument().identity(),0))target.angle=std::floor(target.angle/45+.5)*45;const double radians=(target.angle-transformGestureStart_.angle)*3.141592653589793/180,dx=transformGestureStart_.x+target.width/2-cx,dy=transformGestureStart_.y+target.height/2-cy;target.x=cx+dx*std::cos(radians)-dy*std::sin(radians)-target.width/2;target.y=cy+dx*std::sin(radians)+dy*std::cos(radians)-target.height/2;}else {target=resizeSelectionTransform(transformGestureStart_,{double(p.x-selectionStart_.x),double(p.y-selectionStart_.y)},transformHandle_,mouse->shiftPressed()||tabletAssist_.modifier(currentDocument().identity(),0),mouse->ctrlPressed() || mouse->cmdPressed(),mouse->altPressed()||tabletAssist_.modifier(currentDocument().identity(),1),selectionPivotStart_);if(currentView().pivot && !mouse->altPressed()&&!tabletAssist_.modifier(currentDocument().identity(),1)){const auto local=transformLocalPoint(transformGestureStart_,selectionPivotStart_);currentView().pivot=transformPoint(target,(local.x-transformGestureStart_.x)/transformGestureStart_.width,(local.y-transformGestureStart_.y)/transformGestureStart_.height);}}currentDocument().transformFloatingPaste(target,currentTools().selectionRotSprite);}else if(floatingDragging_&&currentDocument().paintCellMoving()){Point delta{p.x-selectionStart_.x,p.y-selectionStart_.y};if(selectionBefore_){const auto mapped=symmetrySelectionDragDelta(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{delta.x,delta.y},currentDocument().width(),currentDocument().height(),currentDocument().symmetryAxes,currentDocument().symmetryCenter());delta={mapped.x,mapped.y};}const auto distance=constrainedSelectionDelta(delta,mouse->shiftPressed()||tabletAssist_.modifier(currentDocument().identity(),0));currentDocument().updatePaintCellMove(distance.x,distance.y);if(currentView().pivot&&currentDocument().selection())currentView().pivot=TransformPoint{selectionPivotStart_.x+currentDocument().selection()->x-transformGestureStart_.x,selectionPivotStart_.y+currentDocument().selection()->y-transformGestureStart_.y};}else if(floatingDragging_){Point dragPoint=p;if(currentDocument().freeTileSelectionPlacementMoving()&&tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat,true);if(!mapped)return true;dragPoint={int(mapped->local.x),int(mapped->local.y)};}int dx=dragPoint.x-selectionStart_.x,dy=dragPoint.y-selectionStart_.y;const auto mappedDistance=currentDocument().symmetryContentDragDelta({dx,dy});const auto rawDistance=constrainedSelectionDelta({mappedDistance.x,mappedDistance.y},mouse->shiftPressed()||tabletAssist_.modifier(currentDocument().identity(),0));const auto box=transformBounds(transformGestureStart_);const auto distance=gridSnapMove(rawDistance,{double(box.x),double(box.y),double(box.width),double(box.height)});dx=distance.x;dy=distance.y;auto target=transformGestureStart_;target.x+=dx;target.y+=dy;if(target.quad)for(auto& point:*target.quad){point.x+=dx;point.y+=dy;}if(currentView().pivot)currentView().pivot=TransformPoint{selectionPivotStart_.x+dx,selectionPivotStart_.y+dy};if(target.flipOriginX)*target.flipOriginX+=dx;if(target.flipOriginY)*target.flipOriginY+=dy;currentDocument().transformFloatingPaste(target,currentTools().selectionRotSprite);}else if(selectionBoxDragging_){int dx=p.x-selectionStart_.x,dy=p.y-selectionStart_.y;const bool symmetric=currentDocument().layer().kind!="tilemap"&&symmetryHas(currentDocument().symmetryAxes);if(symmetric){const auto mapped=symmetrySelectionDragDelta(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{dx,dy},currentDocument().width(),currentDocument().height(),currentDocument().symmetryAxes,currentDocument().symmetryCenter());dx=mapped.x;dy=mapped.y;}const auto distance=gridSnapMove(constrainedSelectionDelta({dx,dy},mouse->shiftPressed()||tabletAssist_.modifier(currentDocument().identity(),0)),{double(selectionBefore_->x),double(selectionBefore_->y),double(selectionBefore_->width),double(selectionBefore_->height)});dx=distance.x;dy=distance.y;auto moved=selectionBefore_;if(symmetric)moved=translateSymmetrySelection(*selectionBefore_,{selectionStart_.x,selectionStart_.y},{dx,dy},currentDocument().width(),currentDocument().height(),currentDocument().symmetryAxes,currentDocument().symmetryCenter(),false);else{moved->x+=dx;moved->y+=dy;}currentDocument().previewSelection(std::move(moved));}else updateSelectionCreation(p,tabletAssist_.modifier(currentDocument().identity(),0)||(mouse->shiftPressed() && !(selectionBefore_ && gestureSelectionMode_==1)),tabletAssist_.modifier(currentDocument().identity(),1)||mouse->ctrlPressed() || mouse->cmdPressed(),tabletAssist_.modifier(currentDocument().identity(),2)||mouse->altPressed());invalidateRect(canvasViewport());return true;}
 
-      if((selectionDragging_ || floatingDragging_) && msg->type()==ui::kMouseUpMessage){if(polygonPending_){if(hasCapture())releaseMouse();return true;}if(selectionDragging_ && !selectionBoxDragging_ && selectionKind_==4){wandReleased_=true;if(hasCapture())releaseMouse();if(wandPreviewReady_)endSelectionGesture(false);else wandTick();return true;}endSelectionGesture(false);return true;}
+      if((selectionDragging_ || floatingDragging_) && msg->type()==ui::kMouseUpMessage){if(polygonPending_){if(hasCapture())releaseMouse();return true;}if(selectionDragging_ && !selectionBoxDragging_ && currentTools().selectionKind==4){if(hasCapture())releaseMouse();if(wand_.release())endSelectionGesture(false);else wandTick();return true;}endSelectionGesture(false);return true;}
 
-      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && (selectionTool_ || document.floating())){
+      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && !spaceHeld_ && !currentTools().handTool && canvasViewport().contains(mouse->position()) && (currentTools().selectionTool || currentDocument().floating())){
 
-        const bool freeSelection=document.activeMaskId().empty()&&document.layer().kind=="free-tile";
-        const auto freeSelectionBounds=freeSelection?freeTileSelectionTargetBounds(document):std::optional<PixelRegion>{};
+        const bool freeSelection=currentDocument().activeMaskId().empty()&&currentDocument().layer().kind=="free-tile";
+        const auto freeSelectionBounds=freeSelection?freeTileSelectionTargetBounds(currentDocument()):std::optional<PixelRegion>{};
         if(freeSelection&&!freeSelectionBounds){status_=U"请在编辑模式选择可见且未锁定的自由瓦片实例";refresh();return true;}
-        if(freeSelection&&selectionKind_==4&&(p.x<freeSelectionBounds->x||p.y<freeSelectionBounds->y||p.x>=freeSelectionBounds->x+freeSelectionBounds->w||p.y>=freeSelectionBounds->y+freeSelectionBounds->h))return true;
+        if(freeSelection&&currentTools().selectionKind==4&&(p.x<freeSelectionBounds->x||p.y<freeSelectionBounds->y||p.x>=freeSelectionBounds->x+freeSelectionBounds->w||p.y>=freeSelectionBounds->y+freeSelectionBounds->h))return true;
 
         if(polygonPending_){if(mouse->right())polygonStep(false);else{if(selectionPath_.empty() || selectionPath_.back().x!=p.x || selectionPath_.back().y!=p.y){selectionPath_.push_back({p.x,p.y});selectionPathRedo_.clear();}updateSelectionCreation(p);}return true;}
 
         bool quickPress=false;
 
-        if(selectionTool_&&!selectionFreeTransform_&&selectionKind_==0&&mouse->left()){const auto now=std::chrono::steady_clock::now();const auto at=mouse->position();const QuickSelectionPress press{double(at.x)/uiScale,double(at.y)/uiScale,0,std::chrono::duration<double,std::milli>(now.time_since_epoch()).count()};quickPress=!eyedropperHeld_&&isQuickSelectionSecondPress(quickSelectionPress_,press,quickSelectionExplicitDouble_?2:1);quickSelectionPress_=quickPress?std::nullopt:std::optional<QuickSelectionPress>{press};}
+        if(currentTools().selectionTool&&!currentView().freeTransform&&currentTools().selectionKind==0&&mouse->left()){const auto now=std::chrono::steady_clock::now();const auto at=mouse->position();const QuickSelectionPress press{double(at.x)/uiScale,double(at.y)/uiScale,0,std::chrono::duration<double,std::milli>(now.time_since_epoch()).count()};quickPress=!eyedropperHeld_&&isQuickSelectionSecondPress(quickSelectionPress_,press,quickSelectionExplicitDouble_?2:1);quickSelectionPress_=quickPress?std::nullopt:std::optional<QuickSelectionPress>{press};}
 
-        if(quickPress){const auto cell=quickSelectionCellAt(p);if(cell){document.commitFloatingPaste();quickSelection_=true;quickSelectionCell_=*cell;}else quickPress=false;}
+        if(quickPress){const auto cell=quickSelectionCellAt(p);if(cell){currentDocument().commitFloatingPaste();quickSelection_=true;quickSelectionCell_=*cell;}else quickPress=false;}
 
         if(!quickPress && mouse->left() && !mouse->shiftPressed() && !mouse->ctrlPressed() && !mouse->cmdPressed() && !mouse->altPressed() && selectionPivotHit(mouse->position())){selectionPivotDragging_=true;selectionPivotStart_=selectionPivotPoint();selectionPivotPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}
 
         gridMoveEnabled_=runtimePreferences_.flag("tools.gridAlignmentEnabled");
 
-        hideTimelineSelectionGuides();paletteFocused_=false;requestFocus();const bool copy=mouse->ctrlPressed() || mouse->cmdPressed();int hit=mouse->left() && (selectionFreeTransform_ || !mouse->shiftPressed()) && !quickPress?selectionHit(mouse->position()):0;if(hit==2 && !copy && selectionMode_>=2 && !selectionFreeTransform_)hit=0;if(hit && !selectionFreeTransform_ && tabletAssist_.owner==document.identity() && tabletAssist_.explicitMove)hit=tabletAssist_.boxMove?1:2;
+        hideTimelineSelectionGuides();paletteFocused_=false;requestFocus();const bool copy=mouse->ctrlPressed() || mouse->cmdPressed();int hit=mouse->left() && (currentView().freeTransform || !mouse->shiftPressed()) && !quickPress?selectionHit(mouse->position()):0;if(hit==2 && !copy && currentTools().selectionMode>=2 && !currentView().freeTransform)hit=0;if(hit && !currentView().freeTransform && tabletAssist_.owner==currentDocument().identity() && tabletAssist_.explicitMove)hit=tabletAssist_.boxMove?1:2;
 
-        const auto handle=mouse->left() && (selectionFreeTransform_ || !mouse->shiftPressed()) && !quickPress?transformHit(mouse->position()):std::string{};if(selectionFreeTransform_ && !(mouse->left() && (hit==2 || !handle.empty())))return true;if(document.selection() && (hit || !handle.empty()))selectionPropertiesActive_=true;
+        const auto handle=mouse->left() && (currentView().freeTransform || !mouse->shiftPressed()) && !quickPress?transformHit(mouse->position()):std::string{};if(currentView().freeTransform && !(mouse->left() && (hit==2 || !handle.empty())))return true;if(currentDocument().selection() && (hit || !handle.empty()))selectionPropertiesActive_=true;
 
         // Source content transforms need their own shared-source transaction.
         // Do not let the ordinary raster path consume the derived free-tile cache.
         beginAlignmentMove(hit==2 || (copy && hit==1) || !handle.empty());
-        if(!handle.empty()){if(!document.beginSelectionContentMove(copy,frameSelectionExplicit_,0,0,p,false,!selectionFreeTransform_&&handle.rfind("rotate-",0)!=0&&handle.rfind("shear-",0)!=0,!selectionFreeTransform_&&handle.rfind("rotate-",0)==0,!selectionFreeTransform_&&handle.rfind("shear-",0)==0)){status_=U"目标图层隐藏或锁定";refresh();return true;}floatingDragging_=true;transformHandle_=handle;transformGestureStart_=*document.floatingTransform();transformPointerStart_=transformCanvasPoint(mouse->position());selectionPivotBeforeGesture_=selectionPivot_;selectionPivotStart_=selectionPivotPoint();selectionMoved_=false;selectionStart_=p;selectionPress_=mouse->position();playing_=false;captureMouse();invalidateRect(canvasViewport());return true;}
+        if(!handle.empty()){const bool freeTransformBeforeCapture=currentView().freeTransform;if(!currentDocument().beginSelectionContentMove(copy,currentView().frameSelection,0,0,p,false,!currentView().freeTransform&&handle.rfind("rotate-",0)!=0&&handle.rfind("shear-",0)!=0,!currentView().freeTransform&&handle.rfind("rotate-",0)==0,!currentView().freeTransform&&handle.rfind("shear-",0)==0)){status_=U"目标图层隐藏或锁定";refresh();return true;}currentView().freeTransform=freeTransformBeforeCapture&&bool(currentDocument().floating());floatingDragging_=true;transformHandle_=handle;transformGestureStart_=*currentDocument().floatingTransform();transformPointerStart_=transformCanvasPoint(mouse->position());selectionPivotBeforeGesture_=currentView().pivot;selectionPivotStart_=selectionPivotPoint();selectionMoved_=false;selectionStart_=p;selectionPress_=mouse->position();currentPlayback().playing=false;captureMouse();invalidateRect(canvasViewport());return true;}
 
-        if(hit==2 || (copy && hit==1)){const bool paintCells=document.layer().kind=="tilemap"&&document.tilemapMode()==tiles::Mode::Paint&&!selectionFreeTransform_&&!document.floating();if(paintCells&&frameSelectionExplicit_){status_=U"瓦片绘制模式的多目标变换尚未迁移";refresh();return true;}selectionCopyDrag_=copy && !document.floating();if(!(paintCells?document.beginPaintCellMove(copy):document.beginSelectionContentMove(copy,frameSelectionExplicit_,0,0,p,true))){status_=U"目标图层隐藏或锁定";refresh();return true;}floatingDragging_=true;if(document.paintCellMoving()){selectionBefore_=document.selection();const auto& selected=*document.selection();transformGestureStart_={double(selected.x),double(selected.y),double(selected.width),double(selected.height)};}else transformGestureStart_=*document.floatingTransform();selectionPivotBeforeGesture_=selectionPivot_;selectionPivotStart_=selectionPivotPoint();floatingStart_={int(std::floor(transformGestureStart_.x)),int(std::floor(transformGestureStart_.y))};playing_=false;}
+        if(hit==2 || (copy && hit==1)){const bool freeTransformBeforeCapture=currentView().freeTransform;const bool paintCells=currentDocument().layer().kind=="tilemap"&&currentDocument().tilemapMode()==tiles::Mode::Paint&&!currentView().freeTransform&&!currentDocument().floating();if(paintCells&&currentView().frameSelection){status_=U"瓦片绘制模式的多目标变换尚未迁移";refresh();return true;}selectionCopyDrag_=copy && !currentDocument().floating();if(!(paintCells?currentDocument().beginPaintCellMove(copy):currentDocument().beginSelectionContentMove(copy,currentView().frameSelection,0,0,p,true))){status_=U"目标图层隐藏或锁定";refresh();return true;}currentView().freeTransform=freeTransformBeforeCapture&&bool(currentDocument().floating());floatingDragging_=true;if(currentDocument().paintCellMoving()){selectionBefore_=currentDocument().selection();const auto& selected=*currentDocument().selection();transformGestureStart_={double(selected.x),double(selected.y),double(selected.width),double(selected.height)};}else transformGestureStart_=*currentDocument().floatingTransform();selectionPivotBeforeGesture_=currentView().pivot;selectionPivotStart_=selectionPivotPoint();floatingStart_={int(std::floor(transformGestureStart_.x)),int(std::floor(transformGestureStart_.y))};currentPlayback().playing=false;}
 
-        else if(hit==1){document.prepareSelectionBoxMove();selectionBefore_=document.selection();selectionDragging_=selectionBoxDragging_=true;}
+        else if(hit==1){currentDocument().prepareSelectionBoxMove();selectionBefore_=currentDocument().selection();selectionDragging_=selectionBoxDragging_=true;}
 
-        else{selectionPropertiesActive_=false;document.commitFloatingPaste();selectionBefore_=document.selection();selectionStatusBefore_=status_;selectionPreview_.reset();gestureSelectionMode_=mouse->right()?2:mouse->shiftPressed()?1:selectionMode_;selectionDragging_=true;selectionBoxDragging_=false;polygonPending_=selectionKind_==3;selectionPath_={{p.x,p.y}};selectionPathRedo_.clear();if(selectionKind_==5){selectionBrushStroke_={};selectionBrushLast_={p.x,p.y};selectionBrushIdentity_=document.identity();}if(selectionKind_==4){++wandGeneration_;wandReleased_=false;wandPreviewReady_=false;wandLastPoint_.reset();wandIdentity_=document.identity();wandContentRevision_=document.contentRevision();wandLayer_=document.layer().id;wandFrame_=document.frame().id;wandSource_=std::make_shared<const std::vector<Pixel>>(freeSelection?std::vector<Pixel>{}:wandOptions_.visibleLayers?compositeNormalRegion(document.timeline(),document.frame().id,{0,0,document.width(),document.height()}):document.canvasPixels());}}
+        else{selectionPropertiesActive_=false;currentDocument().commitFloatingPaste();selectionBefore_=currentDocument().selection();selectionStatusBefore_=status_;selectionPreview_.reset();gestureSelectionMode_=mouse->right()?2:mouse->shiftPressed()?1:currentTools().selectionMode;selectionDragging_=true;selectionBoxDragging_=false;polygonPending_=currentTools().selectionKind==3;selectionPath_={{p.x,p.y}};selectionPathRedo_.clear();if(currentTools().selectionKind==5){selectionBrushStroke_={};selectionBrushLast_={p.x,p.y};selectionBrushIdentity_=currentDocument().identity();}if(currentTools().selectionKind==4){wand_.begin({currentDocument().identity(),currentDocument().contentRevision(),currentDocument().layer().id,currentDocument().frame().id},std::make_shared<const std::vector<Pixel>>(freeSelection?std::vector<Pixel>{}:currentTools().wandOptions.visibleLayers?compositeNormalRegion(currentDocument().timeline(),currentDocument().frame().id,{0,0,currentDocument().width(),currentDocument().height()}):currentDocument().canvasPixels()));}}
 
         selectionMoved_=false;selectionStart_=selectionLast_=p;selectionPress_=mouse->position();
 
-        marqueeDrawingAnchor_.reset();if(selectionDragging_&&!selectionBoxDragging_&&!quickSelection_&&selectionKind_<=1)marqueeViewAngle_=shapeViewAlignedAngle(viewRotation_.degrees,viewRotation_.mirrorX,viewRotation_.mirrorY);if(selectionDragging_&&!selectionBoxDragging_&&!quickSelection_&&drawingAnchorActive()){marqueeDrawingAnchor_=drawingAnchorPoint();anchoredMarqueeGeometry_={};anchoredMarqueeGeometry_.viewAngle=marqueeViewAngle_;anchoredMarqueeSpec_={};anchoredMarqueeSpec_.start={marqueeDrawingAnchor_->x-.5,marqueeDrawingAnchor_->y-.5};}if(selectionDragging_ && !selectionBoxDragging_)updateSelectionCreation(p);captureMouse();return true;
+        marqueeDrawingAnchor_.reset();if(selectionDragging_&&!selectionBoxDragging_&&!quickSelection_&&currentTools().selectionKind<=1)marqueeViewAngle_=shapeViewAlignedAngle(currentView().rotation.degrees,currentView().rotation.mirrorX,currentView().rotation.mirrorY);if(selectionDragging_&&!selectionBoxDragging_&&!quickSelection_&&drawingAnchorActive()){marqueeDrawingAnchor_=drawingAnchorPoint();anchoredMarqueeGeometry_={};anchoredMarqueeGeometry_.viewAngle=marqueeViewAngle_;anchoredMarqueeSpec_={};anchoredMarqueeSpec_.start={marqueeDrawingAnchor_->x-.5,marqueeDrawingAnchor_->y-.5};}if(selectionDragging_ && !selectionBoxDragging_)updateSelectionCreation(p);captureMouse();return true;
 
       }
 
       if(processFreeTileInput(msg))return true;
       if(processSmoothInput(msg))return true;
       if(processAirbrushInput(msg))return true;
-      const bool freeTileSourceEdit=ordinaryBrushTool()&&document.layer().kind=="free-tile"&&!document.freeTilePaintMode()&&document.activeMaskId().empty()&&document.layer().freeTiles&&!document.layer().freeTiles->sources.empty();
-      if(msg->type()==ui::kMouseDownMessage && !document.active() && (mouse->left() || mouse->right()) && !spaceHeld_ && !handTool_ && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position()) && (document.rasterToolsAvailable()||freeTileSourceEdit||(ordinaryBrushTool()&&document.activeMaskId().empty()&&document.layer().kind=="tilemap"&&!document.hasSelectedGroups()&&!document.layerEffectivelyLocked(document.layer())&&document.layerEffectivelyVisible(document.layer())))) {
+      const bool freeTileSourceEdit=ordinaryBrushTool()&&currentDocument().layer().kind=="free-tile"&&!currentDocument().freeTilePaintMode()&&currentDocument().activeMaskId().empty()&&currentDocument().layer().freeTiles&&!currentDocument().layer().freeTiles->sources.empty();
+      if(msg->type()==ui::kMouseDownMessage && !currentDocument().active() && (mouse->left() || mouse->right()) && !spaceHeld_ && !currentTools().handTool && canvasViewport().contains(mouse->position()) && canvasDocumentContains(mouse->position()) && (currentDocument().rasterToolsAvailable()||freeTileSourceEdit||(ordinaryBrushTool()&&currentDocument().activeMaskId().empty()&&currentDocument().layer().kind=="tilemap"&&!currentDocument().hasSelectedGroups()&&!currentDocument().layerEffectivelyLocked(currentDocument().layer())&&currentDocument().layerEffectivelyVisible(currentDocument().layer())))) {
 
-        hideTimelineSelectionGuides();paletteFocused_=false;const bool hadSelection=!document.palette().selected.empty();document.clearPaletteSelection();requestFocus(); captureMouse(); strokeButton_=mouse->button();
+        hideTimelineSelectionGuides();paletteFocused_=false;const bool hadSelection=!currentDocument().palette().selected.empty();currentDocument().clearPaletteSelection();requestFocus(); captureMouse(); strokeButton_=mouse->button();
 
-        const auto revision=document.contentRevision();const bool wasDirty=document.dirty();
+        const auto revision=currentDocument().contentRevision();const bool wasDirty=currentDocument().dirty();
 
-        recentDrag_.reset();strokeColor_=mouse->right()?document.palette().secondary:eraser_?0:ink_;
+        recentDrag_.reset();strokeColor_=mouse->right()?currentDocument().palette().secondary:currentTools().eraser?0:ink_;
 
         // Legacy createCanvasStrokeBrush consumes the selected in-memory image.
         // Resource loading belongs to selection/session restore, never mouse-down.
-        playing_=false;const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
+        currentPlayback().playing=false;const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
 
         Point target=p;if(anchor && (mouse->ctrlPressed() || mouse->cmdPressed())){const auto end=constrainShapeLine({double(anchor->point.x),double(anchor->point.y)},{double(p.x),double(p.y)},runtimePreferences_.index("tools.lineDirectionStep.Number"));target={int(end.x),int(end.y)};}
 
         target=anchor?gridSnapPoint(target):gridSnapBrush(target);const auto lineStart=anchor?gridSnapPoint(anchor->point):target;
 
-        if(anchor&&document.layer().kind=="free-tile"){
+        if(anchor&&currentDocument().layer().kind=="free-tile"){
           const auto b=activeStrokeBrush();const auto v=resolveDynamics(true);const auto started=usage::now();
-          try{Document::HistoryLabelScope historyLabel(document,eraser_?U"橡皮擦连线":U"笔刷连线");
-            const bool changed=document.paintFreeTileSourceLine(lineStart,target,eraser_?0:ink_,b,pencilImageBrush_?&*pencilImageBrush_:nullptr,pencilImageBrushAngle_,BrushPathPoint{target.x,target.y,v.size,dynamics::rounded(b.opacity*v.opacity),dynamics::wrapAngle(pencilImageBrushAngle_+v.angle),eraser_?std::nullopt:v.gradient},document.palette().secondary,brushDynamics_.gradientDither,runtimePreferences_.flag("tools.balancedShiftLineEnabled"));
+          try{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦连线":U"笔刷连线");
+            const bool changed=currentDocument().paintFreeTileSourceLine(lineStart,target,currentTools().eraser?0:ink_,b,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle,BrushPathPoint{target.x,target.y,v.size,dynamics::rounded(b.opacity*v.opacity),dynamics::wrapAngle(currentTools().pencilImageBrushAngle+v.angle),currentTools().eraser?std::nullopt:v.gradient},currentDocument().palette().secondary,currentTools().brushDynamics.gradientDither,runtimePreferences_.flag("tools.balancedShiftLineEnabled"));
             if(changed)usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-started));
-            brushFeedback_.brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{target,document.identity(),document.revision(),document.layer().id,document.frame().id,{},false};
+            brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{target,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},false};
           }catch(...){if(hasCapture())releaseMouse();throw;}
           if(hasCapture())releaseMouse();usageStrokeStarted_=0;syncTilesetPanel();refresh();return true;
         }
 
         usageStrokeStarted_=usage::now();beginDynamicBrush(mouse,lineStart,brushLineBaseline(anchor));
-        if(document.layer().kind=="free-tile"&&!document.strokeActive()){if(hasCapture())releaseMouse();usageStrokeStarted_=0;refresh();return true;}
+        if(currentDocument().layer().kind=="free-tile"&&!currentDocument().strokeActive()){if(hasCapture())releaseMouse();usageStrokeStarted_=0;refresh();return true;}
 
         if(anchor){
 
-          updateDynamicBrush(mouse,target);auto baseline=document.strokeBaseline();const bool merge=anchor->mergeWithNext && anchor->revision==document.revision();
+          updateDynamicBrush(mouse,target);auto baseline=currentDocument().strokeBaseline();const bool merge=anchor->mergeWithNext && anchor->revision==currentDocument().revision();
 
-          if(([&]{Document::HistoryLabelScope historyLabel(document,eraser_?U"橡皮擦":U"绘制");return document.commitStroke();})()){usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));if(merge)document.mergeLastStrokeEdits();brushFeedback_.brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{target,document.identity(),document.revision(),document.layer().id,document.frame().id,std::move(baseline),false};}
+          if(([&]{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦":U"绘制");return currentDocument().commitStroke();})()){usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));if(merge)currentDocument().mergeLastStrokeEdits();brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{target,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,std::move(baseline),false};}
 
           usageStrokeStarted_=usage::now();beginDynamicBrush(mouse,target,nullptr,false);
 
@@ -925,28 +925,28 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         if(hadSelection) invalidateRect(paletteContentBounds());
 
-        if(wasDirty!=document.dirty()) {layoutDocumentTab();const auto rc=uiLogical(bounds());const auto l=workspaceLayout(rc);invalidateRect(uiPhysical(gfx::Rect(rc.x+Layout::edge,rc.y+Layout::documentY,rc.w-2*Layout::edge,Layout::projectTabHeight+Layout::frame)));}
+        if(wasDirty!=currentDocument().dirty()) {layoutDocumentTab();const auto rc=uiLogical(bounds());const auto l=workspaceLayout(rc);invalidateRect(uiPhysical(gfx::Rect(rc.x+Layout::edge,rc.y+Layout::documentY,rc.w-2*Layout::edge,Layout::projectTabHeight+Layout::frame)));}
 
         return true;
 
       }
 
-      if(document.active() && msg->type()==ui::kMouseMoveMessage) {const auto revision=document.contentRevision();updateDynamicBrush(mouse,gridSnapBrush(p));brushFeedback_.brushStrokeLast_=gridSnapBrush(p);brushFeedback_.brushStrokePointer_=mouse->position();invalidateStrokePixels(revision);return true;}
+      if(currentDocument().active() && msg->type()==ui::kMouseMoveMessage) {const auto revision=currentDocument().contentRevision();updateDynamicBrush(mouse,gridSnapBrush(p));brushFeedback_.brushStrokeLast_=gridSnapBrush(p);brushFeedback_.brushStrokePointer_=mouse->position();invalidateStrokePixels(revision);return true;}
 
-      if(document.active() && msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_) {const auto revision=document.contentRevision();if(mouse->position()!=brushFeedback_.brushStrokePointer_){updateDynamicBrush(mouse,gridSnapBrush(p));brushFeedback_.brushStrokeLast_=gridSnapBrush(p);}
+      if(currentDocument().active() && msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_) {const auto revision=currentDocument().contentRevision();if(mouse->position()!=brushFeedback_.brushStrokePointer_){updateDynamicBrush(mouse,gridSnapBrush(p));brushFeedback_.brushStrokeLast_=gridSnapBrush(p);}
 
-        auto baseline=document.strokeBaselinePoints();invalidateStrokePixels(revision);const bool changed=([&]{Document::HistoryLabelScope historyLabel(document,eraser_?U"橡皮擦":U"绘制");return document.commitStroke();})();
+        auto baseline=currentDocument().strokeBaselinePoints();invalidateStrokePixels(revision);const bool changed=([&]{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦":U"绘制");return currentDocument().commitStroke();})();
 
         if(changed)usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));usageStrokeStarted_=0;
 
-        if(ordinaryBrushTool() && (changed || !brushLineAnchor()))brushFeedback_.brushLineAnchors_[eraser_?1:0]=BrushLineAnchor{brushFeedback_.brushStrokeLast_,document.identity(),document.revision(),document.layer().id,document.frame().id,{},true,std::move(baseline)};
+        if(ordinaryBrushTool() && (changed || !brushLineAnchor()))brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{brushFeedback_.brushStrokeLast_,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},true,std::move(baseline)};
 
         releaseMouse();layoutCanvasScrollBars();
 
         if(changed){layoutLayers();invalidateTimelineGrid();}
-        if(document.layer().kind=="free-tile")syncTilesetPanel();
+        if(currentDocument().layer().kind=="free-tile")syncTilesetPanel();
 
-        commands_[3]->setEnabled(document.canUndo());commands_[4]->setEnabled(document.canRedo());
+        commands_[3]->setEnabled(currentDocument().canUndo());commands_[4]->setEnabled(currentDocument().canRedo());
 
         if(previewPanel_ && previewPanel_->isVisible())previewPanel_->invalidate();
 

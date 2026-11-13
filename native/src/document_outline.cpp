@@ -6,7 +6,7 @@ Document::OutlineTask Document::captureOutlineTask(const OutlineSettings& settin
  commitFloatingPaste();cancelStroke();cancelColorAdjustment();
  std::uint64_t bytes=0;for(const auto& c:timeline_.state().cels)if(c.surface)bytes+=std::uint64_t(c.surface->pixels.size())*sizeof(Pixel);for(const auto& m:timeline_.state().masks)bytes+=std::uint64_t(m.mask.surface.pixels.size())*sizeof(Pixel);for(const auto& set:timeline_.state().tilesets)bytes+=std::uint64_t(set.pixels.size())*sizeof(Pixel);
  if(bytes>256ull*1024*1024/5)throw std::length_error("Outline preview exceeds working memory limit");
- auto draft=std::make_shared<Document>(1,1);draft->width_=width_;draft->height_=height_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->selection_=selection_;draft->timelineSelection_=timelineSelection_;draft->selectedFrames_=selectedFrames_;draft->selectedGroupIds_=selectedGroupIds_;draft->selectedGroupId_=selectedGroupId_;draft->activeMaskId_=activeMaskId_;draft->maskIsolated_=maskIsolated_;
+ auto draft=std::make_shared<Document>(1,1);draft->width_=width_;draft->height_=height_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->timelineSelection_=timelineSelection_;draft->selectedFrames_=selectedFrames_;draft->selectedGroupIds_=selectedGroupIds_;draft->selectedGroupId_=selectedGroupId_;draft->activeMaskId_=activeMaskId_;draft->maskIsolated_=maskIsolated_;
  return {std::move(draft),identity_,revision_,settings,masks,boundary,false};
 }
 bool Document::runOutlineTask(OutlineTask& task,const std::function<bool()>& cancelled){
@@ -20,7 +20,7 @@ bool Document::publishOutlineTask(const OutlineTask& task){
 }
 bool Document::commitOutlineTask(OutlineTask&& task){
  if(!task.draft||!task.changed||task.identity!=identity_||task.revision!=revision_||task.draft->history_.empty()||task.draft->activeLayerId_!=activeLayerId_||task.draft->activeFrameId_!=activeFrameId_||task.draft->activeMaskId_!=activeMaskId_||!selectionEqual(task.draft->selection_,selection_))return false;
- auto edit=std::move(task.draft->history_.back());edit.beforeState=state_;edit.afterState=nextState_;reserveHistoryEntries();cancelColorAdjustment();change_={};applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),task.boundary||task.settings.sampling.position==0?U"内部描边":task.settings.sampling.position==2?U"两侧描边":U"外部描边");if(!task.boundary)outlineSettings_=task.settings;return true;
+ auto edit=task.draft->history_.takeLatest();edit.beforeState=state_;edit.afterState=nextState_;reserveHistoryEntries();cancelColorAdjustment();change_={};applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),task.boundary||task.settings.sampling.position==0?U"内部描边":task.settings.sampling.position==2?U"两侧描边":U"外部描边");if(!task.boundary)outlineSettings_=task.settings;return true;
 }
 bool Document::applyOutline(const OutlineSettings& settings,const std::vector<MaskSlotKey>& masks,bool boundary){
  if(!outlinePixels(settings.sampling,settings.color,settings.smartHue,settings.darkness,settings.followOpacity,boundary,masks))return false;
@@ -87,15 +87,15 @@ bool Document::outlinePixels(const OutlineSampling& settings,Pixel color,bool sm
  charge(std::uint64_t(before.pixels.size())*sizeof(Pixel));const auto w=std::max<std::int64_t>(right,std::int64_t(before.offsetX)+before.width)-std::min(left,before.offsetX),h=std::max<std::int64_t>(bottom,std::int64_t(before.offsetY)+before.height)-std::min(top,before.offsetY);charge(std::uint64_t(w)*h*sizeof(Pixel)*3);
  auto expanded=raster::expanded(before,{left,top,right,bottom});auto after=expanded?std::move(*expanded):before;bool changed=false;
  for(const auto& sample:samples){const int x=int(sample.index%width_),y=int(sample.index/width_);const auto index=raster::worldIndex(after,x,y);if(!index)throw std::logic_error("Missing outline destination");auto stroke=outlineStrokeColor(color,sample.reference,smartHue,darkness,followOpacity);const auto original=raster::readWorld(before,x,y);auto value=(stroke>>24)==0?stroke:brushComposite(original,stroke,100);if(target.mask)value=timeline::normalizedMaskPixel(value);changed|=value!=original;after.pixels[*index]=value;}
- if(changed){if(target.mask){for(auto& slot:afterMasks)if(slot.mask.id==target.id)slot.mask.surface=std::move(after);maskChanged=true;}else edit.surfaceChanges.push_back({target.id,before,std::move(after)});}used-=area*160;
+ if(changed){if(target.mask){for(auto& slot:afterMasks)if(slot.mask.id==target.id)slot.mask.surface=std::move(after);maskChanged=true;}else edit.contentHistory.surfaceChanges.push_back({target.id,before,std::move(after)});}used-=area*160;
  }
  if(cancelled&&cancelled())return false;
- if(edit.surfaceChanges.empty()&&!maskChanged)return false;
- if(maskChanged){edit.beforeMasks=timeline_.state().masks;edit.afterMasks=std::move(afterMasks);edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});}
+ if(edit.contentHistory.surfaceChanges.empty()&&!maskChanged)return false;
+ if(maskChanged){edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=std::move(afterMasks);edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});}
  if(created){
   charge(std::uint64_t(created->surface->pixels.size())*sizeof(Pixel));
-  edit.beforeTimeline=timeline_.state();edit.beforeTimeline->cels.push_back(*created);auto state=timeline_.state();created->surface=std::move(edit.surfaceChanges.front().after);state.cels.push_back(std::move(*created));timeline::Timeline validation(state);edit.afterTimeline=std::move(state);edit.surfaceChanges.clear();
+  edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.beforeTimeline->cels.push_back(*created);auto state=timeline_.state();created->surface=std::move(edit.contentHistory.surfaceChanges.front().after);state.cels.push_back(std::move(*created));timeline::Timeline validation(state);edit.snapshotHistory.afterTimeline=std::move(state);edit.contentHistory.surfaceChanges.clear();
  }
- reserveHistoryEntries();change_={};applyEdit(edit,true);if(maskChanged||edit.beforeTimeline)change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),boundary||settings.position==0?U"内部描边":settings.position==2?U"两侧描边":U"外部描边");return true;
+ reserveHistoryEntries();change_={};applyEdit(edit,true);if(maskChanged||edit.snapshotHistory.beforeTimeline)change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),boundary||settings.position==0?U"内部描边":settings.position==2?U"两侧描边":U"外部描边");return true;
 }
 }

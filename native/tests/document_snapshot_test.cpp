@@ -9,6 +9,15 @@ using namespace moon;
 static void require(bool p,const char* m){if(!p)throw std::runtime_error(m);}
 int main(){try{
   {
+    Document source(512,512);DocumentSnapshot checked(source);
+    require(checked.advanceChecked(source,std::chrono::steady_clock::now())==DocumentSnapshot::Progress::Pending,"Expired checked snapshot did not yield");
+    source.beginStroke({1,1},0xff123456);source.commitStroke();
+    require(checked.advanceChecked(source,std::chrono::steady_clock::now()+std::chrono::seconds(1))==DocumentSnapshot::Progress::SourceChanged,"Changed document entered checked snapshot");
+    DocumentSnapshot current(source);while(current.advanceChecked(source,std::chrono::steady_clock::now()+std::chrono::seconds(1))==DocumentSnapshot::Progress::Pending){}
+    require(current.advanceChecked(source,std::chrono::steady_clock::now()+std::chrono::seconds(1))==DocumentSnapshot::Progress::Complete,"Checked snapshot completion changed");
+    require(current.finish().pixels()==source.pixels(),"Checked snapshot changed pixels");
+  }
+  {
     Document metadata(4,2);metadata.setImportedSymmetryCenter({1.25,-2.75});metadata.markSaved();
     const auto revision=metadata.revision(),content=metadata.contentRevision(),history=metadata.historySize();
     DocumentSnapshot snapshot(metadata);while(!snapshot.advance(metadata,std::chrono::steady_clock::now()+std::chrono::seconds(1))){}

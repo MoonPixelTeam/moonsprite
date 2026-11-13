@@ -766,7 +766,9 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   if(scrubbing_ && !hasCapture())scrubbing_=false;
   if(scrubbing_ && msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc){scrubbing_=false;if(hasCapture())releaseMouse();return true;}
   if(msg->type()==ui::kMouseEnterMessage && hover) hover();
-  if(msg->type()==ui::kFocusEnterMessage && focus) focus();
+  // Focus messages are queued. A later focus request or desktop close can
+  // invalidate this entry before its old enter message reaches the widget.
+  if(msg->type()==ui::kFocusEnterMessage && focus && isVisible() && ui::Manager::getDefault()->getFocus()==this) focus();
   if(isEnabled() && !isReadOnly() && msg->type()==ui::kMouseWheelMessage && (numeric || wheel)) {
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
     if(!mouse->ctrlPressed() && !mouse->cmdPressed()) {const int dy=mouse->wheelDelta().y;if(dy) adjustNumber(dy>0?-1:1);return true;}
@@ -1104,7 +1106,12 @@ bool PixelButton::onProcessMessage(ui::Message* msg) {
     }
     if(msg->type()==ui::kKeyDownMessage && static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc && hasCapture()){releaseMouse();return true;}
   }
-  if(isEnabled() && doubleClick && msg->type()==ui::kDoubleClickMessage && (!doubleClickLeftOnly || static_cast<ui::MouseMessage*>(msg)->left())) {doubleClick();return true;}
+  if(isEnabled() && doubleClick && msg->type()==ui::kDoubleClickMessage) {
+    // Widget translates unhandled double-clicks back into MouseDown. A right
+    // double-click on a left-only action must not re-enter pointerPress/context.
+    if(!doubleClickLeftOnly || static_cast<ui::MouseMessage*>(msg)->left())doubleClick();
+    return true;
+  }
   if(paletteCell && isEnabled() && palettePress && msg->type()==ui::kMouseDownMessage) {palettePress(*static_cast<ui::MouseMessage*>(msg));return true;}
   if(paletteCell && isEnabled() && msg->type()==ui::kMouseDownMessage && static_cast<ui::MouseMessage*>(msg)->left()) {Click();return true;}
   if(msg->type()==ui::kMouseEnterMessage && hover) hover();

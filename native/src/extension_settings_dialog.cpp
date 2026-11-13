@@ -1,9 +1,21 @@
-#include "editor_implementation.h"
 #include "extension_settings_dialog.h"
+#include "ui_frame_capture.h"
+#include "ui/close_event.h"
+#include "ui/display.h"
+#include "ui/manager.h"
+#include "ui/message.h"
+#include "ui/resize_event.h"
+#include "ui/tooltips.h"
 #include "extension_localization.h"
 #include "lua_script_numeric_widgets.h"
 #include "modal_geometry_preferences.h"
 #include <cfloat>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iterator>
+#include <stdexcept>
+#include <thread>
 namespace moon::editor { namespace {
 using namespace winrt::Windows::Data::Json;
 class SettingsText final:public PixelEntry {

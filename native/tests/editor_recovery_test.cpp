@@ -96,6 +96,37 @@ void storeProcesses(const std::filesystem::path& root,const std::wstring& exe){
  for(const auto& file:std::filesystem::directory_iterator(directory))if(file.path().extension()==L".tmp")CHECK(file.path()==leftover);
  std::cout<<"Cross-process write/delete/list serialization, independent roots, abandoned lock,32 paired commits and stale-temp retry passed\n";
  }
+// Real Windows sharing failures at every public-file commit boundary. Keep
+// a new descriptor after payload failure, and a matching new payload after
+// metadata failure: discovery must apply the existing CRC protocol.
+void storeCommitFailures(const std::filesystem::path& root){
+ auto read=[](const auto& path){std::ifstream file(path,std::ios::binary);return project::Bytes(std::istreambuf_iterator<char>(file),{});};
+ for(const auto& stage:std::vector<std::pair<std::string,std::wstring>>{{"descriptor",L".recovery-pending"},{"payload",L".moonsprite"},{"metadata",L".json"}}){
+  const auto directory=std::filesystem::absolute(root/std::filesystem::u8path("提交失败-"+stage.first));std::filesystem::create_directories(directory);
+  const project::Bytes old{1,2,3},next{7,8,9};project::writeRecoveryFiles(directory,{"case","before","1"},old);
+  const auto target=directory/(L"case"+stage.second);
+  if(stage.first=="descriptor"){std::ofstream file(target,std::ios::binary);file<<"unrelated descriptor evidence";}
+  const auto lockedBytes=read(target);const auto oldMetadata=read(directory/"case.json");
+  HANDLE handle=CreateFileW(target.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(handle!=INVALID_HANDLE_VALUE);
+  struct Close {HANDLE value;~Close(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}} lock{handle};
+  std::string error;try{project::writeRecoveryFiles(directory,{"case","after","2"},next);}catch(const std::exception& failure){error=failure.what();}
+  CHECK(error.find("Cannot commit recovery (Windows ")==0);
+  CHECK(error.find("Windows 5)")!=std::string::npos||error.find("Windows 32)")!=std::string::npos);
+  CHECK(error.find("stage="+stage.first+";")!=std::string::npos&&error.find("target="+target.u8string()+";")!=std::string::npos&&error.find("temporary="+target.u8string()+".")!=std::string::npos&&error.find("pid="+std::to_string(GetCurrentProcessId()))!=std::string::npos);
+  CHECK(read(target)==lockedBytes&&read(directory/"case.json")==oldMetadata);
+  const auto payload=read(directory/"case.moonsprite");CHECK(payload==(stage.first=="metadata"?next:old));
+  const auto rows=project::listRecoveryRecords(directory);CHECK(rows.size()==1&&rows.front().name==(stage.first=="metadata"?"after":"before"));
+  for(const auto& file:std::filesystem::directory_iterator(directory))CHECK(file.path().extension()!=L".tmp");
+  // Release only our fixture handle. Production must already have released its
+  // directory lock and kept enough on-disk context for an explicit retry.
+  CloseHandle(lock.value);lock.value=INVALID_HANDLE_VALUE;
+  project::writeRecoveryFiles(directory,{"case","after","2"},next);
+  CHECK(read(directory/"case.moonsprite")==next&&!std::filesystem::exists(directory/"case.recovery-pending"));
+  const auto retried=project::listRecoveryRecords(directory);CHECK(retried.size()==1&&retried.front().name=="after");
+  project::removeOwnedRecovery(directory,"case");CHECK(project::listRecoveryRecords(directory).empty());
+ }
+ std::cout<<"Descriptor/payload/metadata real commit rejection: UTF-8 target/stage/OS error, preserved locked bytes, CRC discovery and explicit retry passed\n";
+}
 void storeCrashes(const std::filesystem::path& root,const std::wstring& exe){
  auto read=[](const std::filesystem::path& path){std::ifstream file(path,std::ios::binary);return project::Bytes(std::istreambuf_iterator<char>(file),{});};
  auto write=[](const std::filesystem::path& path,const project::Bytes& bytes){std::ofstream file(path,std::ios::binary);file.write(reinterpret_cast<const char*>(bytes.data()),std::streamsize(bytes.size()));CHECK(bool(file));};
@@ -158,11 +189,83 @@ void storeTemporaryCrashes(const std::filesystem::path& root,const std::wstring&
 }
 }
 
+
+void cleanupDispatchCheck(const std::filesystem::path& root){
+ recovery::Preferences disabled;disabled.enabled=false;
+ for(int failure=0;failure<2;++failure){
+  Document document(2,2);editor::RecoverySession session;session.ownedIdentity=document.identity();session.ownedId=session.originId="dispatch-cleanup";
+  const auto directory=root/("cleanup-dispatch-"+std::to_string(failure));project::writeRecoveryFiles(directory,{session.ownedId,"cleanup dispatch","1"},*project::encodeRecoveryProject(document).bytes);
+  const auto payload=directory/"dispatch-cleanup.moonsprite";
+  std::promise<void> previous;session.worker=previous.get_future();session.snapshot.emplace(document);
+  bool called=false;
+  auto reject=[&](std::function<void()>)->std::future<void>{called=true;if(failure==0)throw std::bad_alloc();return {};};
+  const auto rejected=session.scheduleSavedCleanup(directory,document.identity(),reject);
+  CHECK(called&&rejected.cleanupFailure&&!rejected.error.empty()&&session.cleanupError&&session.cleanupError->first==document.identity());
+  CHECK(session.worker.valid()&&session.worker.wait_for(std::chrono::milliseconds(0))==std::future_status::timeout&&session.snapshot&&!session.cleanup&&session.ownedId=="dispatch-cleanup"&&session.originId==session.ownedId&&std::filesystem::exists(payload));
+  std::function<void()> operation;std::promise<void> completed;
+  const auto accepted=session.scheduleSavedCleanup(directory,document.identity(),[&](std::function<void()> task){operation=std::move(task);return completed.get_future();});
+  CHECK(!accepted.cleanupFailure&&accepted.error.empty()&&operation&&session.worker.valid()&&!session.cleanupError&&!session.snapshot&&session.cleanup&&std::filesystem::exists(payload));
+  previous.set_value();operation();completed.set_value();
+  const auto result=session.tick(document,disabled,directory,false);
+  CHECK(result.error.empty()&&!result.cleanupFailure&&!session.worker.valid()&&!session.cleanup&&!session.cleanupError&&session.ownedId.empty()&&session.originId.empty()&&!std::filesystem::exists(payload));
+ }
+}
+void cleanupPredecessorFailureCheck(const std::filesystem::path& root){
+ recovery::Preferences disabled;disabled.enabled=false;
+ for(const bool locked:{false,true}){
+  Document document(2,2);editor::RecoverySession session;
+  session.ownedIdentity=document.identity();session.ownedId=session.originId="predecessor-cleanup";
+  const auto directory=root/(locked?"predecessor-and-cleanup-failure":"predecessor-failure");
+  project::writeRecoveryFiles(directory,{session.ownedId,"predecessor cleanup","1"},*project::encodeRecoveryProject(document).bytes);
+  const auto payload=directory/"predecessor-cleanup.moonsprite";
+  struct Lock {HANDLE value=INVALID_HANDLE_VALUE;~Lock(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}} lock;
+  if(locked){lock.value=CreateFileW(payload.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(lock.value!=INVALID_HANDLE_VALUE);}
+  const recovery::Target target{session.ownedId,"",document.revision(),document.contentRevision(),true,true};
+  session.queue.request(target);session.ticket=session.queue.next();CHECK(session.ticket);
+  std::promise<void> previous,completed;session.worker=previous.get_future();
+  std::function<void()> operation;
+  const auto accepted=session.scheduleSavedCleanup(directory,document.identity(),[&](std::function<void()> task){operation=std::move(task);return completed.get_future();});
+  CHECK(accepted.error.empty()&&operation);
+  previous.set_exception(std::make_exception_ptr(std::runtime_error("previous autosave failed")));
+  try{operation();completed.set_value();}catch(...){completed.set_exception(std::current_exception());}
+  const auto result=session.tick(document,disabled,directory,false);
+  CHECK(result.error.find("previous autosave failed")!=std::string::npos&&result.cleanupFailure==locked);
+  CHECK(!session.queue.hasSavedRevision(target)&&!session.ticket&&!session.queue.busy()&&!session.cleanupOutcome);
+  if(locked){
+   CHECK(result.error.find("; previous recovery: ")!=std::string::npos&&session.cleanupError&&session.cleanupError->first==document.identity());
+   CHECK(session.ownedId==target.id&&session.originId==target.id&&std::filesystem::exists(payload));
+   CloseHandle(lock.value);lock.value=INVALID_HANDLE_VALUE;
+   std::promise<void> retried;operation={};
+   CHECK(session.scheduleSavedCleanup(directory,document.identity(),[&](std::function<void()> task){operation=std::move(task);return retried.get_future();}).error.empty());
+   operation();retried.set_value();CHECK(session.tick(document,disabled,directory,false).error.empty());
+  }
+  CHECK(!session.cleanupError&&session.ownedId.empty()&&session.originId.empty()&&!std::filesystem::exists(payload));
+ }
+}
+void savedCleanupCheck(const std::filesystem::path& root){
+ recovery::Preferences disabled;disabled.enabled=false;
+ // Save cleanup has its own identity and acknowledgement. A later UI close
+ // must still see failure after a recovery tick consumes the failed future.
+ Document clean(2,2),second(2,2);editor::RecoverySession session;session.ownedId=session.originId="saved-cleanup";session.ownedIdentity=clean.identity();
+  project::writeRecoveryFiles(root,{session.ownedId,"saved cleanup","1"},*project::encodeRecoveryProject(clean).bytes);
+  const auto payload=root/"saved-cleanup.moonsprite";
+  HANDLE handle=CreateFileW(payload.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(handle!=INVALID_HANDLE_VALUE);
+  struct Lock {HANDLE value;~Lock(){if(value!=INVALID_HANDLE_VALUE)CloseHandle(value);}} lock{handle};
+  session.scheduleSavedCleanup(root,second.identity());CHECK(!session.worker.valid());
+  session.scheduleSavedCleanup(root,clean.identity());session.worker.wait();
+  auto failed=session.tick(clean,disabled,root,false);CHECK(failed.cleanupFailure&&!failed.error.empty()&&session.cleanupError&&session.cleanupError->first==clean.identity()&&!session.worker.valid()&&session.ownedId=="saved-cleanup"&&session.originId=="saved-cleanup"&&std::filesystem::exists(payload));
+  auto observed=session.tick(clean,disabled,root,false);CHECK(observed.error.empty()&&session.cleanupError&&session.ownedId=="saved-cleanup");
+  CloseHandle(lock.value);lock.value=INVALID_HANDLE_VALUE;
+  session.scheduleSavedCleanup(root,clean.identity());CHECK(!session.cleanupError);session.worker.wait();
+  auto retried=session.tick(clean,disabled,root,false);CHECK(retried.error.empty()&&!session.cleanupError&&session.ownedId.empty()&&session.originId.empty()&&!std::filesystem::exists(payload));
+}
 int wmain(int argc,wchar_t** argv){try{
  const auto childResult=storeChild(argc,argv);if(childResult>=0)return childResult;
- if(argc!=2)throw std::runtime_error("Owned fixture directory required");
+ if(argc!=2&&!(argc==3&&std::wstring(argv[2])==L"--saved-cleanup-only"))throw std::runtime_error("Owned fixture directory required");
  const std::filesystem::path root=std::filesystem::path(argv[1])/("run-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));std::filesystem::create_directories(root);
+ if(argc==3){cleanupDispatchCheck(root);cleanupPredecessorFailureCheck(root);savedCleanupCheck(root);std::cout<<"Saved recovery cleanup identity, persistent failure acknowledgement and retry passed\n";return 0;}
  storeProcesses(root,std::filesystem::absolute(argv[0]).wstring());
+ storeCommitFailures(root);
  storeCrashes(root,std::filesystem::absolute(argv[0]).wstring());
  storeTemporaryCrashes(root,std::filesystem::absolute(argv[0]).wstring());
  Document first(3,2),second(2,3);first.beginStroke({1,1},0xff123456);first.commitStroke();second.beginStroke({0,2},0xff654321);second.commitStroke();
@@ -244,5 +347,6 @@ int wmain(int argc,wchar_t** argv){try{
  // Snapshot identity mismatch cancels before a ticket can write a new document.
  editor::RecoverySession stale;stale.identity=first.identity();stale.ownedId="stale";stale.snapshot.emplace(first,"stale");stale.queue.request({"stale","",first.revision(),first.contentRevision(),true,true});stale.ticket=stale.queue.next();settings.enabled=false;
  stale.tick(second,settings,root,false);CHECK(!stale.ticket&&!stale.snapshot&&!stale.worker.valid());
- std::cout<<"Independent document recovery, persisted pixels and stale snapshot cancellation passed\n";return 0;
+ cleanupDispatchCheck(root);cleanupPredecessorFailureCheck(root);savedCleanupCheck(root);
+ std::cout<<"Independent document recovery, persisted pixels, stale snapshot cancellation and saved-cleanup failure acknowledgement/retry passed\n";return 0;
 }catch(const std::exception& e){if(argc>=3&&(std::wstring(argv[1])==L"--store-child"||std::wstring(argv[1])==L"--crash-commit")){try{std::ofstream(std::filesystem::path(argv[2])/("child-error-"+std::to_string(GetCurrentProcessId())+".txt"))<<e.what();}catch(...) {}}std::cerr<<e.what()<<'\n';return 1;}}

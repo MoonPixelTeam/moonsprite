@@ -8,6 +8,9 @@ if(MSVC)
 endif()
 option(MOONSPRITE_BUILD_APP "Build the Windows native prototype" ON)
 enable_testing()
+add_executable(stroke-pixel-lookup-tests tests/stroke_pixel_lookup_test.cpp)
+target_include_directories(stroke-pixel-lookup-tests PRIVATE src)
+add_test(NAME stroke-pixel-lookup COMMAND stroke-pixel-lookup-tests)
 add_executable(tile-repeat-tests tests/tile_repeat_test.cpp)
 target_include_directories(tile-repeat-tests PRIVATE src)
 add_test(NAME tile-repeat COMMAND tile-repeat-tests)
@@ -24,7 +27,7 @@ add_executable(relative-luminance-tests tests/relative_luminance_test.cpp)
 target_include_directories(relative-luminance-tests PRIVATE src)
 add_test(NAME relative-luminance COMMAND relative-luminance-tests)
 add_library(moon-core src/project_information.cpp src/document_local_history.cpp src/document_tilemap.cpp src/document_layer_move.cpp src/document_layer_groups.cpp src/document_transform.cpp src/animation_transform.cpp src/animation_morph.cpp src/animation_crossfade.cpp src/document_crossfade.cpp src/layer_metadata.cpp src/layer_blend.cpp src/cel_properties.cpp src/cel_thumbnail_pipeline.cpp src/cel_thumbnail.cpp src/document_text.cpp
-  src/document.cpp src/document_slices.cpp src/document_gradient.cpp src/document_shape.cpp src/document_fill.cpp src/document_raster_edit.cpp src/timeline_interaction.cpp src/sprite_sheet_import.cpp src/sheet_import_task.cpp src/image_resize_task.cpp src/image_scale_detection.cpp src/timeline_model.cpp src/recent_colors.cpp src/layer_compositor.cpp src/menu_catalog.cpp src/raster_snapshot.cpp src/document_snapshot.cpp)
+  src/document.cpp src/document_history_apply.cpp src/document_history_cost.cpp src/document_history_frames.cpp src/document_history_layers.cpp src/document_history_palette.cpp src/document_history_masks.cpp src/document_history_selection.cpp src/document_history_snapshots.cpp src/document_history_resources.cpp src/document_history_slices.cpp src/document_history_content.cpp src/document_slices.cpp src/document_gradient.cpp src/document_shape.cpp src/document_fill.cpp src/document_raster_edit.cpp src/timeline_interaction.cpp src/sprite_sheet_import.cpp src/sheet_import_task.cpp src/image_resize_task.cpp src/image_scale_detection.cpp src/timeline_model.cpp src/recent_colors.cpp src/layer_compositor.cpp src/menu_catalog.cpp src/raster_snapshot.cpp src/document_snapshot.cpp)
 add_executable(tile-repeat-stroke-tests tests/tile_repeat_stroke_test.cpp)
 target_link_libraries(tile-repeat-stroke-tests PRIVATE moon-core)
 add_test(NAME tile-repeat-stroke COMMAND tile-repeat-stroke-tests)
@@ -58,6 +61,9 @@ add_test(NAME panel-docking COMMAND panel-docking-tests)
 add_executable(selection-pattern-brush-tests tests/selection_pattern_brush_test.cpp)
 target_link_libraries(selection-pattern-brush-tests PRIVATE moon-core)
 add_test(NAME selection-pattern-brush COMMAND selection-pattern-brush-tests)
+add_executable(selection-boundary-tests tests/selection_boundary_test.cpp)
+target_link_libraries(selection-boundary-tests PRIVATE moon-core)
+add_test(NAME selection-boundary COMMAND selection-boundary-tests)
 add_executable(pattern-fill-tests tests/pattern_fill_test.cpp)
 target_link_libraries(pattern-fill-tests PRIVATE moon-core)
 add_test(NAME pattern-fill COMMAND pattern-fill-tests)
@@ -122,10 +128,11 @@ if(WIN32)
   add_test(NAME theme-atlas COMMAND moon-theme-tests "${CMAKE_CURRENT_SOURCE_DIR}/assets/themes/moonsprite-template/theme.xml")
 endif()
 
-if(MOONSPRITE_BUILD_APP)
-  if(NOT WIN32)
-    message(FATAL_ERROR "The first desktop target is Windows; core tests are portable.")
-  endif()
+if(MOONSPRITE_BUILD_APP AND NOT WIN32)
+  message(FATAL_ERROR "The first desktop target is Windows; core tests are portable.")
+endif()
+# Windows codecs and services do not require creating the desktop/UI targets.
+if(WIN32)
   set(DEPS "${CMAKE_CURRENT_SOURCE_DIR}/.cache" CACHE PATH "Read-only native dependency source root")
   set(SKIA_DIR "${DEPS}/skia-m124" CACHE PATH "Pinned Skia bundle")
   set(SKIA_OPENGL_LIBRARY opengl32 CACHE STRING "Windows SDK OpenGL import library" FORCE)
@@ -137,46 +144,90 @@ if(MOONSPRITE_BUILD_APP)
   set(FMT_TEST OFF CACHE BOOL "" FORCE)
   set(FMT_DOC OFF CACHE BOOL "" FORCE)
   set(OBSERVABLE_TESTS OFF CACHE BOOL "" FORCE)
-  if(NOT EXISTS "${DEPS}/laf/CMakeLists.txt")
+  if(MOONSPRITE_BUILD_APP AND NOT EXISTS "${DEPS}/laf/CMakeLists.txt")
     message(FATAL_ERROR "Run scripts/bootstrap.ps1 first")
   endif()
   set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   add_subdirectory("${DEPS}/zlib" deps/zlib EXCLUDE_FROM_ALL)
-  add_library(moon-project-reader src/palette_image_import.cpp src/palette_adobe_import.cpp src/palette_import.cpp src/palette_library.cpp src/palette_clipboard.cpp src/animation_settings.cpp src/layer_quick_actions.cpp src/project_reader.cpp src/project_manifest.cpp src/project_import.cpp src/project_encode.cpp src/project_file.cpp src/project_preview.cpp src/image_export.cpp src/frame_png_export.cpp src/webp_export.cpp src/animation_layer_export.cpp src/background_preset_library.cpp src/sprite_sheet.cpp src/recovery_codec.cpp src/recovery_scheduler.cpp src/recovery_store.cpp src/recovery_catalog.cpp src/recovery_preferences.cpp)
-  target_sources(moon-project-reader PRIVATE src/timelapse_library.cpp src/timelapse_images.cpp src/timelapse_video.cpp)
+  add_library(moon-atomic-file STATIC src/system_atomic_file.cpp)
+  target_include_directories(moon-atomic-file PUBLIC src)
+  target_compile_definitions(moon-atomic-file PRIVATE NOMINMAX)
+  add_library(moon-project-reader src/animation_settings.cpp src/layer_quick_actions.cpp src/project_reader.cpp src/project_manifest.cpp src/project_import.cpp src/project_encode.cpp src/project_file.cpp src/project_preview.cpp)
+  add_library(moon-raster-io STATIC src/image_export.cpp src/frame_png_export.cpp src/webp_export.cpp src/animation_layer_export.cpp src/background_preset_library.cpp src/sprite_sheet.cpp src/palette_image_import.cpp src/palette_adobe_import.cpp src/palette_import.cpp src/palette_library.cpp src/palette_clipboard.cpp)
+  target_include_directories(moon-raster-io PUBLIC src PRIVATE "${DEPS}/zlib" "${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
+  target_compile_definitions(moon-raster-io PRIVATE NOMINMAX)
+  add_library(moon-recovery STATIC src/recovery_codec.cpp src/recovery_scheduler.cpp src/recovery_store.cpp src/recovery_catalog.cpp src/recovery_preferences.cpp)
+  target_include_directories(moon-recovery PUBLIC src PRIVATE "${DEPS}/zlib" "${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
+  target_compile_definitions(moon-recovery PRIVATE NOMINMAX)
+  add_library(moon-timelapse-io STATIC src/timelapse_library.cpp src/timelapse_images.cpp src/timelapse_video.cpp)
+  target_include_directories(moon-timelapse-io PUBLIC src PRIVATE "${DEPS}/zlib" "${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
+  target_compile_definitions(moon-timelapse-io PRIVATE NOMINMAX)
+  target_include_directories(moon-raster-io PRIVATE "${PATTERN_SKIA_ROOT}")
+  target_link_libraries(moon-raster-io PUBLIC moon-core PRIVATE moon-atomic-file moon-gif-export zlibstatic windowsapp runtimeobject "${PATTERN_SKIA_ROOT}/out/Release-x64/skia.lib" opengl32 fontsub user32 gdi32 ole32 windowscodecs)
+  target_link_libraries(moon-recovery PUBLIC moon-core PRIVATE moon-atomic-file zlibstatic moon-winrt-platform)
+  target_link_libraries(moon-timelapse-io PUBLIC moon-core PRIVATE moon-raster-io zlibstatic ole32 windowscodecs mfplat mfreadwrite mfuuid moon-vpx moon-webm)
+  target_link_libraries(moon-project-reader PRIVATE moon-atomic-file moon-raster-io moon-recovery moon-timelapse-io)
   target_sources(moon-project-reader PRIVATE src/psd_import.cpp src/psd_export.cpp)
   target_sources(moon-project-reader PRIVATE src/image_save.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_archive.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_policy.cpp src/local_history_store.cpp src/local_history_restore.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_committed.cpp src/local_history_hydration.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_persistence.cpp src/local_history_generation.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_recording.cpp src/local_history_diff.cpp)
-  target_sources(moon-project-reader PRIVATE src/local_history_budget.cpp src/local_history_session.cpp src/local_history_cost.cpp src/local_history_resource_cost.cpp src/local_history_raster_cost.cpp)
+
+
+
+
+
+
+  add_library(moon-local-history STATIC
+    src/local_history_archive.cpp
+    src/local_history_policy.cpp
+    src/local_history_store.cpp
+    src/local_history_restore.cpp
+    src/local_history_committed.cpp
+    src/local_history_hydration.cpp
+    src/local_history_persistence.cpp
+    src/local_history_generation.cpp
+    src/local_history_recording.cpp
+    src/local_history_diff.cpp
+    src/local_history_budget.cpp
+    src/local_history_session.cpp
+    src/local_history_cost.cpp
+    src/local_history_resource_cost.cpp
+    src/local_history_raster_cost.cpp
+  )
+  target_include_directories(moon-local-history PUBLIC src)
+  target_compile_definitions(moon-local-history PRIVATE NOMINMAX)
+  target_link_libraries(moon-local-history PUBLIC moon-core PRIVATE moon-project-reader windowsapp runtimeobject)
   add_executable(local-history-cost-tests tests/local_history_cost_test.cpp)
-  target_link_libraries(local-history-cost-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-cost-tests PRIVATE moon-local-history)
   add_test(NAME local-history-cost COMMAND local-history-cost-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-committed-fixtures")
   add_executable(local-history-budget-tests tests/local_history_budget_test.cpp)
-  target_link_libraries(local-history-budget-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-budget-tests PRIVATE moon-local-history)
   add_test(NAME local-history-budget COMMAND local-history-budget-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-committed-fixtures")
   add_executable(local-history-hydration-tests tests/local_history_hydration_test.cpp)
-  target_link_libraries(local-history-hydration-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-hydration-tests PRIVATE moon-local-history)
   add_test(NAME local-history-hydration COMMAND local-history-hydration-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-committed-fixtures")
   add_executable(local-history-persistence-tests tests/local_history_persistence_test.cpp)
-  target_link_libraries(local-history-persistence-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-persistence-tests PRIVATE moon-local-history)
   add_test(NAME local-history-persistence COMMAND local-history-persistence-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-persistence-fixtures.json" "${CMAKE_CURRENT_BINARY_DIR}/local-history-fixtures" "${CMAKE_CURRENT_BINARY_DIR}/test-tmp/history-persistence-owned")
   add_executable(local-history-committed-tests tests/local_history_committed_test.cpp)
-  target_link_libraries(local-history-committed-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-committed-tests PRIVATE moon-local-history)
   add_test(NAME local-history-committed COMMAND local-history-committed-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-committed-fixtures")
+  if(NOT MOONSPRITE_BUILD_APP)
+    # Same pinned ICU binary used by laf/Skia, without instantiating laf or UI.
+    add_library(icu STATIC IMPORTED)
+    set_target_properties(icu PROPERTIES IMPORTED_LOCATION "${SKIA_DIR}/out/Release-x64/icu.lib")
+  endif()
   target_link_libraries(moon-project-reader PRIVATE icu)
   add_executable(local-history-policy-tests tests/local_history_policy_test.cpp)
-  target_link_libraries(local-history-policy-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-policy-tests PRIVATE moon-local-history)
   add_test(NAME local-history-policy COMMAND local-history-policy-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-policy-fixtures.json" "${CMAKE_CURRENT_BINARY_DIR}/test-tmp/history-store-owned")
   add_executable(local-history-archive-tests tests/local_history_archive_test.cpp)
-  target_link_libraries(local-history-archive-tests PRIVATE moon-project-reader)
+  target_link_libraries(local-history-archive-tests PRIVATE moon-local-history)
   add_test(NAME local-history-archive COMMAND local-history-archive-tests "${CMAKE_CURRENT_BINARY_DIR}/local-history-fixtures")
   add_executable(image-save-tests tests/image_save_test.cpp)
   target_link_libraries(image-save-tests PRIVATE moon-project-reader moon-pattern-import)
   add_test(NAME image-save COMMAND image-save-tests)
+  add_executable(captured-save-tests tests/captured_save_test.cpp)
+  target_link_libraries(captured-save-tests PRIVATE moon-project-reader moon-atomic-file)
+  add_test(NAME captured-save COMMAND captured-save-tests)
   add_executable(large-image-import-tests tests/large_image_import_test.cpp)
   target_link_libraries(large-image-import-tests PRIVATE moon-project-reader moon-pattern-import)
   target_link_options(large-image-import-tests PRIVATE /STACK:4194304)
@@ -188,7 +239,7 @@ if(MOONSPRITE_BUILD_APP)
   target_link_libraries(psd-import-tests PRIVATE moon-project-reader)
   add_test(NAME psd-import COMMAND psd-import-tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/psd-import")
   set(MOON_VPX_ROOT "${DEPS}/libvpx-1.15.2")
-  set(MOON_VPX_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libvpx/x64/Release/vpxmt.lib")
+  set(MOON_VPX_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/build/libvpx/x64/Release/vpxmt.lib" CACHE FILEPATH "Pinned existing WebM encoder archive")
   if(NOT EXISTS "${MOON_VPX_LIBRARY}")
     message(FATAL_ERROR "Run pwsh -File scripts/bootstrap-video.ps1 for the pinned WebM encoder")
   endif()
@@ -197,7 +248,6 @@ if(MOONSPRITE_BUILD_APP)
   set(MOON_WEBM_ROOT "${MOON_VPX_ROOT}/third_party/libwebm")
   add_library(moon-webm STATIC "${MOON_WEBM_ROOT}/mkvmuxer/mkvmuxer.cc" "${MOON_WEBM_ROOT}/mkvmuxer/mkvmuxerutil.cc" "${MOON_WEBM_ROOT}/mkvmuxer/mkvwriter.cc")
   target_include_directories(moon-webm PUBLIC "${MOON_WEBM_ROOT}")
-  target_link_libraries(moon-project-reader PRIVATE mfplat mfreadwrite mfuuid moon-vpx moon-webm)
   add_executable(timelapse-video-tests tests/timelapse_video_test.cpp)
   target_link_libraries(timelapse-video-tests PRIVATE moon-project-reader mfplat mfreadwrite mfuuid moon-vpx moon-webm)
   target_sources(timelapse-video-tests PRIVATE "${MOON_WEBM_ROOT}/mkvparser/mkvparser.cc" "${MOON_WEBM_ROOT}/mkvparser/mkvreader.cc")
@@ -211,8 +261,8 @@ if(MOONSPRITE_BUILD_APP)
   target_compile_definitions(moon-project-reader PRIVATE NOMINMAX)
   target_include_directories(moon-project-reader PUBLIC src PRIVATE "${DEPS}/zlib" "${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
   target_include_directories(moon-project-reader PRIVATE "${PATTERN_SKIA_ROOT}")
-  target_link_libraries(moon-project-reader PUBLIC "${PATTERN_SKIA_ROOT}/out/Release-x64/skia.lib" opengl32 fontsub user32 gdi32 ole32 windowscodecs)
-  target_link_libraries(moon-project-reader PRIVATE zlibstatic windowsapp runtimeobject PUBLIC moon-core moon-gif-export)
+  target_link_libraries(moon-project-reader PRIVATE "${PATTERN_SKIA_ROOT}/out/Release-x64/skia.lib" opengl32 fontsub user32 gdi32 ole32 windowscodecs)
+  target_link_libraries(moon-project-reader PRIVATE zlibstatic windowsapp runtimeobject moon-gif-export PUBLIC moon-core)
   add_executable(gif-import-tests tests/gif_import_test.cpp)
   target_link_libraries(gif-import-tests PRIVATE moon-pattern-import moon-project-reader)
   add_test(NAME gif-import COMMAND gif-import-tests "${CMAKE_CURRENT_BINARY_DIR}/gif-import-test-owned")
@@ -250,15 +300,18 @@ if(MOONSPRITE_BUILD_APP)
   add_executable(project-manifest-tests tests/project_manifest_test.cpp)
   add_executable(recovery-preferences-tests tests/recovery_preferences_test.cpp)
   add_executable(recovery-codec-tests tests/recovery_codec_test.cpp)
-  target_link_libraries(recovery-codec-tests PRIVATE moon-project-reader)
+  target_link_libraries(recovery-codec-tests PRIVATE moon-recovery)
   add_test(NAME recovery-codec COMMAND recovery-codec-tests)
-  target_link_libraries(recovery-preferences-tests PRIVATE moon-project-reader)
+  add_test(NAME recovery-codec-parallel COMMAND recovery-codec-tests --parallel)
+  add_test(NAME recovery-codec-sta-parallel COMMAND recovery-codec-tests --sta-parallel)
+  set_tests_properties(recovery-codec-parallel recovery-codec-sta-parallel PROPERTIES TIMEOUT 30)
+  target_link_libraries(recovery-preferences-tests PRIVATE moon-recovery)
   add_test(NAME recovery-preferences COMMAND recovery-preferences-tests)
   add_executable(recovery-catalog-tests tests/recovery_catalog_test.cpp)
-  target_link_libraries(recovery-catalog-tests PRIVATE moon-project-reader)
+  target_link_libraries(recovery-catalog-tests PRIVATE moon-recovery)
   add_test(NAME recovery-catalog COMMAND recovery-catalog-tests)
   add_executable(recovery-scheduler-tests tests/recovery_scheduler_test.cpp)
-  target_link_libraries(recovery-scheduler-tests PRIVATE moon-project-reader)
+  target_link_libraries(recovery-scheduler-tests PRIVATE moon-recovery)
   add_test(NAME recovery-scheduler COMMAND recovery-scheduler-tests)
   add_executable(sprite-sheet-tests tests/sprite_sheet_test.cpp)
   add_executable(sprite-sheet-import-tests tests/sprite_sheet_import_test.cpp)
@@ -393,7 +446,7 @@ if(MOONSPRITE_BUILD_APP)
   target_link_libraries(project-save-tests PRIVATE moon-project-reader)
   add_test(NAME project-save COMMAND project-save-tests project-manifest-fixtures)
   add_test(NAME project-save-raster-resources COMMAND project-save-tests --raster-resource-check)
-  target_link_libraries(project-manifest-tests PRIVATE moon-project-reader)
+  target_link_libraries(project-manifest-tests PRIVATE moon-project-reader moon-local-history)
   add_executable(project-reader-tests tests/project_reader_test.cpp)
   target_link_libraries(project-reader-tests PRIVATE moon-project-reader)
   find_program(MOON_NODE_EXECUTABLE node)
@@ -419,7 +472,10 @@ if(MOONSPRITE_BUILD_APP)
     add_dependencies(project-reader-tests project-reader-fixtures)
     add_test(NAME project-reader COMMAND project-reader-tests "${PROJECT_FIXTURES}")
   endif()
-  target_link_libraries(moon-pattern-import PUBLIC zlibstatic)
+  target_link_libraries(moon-pattern-import PRIVATE zlibstatic)
+endif()
+
+if(MOONSPRITE_BUILD_APP)
   set(ZLIB_LIBRARIES zlibstatic)
   set(ZLIB_INCLUDE_DIRS "${DEPS}/zlib;${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
   # Upstream's ICU custom command lacks VERBATIM (breaks paths containing &).
@@ -492,7 +548,7 @@ if(MOONSPRITE_BUILD_APP)
   set_property(TARGET ui-lib PROPERTY SOURCES ${MOON_UI_SOURCES} "${CMAKE_CURRENT_BINARY_DIR}/menu-hover.cpp" "${CMAKE_CURRENT_BINARY_DIR}/generated/moonsprite_entry.cpp")
   add_executable(moonsprite-native WIN32 src/main.cpp src/editor_shared_colors.cpp src/editor_extension_workspace.cpp src/extension_storage.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_sheet_import.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_home_sections.cpp src/editor_home_banner.cpp src/editor_home_recovery.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/extension_form_image.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
   src/extension_menu_adapter.cpp src/extension_panel_host.cpp src/extension_settings_dialog.cpp src/extension_preferences.cpp src/extension_install_dialog.cpp src/editor_layer_move.cpp src/editor_shortcuts.cpp src/editor_shortcut_inputs.cpp src/editor_usage.cpp src/editor_frame_capture.cpp src/editor_input.cpp src/editor_lifecycle.cpp src/editor_palette.cpp src/editor_panels.cpp src/editor_refresh.cpp src/editor_recovery.cpp src/editor_session.cpp src/editor_native_save.cpp src/editor_pending_gradient_io.cpp src/editor_smoke.cpp src/editor_timeline.cpp src/editor_tools.cpp src/timeline_button.cpp src/canvas_renderer.cpp src/legacy_cursors.cpp src/pixel_font.cpp src/pixel_text_area.cpp src/native_widgets.cpp src/native_color_picker.cpp)
-  target_link_libraries(moonsprite-native PRIVATE moon-usage-statistics moon-gif-export moon-core moon-pattern-import moon-skin moon-project-reader ui-lib clip comdlg32 comctl32 shell32 winmm)
+  target_link_libraries(moonsprite-native PRIVATE moon-usage-statistics moon-gif-export moon-core moon-pattern-import moon-skin moon-project-reader moon-local-history ui-lib clip comdlg32 comctl32 shell32 winmm)
   target_include_directories(moonsprite-native PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
   target_compile_definitions(moonsprite-native PRIVATE NOMINMAX)
   set_property(SOURCE src/main.cpp src/editor_canvas.cpp src/editor_dialogs.cpp src/editor_reference.cpp src/editor_history.cpp src/editor_tablet.cpp src/editor_help.cpp src/editor_project_information.cpp src/editor_release_notes.cpp src/editor_recent_projects.cpp src/editor_gallery.cpp src/editor_home_sections.cpp src/editor_home_banner.cpp src/editor_home_recovery.cpp src/editor_diagnostics.cpp src/runtime_diagnostics.cpp src/extension_form_image.cpp src/editor_rotation.cpp src/editor_slices.cpp src/editor_background.cpp src/editor_project_rollback.cpp src/editor_text.cpp
@@ -771,14 +827,16 @@ if(TARGET clip)
 endif()
 
 # Recovery session is widget-free and can be exercised without the desktop host.
-if(MOONSPRITE_BUILD_APP)
+if(TARGET moon-project-reader)
   add_executable(editor-recovery-tests tests/editor_recovery_test.cpp src/editor_recovery.cpp src/recovery_store.cpp)
-  target_link_libraries(editor-recovery-tests PRIVATE moon-project-reader zlibstatic)
+  target_link_libraries(editor-recovery-tests PRIVATE moon-project-reader moon-atomic-file zlibstatic)
   target_compile_definitions(editor-recovery-tests PRIVATE NOMINMAX MOONSPRITE_RECOVERY_COMMIT_TEST)
   add_test(NAME editor-recovery COMMAND editor-recovery-tests "${CMAKE_CURRENT_BINARY_DIR}/test-tmp/editor-recovery-owned")
+  add_test(NAME saved-recovery-cleanup COMMAND editor-recovery-tests "${CMAKE_CURRENT_BINARY_DIR}/test-tmp/saved-recovery-cleanup-owned" --saved-cleanup-only)
+  set_tests_properties(saved-recovery-cleanup PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
   set_tests_properties(editor-recovery PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endif()
-find_package(Python3 QUIET COMPONENTS Interpreter)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
   add_test(NAME editor-boundaries COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-editor-boundaries.py")
 endif()
@@ -917,8 +975,12 @@ target_include_directories(release-notes-tests PRIVATE src)
 add_test(NAME release-notes COMMAND release-notes-tests)
 
 target_sources(moon-project-reader PRIVATE src/aseprite_document.cpp src/aseprite_decode.cpp src/aseprite_encode.cpp)
-target_sources(moonsprite-native PRIVATE src/editor_aseprite.cpp src/editor_attached_masks.cpp src/editor_timelapse.cpp)
-target_sources(moonsprite-native PRIVATE src/editor_tilemap.cpp src/editor_brush_library.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_aseprite.cpp src/editor_attached_masks.cpp src/editor_timelapse.cpp)
+endif()
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_tilemap.cpp src/editor_brush_library.cpp)
+endif()
 add_executable(aseprite-io-tests tests/aseprite_io_test.cpp)
 target_link_libraries(aseprite-io-tests PRIVATE moon-project-reader zlibstatic)
 target_include_directories(aseprite-io-tests PRIVATE "${DEPS}/zlib" "${CMAKE_CURRENT_BINARY_DIR}/deps/zlib")
@@ -948,12 +1010,18 @@ endif()
 add_test(NAME tilemap-document COMMAND tilemap-document-tests)
 
 # Named workspaces reuse the editor docking/persistence implementation.
-target_sources(moonsprite-native PRIVATE src/editor_workspace_presets.cpp)
-target_sources(moonsprite-native PRIVATE src/editor_tool_rail_smoke.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_workspace_presets.cpp)
+endif()
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_tool_rail_smoke.cpp)
+endif()
 
 target_sources(moon-core PRIVATE src/document_liquify.cpp)
 
-target_sources(moonsprite-native PRIVATE src/editor_liquify.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_liquify.cpp)
+endif()
 
 add_executable(liquify-tests tests/liquify_test.cpp)
 target_link_libraries(liquify-tests PRIVATE moon-core)
@@ -961,7 +1029,9 @@ add_test(NAME liquify COMMAND liquify-tests)
 
 target_sources(moon-core PRIVATE src/document_dynamics.cpp)
 
-target_sources(moonsprite-native PRIVATE src/editor_dynamics.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_dynamics.cpp)
+endif()
 add_executable(brush-dynamics-tests tests/brush_dynamics_test.cpp)
 target_link_libraries(brush-dynamics-tests PRIVATE moon-core)
 add_test(NAME brush-dynamics COMMAND brush-dynamics-tests)
@@ -974,19 +1044,29 @@ add_executable(symmetry-scale-tests tests/symmetry_scale_test.cpp)
 target_link_libraries(symmetry-scale-tests PRIVATE moon-core)
 add_test(NAME symmetry-scale COMMAND symmetry-scale-tests)
 
-target_sources(moonsprite-native PRIVATE src/editor_image_brush_modes.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_image_brush_modes.cpp)
+endif()
 
-target_sources(moonsprite-native PRIVATE src/editor_smooth_ranges.cpp src/editor_tool_parameter_ranges.cpp src/editor_tool_parameter_drafts.cpp src/editor_dynamics_draft.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_smooth_ranges.cpp src/editor_tool_parameter_ranges.cpp src/editor_tool_parameter_drafts.cpp src/editor_dynamics_draft.cpp)
+endif()
 
 add_executable(symmetry-rotation-tests tests/symmetry_rotation_test.cpp)
 target_link_libraries(symmetry-rotation-tests PRIVATE moon-core)
 add_test(NAME symmetry-rotation COMMAND symmetry-rotation-tests)
-target_sources(moonsprite-native PRIVATE src/editor_symmetry_rotation.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_symmetry_rotation.cpp)
+endif()
 
 add_executable(symmetry-shear-tests tests/symmetry_shear_test.cpp)
 target_link_libraries(symmetry-shear-tests PRIVATE moon-core)
-target_sources(moonsprite-native PRIVATE src/editor_symmetry_shear.cpp)
-target_sources(moonsprite-native PRIVATE src/quick_command_preferences.cpp src/quick_command_bar.cpp src/editor_quick_commands.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_symmetry_shear.cpp)
+endif()
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/quick_command_preferences.cpp src/quick_command_bar.cpp src/editor_quick_commands.cpp)
+endif()
 
 add_executable(symmetry-alpha-tests tests/symmetry_alpha_test.cpp)
 target_link_libraries(symmetry-alpha-tests PRIVATE moon-core)
@@ -1011,9 +1091,8 @@ add_test(NAME recovery-display COMMAND recovery-display-tests)
 
 # NewDocumentDialog optional clipboard-size probing and legacy selection policy.
 target_sources(moon-core PRIVATE src/new_document_clipboard.cpp)
-target_link_libraries(moon-core PUBLIC user32)
 add_executable(new-document-clipboard-tests tests/new_document_clipboard_test.cpp)
-target_link_libraries(new-document-clipboard-tests PRIVATE moon-core user32)
+target_link_libraries(new-document-clipboard-tests PRIVATE moon-core)
 add_test(NAME new-document-clipboard COMMAND new-document-clipboard-tests)
 
 set_tests_properties(new-document-clipboard PROPERTIES TIMEOUT 30)
@@ -1031,7 +1110,9 @@ add_executable(outline-document-tests tests/outline_document_test.cpp)
 target_link_libraries(outline-document-tests PRIVATE moon-project-reader)
 add_test(NAME outline-document COMMAND outline-document-tests)
 
-target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)
+if(TARGET moonsprite-native)
+  target_sources(moonsprite-native PRIVATE src/editor_outline.cpp)
+endif()
 
 # Compile the original Rust Lua/MSE core without Tauri/WebView. The native
 # application will link this library when document/result/UI adapters are ready.
@@ -1048,7 +1129,9 @@ if(WIN32 AND MOON_CARGO_EXECUTABLE)
   add_library(moon-lua-runtime STATIC IMPORTED)
   set_target_properties(moon-lua-runtime PROPERTIES IMPORTED_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime/release/moonsprite_lua_runtime.lib")
   add_dependencies(moon-lua-runtime lua-runtime)
-  target_link_libraries(moonsprite-native PRIVATE moon-lua-invocation moon-lua-runtime ws2_32 userenv bcrypt ntdll advapi32)
+  if(TARGET moonsprite-native)
+    target_link_libraries(moonsprite-native PRIVATE moon-lua-invocation moon-lua-runtime ws2_32 userenv bcrypt ntdll advapi32)
+  endif()
   add_executable(lua-runtime-ffi-tests tests/lua_runtime_ffi_test.cpp)
   target_include_directories(lua-runtime-ffi-tests PRIVATE src)
   target_link_libraries(lua-runtime-ffi-tests PRIVATE moon-lua-runtime ws2_32 userenv bcrypt ntdll advapi32)
@@ -1066,4 +1149,190 @@ if(WIN32 AND MOON_CARGO_EXECUTABLE)
   add_test(NAME lua-script-invocation COMMAND lua-script-invocation-tests "${CMAKE_CURRENT_BINARY_DIR}/lua-script-invocation-test-owned")
 
   add_test(NAME lua-runtime COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-lua-runtime.ps1" -Action Test -Offline)
+endif()
+
+# Application history scheduling is independent of Editor/UI/platform libraries.
+add_executable(history-store-tests tests/history_store_test.cpp)
+target_include_directories(history-store-tests PRIVATE src)
+add_test(NAME history-store COMMAND history-store-tests)
+add_executable(history-commands-tests tests/history_commands_test.cpp)
+target_include_directories(history-commands-tests PRIVATE src)
+add_test(NAME history-commands COMMAND history-commands-tests)
+
+# Application preview services retain domain capture/publish checks without UI.
+add_executable(atomic-write-tests tests/atomic_write_test.cpp)
+target_include_directories(atomic-write-tests PRIVATE src)
+add_test(NAME atomic-write COMMAND atomic-write-tests)
+add_executable(task-stage-profile-tests tests/task_stage_profile_test.cpp)
+target_include_directories(task-stage-profile-tests PRIVATE src)
+add_test(NAME task-stage-profile COMMAND task-stage-profile-tests)
+add_executable(layered-export-task-tests tests/layered_export_task_test.cpp)
+target_link_libraries(layered-export-task-tests PRIVATE moon-project-reader)
+add_test(NAME layered-export-task COMMAND layered-export-task-tests)
+add_executable(batch-export-task-tests tests/batch_export_task_test.cpp)
+target_link_libraries(batch-export-task-tests PRIVATE moon-core)
+add_test(NAME batch-export-task COMMAND batch-export-task-tests)
+add_executable(wand-preview-controller-tests tests/wand_preview_controller_test.cpp)
+target_include_directories(wand-preview-controller-tests PRIVATE src)
+add_test(NAME wand-preview-controller COMMAND wand-preview-controller-tests)
+add_executable(preview-task-tests tests/preview_task_test.cpp)
+target_include_directories(preview-task-tests PRIVATE src)
+add_test(NAME preview-task COMMAND preview-task-tests)
+add_executable(filter-preview-controllers-tests tests/filter_preview_controllers_test.cpp)
+target_link_libraries(filter-preview-controllers-tests PRIVATE moon-core)
+add_test(NAME filter-preview-controllers COMMAND filter-preview-controllers-tests)
+add_executable(save-task-tests tests/save_task_test.cpp)
+target_link_libraries(save-task-tests PRIVATE moon-core)
+add_test(NAME save-task COMMAND save-task-tests)
+add_executable(playback-session-tests tests/playback_session_test.cpp)
+target_link_libraries(playback-session-tests PRIVATE moon-core)
+add_test(NAME playback-session COMMAND playback-session-tests)
+add_executable(document-animation-binding-tests tests/document_animation_binding_test.cpp)
+target_link_libraries(document-animation-binding-tests PRIVATE moon-core)
+add_test(NAME document-animation-binding COMMAND document-animation-binding-tests)
+add_executable(document-recording-binding-tests tests/document_recording_binding_test.cpp)
+target_link_libraries(document-recording-binding-tests PRIVATE moon-core)
+add_test(NAME document-recording-binding COMMAND document-recording-binding-tests)
+if(WIN32)
+  add_library(moon-winrt-platform STATIC src/system_winrt_apartment.cpp)
+  target_include_directories(moon-winrt-platform PUBLIC src)
+  target_compile_definitions(moon-winrt-platform PRIVATE NOMINMAX)
+  target_link_libraries(moon-winrt-platform PRIVATE windowsapp runtimeobject ole32)
+  add_library(moon-system-text STATIC src/system_string_compare.cpp)
+  target_include_directories(moon-system-text PUBLIC src)
+  add_library(moon-system-clipboard STATIC src/system_clipboard_size.cpp)
+  target_include_directories(moon-system-clipboard PUBLIC src)
+  target_link_libraries(moon-system-clipboard PRIVATE user32)
+  add_executable(system-clipboard-size-tests tests/system_clipboard_size_test.cpp)
+  target_link_libraries(system-clipboard-size-tests PRIVATE moon-system-clipboard)
+  add_test(NAME system-clipboard-size COMMAND system-clipboard-size-tests)
+  set_tests_properties(system-clipboard-size PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+  if(TARGET moonsprite-native)
+    target_link_libraries(moonsprite-native PRIVATE moon-system-clipboard moon-system-text)
+  endif()
+endif()
+
+# Each public header is the only include in its own translation unit. These
+# objects are never linked into an application or a replacement executable.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_document.cpp" "#include \"document.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_timeline_model.cpp" "#include \"timeline_model.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_new_document_clipboard.cpp" "#include \"new_document_clipboard.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_store.cpp" "#include \"history_store.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_replay.cpp" "#include \"history_replay.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_commands.cpp" "#include \"history_commands.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_task_poll_schedule.cpp" "#include \"task_poll_schedule.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_atomic_write.cpp" "#include \"atomic_write.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_captured_save.cpp" "#include \"captured_save.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_task_stage_profile.cpp" "#include \"task_stage_profile.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_layered_export_task.cpp" "#include \"layered_export_task.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_batch_export_task.cpp" "#include \"batch_export_task.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_wand_preview_controller.cpp" "#include \"wand_preview_controller.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_preview_task.cpp" "#include \"preview_task.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_filter_preview_controllers.cpp" "#include \"filter_preview_controllers.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_ui_frame_capture.cpp" "#include \"ui_frame_capture.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_system_clipboard_size.cpp" "#include \"system_clipboard_size.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tool_session_state.cpp" "#include \"tool_session_state.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_save_task.cpp" "#include \"save_task.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_save_decision.cpp" "#include \"save_decision.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_system_winrt_apartment.cpp" "#include \"system_winrt_apartment.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_animation_change.cpp" "#include \"animation_change.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_playback_session.cpp" "#include \"playback_session.h\"\n")
+add_library(core-public-headers-tests OBJECT
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_animation_change.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_playback_session.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_store.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_replay.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_system_winrt_apartment.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_save_task.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_save_decision.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tool_session_state.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_document.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_timeline_model.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_new_document_clipboard.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_history_commands.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_task_stage_profile.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_task_poll_schedule.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_atomic_write.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_captured_save.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_layered_export_task.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_batch_export_task.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_wand_preview_controller.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_preview_task.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_filter_preview_controllers.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_ui_frame_capture.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_system_clipboard_size.cpp"
+)
+target_include_directories(core-public-headers-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+if(TARGET ui-lib)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_panel_host.cpp" "#include \"extension_panel_host.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_menu_adapter.cpp" "#include \"extension_menu_adapter.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_preferences.cpp" "#include \"extension_preferences.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_install_dialog.cpp" "#include \"extension_install_dialog.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_settings_dialog.cpp" "#include \"extension_settings_dialog.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_editor.cpp" "#include \"editor.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_preview_panel.cpp" "#include \"preview_panel.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_floating_column_surface.cpp" "#include \"floating_column_surface.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_dialog_background.cpp" "#include \"dialog_background.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_floating_panel_geometry.cpp" "#include \"floating_panel_geometry.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_reference_image_panel.cpp" "#include \"reference_image_panel.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_free_tile_instances_panel.cpp" "#include \"free_tile_instances_panel.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tileset_management_panel.cpp" "#include \"tileset_management_panel.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_pixel_theme.cpp" "#include \"pixel_theme.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_curve_editor_native.cpp" "#include \"curve_editor_native.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_sprite_sheet_preview.cpp" "#include \"sprite_sheet_preview.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tool_property_popup.cpp" "#include \"tool_property_popup.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_loop_number_entry.cpp" "#include \"loop_number_entry.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_frame_duration_palette_entry.cpp" "#include \"frame_duration_palette_entry.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_layer_label_separator.cpp" "#include \"layer_label_separator.h\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_interaction_profile.cpp" "#include \"interaction_profile.h\"\n")
+add_library(ui-public-headers-tests OBJECT
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_interaction_profile.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_pixel_theme.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_curve_editor_native.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_sprite_sheet_preview.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tool_property_popup.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_loop_number_entry.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_frame_duration_palette_entry.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_layer_label_separator.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_reference_image_panel.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_free_tile_instances_panel.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_tileset_management_panel.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_preview_panel.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_floating_column_surface.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_dialog_background.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_floating_panel_geometry.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_panel_host.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_menu_adapter.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_preferences.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_install_dialog.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_extension_settings_dialog.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/public_header_editor.cpp"
+)
+target_include_directories(ui-public-headers-tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_link_libraries(ui-public-headers-tests PRIVATE ui-lib)
+target_compile_definitions(ui-public-headers-tests PRIVATE NOMINMAX)
+endif()
+
+add_test(NAME editor-boundary-fixtures COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/editor_boundaries_test.py")
+add_test(NAME architecture-boundary-fixtures COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/architecture_boundaries_test.py")
+add_test(NAME architecture-boundaries COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-architecture-boundaries.py")
+add_custom_target(architecture-checks
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-editor-boundaries.py"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-architecture-boundaries.py"
+  DEPENDS core-public-headers-tests
+  VERBATIM)
+if(TARGET ui-public-headers-tests)
+  add_dependencies(architecture-checks ui-public-headers-tests)
+endif()
+if(TARGET moonsprite-native)
+  add_dependencies(moonsprite-native architecture-checks)
+  target_sources(moonsprite-native PRIVATE src/preview_panel.cpp src/floating_column_surface.cpp
+    src/pixel_theme.cpp
+    src/curve_editor_native.cpp
+    src/sprite_sheet_preview.cpp
+    src/tool_property_popup.cpp
+    src/loop_number_entry.cpp
+    src/frame_duration_palette_entry.cpp
+    src/layer_label_separator.cpp
+  )
 endif()

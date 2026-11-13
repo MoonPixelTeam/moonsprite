@@ -95,5 +95,5 @@ public:
  void flush(Document& d){beginFlush(d);while(!flushReady(d)){if(embeddedTask_.valid())embeddedTask_.wait_for(std::chrono::milliseconds(1));else Sleep(1);}}
  Settings portable(Document& d){flush(d);auto settings=d.timelapseSettings();for(auto& f:settings.snapshots){f.data=read(f);f.historyDataBacking.reset();f.local.reset();}return settings;}
 };
-inline std::shared_ptr<Session> ensureRecordingSession(Document& d,std::filesystem::path root=executableLibraryRoot(),std::filesystem::path legacy={}){auto session=d.recordingSession();if(!session){session=std::make_shared<Session>(d.timelapseSettings(),std::move(root),std::move(legacy));d.setRecordingSession(session,[session](Document& document,bool undo){session->capture(document,undo);});}return session;}
+inline std::shared_ptr<Session> ensureRecordingSession(Document& d,std::filesystem::path root=executableLibraryRoot(),std::filesystem::path legacy={}){auto session=d.recordingSession();if(!session){session=std::make_shared<Session>(d.timelapseSettings(),std::move(root),std::move(legacy));d.setRecordingSession(session,[session](Document& document,bool undo){session->capture(document,undo);},[session](const Settings& settings){session->restoreSettings(settings);});}return session;}
 }

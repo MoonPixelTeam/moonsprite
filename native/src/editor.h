@@ -3,6 +3,12 @@
 #include "project_backup.h"
 #include "quick_command_bar.h"
 #include "document.h"
+#include "history_commands.h"
+#include "filter_preview_controllers.h"
+#include "wand_preview_controller.h"
+#include "tool_session_state.h"
+#include "save_task.h"
+#include "playback_session.h"
 #include "airbrush.h"
 #include <random>
 #include "runtime_diagnostics.h"
@@ -27,10 +33,12 @@
 #include "shortcut_model.h"
 #include "layer_label_width.h"
 #include "selection_tools.h"
+#include "selection_boundary.h"
 #include "image_export.h"
 #include "gif_export.h"
 #include "animation_layer_export.h"
 #include "frame_png_export.h"
+#include "batch_export_task.h"
 #include "sprite_sheet.h"
 #include "sprite_sheet_import.h"
 #include "recent_colors.h"
@@ -110,7 +118,8 @@ public:
   void showUsageStatistics(bool verify=false);
   void smokeUsageStatistics();
 
-  Document document=Document::withBuiltinPalette();
+  Document& currentDocument(){return *activeDocument_;}
+  const Document& currentDocument()const{return *activeDocument_;}
 
   std::function<void()> closeRequested;
 
@@ -167,16 +176,48 @@ private:
 
   bool documentOpen_=true;
 
-  // legacy workspace-types.ts DocumentSession: inactive documents are moved,
+  // legacy workspace-types.ts DocumentSession: every session owns its document,
 
-  // never serialized or copied, so pixels, selections and undo remain intact.
+  // never serialized at a switch, so pixels, selections and undo remain intact.
 
-  struct TemporaryBrushCapture { int kind=0,mode=0,radius=4; bool rounded=false; std::uint64_t identity=0; };
+  // Persistent UI values belong to the session; gestures and caches remain
+  // Editor-owned and are settled/rebound explicitly at a switch.
+  struct ProjectViewState {
+    gfx::Rect canvas;
+
+    double zoom=8;view::Rotation rotation;repeat::Mode tileRepeat=repeat::Mode::Off;
+
+    int layers=0,frames=0,layerRemainder=0,frameRemainder=0,paletteScroll=0,paletteScrollX=0;
+
+    bool frameSelection=false,guides=true,selectionPivotVisible=true;
+    bool relativeLuminance=false,showSelectionOutline=true;
+    std::uint64_t displayIdentity=0;
+
+    RecentColors recent;
+
+    // Legacy DocumentSession owns mask cells and their range anchor.
+    std::vector<Document::MaskSlotKey> maskSlots;
+    std::optional<Document::MaskSlotKey> maskAnchor;
+    std::uint64_t maskIdentity=0,maskSerial=0;
+    std::vector<TimelineSlot> virtualSlots;
+    std::optional<TimelineSlot> virtualAnchor;
+
+    bool freeTransform=false;
+    std::optional<TransformPoint> pivot;
+    // Session-local observation of selection and typed history projection.
+    std::optional<SelectionMask> pivotMask;
+    std::uint64_t pivotIdentity=0,pivotObservedRevision=0;
+    std::uint64_t pivotHistoryIdentity=0,pivotHistorySerial=0;
+    TransformPoint drawingAnchor{.5,.5};bool drawingAnchorVisible=true,drawFromCanvasCenter=false;
+  };
+
+  using TemporaryBrushCapture=workspace::TemporaryBrushCapture;
+  using ProjectPlaybackState=workspace::PlaybackSession;
   struct ProjectSession {
     // Legacy DocumentSession owns tool configuration independently of pixels.
-    std::function<void()> restoreTools;
+    workspace::ToolSessionState tools;
 
-    std::optional<Document> stored;
+    std::shared_ptr<Document> value;
 
     // Legacy WeakMap<Document, options>: session-owned, never saved to project
     // or preferences; identity prevents a replacement document inheriting it.
@@ -185,30 +226,34 @@ private:
 
     std::filesystem::path path;
 
-    gfx::Rect canvas;
+    ProjectViewState view;
+    ProjectPlaybackState playback;
 
-    double zoom=8;view::Rotation rotation;repeat::Mode tileRepeat=repeat::Mode::Off;
-
-    int layers=0,frames=0,layerRemainder=0,frameRemainder=0,paletteScroll=0;
-
-    bool frameSelection=false,guides=true;
-
-    RecentColors recent;
-
-    std::optional<TransformPoint> pivot;
-    TransformPoint drawingAnchor{.5,.5};bool drawingAnchorVisible=true,drawFromCanvasCenter=false;
-
-    std::optional<TemporaryBrushCapture> brushCapture;
-    std::optional<BrushOptions> brushReturnProfile;
-    std::optional<PatternBrush> temporaryBrush;
-    std::string temporaryBrushId;
-    double temporaryBrushAngle=0;
-    bool temporaryBrushActive=false;
     RecoverySession recovery;
 
   };
 
-  std::vector<std::unique_ptr<ProjectSession>> projects_;
+  std::vector<std::shared_ptr<ProjectSession>> projects_;
+  // The active pointer selects a session; path/recovery never move at switches.
+  std::shared_ptr<ProjectSession> activeSession_=std::make_shared<ProjectSession>();
+  std::shared_ptr<Document> activeDocument_=activeSession_->value=std::make_shared<Document>(Document::withBuiltinPalette());
+  std::filesystem::path& currentPath(){return activeSession_->path;}
+  const std::filesystem::path& currentPath()const{return activeSession_->path;}
+  RecoverySession& currentRecovery(){return activeSession_->recovery;}
+  const RecoverySession& currentRecovery()const{return activeSession_->recovery;}
+  ProjectViewState& currentView(){return activeSession_->view;}
+  const ProjectViewState& currentView()const{return activeSession_->view;}
+  ProjectPlaybackState& currentPlayback(){return activeSession_->playback;}
+  const ProjectPlaybackState& currentPlayback()const{return activeSession_->playback;}
+  workspace::ToolSessionState& currentTools(){return activeSession_->tools;}
+  const workspace::ToolSessionState& currentTools()const{return activeSession_->tools;}
+  void bindProjectDocument(std::shared_ptr<Document>);
+  void bindSessionAnimationObservation();
+  void bindTimelineSelection();
+  static void projectMaskSelectionHistory(ProjectViewState&,const Document&);
+  static void projectSelectionPivotHistory(ProjectViewState&,const Document&);
+  void replaceDocumentForSmoke(Document&&);
+  void replaceDocumentForSmoke(const Document&);
 
   std::size_t activeProject_=0,recoveryProject_=0;
 
@@ -361,6 +406,13 @@ private:
   std::function<void(const std::filesystem::path&)> openSheetOutput_;
 
   SpriteSheetOptions sheetOptions_;PixelEntry* sheetValue_=nullptr;std::array<PixelButton*,7> sheetButtons_{};SpriteSheetPreview* sheetPreview_=nullptr;
+  std::optional<SpriteSheetOptions> sheetPreviewOptions_;
+  std::uint64_t sheetPreviewIdentity_=0,sheetPreviewRevision_=0,sheetPreviewContent_=0,sheetPreviewSelection_=0;
+  std::string sheetPreviewFrame_,sheetPreviewLayer_;
+  std::vector<std::string> sheetPreviewFrames_;
+  std::size_t sheetPreviewBuilds_=0;
+  bool sheetPreviewValid_=false;
+  ui::Timer sheetPreviewTimer_{40,this};
 
   PixelEntry* exportScaleInput_=nullptr;PixelButton *exportTrimButton_=nullptr,*exportSelectionButton_=nullptr,*exportLayerButton_=nullptr;StaticImageExportOptions exportOptions_;
 
@@ -376,21 +428,15 @@ private:
 
   ImageInterpolation resizeMethodValue_=ImageInterpolation::Nearest;
 
-  AntiAliasOptions aaSpec_;bool aaAuto_=true,aaLive_=true,aaScheduled_=false,aaCommit_=false;Pixel aaCustom_=0;std::chrono::steady_clock::time_point aaDue_;std::shared_ptr<std::atomic<bool>> aaCancel_;std::uint64_t aaGeneration_=0;
-
-  struct AntiAliasResult {Document::AntiAliasSurfaceTask task;std::uint64_t generation;bool cancelled=false;std::string error;};std::future<AntiAliasResult> aaWorker_;
+  workspace::ColorPreviewSession<workspace::AntiAliasPreviewController> antiAlias_;
 
   PixelButton *aaAutoButton_=nullptr,*aaInterior_=nullptr,*aaLiveButton_=nullptr;PixelDropdown* aaSource_=nullptr;PixelEntry *aaOpacity_=nullptr,*aaColorEntry_=nullptr;PixelSlider* aaOpacitySlider_=nullptr;NativeColorPicker* aaPicker_=nullptr;
 
-  ConvolutionOptions convolutionSpec_;std::vector<PixelButton*> convolutionPresets_;std::array<PixelButton*,4> convolutionChannels_{};PixelButton *convolutionTiled_=nullptr,*convolutionLive_=nullptr,*convolutionApply_=nullptr;PixelScrollBar* convolutionScroll_=nullptr;int convolutionScrollPixels_=0;
-
-  struct ConvolutionResult {Document::ConvolutionSurfaceTask task;std::uint64_t generation,optionsRevision;bool cancelled=false;std::string error;};
-
-  std::future<ConvolutionResult> convolutionWorker_;std::shared_ptr<std::atomic<bool>> convolutionCancel_;std::uint64_t convolutionGeneration_=0,convolutionRevision_=0;std::optional<std::uint64_t> convolutionApplied_;bool convolutionLiveEnabled_=true,convolutionScheduled_=false;int convolutionCommit_=0;std::chrono::steady_clock::time_point convolutionDue_;
+  workspace::ColorPreviewSession<workspace::ConvolutionPreviewController> convolution_;std::vector<PixelButton*> convolutionPresets_;std::array<PixelButton*,4> convolutionChannels_{};PixelButton *convolutionTiled_=nullptr,*convolutionLive_=nullptr,*convolutionApply_=nullptr;PixelScrollBar* convolutionScroll_=nullptr;int convolutionScrollPixels_=0;
 
   std::vector<SavedGradientMapPreset> gmSaved_;std::vector<int> gmHidden_,gmKeys_;bool gmReadable_=true;std::u32string gmError_;int gmStop_=0;GradientStopsTrack* gmTrack_=nullptr;NativeColorPicker* gmPicker_=nullptr;PixelDropdown *gmPreset_=nullptr,*gmDither_=nullptr;PixelEntry *gmPosition_=nullptr,*gmColor_=nullptr,*gmName_=nullptr;PixelButton *gmMode_=nullptr,*gmReverse_=nullptr,*gmPalette_=nullptr,*gmSave_=nullptr,*gmDelete_=nullptr,*gmAdd_=nullptr,*gmRemove_=nullptr,*gmRestore_=nullptr,*gmFlipStops_=nullptr;
 
-  struct GradientMapResult {Document::GradientMapTask task;std::uint64_t generation;bool cancelled=false;std::string error;};std::future<GradientMapResult> gmWorker_;std::shared_ptr<std::atomic<bool>> gmCancel_;std::uint64_t gmGeneration_=0;bool gmScheduled_=false,gmCommit_=false;
+  workspace::ColorPreviewSession<workspace::GradientMapPreviewController> gradientMap_;
 
   ColorAdjustment adjustmentSpec_;
 
@@ -429,9 +475,9 @@ private:
 
   std::vector<PixelButton*> recentButtons_;
 
-  RecentColors recentColors_;
 
-  std::uint64_t recentColorsIdentity_=0;
+
+
 
   std::array<PixelButton*,6> symmetryButtons_{};
 
@@ -453,9 +499,9 @@ private:
 
 
 
-  bool eyedropperTool_=false,eyedropperHeld_=false,paletteSamplingHeld_=false;
+  bool eyedropperHeld_=false,paletteSamplingHeld_=false;
 
-  EyedropperSource eyedropperSource_=EyedropperSource::Composite;
+
 
   EyedropperGesture eyedropperGesture_;
 
@@ -517,9 +563,9 @@ private:
 
   Pixel strokeColor_=0;
 
-  bool selectionTool_=false,selectionDragging_=false,floatingDragging_=false,selectionMoved_=false,selectionBoxDragging_=false;
+  bool selectionDragging_=false,floatingDragging_=false,selectionMoved_=false,selectionBoxDragging_=false;
 
-  int selectionMode_=0,gestureSelectionMode_=0,selectionKind_=0;
+  int gestureSelectionMode_=0;
 
   std::optional<SelectionMask> selectionPreview_;
 
@@ -545,19 +591,17 @@ private:
 
   bool selectionSyntheticMove_=false;
 
-  bool selectionFreeTransform_=false,selectionPivotVisible_=true,selectionPivotDragging_=false;
+  bool selectionPivotDragging_=false;
 
   os::SurfaceRef tweenEndpointImage_; std::uint64_t tweenEndpointIdentity_=0,tweenEndpointRevision_=0; double tweenEndpointX_=0,tweenEndpointY_=0;
-  std::optional<TransformPoint> selectionPivot_,selectionPivotBeforeGesture_;
+  std::optional<TransformPoint> selectionPivotBeforeGesture_;
 
   TransformPoint selectionPivotStart_,selectionPivotPointerStart_;
 
-  std::uint64_t selectionPivotIdentity_=0;
 
-  std::optional<SelectionMask> selectionPivotMask_;
+  SelectionBoundaryCache selectionBoundaryCache_;
 
-  std::uint64_t trimPivotIdentity_=0,trimPivotSerial_=0;
-  std::uint64_t maskSelectionIdentity_=0,maskSelectionSerial_=0;
+
 
   mutable std::map<std::pair<int,int>,std::vector<Pixel>> selectionColorTiles_;
 
@@ -587,21 +631,14 @@ private:
 
   std::uint64_t selectionBrushIdentity_=0;
 
-  int selectionBrushAngle_=0;
+
 
   PixelEntry* selectionBrushAngleInput_=nullptr;
 
-  WandOptions wandOptions_;
 
-  bool polygonPending_=false,wandReleased_=false,wandPreviewReady_=false;
 
-  std::shared_ptr<const std::vector<Pixel>> wandSource_;
-
-  std::future<std::optional<SelectionMask>> wandWorker_;
-
-  std::optional<SelectionPoint> wandRequest_,wandLastPoint_;
-
-  std::uint64_t wandGeneration_=0,wandWorkerGeneration_=0,wandIdentity_=0,wandContentRevision_=0;std::string wandLayer_,wandFrame_;
+  bool polygonPending_=false;
+  workspace::WandPreviewController wand_;
 
   std::vector<std::pair<ui::Widget*,int>> selectionControls_;
 
@@ -649,31 +686,31 @@ private:
 
   bool selectionCopyDrag_=false;
 
-  bool selectionRotSprite_=false;
+
 
   PixelButton* selectionAlgorithmButton_=nullptr;
 
   std::array<PixelEntry*,5> selectionTransformFields_{};
 
-  bool selectionPropertiesActive_=false,selectionRounded_=false;
+  bool selectionPropertiesActive_=false;
 
-  int selectionCornerRadius_=4;
+
 
   PixelButton* selectionRoundedButton_=nullptr;
 
   PixelEntry* selectionCornerRadiusInput_=nullptr;
 
-  bool shapeTool_=false,shapeDragging_=false,shapeRounded_=false,shapeRatio_=false,shapeRequest_=false;
+  bool shapeDragging_=false,shapeRequest_=false;
 
   std::vector<SelectionPoint> polygonShapeRedo_,polygonShapeCachePath_,polygonShapeCache_;bool polygonShapeCacheBalanced_=false;
   TransformPoint drawingAnchorDefaults_{.5,.5};bool drawingAnchorDefaultEnabled_=false,drawingAnchorDefaultVisible_=true;
-  bool drawFromCanvasCenter_=false,drawingAnchorVisible_=true,drawingAnchorDragging_=false;TransformPoint drawingAnchor_{.5,.5},drawingAnchorDragBefore_{},drawingAnchorPointerStart_{};
+  bool drawingAnchorDragging_=false;TransformPoint drawingAnchorDragBefore_{},drawingAnchorPointerStart_{};
   std::optional<TransformPoint> shapeDrawingAnchor_,marqueeDrawingAnchor_;ShapeDragGeometry anchoredMarqueeGeometry_;ShapeSpec anchoredMarqueeSpec_;
   PixelButton* drawingAnchorButton_=nullptr;PixelButton* drawingAnchorPresetButton_=nullptr;
   bool drawingAnchorEligible()const;bool drawingAnchorActive()const;TransformPoint drawingAnchorPoint()const;void setDrawingAnchor(TransformPoint point);void showDrawingAnchorPopup();void layoutDrawingAnchor(int& x);void smokeDrawingAnchor();void smokeSelectionSymmetry();void smokeSymmetryContentTranslation();void smokeSymmetryContentScale();void smokeSymmetryContentRotation();void smokeSymmetryContentShear();void smokeLinkedEditStaticPixels();
   ShapeSpec shapeSpec_;ShapeDragGeometry shapeGeometry_;TransformPoint shapePointer_{};
 
-  int shapeRadius_=4;double shapeRatioWidth_=1,shapeRatioHeight_=1;
+
 
   Pixel shapeColor_=0;std::uint64_t shapeIdentity_=0;
 
@@ -689,7 +726,7 @@ private:
   void finishPolygonShape();
   void smokePolygonShape();
   void smokeFreeformShape();
-  int curveAnchorCount_=2,curveAnchorIndex_=0;bool curveEndpoint_=true;
+  int curveAnchorIndex_=0;bool curveEndpoint_=true;
   std::vector<TransformPoint> curveControls_;
   PixelEntry* curveAnchorInput_=nullptr;
   void curveTick();void finishCurveShape();void smokeCurveShape();
@@ -701,24 +738,24 @@ public:
   void smokePendingGradientIo();
 private:
 
-  bool fillTool_=false,fillDragging_=false,fillCommitted_=false;
-  bool magicEraserTool_=false,magicEraserDragging_=false,magicEraserContiguous_=false;
+  bool fillDragging_=false,fillCommitted_=false;
+  bool magicEraserDragging_=false;
   void useMagicEraserTool();void loadMagicEraserPreferences();
   bool processMagicEraserInput(ui::Message*);
 public: void smokeMagicEraser();
 private:
 
-  WandOptions fillOptions_;
 
-  PatternFillOptions fillPattern_;
+
+
 
   PixelButton *fillTextureButton_=nullptr,*fillImageButton_=nullptr;
 
   PixelEntry* fillTextureScale_=nullptr;
 
-  std::u32string fillImageName_;
 
-  PatternBrushSelection fillLibrarySelection_;
+
+
 
   std::string fillFolder_,fillFolderEditing_;
 
@@ -730,19 +767,21 @@ private:
 
   PixelButton *fillContiguousButton_=nullptr,*fillGapButton_=nullptr,*fillConnectivityButton_=nullptr,*fillReferenceButton_=nullptr;
 
-  bool rememberGradientTool_=false;
 
-  bool gradientTool_=false,gradientDragging_=false,gradientPending_=false,gradientRequest_=false,gradientRight_=false,gradientConfirm_=false,gradientFreeform_=false;
 
+  bool gradientDragging_=false,gradientPending_=false,gradientRequest_=false,gradientRight_=false;
+
+  // Task inputs cache configuration only at dispatch; the session owns settings.
   GradientSpec gradientSpec_;GradientDragGeometry gradientGeometry_;
+  void updateGradientGeometry(TransformPoint point,bool shift,bool center,bool alt){gradientSpec_.radial=currentTools().gradientRadial;gradientGeometry_.update(gradientSpec_,point,shift,center,alt);}
 
-  WandOptions gradientOptions_;
+
 
   std::uint64_t gradientIdentity_=0,gradientContent_=0;
 
   std::string gradientLayer_,gradientFrame_;
 
-  std::vector<GradientStop> gradientStops_;
+
 
   int gradientStop_=0,gradientHandle_=-1;TransformPoint gradientHandlePress_{};GradientSpec gradientHandleBefore_;
 
@@ -887,7 +926,7 @@ private:
 
   FloatingColumnSurface* paletteSelectionOverlay_=nullptr;
 
-  PixelScrollBar* paletteScrollBar_=nullptr;PixelScrollBar* paletteHorizontalBar_=nullptr;int paletteScrollXPixels_=0;
+  PixelScrollBar* paletteScrollBar_=nullptr;PixelScrollBar* paletteHorizontalBar_=nullptr;
 
   PixelScrollBar *railScrollBar_=nullptr,*timelineHorizontal_=nullptr,*timelineVertical_=nullptr,*canvasHorizontal_=nullptr,*canvasVertical_=nullptr,*homeScrollBar_=nullptr,*errorScrollBar_=nullptr,*preferenceNavBar_=nullptr,*preferenceContentBar_=nullptr;
 
@@ -897,7 +936,7 @@ private:
 
   int railScrollPixels_=0;
 
-  int layerScrollRemainder_=0,frameScrollRemainder_=0,homeScrollPixels_=0,errorScrollPixels_=0;
+  int homeScrollPixels_=0,errorScrollPixels_=0;
 
   std::string timelineLastActiveFrame_;
 
@@ -919,7 +958,7 @@ private:
 
   PaletteClipboardData paletteClipboardLayout_;
 
-  int paletteScrollPixels_=0,paletteColumns_=1,renameId_=0;
+  int paletteColumns_=1,renameId_=0;
 
   SpaceDragScroll panelScrollDrag_;
 
@@ -996,15 +1035,15 @@ private:
   PixelDropdown* imagePaintModeDropdown_=nullptr;
   void smokeImageBrushPaintModes();
 
-  std::string pencilImageBrushId_;
 
-  double pencilImageBrushAngle_=0;
 
-  std::optional<PatternBrush> pencilImageBrush_;
+
+
+
   // legacy workspace-commands-tool.ts: private, unsaved Ctrl+B capture draft.
-  std::optional<TemporaryBrushCapture> temporaryBrushCapture_;
-  std::optional<BrushOptions> temporaryBrushReturnProfile_;
-  bool temporaryBrushActive_=false;
+
+
+
 
   PixelEntry *brushSizeInput_=nullptr,*brushOpacityInput_=nullptr;
 
@@ -1098,7 +1137,7 @@ private:
 
   std::vector<TimelineButton*> layerRows_,layerEyes_,layerLocks_,layerAutoLinks_;
 
-  int layerScroll_=0,frameScroll_=0;
+
 
   std::vector<TimelineButton*> frameHeaders_,frameCells_;
 
@@ -1132,7 +1171,6 @@ private:
 
   std::uint64_t timelineCachePaints_=0;
 
-  bool playing_=false,frameSelectionExplicit_=false;
   bool selectionCommandOverride_=false; // Legacy explicit preferSelection command scope.
 
   // Legacy separates editing context from explicit timeline selection.
@@ -1141,19 +1179,18 @@ private:
 
   std::uint64_t timelineSelectionIdentity_=0;
 
-  bool timelineSelectionGuidesVisible_=true;
 
-  std::vector<TimelineSlot> virtualSlots_;std::optional<TimelineSlot> virtualAnchor_;
+
+
   void selectTimelineSlot(int row,int column,int mode=0,const std::vector<TimelineSlot>& replacement={});
   struct GroupExpandGesture{std::string start;bool value;std::map<std::string,bool> originals;};std::optional<GroupExpandGesture> groupExpandGesture_;std::string groupExpandSolo_;std::map<std::string,bool> groupExpandSoloOriginals_;std::uint64_t groupExpandIdentity_=0;
   bool processGroupExpandGesture(ui::Message*);gfx::Rect groupExpandBounds(int visualRow)const;
   struct TimelineGesture {
     std::vector<std::pair<std::string,std::string>> masks;
-    std::optional<std::pair<std::string,std::string>> maskAnchor,activeMaskSlot;
-    bool maskIsolated=false;
+    std::optional<std::pair<std::string,std::string>> maskAnchor;
     std::optional<Document::MaskSlotKey> maskDrop;
     std::vector<Document::MaskPlacement> maskPlacements;
-    std::vector<TimelineSlot> virtualSlots;std::optional<TimelineSlot> virtualAnchor,pointerAnchor;std::vector<std::string> groups;std::string realTargetCel;std::optional<LayerPanelDropTarget> rowDrop;
+    std::vector<TimelineSlot> virtualSlots;std::optional<TimelineSlot> virtualAnchor,pointerAnchor;std::string realTargetCel;std::optional<LayerPanelDropTarget> rowDrop;
 
     int kind=0,row=0,column=0,targetRow=0,targetColumn=0,mode=0;
 
@@ -1165,29 +1202,21 @@ private:
 
     std::uint64_t identity=0;
 
-    Document::TimelineSelection selection;
-
-    std::vector<std::string> frames;
-
-    std::string activeLayer,activeFrame,anchor,frameAnchor;
+    Document::AnimationSelectionSnapshot snapshot;
+    std::string anchor;
 
   } timelineGesture_;
 
   ui::Timer timelineScrollTimer_{30,this};
 
-  timeline::LoopPlayback loopPlayback_;
 
-  bool playbackTagMode_=false,playbackModeLoop_=true;
 
   std::optional<std::string> savedPlaybackMode_;
+  double savedPlaybackRate_=1;bool savedPlaybackReturnToStart_=false;
 
-  std::string playbackSessionMode_="all";
 
-  std::uint64_t playbackModeIdentity_=0;
 
-  std::string playbackTagCycle_,playbackObservedFrame_;
 
-  std::uint64_t playbackIdentity_=0,playbackRevision_=0;
 
   std::optional<timeline::LoopSection> loopDraft_;
 
@@ -1215,9 +1244,7 @@ private:
 
   int onionField_=0;
 
-  std::chrono::steady_clock::time_point playbackDue_;
 
-  double playbackRate_=1;bool playbackReturnToStart_=false;std::string playbackStartFrame_;
 
   TimelineButton *layerEye_=nullptr,*layerRow_=nullptr;
   FreeTileInstancesPanel* freeTileInstancesPanel_=nullptr;
@@ -1230,7 +1257,7 @@ private:
   void layoutFreeTileInstancePanel();
   void showFreeTileInstancePanelSettings(bool verify=false);
   void setFreeTileInstancePanelLayout(bool separate,bool persist=true);
-  bool integratedFreeTileInstances()const{return !freeTileInstancesSeparate_&&document.freeTileInstanceView();}
+  bool integratedFreeTileInstances()const{return !freeTileInstancesSeparate_&&currentDocument().freeTileInstanceView();}
   PixelButton *layerProperties_=nullptr,*layerQuickSettings_=nullptr;
 
   std::vector<PixelButton*> layerQuickButtons_;
@@ -1289,15 +1316,15 @@ public:
 
   Pixel ink_=0xffff7929;
   PixelButton* inkButton_=nullptr;
-  std::array<InkMode,8> inkProfiles_{};
-  bool syncInkAcrossTools_=false;
+
+
   std::filesystem::path inkPreferenceOverride_;
   int inkProfileIndex() const; InkMode currentInkMode() const; BrushOptions activeStrokeBrush() const;
   std::filesystem::path inkModesPath() const; void loadInkPreferences(); void saveInkPreferences(); void chooseInkMode(InkMode); void showInkMenu(int smokeChoice=-1); void smokeInkModes();
 
   bool palettePanelOpen_=true,previewPanelOpen_=true,layersPanelOpen_=true;
 
-  bool eraser_=false, colorPickerOpen_=true, handTool_=false, spaceHeld_=false;
+  bool  colorPickerOpen_=true, spaceHeld_=false;
 
 
 
@@ -1324,13 +1351,13 @@ public:
 
   void constrainCanvas();
 
-  std::filesystem::path documentPath_,candidatePath_,recoveryDirectory_;
+  std::filesystem::path candidatePath_,recoveryDirectory_;
 
   bool candidateRecovery_=false;
   std::string candidateRecoveryId_;
 
 
-  RecoverySession recovery_;
+
   recovery::RecoveryCatalog recoveryCatalog_;
   std::future<void> recoveryDiscardWorker_;std::string recoveryDiscardId_;
   std::future<std::vector<project::RecoveryRecord>> recoveryCatalogWorker_;
@@ -1370,25 +1397,22 @@ public:
 
   bool closeAfterSave_=false;
 
-  std::optional<DocumentSnapshot> saveSnapshot_;
-
-  std::future<project::EncodedProject> saveWorker_;
-
-  std::filesystem::path savingPath_;
-  bool savingAseprite_=false,savingSourceOnly_=false;
+  using SaveJob=workspace::SaveTask<project::EncodedProject>;
+  SaveJob saveJob_;
   bool asyncSaveForSmoke_=false,saveDismissRequested_=false,closeAfterBackgroundSaves_=false;
   struct BackgroundSave {
-   std::future<project::EncodedProject> worker;std::filesystem::path path;
-   std::uint64_t identity=0,revision=0,contentRevision=0;SymmetryCenter symmetry;LayerPanelState panel;
-   bool ase=false,sourceOnly=false;Pending resume=Pending::None;bool close=false;
+   SaveJob save;
+   Pending resume=Pending::None;
+   bool close=false;
   };
   std::vector<BackgroundSave> backgroundSaves_;
+  bool completeSaveJob(const SaveJob&,project::EncodedProject,bool background);
   struct DeferredSaveClose {std::uint64_t identity;Pending action;bool saveChanges=false;};
   std::vector<DeferredSaveClose> deferredSaveCloses_;
   std::optional<std::size_t> saveProjectIndex(std::uint64_t)const;
   bool backgroundSaveBusy(std::uint64_t)const;
   void dismissSaveProgress();void backgroundSaveTick();
-  std::chrono::steady_clock::time_point saveStarted_;
+
 
   struct QueuedSave {std::uint64_t identity;bool saveAs;std::optional<std::string> optionsJson;};
   std::vector<QueuedSave> queuedSaves_;
@@ -1398,9 +1422,6 @@ public:
   int confirmAsepriteSave(bool projectPreferred,const std::vector<std::string>& issues,bool psd=false);
 
 
-  std::uint64_t savingIdentity_=0,savingRevision_=0,savingContentRevision_=0;
-  SymmetryCenter savingSymmetryCenter_;
-  LayerPanelState savingLayerPanelState_;
   void saveLayerPanelState(bool flush=false);void loadLayerPanelState();
 
   std::vector<std::pair<ui::Widget*,bool>> savingControlStates_;
@@ -1429,11 +1450,9 @@ public:
 
   int antsOffset_=0;
 
-  bool showSelectionOutline_=true;
 
-  std::uint64_t selectionOutlineIdentity_=0;
 
-  void syncSelectionOutlineView();
+  void setRelativeLuminance(bool enabled);
 
   void toggleSelectionOutline();
 
@@ -1453,7 +1472,7 @@ public:
 
   std::u32string status_=U"内存画布";
 
-  gfx::Rect canvas_;
+
 
   // User layout: left tool rail, adjacent color dock, then document/timeline.
 
@@ -1546,6 +1565,10 @@ public:
   std::optional<gfx::Point> pendingPanelPointer_;
 
   std::uint64_t panelGeometryUpdates_=0,panelBlitMoves_=0,panelFullRefreshes_=0;
+  // View projections are counted separately from durable state requests.
+  std::array<std::uint64_t,7> refreshWorkCounts_{};
+  std::uint64_t panelStateRequests_=0;
+  ui::Timer panelStateTimer_{120,this};
 
   ui::Timer panelDockTimer_{16,this};
 
@@ -1583,13 +1606,23 @@ public:
 
   void ensureProjects();
 
+  Document& projectDocument(std::size_t index);
   const Document& projectDocument(std::size_t index)const;
+  std::filesystem::path& projectPath(std::size_t index);
+  RecoverySession& projectRecovery(std::size_t index);
+  struct ResolvedSession {
+    std::size_t index;
+    Document& value;
+    std::filesystem::path& path;
+    RecoverySession& recovery;
+  };
+  std::optional<ResolvedSession> resolveSession(std::uint64_t identity);
 
   int projectWidth(const Document& value)const;
 
   int documentTabWidth(const Layout&)const;
 
-  void swapRecovery(ProjectSession& slot);
+
 
   void settleProjectGesture();
 
@@ -1875,9 +1908,9 @@ private:
   std::vector<Document::MaskSlotKey> maskTimelineVisualSlots()const;
   void buildAttachedMaskMenu(PixelMenu&,const std::string& owner,const std::string& frame);
   void showAttachedMaskMenu(const std::string& owner,const std::string& frame);
-  std::vector<std::pair<std::string,std::string>> selectedMaskSlots_;
+
   bool selectMaskPanelRow(int row,int mode=0);
-  std::optional<std::pair<std::string,std::string>> maskSelectionAnchor_;
+
   std::string maskContextOwner_,maskContextFrame_;
   int timelineRowsOffset() const;
 
@@ -1937,8 +1970,8 @@ private:
 
   void layoutLayers();
 
-  bool liquifyTool_=false,liquifyDragging_=false;
-  liquify::Options liquifyOptions_;liquify::Mode liquifyGestureMode_=liquify::Mode::Push;
+  bool liquifyDragging_=false;
+  liquify::Mode liquifyGestureMode_=liquify::Mode::Push;
   std::uint64_t liquifyGestureIdentity_=0,liquifyResetIdentity_=0,liquifyResetRevision_=0;
   std::optional<std::size_t> liquifyResetPosition_;
   std::chrono::steady_clock::time_point liquifyNextTick_;
@@ -1950,9 +1983,10 @@ private:
   void createLiquifyOptions();bool layoutLiquifyOptions();void showLiquifyRange(int);
   void loadLiquifyPreferences();void saveLiquifyPreferences();bool processLiquifyInput(ui::Message*);void finishLiquifyGesture(bool);void liquifyTick();
   void smokeLiquify();void paintLiquifyPreview(ui::Graphics&,const gfx::Rect&);
-  repeat::Mode tileRepeat_=repeat::Mode::Off;std::uint64_t tileRepeatIdentity_=0;
+  std::uint64_t tileRepeatIdentity_=0;
+  void bindTileRepeat(repeat::Mode);
   void setTileRepeat(repeat::Mode);
-  double zoom_=8;view::Rotation viewRotation_;bool rotateTool_=false,rotationDragging_=false;double rotationStart_=0,rotationAngle_=0;gfx::Rect rotationCanvas_;view::Point rotationPivot_;
+  bool rotationDragging_=false;double rotationStart_=0,rotationAngle_=0;gfx::Rect rotationCanvas_;view::Point rotationPivot_;
   gfx::Rect canvasPaintViewport(gfx::Rect)const;gfx::Rect canvasDisplayBounds()const;void panCanvasDisplay(double,double);void paintViewRotationIndicator(ui::Graphics&);
   view::Point canvasRotationPivot()const;gfx::Matrix canvasRotationMatrix()const;gfx::Point canvasUnrotatedDisplay(gfx::Point)const;gfx::Point textBoxDisplayPoint(gfx::Point)const;TransformPoint canvasDocumentPoint(gfx::Point)const;gfx::Point canvasDocumentToDisplay(TransformPoint)const;bool canvasDocumentContains(gfx::Point)const;void setViewRotation(double);void initializeViewRotation();bool processViewRotation(ui::Message*);void saveDocumentView();void loadDocumentView();
 
@@ -2064,9 +2098,9 @@ private:
   void saveSelectionPreferences();
 
 
-  bool smoothTool_=false,smoothDragging_=false;
-  int smoothStrength_=50,smoothAngle_=0;
-  BrushOptions smoothBrush_;
+  bool smoothDragging_=false;
+
+
   std::uint64_t smoothIdentity_=0,smoothContent_=0;
   std::string smoothLayer_,smoothFrame_;
   SmoothBrushArea smoothArea_;
@@ -2078,14 +2112,14 @@ private:
   PixelEntry *smoothStrengthInput_=nullptr,*smoothAngleInput_=nullptr;
   void useSmoothTool();bool processSmoothInput(ui::Message*);void createSmoothOptions();void saveSmoothPreferences();void paintSmoothCoverage(ui::Graphics&,const gfx::Rect&);
 
-  dynamics::Settings brushDynamics_;dynamics::Input dynamicsInput_;std::optional<dynamics::SpeedState> dynamicsSpeed_;std::optional<double> dynamicsPreviousPressure_;bool dynamicsPressureProved_=false,dynamicsStroke_=false;dynamics::Resolved dynamicsLast_;double dynamicsRasterDistance_=1;std::filesystem::path dynamicsPreferenceOverride_;PixelButton* dynamicsButton_=nullptr;std::unique_ptr<ToolPropertyPopup> dynamicsPopup_;ui::Widget* dynamicsChart_=nullptr;int dynamicsEffect_=0;std::array<std::array<PixelButton*,2>,4> dynamicsMatrix_{};std::array<PixelEntry*,4> dynamicsFields_{};std::array<PixelButton*,3> dynamicsCurveButtons_{};std::array<PixelButton*,2> dynamicsDirectionButtons_{};PixelButton* dynamicsDitherButton_=nullptr;
+  dynamics::Input dynamicsInput_;std::optional<dynamics::SpeedState> dynamicsSpeed_;std::optional<double> dynamicsPreviousPressure_;bool dynamicsPressureProved_=false,dynamicsStroke_=false;dynamics::Resolved dynamicsLast_;double dynamicsRasterDistance_=1;std::filesystem::path dynamicsPreferenceOverride_;PixelButton* dynamicsButton_=nullptr;std::unique_ptr<ToolPropertyPopup> dynamicsPopup_;ui::Widget* dynamicsChart_=nullptr;int dynamicsEffect_=0;std::array<std::array<PixelButton*,2>,4> dynamicsMatrix_{};std::array<PixelEntry*,4> dynamicsFields_{};std::array<PixelButton*,3> dynamicsCurveButtons_{};std::array<PixelButton*,2> dynamicsDirectionButtons_{};PixelButton* dynamicsDitherButton_=nullptr;
   void loadDynamicsPreferences();void saveDynamicsPreferences();void showDynamicsOptions(bool smokeOnly=false);void syncDynamicsOptions();void observeDynamicsInput(ui::Message*);dynamics::Resolved resolveDynamics(bool initial=false);void beginDynamicBrush(ui::MouseMessage*,Point,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool initial=true);void updateDynamicBrush(ui::MouseMessage*,Point);void smokeBrushDynamics();
 public:
   void smokeBrushDynamicsDraft();
 private:
   void saveBrushPreferences();
-  bool airbrushTool_=false,airbrushDragging_=false;
-  AirbrushSettings airbrushSettings_;
+  bool airbrushDragging_=false;
+
   SelectionPoint airbrushCenter_;
   double nextAirbrushAt_=0;
   std::mt19937_64 airbrushRandom_{std::random_device{}()};
@@ -2262,7 +2296,6 @@ private:
 
   void changeAntiAlias();
 
-  void launchAntiAlias();
 
   void requestAntiAliasApply();
 
@@ -2278,7 +2311,6 @@ private:
 
   void changeConvolution();
 
-  void launchConvolution();
 
   void requestConvolutionApply(bool close);
 
@@ -2328,13 +2360,9 @@ private:
 
   bool framePngMode_=false,framePngAutomatic_=false,frameBmp_=false,frameIco_=false,frameSvg_=false,frameJpeg_=false;
 
-  struct FramePngJobState {std::atomic<bool> cancel{false};std::atomic<std::size_t> written{0};std::size_t total=0;};
+  workspace::BatchExportTask framePngTask_;
 
-  std::shared_ptr<FramePngJobState> framePngJob_;
-
-  std::optional<DocumentSnapshot> framePngSnapshot_;
-
-  std::future<std::string> framePngWorker_;
+  workspace::ExportProgress framePngProgress_;
 
   FramePngExportOptions framePngOptions_;
 
@@ -2380,6 +2408,8 @@ private:
   void createSheetImportControls();
 
   void openSpriteSheet();
+  void updateSpriteSheetPreview(bool retryFailed=true);
+  void spriteSheetPreviewTick();
 
   bool saveSpriteSheet();
 
@@ -2512,7 +2542,7 @@ void layoutStoredPaletteControls(const gfx::Rect& modal);
 
   std::string activeRailTool() const;
 
-  enum class RefreshScope : unsigned { None=0, Canvas=1, Timeline=2, Palette=4, Tools=8, Commands=16, Layout=32, All=63 };
+  enum class RefreshScope : unsigned { None=0, Canvas=1, Timeline=2, Palette=4, Tools=8, Commands=16, Layout=32, Resources=64, Reference=128, All=255 };
   void applyDocumentPreferences(Document& target,bool initializeSymmetry=false);
   void applyWorkspacePreferences();
   void syncDocumentViewState();
@@ -2861,7 +2891,7 @@ public:
   std::vector<ReferenceWindowUi> referenceWindows_;
   bool referenceGeometryReadable_=true;
   bool referenceSamplingCursor_=false;
-  ReferenceSession& referenceSession(){return referenceSessions_[document.identity()];}
+  ReferenceSession& referenceSession(){return referenceSessions_[currentDocument().identity()];}
   void initializeReferencePanel();
   void configureReferencePanel(ReferenceImagePanel&);
   void syncReferencePanels();
@@ -2874,7 +2904,7 @@ public:
   std::vector<std::u32string> hiddenHistoryTypes_;
   std::uint64_t historyShownDocument_=0,historyShownRevision_=~std::uint64_t(0),historyDisplayRevision_=0,historyShownDisplayRevision_=~std::uint64_t(0);
   std::map<std::uint64_t,int> historyScrollByDocument_;
-  std::optional<std::pair<std::uint64_t,std::size_t>> pendingHistoryJump_;
+  workspace::HistoryCommands historyCommands_;
   ui::Timer historyJumpTimer_{16,this};
   TilesetPanel* tilesetPanel_=nullptr;PixelButton* tilesetDelete_=nullptr;PixelButton* tilesetAdd_=nullptr;bool tilesetPanelOpen_=false;
   void createTilesetPanel();void syncTilesetPanel();void layoutTilesetPanel();void showTilemapLayerDialog(bool);void showFreeTileLayerDialog(int verify=0);bool processFreeTileInput(ui::Message*);
@@ -2887,6 +2917,10 @@ public:
   void requestHistoryPosition(std::size_t);
   void applyDeferredHistoryPosition();
   bool historyGestureBusy()const;
+  workspace::HistoryContext historyCommandContext(workspace::HistoryAction)const;
+  workspace::HistoryCommandResult requestHistoryAction(workspace::HistoryAction,std::size_t position=0,std::function<bool()> permitted={});
+  void applyHistoryAction(const workspace::HistoryRequest&);
+  bool historyActionAvailable(workspace::HistoryAction)const;
   std::u32string saveHistoryDisplaySettings();
   void showHistoryDisplaySettings(bool verify=false);
   std::u32string historyAdjustmentLabel()const;
@@ -2903,6 +2937,9 @@ public:
   void shortcutExportFile(const std::string&);
   void showShortcutSettings(bool verify=false);
   bool runShortcutCommand(const std::string&);
+  bool shortcutGestureBusy(const std::string&)const;
+  void dispatchShortcutAction(const std::string&);
+  bool runToolCommand(const std::string&);
   int routeShortcutMessage(ui::Message*);
   std::set<int> shortcutPointerPresses_;
   std::string shortcutTemporaryId_;
@@ -2915,7 +2952,7 @@ public:
   bool routePointerShortcut(ui::Message*);
   void smokeShortcutInputs();
   void smokeShortcutSettings();
-  bool moveTool_=false,moveAutoSelect_=true,moveDragging_=false,moveMoved_=false,moveClickCollapse_=false;
+  bool moveDragging_=false,moveMoved_=false,moveClickCollapse_=false;
   std::array<PixelButton*,3> moveOptions_{};
   std::vector<GridRect> moveMovingBounds_;
   std::uint64_t moveIdentity_=0;
@@ -2940,7 +2977,7 @@ public:
   void paintFreeTileInstanceFeedback(ui::Graphics&,const gfx::Rect&);
   std::set<std::string> moveHeldKeys_;
   bool moveModifierHeld(const std::string&,const ui::Message&)const;
-  bool textTool_=false,textCreating_=false,textTransforming_=false,textTransformMoved_=false;std::string textTransformId_,textHandle_;TextCelData textTransformData_;SelectionTransform textTransformStart_,textTransformPreview_;Point textStart_;gfx::Point textPointer_;std::unique_ptr<TextFontService> textFonts_;
+  bool textCreating_=false,textTransforming_=false,textTransformMoved_=false;std::string textTransformId_,textHandle_;TextCelData textTransformData_;SelectionTransform textTransformStart_,textTransformPreview_;Point textStart_;gfx::Point textPointer_;std::unique_ptr<TextFontService> textFonts_;
   void useTextTool();void editText(TextCelData,const std::string& id={},bool smokeAccept=false);bool processTextInput(ui::Message*);void paintTextBox(ui::Graphics&,const gfx::Rect&);void smokeTextTool();void smokeTextRasterization();void smokeLinkedLayers();
   void useMoveTool();void createMoveOptions();void layoutMoveOptions();
   const DocumentLayer* moveLayerAt(Point)const;
@@ -3314,7 +3351,7 @@ public:
   void showBackgroundLayer(bool verify=false);void smokeBackgroundLayers();
   void showReleaseNoticeOnce();void smokeReleaseNotes();void smokeHomeAnnouncements(int phase=0);void smokeAsepriteIo();void smokeAttachedMasks();
   void timelapseTick();bool flushTimelapse();void showTimelapse();void exportTimelapseImages();int chooseTimelapsePortability();
-  std::string timelapseLastError_;bool portableTimelapseSave_=false,savingPortableTimelapse_=false;int requestedSaveScale_=100,savingScale_=100;bool scriptSaving_=false,scriptSaveClose_=false;
+  std::string timelapseLastError_;bool portableTimelapseSave_=false;int requestedSaveScale_=100;bool scriptSaving_=false,scriptSaveClose_=false;
   void smokeClippingMask();void smokeMaskResize();void smokeProjectInformation();void smokeSlices();void smokeHelp();void smokeViewRotation();
 
   void smokeDismissDialog();
@@ -3410,7 +3447,6 @@ public:
 
   void paintStatusText(ui::Graphics& g);
 
-  std::uint64_t luminanceDocumentIdentity_=0;
 
   void ensureContentCache();
 
@@ -3441,10 +3477,10 @@ public:
   bool processModalInput(ui::Message* msg);
   bool onProcessMessage(ui::Message* msg) override;
 
-  bool sliceOutlinesVisible_=true,sliceOutlineReadable_=true;bool sliceAlt_=false;bool sliceMode_=false;int sliceDrag_=0;bool sliceMoved_=false,sliceCopy_=false;std::uint64_t sliceIdentity_=0;
+  bool sliceOutlinesVisible_=true,sliceOutlineReadable_=true;bool sliceAlt_=false;int sliceDrag_=0;bool sliceMoved_=false,sliceCopy_=false;std::uint64_t sliceIdentity_=0;
   Point sliceStart_;gfx::Point slicePointer_;std::string sliceHandle_,sliceClicked_;std::vector<DocumentSlice> sliceStarts_,slicePreviews_;std::vector<SliceRect> autoSlicePreview_;
   PixelEntry* sliceName_=nullptr;std::vector<std::pair<ui::Widget*,int>> sliceControls_;
-  bool sliceTool()const{return moveTool_&&sliceMode_;}
+  bool sliceTool()const{return currentTools().moveTool&&currentTools().sliceMode;}
   void useSliceTool();bool processSliceInput(ui::Message*);void finishSliceGesture(bool);std::string sliceHandleAt(gfx::Point,const SliceRect&)const;
   void paintSliceOverlay(ui::Graphics&);void createSliceOptions();void layoutSliceOptions();void showSliceProperties();void showAutomaticSlices();
 

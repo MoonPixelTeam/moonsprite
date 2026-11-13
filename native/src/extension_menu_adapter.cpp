@@ -1,11 +1,19 @@
-#include "editor_implementation.h"
 #include "extension_menu_adapter.h"
+#include "ui_frame_capture.h"
+#include "ui/display.h"
+#include "ui/manager.h"
+#include "ui/message.h"
+#include "ui/tooltips.h"
 #include "extension_contributions.h"
 #include "extension_settings_dialog.h"
 #include "extension_panel_host.h"
 #include "extension_session_host.h"
 #include "ui/message_loop.h"
 #include <map>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <stdexcept>
 namespace moon::editor {
 struct ExtensionMenuAdapter::State:std::enable_shared_from_this<State> {
  const PixelFont& font;const Skin& skin;const Skin& icons;ui::Widget* owner;ui::MenuBar* bar;

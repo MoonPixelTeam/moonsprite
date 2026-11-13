@@ -9,12 +9,12 @@
 #define CHECK(v) do{if(!(v))throw std::runtime_error("Committed capture check failed: " #v);}while(0)
 namespace moon {
 struct RasterHistoryFixture {
- static void run(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;e.runs.push_back({3,9,0,0x80443322});d.applyEdit(e,true);d.pushEdit(std::move(e),U"连续段😀");}
- static void dense(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;e.dense=Document::DensePixels{1,1,2,2,{0,0,0,0},{0xff010203,0x00010203,0x80445566,0xffffffff}};d.applyEdit(e,true);d.pushEdit(std::move(e),U"区域");}
+ static void run(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.runs.push_back({3,9,0,0x80443322});d.applyEdit(e,true);d.pushEdit(std::move(e),U"连续段😀");}
+ static void dense(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.dense=Document::DensePixels{1,1,2,2,{0,0,0,0},{0xff010203,0x00010203,0x80445566,0xffffffff}};d.applyEdit(e,true);d.pushEdit(std::move(e),U"区域");}
  static void installSparse(Document& d){auto state=d.timeline_.state();auto& s=*state.cels.front().surface;s.width=3;s.height=2;s.offsetX=-1;s.offsetY=1;s.storageOriginX=-7;s.storageOriginY=9;s.pixels={0,0,0,0,0,0};d.timeline_=timeline::Timeline(std::move(state));}
- static void sparse(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;e.pixelAddress=Document::PixelAddressSpace{3,2,-7,9};e.pixels.push_back({4,0,0x12345678});d.applyEdit(e,true);d.pushEdit(std::move(e),U"稀疏原点");}
- static void inactive(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.timeline_.state().cels.front().id;e.pixelAddress=Document::PixelAddressSpace{8,5,0,0};e.pixels.push_back({10,0,0xffabcdef});d.applyPixelEdit(e,true);d.pushEdit(std::move(e),U"后台帧");}
- static void overlap(Document& d,bool mapped=false){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;e.runs={{5,3,0,0xff111111},{6,1,0xff111111,0xff222222}};if(mapped){e.pixelAddress=Document::PixelAddressSpace{7,4,-1,0};e.runs[0].index=8;e.runs[1].index=9;}d.applyEdit(e,true);d.pushEdit(std::move(e),U"重叠连续段");}
+ static void sparse(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.pixelAddress=Document::PixelAddressSpace{3,2,-7,9};e.pixels.push_back({4,0,0x12345678});d.applyEdit(e,true);d.pushEdit(std::move(e),U"稀疏原点");}
+ static void inactive(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.timeline_.state().cels.front().id;e.contentHistory.pixelAddress=Document::PixelAddressSpace{8,5,0,0};e.pixels.push_back({10,0,0xffabcdef});d.applyPixelEdit(e,true);d.pushEdit(std::move(e),U"后台帧");}
+ static void overlap(Document& d,bool mapped=false){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.runs={{5,3,0,0xff111111},{6,1,0xff111111,0xff222222}};if(mapped){e.contentHistory.pixelAddress=Document::PixelAddressSpace{7,4,-1,0};e.contentHistory.runs[0].index=8;e.contentHistory.runs[1].index=9;}d.applyEdit(e,true);d.pushEdit(std::move(e),U"重叠连续段");}
 };
 }
 using namespace moon;

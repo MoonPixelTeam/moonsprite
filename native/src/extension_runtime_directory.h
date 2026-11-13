@@ -1,4 +1,12 @@
 #pragma once
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+// Keep Win32's GDI alias out of WinRT JSON's IJsonValue::GetObject.
+#ifdef GetObject
+#undef GetObject
+#endif
 #include "extension_resources.h"
 #include "atomic_file.h"
 #include "extension_state.h"

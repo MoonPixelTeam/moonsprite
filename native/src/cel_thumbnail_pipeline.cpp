@@ -4,17 +4,30 @@
 #include <optional>
 #include <stdexcept>
 namespace moon {
-void CelThumbnailCache::prune(){for(auto i=owners_.begin();i!=owners_.end();)if(i->first.expired())i=owners_.erase(i);else ++i;}
+void CelThumbnailCache::erase(Owners::iterator owner,std::list<Entry>::iterator entry){totalBytes_-=entry->bytes;fifo_.erase(entry->ticket);owner->second.erase(entry);if(owner->second.empty())owners_.erase(owner);}
+void CelThumbnailCache::prune(){for(auto i=owners_.begin();i!=owners_.end();)if(i->first.expired()){auto expired=i++;while(!expired->second.empty()){const bool last=expired->second.size()==1;erase(expired,expired->second.begin());if(last)break;}}else ++i;}
+void CelThumbnailCache::enforceBudget(){
+ if(totalBytes_<=MaxTotalBytes&&owners_.size()<=MaxOwners)return;
+ prune();
+ while(totalBytes_>MaxTotalBytes||owners_.size()>MaxOwners){const auto owner=owners_.find(fifo_.begin()->second);erase(owner,owner->second.begin());}
+}
 size_t CelThumbnailCache::variantCount(const CelThumbnailOwner& owner)const{const auto i=owners_.find(WeakOwner(owner));return i==owners_.end()?0:i->second.size();}
 size_t CelThumbnailCache::cachedBytes(const CelThumbnailOwner& owner)const{size_t bytes=0;const auto i=owners_.find(WeakOwner(owner));if(i!=owners_.end())for(const auto& e:i->second)bytes+=e.pixels->size()*sizeof(timeline::Pixel);return bytes;}
 CelThumbnailCache::Result CelThumbnailCache::get(const CelThumbnailOwner& owner,const std::string& key,uint64_t revision,uint64_t storageRevision,const Render& render,bool bypass){
  const CelThumbnailOwner heldOwner=owner;
  if(!heldOwner||bypass)return std::make_shared<const CelThumbnailPixels>(render());
  {const auto i=owners_.find(WeakOwner(heldOwner));if(i!=owners_.end())for(const auto& e:i->second)if(e.key==key&&e.storageRevision==storageRevision&&(revision==0||e.revision==revision))return e.pixels;}
- auto result=std::make_shared<const CelThumbnailPixels>(render());auto& entries=owners_[WeakOwner(heldOwner)];
- for(auto i=entries.begin();i!=entries.end();++i)if(i->key==key){entries.erase(i);break;}
- entries.push_back({key,revision,storageRevision,result});size_t bytes=0;for(const auto& e:entries)bytes+=e.pixels->size()*sizeof(timeline::Pixel);
- while(entries.size()>MaxVariants||(entries.size()>1&&bytes>MaxVariantBytes)){bytes-=entries.front().pixels->size()*sizeof(timeline::Pixel);entries.pop_front();}return result;
+ auto result=std::make_shared<const CelThumbnailPixels>(render());
+ if(auto owner=owners_.find(WeakOwner(heldOwner));owner!=owners_.end())for(auto i=owner->second.begin();i!=owner->second.end();++i)if(i->key==key){erase(owner,i);break;}
+ const auto bytes=result->capacity()*sizeof(timeline::Pixel);
+ if(bytes>MaxTotalBytes)return result; // Return oversized results without retaining them.
+ if(next_==std::numeric_limits<uint64_t>::max())clear();
+ auto ownerIt=owners_.try_emplace(WeakOwner(heldOwner)).first;auto& entries=ownerIt->second;
+ const auto ticket=next_++;
+ try{fifo_.emplace(ticket,ownerIt->first);entries.push_back({key,revision,storageRevision,result,ticket,bytes});}catch(...){fifo_.erase(ticket);if(entries.empty())owners_.erase(ownerIt);throw;}
+ totalBytes_+=bytes;size_t localBytes=0;for(const auto& e:entries)localBytes+=e.pixels->size()*sizeof(timeline::Pixel);
+ while(entries.size()>MaxVariants||(entries.size()>1&&localBytes>MaxVariantBytes)){localBytes-=entries.front().pixels->size()*sizeof(timeline::Pixel);erase(ownerIt,entries.begin());}
+ enforceBudget();return result;
 }
 struct CelThumbnailQueue::State:std::enable_shared_from_this<State>{
  CelThumbnailScheduler scheduler;std::map<uint64_t,std::function<void()>> tasks;std::optional<uint64_t> frame,deferred;uint64_t next=1;bool stopped=false;

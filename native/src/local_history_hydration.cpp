@@ -200,11 +200,11 @@ std::shared_ptr<const PixelHistory::Restoration> PixelHistory::prepareArchive(co
    // whose layer/frame topology may belong to a different segment.
    if(i>=segmentEnd){segmentBegin=i;segmentEnd=i+1;while(segmentEnd<window.end&&archive.cachedDeltas[segmentEnd])++segmentEnd;}
    const auto context=archive.position>=segmentBegin&&archive.position<=segmentEnd?archive.position:segmentBegin;
-   edit.localHistoryPixels=prepare(decode(context),delta,limits,retained,edit.label);
+   edit.terminalHistory=prepare(decode(context),delta,limits,retained,edit.label);
   }else{
-   edit.localHistorySnapshot=true;
+   edit.terminalHistory=Document::LocalSnapshotHistory{};
    const auto& before=decode(i);const auto& after=decode(i+1);
-   edit.beforeHistoryName=before.name();edit.afterHistoryName=after.name();edit.beforeHistoryDirty=before.dirty();edit.afterHistoryDirty=after.dirty();
+   edit.localSnapshot()->beforeHistoryName=before.name();edit.localSnapshot()->afterHistoryName=after.name();edit.localSnapshot()->beforeHistoryDirty=before.dirty();edit.localSnapshot()->afterHistoryDirty=after.dirty();
    edit.label=label(JsonValue::CreateStringValue(winrt::to_hstring(archive.labels[i])));
   }
   result->entries.push_back(std::move(edit));
@@ -217,7 +217,7 @@ std::shared_ptr<const PixelHistory::Restoration> PixelHistory::prepareArchive(co
   auto value=std::move(*documents.at(index)).takeRollbackPayload();payloads.emplace(index,value);return value;
  };
  result->current=payload(current);
- for(std::size_t n=0;n<result->entries.size();++n){auto& edit=result->entries[n];if(!edit.localHistorySnapshot)continue;const auto index=window.begin+n;edit.beforeRollback=payload(index);edit.afterRollback=payload(index+1);edit.rollbackBytes=payloadBytes(*edit.beforeRollback)+payloadBytes(*edit.afterRollback);}
+ for(std::size_t n=0;n<result->entries.size();++n){auto& edit=result->entries[n];if(!edit.localSnapshot())continue;const auto index=window.begin+n;edit.localSnapshot()->beforeRollback=payload(index);edit.localSnapshot()->afterRollback=payload(index+1);edit.localSnapshot()->rollbackBytes=payloadBytes(*edit.localSnapshot()->beforeRollback)+payloadBytes(*edit.localSnapshot()->afterRollback);}
 
  return result;
 }
@@ -242,13 +242,13 @@ RestoreDecision PixelHistory::install(Document& d,const RestoreTicket& ticket,co
  auto decision=ticket.decision(d,prepared.fingerprint);if(decision!=RestoreDecision::Ready)return decision;
  if(d.nextState_>std::numeric_limits<std::uint64_t>::max()-prepared.entries.size()-1)budget();
  auto entries=prepared.entries;auto name=prepared.name;
- std::size_t bytes=0;for(std::size_t i=0;i<entries.size();++i){auto& edit=entries[i];edit.beforeState=d.nextState_+i;edit.afterState=edit.beforeState+1;if(i<prepared.position){if(edit.bytes()>std::numeric_limits<std::size_t>::max()-bytes)budget();bytes+=edit.bytes();}}
+ for(std::size_t i=0;i<entries.size();++i){auto& edit=entries[i];edit.beforeState=d.nextState_+i;edit.afterState=edit.beforeState+1;}
+ auto stack=[&]{try{return HistoryStore<Document::Edit>::prepareInstallation(std::move(entries),prepared.position,prepared.entryLimit?std::max(std::size_t(1),*prepared.entryLimit):std::numeric_limits<std::size_t>::max());}catch(const std::length_error&){budget();}}();
  // applyRollbackPayload allocates/validates its replacement before mutation.
  const auto viewedFrame=d.activeFrameId_;
  decision=ticket.decision(d,prepared.fingerprint);if(decision!=RestoreDecision::Ready)return decision;
  d.applyRollbackPayload(*prepared.current,true,prepared.preserveViewedFrame?&viewedFrame:nullptr);d.name_=std::move(name);d.modified_=prepared.dirty;
- d.history_=std::move(entries);d.position_=prepared.position;d.historyBytes_=bytes;
- d.maxEntries_=prepared.entryLimit?std::max(std::size_t(1),*prepared.entryLimit):std::numeric_limits<std::size_t>::max();
+ d.history_.install(std::move(stack));
  d.state_=d.nextState_+prepared.position;d.nextState_+=d.history_.size()+1;++d.historyRevision_;++d.revision_;d.publishChange(true);
  return RestoreDecision::Ready;
 }
@@ -256,11 +256,12 @@ RestoreDecision PixelHistory::install(Document& d,const RestoreTicket& ticket,co
  auto decision=ticket.decision(d,fingerprint);if(decision!=RestoreDecision::Ready)return decision;
  if(position>deltas.size())invalid();if(deltas.size()>limits.maxEntries)budget();
  if(d.nextState_>std::numeric_limits<std::uint64_t>::max()-deltas.size()-1)budget();
- Apartment apartment;std::vector<Document::Edit> entries;entries.reserve(deltas.size());std::size_t retained=0,appliedBytes=0;
- for(std::size_t i=0;i<deltas.size();++i){Document::Edit edit{{},d.nextState_+i,d.nextState_+i+1};edit.localHistoryPixels=prepare(d,deltas[i],limits,retained,edit.label);if(i<position){if(edit.bytes()>std::numeric_limits<std::size_t>::max()-appliedBytes)budget();appliedBytes+=edit.bytes();}entries.push_back(std::move(edit));}
+ Apartment apartment;std::vector<Document::Edit> entries;entries.reserve(deltas.size());std::size_t retained=0;
+ for(std::size_t i=0;i<deltas.size();++i){Document::Edit edit{{},d.nextState_+i,d.nextState_+i+1};edit.terminalHistory=prepare(d,deltas[i],limits,retained,edit.label);entries.push_back(std::move(edit));}
+ auto stack=[&]{try{return HistoryStore<Document::Edit>::prepareInstallation(std::move(entries),position,d.history_.limit());}catch(const std::length_error&){budget();}}();
  decision=ticket.decision(d,fingerprint);if(decision!=RestoreDecision::Ready)return decision;
  // Current checkpoint/identity/recording/dirty state is authoritative. Install
  // only the prepared stack, without invoking pushEdit, an operation or capture.
- d.history_=std::move(entries);d.position_=position;d.historyBytes_=appliedBytes;d.state_=d.nextState_+position;d.nextState_+=deltas.size()+1;++d.historyRevision_;return RestoreDecision::Ready;
+ d.history_.install(std::move(stack));d.state_=d.nextState_+position;d.nextState_+=deltas.size()+1;++d.historyRevision_;return RestoreDecision::Ready;
 }
 }

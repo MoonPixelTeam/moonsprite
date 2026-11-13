@@ -1,4 +1,3 @@
-#include "editor_implementation.h"
 #include "editor.h"
 #include "timelapse_session.h"
 #include "timelapse_dialog.h"
@@ -95,16 +94,16 @@ public:int choice=0;
 };
 }
 void Editor::timelapseTick(){
- auto process=[this](Document& d){if(auto session=d.recordingSession()){session->playback=&d==&document&&playing_;session->poll(d);if(!session->error.empty()&&session->error!=timelapseLastError_){timelapseLastError_=session->error;status_=U"缩时录像："+unicodeText(session->error);invalidate();}}};
- if(documentOpen_)process(document);for(auto& project:projects_)if(project->stored)process(*project->stored);
+ auto process=[this](Document& d){if(auto session=d.recordingSession()){session->playback=&d==&currentDocument()&&currentPlayback().playing;session->poll(d);if(!session->error.empty()&&session->error!=timelapseLastError_){timelapseLastError_=session->error;status_=U"缩时录像："+unicodeText(session->error);invalidate();}}};
+ if(documentOpen_)process(currentDocument());for(auto& project:projects_)if(project->value)process(*project->value);
 }
 bool Editor::flushTimelapse(){
  try{
-  auto session=document.recordingSession();if(!session)return true;
-  if(smoke_||!display()){session->flush(document);return true;}
-  session->beginFlush(document);if(session->flushReady(document))return true;
-  const auto identity=document.identity();
-  RecordingFlushDialog popup(font_,skin_,[this,session,identity]{if(document.identity()!=identity)throw std::runtime_error("Recording project changed during flush");return session->flushReady(document);});
+  auto session=currentDocument().recordingSession();if(!session)return true;
+  if(smoke_||!display()){session->flush(currentDocument());return true;}
+  session->beginFlush(currentDocument());if(session->flushReady(currentDocument()))return true;
+  const auto identity=currentDocument().identity();
+  RecordingFlushDialog popup(font_,skin_,[this,session,identity]{if(currentDocument().identity()!=identity)throw std::runtime_error("Recording project changed during flush");return session->flushReady(currentDocument());});
   popup.setDisplay(display(),false);const auto r=bounds();const auto size=popup.minimumDialogSize(0);popup.setBounds({r.center().x-size.w/2,r.center().y-size.h/2,size.w,size.h});
   const auto previous=pending_;struct RestorePending{Pending& target;Pending value;~RestorePending(){target=value;}} restore{pending_,previous};pending_=Pending::Timelapse;
   popup.openWindowInForeground();
@@ -115,28 +114,28 @@ bool Editor::flushTimelapse(){
 }
 void Editor::showTimelapse(){
  if(pending_!=Pending::None||!documentOpen_||homeOpen_)return;
- auto session=timelapse::ensureRecordingSession(document,smoke_?assets_.parent_path()/("timelapse-smoke-owned-"+std::to_string(GetCurrentProcessId())):timelapse::executableLibraryRoot(),smoke_?std::filesystem::path{}:timelapse::legacyLibraryRoot());
- TimelapseDialog popup(font_,skin_,toolIcons_,document.mutableTimelapseSettings(),session->reader(),[this,session]{session->settingsChanged(document);},[this,session]{session->clear(document);},[this]{exportTimelapseImages();});popup.setPreviewCheckerboard(checkerboard_);popup.setDisplay(display(),false);auto r=bounds();const int width=420*uiScale,height=525*uiScale;popup.setBounds({r.center().x-width/2,r.center().y-height/2,width,height});
+ auto session=timelapse::ensureRecordingSession(currentDocument(),smoke_?assets_.parent_path()/("timelapse-smoke-owned-"+std::to_string(GetCurrentProcessId())):timelapse::executableLibraryRoot(),smoke_?std::filesystem::path{}:timelapse::legacyLibraryRoot());
+ TimelapseDialog popup(font_,skin_,toolIcons_,currentDocument().mutableTimelapseSettings(),session->reader(),[this,session]{session->settingsChanged(currentDocument());},[this,session]{session->clear(currentDocument());},[this]{exportTimelapseImages();});popup.setPreviewCheckerboard(checkerboard_);popup.setDisplay(display(),false);auto r=bounds();const int width=420*uiScale,height=525*uiScale;popup.setBounds({r.center().x-width/2,r.center().y-height/2,width,height});
  auto previous=pending_;pending_=Pending::Timelapse;popup.openWindowInForeground();pending_=previous;requestFocus();refresh();
 }
 void Editor::exportTimelapseImages(){
- auto session=document.recordingSession();if(!session||document.timelapseSettings().snapshots.empty())return;
- const auto identity=document.identity();auto settings=document.timelapseSettings();
+ auto session=currentDocument().recordingSession();if(!session||currentDocument().timelapseSettings().snapshots.empty())return;
+ const auto identity=currentDocument().identity();auto settings=currentDocument().timelapseSettings();
  RecordingExportDialog popup(font_,skin_,toolIcons_,std::move(settings),session->reader(),[this,identity](int format,const std::filesystem::path& selected)->std::optional<std::vector<std::filesystem::path>>{
-  if(document.identity()!=identity)throw std::runtime_error("Recording project changed during export");
-  auto conflicts=[this](const auto& path,const auto& suggested){return framePngConflict(path,suggested);};if(format==RecordingMp4||format==RecordingWebm)return resolveExportDestinations({selected},conflicts);return planFrameSequencePaths(selected.parent_path(),selected.filename().u32string(),document.timelapseSettings().snapshots.size(),conflicts,format==RecordingJpeg?FrameSequenceFormat::Jpeg:FrameSequenceFormat::Png);
+  if(currentDocument().identity()!=identity)throw std::runtime_error("Recording project changed during export");
+  auto conflicts=[this](const auto& path,const auto& suggested){return framePngConflict(path,suggested);};if(format==RecordingMp4||format==RecordingWebm)return resolveExportDestinations({selected},conflicts);return planFrameSequencePaths(selected.parent_path(),selected.filename().u32string(),currentDocument().timelapseSettings().snapshots.size(),conflicts,format==RecordingJpeg?FrameSequenceFormat::Jpeg:FrameSequenceFormat::Png);
  },[this,identity](int format,const std::filesystem::path& initial)->std::optional<std::filesystem::path>{
-  if(document.identity()!=identity)throw std::runtime_error("Recording project changed during export");
+  if(currentDocument().identity()!=identity)throw std::runtime_error("Recording project changed during export");
   wchar_t filename[32768]{};wcsncpy_s(filename,initial.c_str(),_TRUNCATE);OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetActiveWindow();dialog.lpstrFile=filename;dialog.nMaxFile=32768;dialog.lpstrFilter=format==RecordingWebm?L"WebM 视频\0*.webm\0\0":format==RecordingMp4?L"MP4 视频\0*.mp4\0\0":format==RecordingJpeg?L"JPEG 图片序列\0*.jpg;*.jpeg\0\0":L"PNG 图片序列\0*.png\0\0";dialog.lpstrDefExt=format==RecordingWebm?L"webm":format==RecordingMp4?L"mp4":format==RecordingJpeg?L"jpg":L"png";dialog.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST;
   if(!chooseSaveFile_(&dialog)){if(CommDlgExtendedError())throw std::runtime_error("Cannot select recording export location");return std::nullopt;}
   std::filesystem::path selected=filename;auto extension=selected.extension().wstring();std::transform(extension.begin(),extension.end(),extension.begin(),[](wchar_t c){return std::towlower(c);});const auto expected=std::filesystem::path(recordingExtension(format)).wstring();if(extension!=expected&&!(format==RecordingJpeg&&extension==L".jpeg"))selected+=expected;return selected;
- },preferredExportDirectory()/std::filesystem::path(framePngExportStem(document.name(),U"MoonSprite")+U"-timelapse.png"),runtimePreferences_.exportScales,runtimePreferences_.defaultExportScale(),ExportProtection(runtimePreferences_.index("files.exportProtection.Select")),[this,identity,session]{
-  if(document.identity()!=identity)throw std::runtime_error("Recording project changed during export");
+ },preferredExportDirectory()/std::filesystem::path(framePngExportStem(currentDocument().name(),U"MoonSprite")+U"-timelapse.png"),runtimePreferences_.exportScales,runtimePreferences_.defaultExportScale(),ExportProtection(runtimePreferences_.index("files.exportProtection.Select")),[this,identity,session]{
+  if(currentDocument().identity()!=identity)throw std::runtime_error("Recording project changed during export");
   session->beginCaptureFlush();
-  if(!session->captureFlushReady(document)){
-   RecordingFlushDialog waiting(font_,skin_,[this,identity,session]{if(document.identity()!=identity)throw std::runtime_error("Recording project changed during export");return session->captureFlushReady(document);});waiting.setDisplay(display(),false);const auto size=waiting.minimumDialogSize(0);const auto r=bounds();waiting.setBounds({r.center().x-size.w/2,r.center().y-size.h/2,size.w,size.h});waiting.openWindowInForeground();if(!waiting.failure.empty())throw std::runtime_error(waiting.failure);if(!waiting.completed)throw std::runtime_error("Recording capture did not complete");
+  if(!session->captureFlushReady(currentDocument())){
+   RecordingFlushDialog waiting(font_,skin_,[this,identity,session]{if(currentDocument().identity()!=identity)throw std::runtime_error("Recording project changed during export");return session->captureFlushReady(currentDocument());});waiting.setDisplay(display(),false);const auto size=waiting.minimumDialogSize(0);const auto r=bounds();waiting.setBounds({r.center().x-size.w/2,r.center().y-size.h/2,size.w,size.h});waiting.openWindowInForeground();if(!waiting.failure.empty())throw std::runtime_error(waiting.failure);if(!waiting.completed)throw std::runtime_error("Recording capture did not complete");
   }
-  return document.timelapseSettings();
+  return currentDocument().timelapseSettings();
  });popup.setDisplay(display(),false);const auto r=bounds();const auto size=popup.minimumDialogSize(0);popup.setBounds({r.center().x-size.w/2,r.center().y-size.h/2,size.w,size.h});popup.openWindowInForeground();if(popup.completed){rememberSuccessfulExport(popup.completedPath);recordRecentExportPath(popup.completedPath);status_=U"缩时录像已导出";}
 }
 int Editor::chooseTimelapsePortability(){RecordingPortabilityDialog popup(font_,skin_,toolIcons_);popup.setDisplay(display(),false);const auto r=bounds();const auto size=popup.minimumDialogSize(0);popup.setBounds({r.center().x-size.w/2,r.center().y-size.h/2,size.w,size.h});popup.openWindowInForeground();return popup.choice;}

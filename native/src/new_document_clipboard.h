@@ -19,7 +19,6 @@ inline std::optional<Size> dibSize(const void* data,std::size_t length){
  if(header<40||w==INT32_MIN||h==INT32_MIN)return {};const auto width=w<0?-std::int64_t(w):w,height=h<0?-std::int64_t(h):h;
  if(!width||!height||width>16ll*1024*1024/height)return {};return Size{int(width),int(height)};
 }
-std::optional<Size> readSystemSize();
 inline bool equalImages(const SelectionClipboard& a,const SelectionClipboard& b){
  if(a.width!=b.width||a.height!=b.height||a.originX!=b.originX||a.originY!=b.originY||a.pixels!=b.pixels)return false;
  if(a.mask==b.mask)return true;auto all=[&](const auto& mask){return mask.empty()||(mask.size()==a.pixels.size()&&std::all_of(mask.begin(),mask.end(),[](auto v){return v==1;}));};return all(a.mask)&&all(b.mask);

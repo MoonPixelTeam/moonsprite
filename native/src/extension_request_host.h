@@ -7,6 +7,7 @@
 #include "extension_windows.h"
 #include "extension_editor_events.h"
 #include <optional>
+#include <memory>
 #include <unordered_set>
 #include <cmath>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -37,6 +38,8 @@ struct WorkspaceServices {
  std::function<void(const winrt::hstring&)> setTool;
  std::function<std::optional<RuntimeColors>()> colors;
  std::function<void(RuntimeColor)> setPrimary,setSecondary;
+ // Deferred production actions revalidate this host lifetime at execution.
+ std::function<void(bool,std::function<bool()>)> history;
 };
 inline winrt::Windows::Data::Json::JsonObject projectSnapshot(const ProjectSummary& value){
  using namespace winrt::Windows::Data::Json;JsonObject result;
@@ -50,6 +53,7 @@ struct HostServices {
 };
 class RequestHost {
  HostServices services_;WorkspaceServices workspace_;DiagnosticServices diagnostics_;
+ std::shared_ptr<bool> historyLifetime_=std::make_shared<bool>(true);
 
  std::shared_ptr<WindowRouter> windows_;
  MenuState menus_;
@@ -84,7 +88,7 @@ public:
  void setServices(HostServices services){services_=std::move(services);}
  void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
  void deactivate(){
-  if(!active_)return;active_=false;handlerBindings_->entries.clear();auto windows=std::move(windows_);
+  if(!active_)return;active_=false;*historyLifetime_=false;handlerBindings_->entries.clear();auto windows=std::move(windows_);
   std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};
   cleanup([&]{drops_.clear(extension_.id);});cleanup([&]{menus_.clear();});cleanup([&]{if(windows)windows->deactivate();});
   if(failure)std::rethrow_exception(failure);
@@ -141,6 +145,11 @@ public:
     if(!workspace_.active)throw std::runtime_error("Native workspace is not connected");if(!workspace_.active())throw std::invalid_argument("当前没有打开的工程。");
     if(method=="document.getLayers"){if(!workspace_.layers)throw std::runtime_error("Native layer query is not connected");JsonArray layers;for(const auto& layer:workspace_.layers()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(layer.id));item.Insert(L"name",JsonValue::CreateStringValue(layer.name));item.Insert(L"visible",JsonValue::CreateBooleanValue(layer.visible));item.Insert(L"opacity",JsonValue::CreateNumberValue(layer.opacity));item.Insert(L"blendMode",JsonValue::CreateStringValue(layer.blendMode));layers.Append(item);}result=layers;}
     else if(method=="document.getFrames"){if(!workspace_.frames)throw std::runtime_error("Native frame query is not connected");JsonArray frames;std::size_t index=0;for(const auto& frame:workspace_.frames()){JsonObject item;item.Insert(L"id",JsonValue::CreateStringValue(frame.id));item.Insert(L"index",JsonValue::CreateNumberValue(double(index++)));item.Insert(L"duration",JsonValue::CreateNumberValue(frame.duration));frames.Append(item);}result=frames;}
+    else if(workspace_.history){
+     const auto weak=std::weak_ptr<bool>(historyLifetime_);
+     const bool allowed=runtimeAllows(permissions_,method);
+     workspace_.history(method=="document.redo",[weak,allowed]{auto live=weak.lock();return allowed&&live&&*live;});
+    }
     else {const auto action=method=="document.undo"?workspace_.undo:workspace_.redo;if(!action)throw std::runtime_error("Native document history is not connected");action();}
    }
    else if(method=="tools.getActive"){if(!workspace_.tool)throw std::runtime_error("Native tool query is not connected");auto tool=workspace_.tool();if(tool)result=JsonValue::CreateStringValue(*tool);}

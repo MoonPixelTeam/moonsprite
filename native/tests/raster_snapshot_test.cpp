@@ -4,6 +4,15 @@
 using namespace moon;
 static void require(bool p,const char* m){if(!p)throw std::runtime_error(m);}
 int main(){try{
+  {
+    timeline::State empty;empty.cels.resize(10000);
+    RasterSnapshot metadata(empty);
+    require(!metadata.advance(empty,std::chrono::steady_clock::now()),"Expired budget traversed all empty cels");
+    bool incomplete=false;try{metadata.take();}catch(const std::logic_error&){incomplete=true;}
+    require(incomplete,"Expired metadata-only snapshot incorrectly completed");
+    require(metadata.advance(empty,std::chrono::steady_clock::now()+std::chrono::seconds(1)),"Empty cel snapshot did not resume");
+    require(metadata.take().cels.size()==empty.cels.size(),"Empty cels lost during bounded snapshot");
+  }
   timeline::State source;source.layers={{"l",U"Layer"}};source.frames={{"f",100},{"g",100}};
   timeline::Cel owner;owner.id="c";owner.layerId="l";owner.frameId="f";
   owner.surface=timeline::Surface{512,512,-2,3,4,5,moon::timeline::LinkedPixelStorage(std::vector<timeline::Pixel>(512*512,0x80123456))};

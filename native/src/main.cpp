@@ -1,4 +1,13 @@
-#include "editor_implementation.h"
+#include "editor.h"
+#include "recovery_store.h"
+#include "project_import.h"
+#include "os/os.h"
+#include "ui/system.h"
+#include <commctrl.h>
+#include <fstream>
+#include "pixel_theme.h"
+#include "ui_frame_capture.h"
+#include "legacy_cursors.h"
 #include "editor_desktop.h"
 #include "native_text_clipboard.h"
 #include "native_document_launch.h"
@@ -15,6 +24,23 @@
 
 using namespace moon::editor;
 using namespace moon;
+
+namespace {
+// Existing native minimum client size, owned by application startup.
+constexpr int minimumClientWidth=720,minimumClientHeight=600;
+
+LRESULT CALLBACK resizeLimits(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR) {
+
+  if(message==WM_GETMINMAXINFO){auto info=reinterpret_cast<MINMAXINFO*>(lp);RECT rc{0,0,minimumClientWidth,minimumClientHeight};
+
+    AdjustWindowRectEx(&rc,DWORD(GetWindowLongPtrW(hwnd,GWL_STYLE)),FALSE,DWORD(GetWindowLongPtrW(hwnd,GWL_EXSTYLE)));
+
+    info->ptMinTrackSize={rc.right-rc.left,rc.bottom-rc.top};return 0;}
+
+  return DefSubclassProc(hwnd,message,wp,lp);
+
+}
+}
 
 int app_main(int argc,char* argv[]) {
 
@@ -561,48 +587,77 @@ int app_main(int argc,char* argv[]) {
       for(int mode=0;mode<2;++mode){ScriptReportDialog popup(font,skin,icons,mode?std::nullopt:std::optional<script::RunSummary>(summary),"Lua error\nstack trace: test.lua:4");const auto view=editor->display()->bounds();popup.setBounds({view.x+(view.w-500*uiScale)/2,view.y+(view.h-260*uiScale)/2,500*uiScale,260*uiScale});ui::Timer check(120,&popup);check.Tick.connect([&]{check.stop();popup.verifyLayout();writeSmokeFrame(popup.display()->nativeSurface().get(),assets.parent_path()/(mode?"script-error-dialog-smoke.bmp":"script-report-dialog-smoke.bmp"));popup.verifyClose();});check.start();popup.openWindowInForeground();check.stop();}
       desktop.approved=true;desktop.closeWindow(editor);
     }catch(const std::exception& e){std::ofstream("native-script-report-error.txt")<<e.what();std::exit(1);}});scriptReportTimer.start();}
-    const bool outlineCheck=argc>1&&std::string(argv[1])=="--outline-check";ui::Timer outlineTimer(180,editor);if(outlineCheck){outlineTimer.Tick.connect([&]{outlineTimer.stop();try{editor->smokeOutline();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-outline-error.txt")<<e.what();std::exit(1);}});outlineTimer.start();}
-    const bool tileRepeatCheck=argc>1&&std::string(argv[1])=="--tile-repeat-check";ui::Timer tileRepeatTimer(180,editor);if(tileRepeatCheck){tileRepeatTimer.Tick.connect([&]{tileRepeatTimer.stop();try{editor->smokeTileRepeat();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-tile-repeat-error.txt")<<e.what();std::exit(1);}});tileRepeatTimer.start();}
-    const bool quickCommandCheck=argc>1&&std::string(argv[1])=="--quick-command-check";ui::Timer quickCommandTimer(180,editor);if(quickCommandCheck){quickCommandTimer.Tick.connect([&]{quickCommandTimer.stop();try{editor->smokeQuickCommands();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-quick-command-error.txt")<<e.what();std::exit(1);}});quickCommandTimer.start();}
-    const bool imageResizeCheck=argc>1&&std::string(argv[1])=="--image-resize-check";ui::Timer imageResizeTimer(180,editor);if(imageResizeCheck){imageResizeTimer.Tick.connect([&]{imageResizeTimer.stop();try{editor->smokeImageResize();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-image-resize-error.txt")<<e.what();std::exit(1);}});imageResizeTimer.start();}
-    const bool layerColorPresetsCheck=argc>1&&std::string(argv[1])=="--layer-color-presets-check";
-    ui::Timer layerColorPresetsTimer(180,editor);
-    if(layerColorPresetsCheck){layerColorPresetsTimer.Tick.connect([&]{layerColorPresetsTimer.stop();try{editor->smokeLayerColorPresets();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-layer-color-presets-error.txt")<<e.what();std::exit(1);}});layerColorPresetsTimer.start();}
-    const bool alignmentCheck=argc>1&&std::string(argv[1])=="--alignment-check";
-    ui::Timer alignmentTimer(180,editor);
-    if(alignmentCheck){alignmentTimer.Tick.connect([&]{alignmentTimer.stop();try{editor->smokeAlignment();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-alignment-error.txt")<<e.what();std::exit(1);}});alignmentTimer.start();}
-    const bool referencePanelCheck=argc>1&&std::string(argv[1])=="--reference-panel-check";
-    ui::Timer referencePanelTimer(180,editor);
-    if(referencePanelCheck){referencePanelTimer.Tick.connect([&]{referencePanelTimer.stop();try{editor->smokeReferenceImages();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-reference-panel-error.txt")<<e.what();std::exit(1);}});referencePanelTimer.start();}
-    const bool linkedLayerCheck=argc>1&&std::string(argv[1])=="--linked-layers-check";ui::Timer linkedLayerTimer(180,editor);if(linkedLayerCheck){linkedLayerTimer.Tick.connect([&]{linkedLayerTimer.stop();try{editor->smokeLinkedLayers();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-linked-layers-error.txt")<<e.what();std::exit(1);}});linkedLayerTimer.start();}
-    const bool textRasterCheck=argc>1&&std::string(argv[1])=="--text-rasterization-check";ui::Timer textRasterTimer(180,editor);if(textRasterCheck){textRasterTimer.Tick.connect([&]{textRasterTimer.stop();try{editor->smokeTextRasterization();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-text-rasterization-error.txt")<<e.what();std::exit(1);}});textRasterTimer.start();}
-    const bool textToolCheck=argc>1&&std::string(argv[1])=="--text-tool-check";ui::Timer textToolTimer(180,editor);if(textToolCheck){textToolTimer.Tick.connect([&]{textToolTimer.stop();try{editor->smokeTextTool();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-text-tool-error.txt")<<e.what();std::exit(1);}});textToolTimer.start();}
-    const bool sliceCheck=argc>1&&std::string(argv[1])=="--slice-check";ui::Timer sliceTimer(180,editor);if(sliceCheck){sliceTimer.Tick.connect([&]{sliceTimer.stop();try{editor->smokeSlices();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-slice-error.txt")<<e.what();std::exit(1);}});sliceTimer.start();}
-    const bool rotationCheck=argc>1&&std::string(argv[1])=="--view-rotation-check";ui::Timer rotationTimer(180,editor);if(rotationCheck){rotationTimer.Tick.connect([&]{rotationTimer.stop();try{editor->smokeViewRotation();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-view-rotation-error.txt")<<e.what();std::exit(1);}});rotationTimer.start();}
-    const bool diagnosticsCheck=argc>1&&std::string(argv[1])=="--diagnostics-check";ui::Timer diagnosticsTimer(180,editor);if(diagnosticsCheck){diagnosticsTimer.Tick.connect([&]{diagnosticsTimer.stop();try{editor->smokeDiagnostics();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-diagnostics-error.txt")<<e.what();std::exit(1);}});diagnosticsTimer.start();}
+    // Uniform diagnostics share argument lookup and execution; specialized multi-step
+    // checks below retain their timers and command-line contracts.
+    struct EditorCheck {const char* argument;void (Editor::*run)();const char* errorFile;};
+    static const EditorCheck editorChecks[]{
+      {"--outline-check", &Editor::smokeOutline, "native-outline-error.txt"},
+      {"--tile-repeat-check", &Editor::smokeTileRepeat, "native-tile-repeat-error.txt"},
+      {"--quick-command-check", &Editor::smokeQuickCommands, "native-quick-command-error.txt"},
+      {"--image-resize-check", &Editor::smokeImageResize, "native-image-resize-error.txt"},
+      {"--layer-color-presets-check", &Editor::smokeLayerColorPresets, "native-layer-color-presets-error.txt"},
+      {"--alignment-check", &Editor::smokeAlignment, "native-alignment-error.txt"},
+      {"--reference-panel-check", &Editor::smokeReferenceImages, "native-reference-panel-error.txt"},
+      {"--linked-layers-check", &Editor::smokeLinkedLayers, "native-linked-layers-error.txt"},
+      {"--text-rasterization-check", &Editor::smokeTextRasterization, "native-text-rasterization-error.txt"},
+      {"--text-tool-check", &Editor::smokeTextTool, "native-text-tool-error.txt"},
+      {"--slice-check", &Editor::smokeSlices, "native-slice-error.txt"},
+      {"--view-rotation-check", &Editor::smokeViewRotation, "native-view-rotation-error.txt"},
+      {"--diagnostics-check", &Editor::smokeDiagnostics, "native-diagnostics-error.txt"},
+      {"--background-layer-check", &Editor::smokeBackgroundLayers, "native-background-layer-error.txt"},
+      {"--project-information-check", &Editor::smokeProjectInformation, "native-project-information-error.txt"},
+      {"--help-check", &Editor::smokeHelp, "native-help-error.txt"},
+      {"--tablet-assist-check", &Editor::smokeTabletAssist, "native-tablet-assist-error.txt"},
+      {"--brush-library-panel-check", &Editor::smokeBrushLibraryPanel, "native-brush-library-panel-error.txt"},
+      {"--layer-move-check", &Editor::smokeLayerMove, "native-layer-move-error.txt"},
+      {"--shortcuts-input-check", &Editor::smokeShortcutInputs, "native-shortcuts-input-error.txt"},
+      {"--shortcuts-check", &Editor::smokeShortcutSettings, "native-shortcuts-error.txt"},
+      {"--preview-panel-check", &Editor::smokePreviewPanel, "native-preview-panel-error.txt"},
+      {"--filter-presets-check", &Editor::smokeFilterPresets, "native-filter-presets-error.txt"},
+      {"--mask-selection-clipboard-check", &Editor::smokeMaskSelectionClipboard, "native-mask-selection-clipboard-error.txt"},
+      {"--pending-gradient-io-check", &Editor::smokePendingGradientIo, "native/build/pending-gradient-io-error.txt"},
+      {"--large-image-io-check", &Editor::smokeLargeImageIo, "native/build/large-image-io-error.txt"},
+      {"--aseprite-save-check", &Editor::smokeAsepriteSaveLifecycle, "native-aseprite-save-error.txt"},
+      {"--aseprite-io-check", &Editor::smokeAsepriteIo, "native-aseprite-io-error.txt"},
+    };
+    const EditorCheck* selectedEditorCheck=nullptr;
+    if(argc>1)for(const auto& check:editorChecks)if(std::string(argv[1])==check.argument){selectedEditorCheck=&check;break;}
+    ui::Timer editorCheckTimer(180,editor);
+    if(selectedEditorCheck){editorCheckTimer.Tick.connect([&]{
+      editorCheckTimer.stop();
+      try{(editor->*selectedEditorCheck->run)();desktop.approved=true;desktop.closeWindow(editor);}
+      catch(const std::exception& error){std::ofstream(selectedEditorCheck->errorFile)<<error.what();std::exit(1);}
+    });editorCheckTimer.start();}
+
+
+
+
+
+
+
+
+
+
+
+
+
     const bool rollbackCheck=argc>1&&std::string(argv[1])=="--project-rollback-check";ui::Timer rollbackTimer(180,editor);if(rollbackCheck){rollbackTimer.Tick.connect([&]{rollbackTimer.stop();try{SetEnvironmentVariableW(L"MOONSPRITE_ROLLBACK_SMOKE",L"1");editor->showProjectRollback();SetEnvironmentVariableW(L"MOONSPRITE_ROLLBACK_SMOKE",nullptr);desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-project-rollback-error.txt")<<e.what();std::exit(1);}});rollbackTimer.start();}
-    const bool backgroundLayerCheck=argc>1&&std::string(argv[1])=="--background-layer-check";ui::Timer backgroundLayerTimer(180,editor);if(backgroundLayerCheck){backgroundLayerTimer.Tick.connect([&]{backgroundLayerTimer.stop();try{editor->smokeBackgroundLayers();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-background-layer-error.txt")<<e.what();std::exit(1);}});backgroundLayerTimer.start();}
-    const bool projectInformationCheck=argc>1&&std::string(argv[1])=="--project-information-check";ui::Timer projectInformationTimer(180,editor);if(projectInformationCheck){projectInformationTimer.Tick.connect([&]{projectInformationTimer.stop();try{editor->smokeProjectInformation();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-project-information-error.txt")<<e.what();std::exit(1);}});projectInformationTimer.start();}
-    const bool helpCheck=argc>1&&std::string(argv[1])=="--help-check";ui::Timer helpTimer(180,editor);if(helpCheck){helpTimer.Tick.connect([&]{helpTimer.stop();try{editor->smokeHelp();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-help-error.txt")<<e.what();std::exit(1);}});helpTimer.start();}
-    const bool tabletAssistCheck=argc>1&&std::string(argv[1])=="--tablet-assist-check";ui::Timer tabletAssistTimer(180,editor);if(tabletAssistCheck){tabletAssistTimer.Tick.connect([&]{tabletAssistTimer.stop();try{editor->smokeTabletAssist();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-tablet-assist-error.txt")<<e.what();std::exit(1);}});tabletAssistTimer.start();}
-    const bool brushLibraryCheck=argc>1&&std::string(argv[1])=="--brush-library-panel-check";ui::Timer brushLibraryTimer(180,editor);if(brushLibraryCheck){brushLibraryTimer.Tick.connect([&]{brushLibraryTimer.stop();try{editor->smokeBrushLibraryPanel();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-brush-library-panel-error.txt")<<e.what();std::exit(1);}});brushLibraryTimer.start();}
+
+
+
+
+
     const bool tilesetManagementCheck=argc>1&&std::string(argv[1])=="--tileset-management-check";ui::Timer tilesetManagementTimer(180,editor);if(tilesetManagementCheck){tilesetManagementTimer.Tick.connect([&]{tilesetManagementTimer.stop();try{if(std::wstring(GetCommandLineW()).find(L"--grid-transform-entry-only")!=std::wstring::npos)editor->smokeTilemapSelectionDelete();else{editor->smokeTilesetManagement();editor->smokeTilemapFill();editor->smokeTilemapPreview();editor->smokeTilemapSelectionDelete();}desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-tileset-management-error.txt")<<e.what();std::exit(1);}});tilesetManagementTimer.start();}
 
-    const bool layerMoveCheck=argc>1&&std::string(argv[1])=="--layer-move-check";
-    ui::Timer layerMoveTimer(180,editor);
-    if(layerMoveCheck){layerMoveTimer.Tick.connect([&]{layerMoveTimer.stop();try{editor->smokeLayerMove();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-layer-move-error.txt")<<e.what();std::exit(1);}});layerMoveTimer.start();}
-    const bool shortcutInputsCheck=argc>1&&std::string(argv[1])=="--shortcuts-input-check";ui::Timer shortcutInputsTimer(180,editor);if(shortcutInputsCheck){shortcutInputsTimer.Tick.connect([&]{shortcutInputsTimer.stop();try{editor->smokeShortcutInputs();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-shortcuts-input-error.txt")<<e.what();std::exit(1);}});shortcutInputsTimer.start();}
-    const bool shortcutsCheck=argc>1&&std::string(argv[1])=="--shortcuts-check";
-    ui::Timer shortcutsTimer(180,editor);
-    if(shortcutsCheck){shortcutsTimer.Tick.connect([&]{shortcutsTimer.stop();try{editor->smokeShortcutSettings();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-shortcuts-error.txt")<<e.what();std::exit(1);}});shortcutsTimer.start();}
-    const bool previewPanelCheck=argc>1&&std::string(argv[1])=="--preview-panel-check";ui::Timer previewPanelTimer(180,editor);if(previewPanelCheck){previewPanelTimer.Tick.connect([&]{previewPanelTimer.stop();try{editor->smokePreviewPanel();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-preview-panel-error.txt")<<e.what();std::exit(1);}});previewPanelTimer.start();}
+
+
+
+
     const bool historyPanelCheck=argc>1&&std::string(argv[1])=="--history-panel-check";
     ui::Timer historyPanelTimer(180,editor);
     const bool usageCheck=argc>1&&std::string(argv[1])=="--usage-statistics-check";ui::Timer usageTimer(140,editor);if(usageCheck){usageTimer.Tick.connect([&]{usageTimer.stop();try{editor->smokeUsageStatistics();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-usage-statistics-error.txt")<<e.what();std::exit(1);}});usageTimer.start();}
     if(historyPanelCheck){historyPanelTimer.Tick.connect([&]{historyPanelTimer.stop();try{editor->smokeHistoryPanel();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-history-panel-error.txt")<<e.what();std::exit(1);}});historyPanelTimer.start();}
-    const bool filterPresetsCheck=argc>1&&std::string(argv[1])=="--filter-presets-check";
-    ui::Timer filterPresetsTimer(180,editor);
-    if(filterPresetsCheck){filterPresetsTimer.Tick.connect([&]{filterPresetsTimer.stop();try{editor->smokeFilterPresets();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-filter-presets-error.txt")<<e.what();std::exit(1);}});filterPresetsTimer.start();}
+
     ui::Timer canvasResizeTimer(180,editor);
     if(canvasResizeCheck){canvasResizeTimer.Tick.connect([&]{canvasResizeTimer.stop();try{editor->smokeTemporaryBrushCapture();editor->smokeCanvasResize();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-canvas-resize-error.txt")<<e.what();std::exit(1);}});canvasResizeTimer.start();}
 
@@ -910,24 +965,14 @@ int app_main(int argc,char* argv[]) {
 
     }catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());std::ofstream("native-smoke-error.txt")<<e.what();std::exit(1);}});timer.start();}
 
-    const bool maskSelectionClipboardCheck=argc>1&&std::string(argv[1])=="--mask-selection-clipboard-check";
-    ui::Timer maskSelectionClipboardTimer(180,editor);
-    if(maskSelectionClipboardCheck){maskSelectionClipboardTimer.Tick.connect([&]{maskSelectionClipboardTimer.stop();try{editor->smokeMaskSelectionClipboard();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-mask-selection-clipboard-error.txt")<<e.what();std::exit(1);}});maskSelectionClipboardTimer.start();}
-    const bool pendingGradientIoCheck=argc>1&&std::string(argv[1])=="--pending-gradient-io-check";
-    ui::Timer pendingGradientIoTimer(180,editor);
-    if(pendingGradientIoCheck){pendingGradientIoTimer.Tick.connect([&]{pendingGradientIoTimer.stop();try{editor->smokePendingGradientIo();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/pending-gradient-io-error.txt")<<e.what();std::exit(1);}});pendingGradientIoTimer.start();}
+
+
     const bool nativeSaveCheck=argc>1&&(std::string(argv[1])=="--native-save-check"||std::string(argv[1])=="--backup-save-check");
     ui::Timer nativeSaveTimer(180,editor);
     if(nativeSaveCheck){nativeSaveTimer.Tick.connect([&]{nativeSaveTimer.stop();try{editor->smokeNativeSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/native-save-error.txt")<<e.what();std::exit(1);}});nativeSaveTimer.start();}
-    const bool largeImageIoCheck=argc>1&&std::string(argv[1])=="--large-image-io-check";
-    ui::Timer largeImageIoTimer(180,editor);
-    if(largeImageIoCheck){largeImageIoTimer.Tick.connect([&]{largeImageIoTimer.stop();try{editor->smokeLargeImageIo();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native/build/large-image-io-error.txt")<<e.what();std::exit(1);}});largeImageIoTimer.start();}
-    const bool asepriteSaveCheck=argc>1&&std::string(argv[1])=="--aseprite-save-check";
-    ui::Timer asepriteSaveTimer(180,editor);
-    if(asepriteSaveCheck){asepriteSaveTimer.Tick.connect([&]{asepriteSaveTimer.stop();try{editor->smokeAsepriteSaveLifecycle();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-aseprite-save-error.txt")<<e.what();std::exit(1);}});asepriteSaveTimer.start();}
-    const bool asepriteIoCheck=argc>1&&std::string(argv[1])=="--aseprite-io-check";
-    ui::Timer asepriteIoTimer(180,editor);
-    if(asepriteIoCheck){asepriteIoTimer.Tick.connect([&]{asepriteIoTimer.stop();try{editor->smokeAsepriteIo();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-aseprite-io-error.txt")<<e.what();std::exit(1);}});asepriteIoTimer.start();}
+
+
+
     const bool masksCheck=argc>1&&std::string(argv[1])=="--attached-masks-check";
     ui::Timer masksCheckTimer(200,editor);masksCheckTimer.Tick.connect([&]{masksCheckTimer.stop();try{editor->smokeAttachedMasks();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-attached-masks-error.txt")<<e.what();std::exit(1);}});if(masksCheck)masksCheckTimer.start();
     const bool clippingCheck=argc>1&&std::string(argv[1])=="--clipping-mask-check";ui::Timer clippingTimer(200,editor);if(clippingCheck){clippingTimer.Tick.connect([&]{clippingTimer.stop();try{editor->smokeClippingMask();desktop.approved=true;desktop.closeWindow(editor);}catch(const std::exception& e){std::ofstream("native-clipping-mask-error.txt")<<e.what();std::exit(1);}});clippingTimer.start();}

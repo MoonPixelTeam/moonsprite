@@ -1,3 +1,4 @@
+#include "document_history_storage.h"
 #include "sheet_import_task.h"
 #include "sheet_import_storage.h"
 #include "free_tile_source_transfer.h"
@@ -27,19 +28,27 @@
 #include <stdexcept>
 
 namespace moon {
+using history_storage::adjustmentByteLimit;
+using history_storage::adjustmentStorageBudget;
 namespace {
+// A failed replay must retain pending invalidation as well as any damage
+// already produced by an earlier domain/child. This does not roll back content.
+template<class Replay> void replayHistoryWithDamage(PixelRegion& damage,int width,int height,Replay replay){
+ const auto pending=damage;damage={};
+ try{replay();}catch(...){
+  if(damage.empty())damage=pending;
+  else if(!pending.empty()){
+   const auto left=std::min<std::int64_t>(damage.x,pending.x),top=std::min<std::int64_t>(damage.y,pending.y);
+   const auto right=std::max(std::int64_t(damage.x)+damage.w,std::int64_t(pending.x)+pending.w),bottom=std::max(std::int64_t(damage.y)+damage.h,std::int64_t(pending.y)+pending.h);
+   if(right-left>std::numeric_limits<int>::max()||bottom-top>std::numeric_limits<int>::max())damage={0,0,width,height};
+   else damage={int(left),int(top),int(right-left),int(bottom-top)};
+  }
+  throw;
+ }
+}
 std::vector<int> currentPaletteSlots(const PaletteState& p){return normalizePaletteSlots(p.entries,p.order(),p.slots,p.columns);}
 void normalizePaletteSnapshot(PaletteState& p,bool retainOrder){const auto order=p.order();p.slots=currentPaletteSlots(p);p.independentOrder.reset();if(retainOrder)p.setOrder(order);}
-// Legacy HistoryStack::trimOldestUndoEntries: compute the discarded prefix
-// before moving retained native records, so one trim does one vector erase.
-template<class Entries> std::size_t trimHistoryUndo(Entries& entries,std::size_t& position,std::size_t& bytes,std::size_t maxBytes,std::size_t maxEntries){
- std::size_t count=0;
- while(bytes>maxBytes&&position-count>1){bytes-=entries[count++].bytes();}
- while(entries.size()-count>maxEntries&&count<position){bytes-=entries[count++].bytes();}
- if(count){entries.erase(entries.begin(),entries.begin()+count);position-=count;}return count;
 }
-std::size_t normalizeHistoryLimit(std::size_t limit){return limit==std::numeric_limits<std::size_t>::max()?limit:std::clamp<std::size_t>(limit,1,10000);}
-std::size_t adjustmentStorageBudget(const timeline::Timeline&,std::size_t);}
 std::vector<Pixel> Document::canvasPixels()const{
  const auto* present=activeSurfaceIfPresent();if(!present)return std::vector<Pixel>(std::size_t(width_)*height_);const auto& s=*present;raster::validate(s);if(raster::fullCanvas(s,width_,height_))return s.pixels;
  std::vector<Pixel> out(std::size_t(width_)*height_);const auto left=std::max<std::int64_t>(0,s.offsetX),top=std::max<std::int64_t>(0,s.offsetY),right=std::min<std::int64_t>(width_,std::int64_t(s.offsetX)+s.width),bottom=std::min<std::int64_t>(height_,std::int64_t(s.offsetY)+s.height);
@@ -56,7 +65,7 @@ void PixelRegion::include(int px,int py) {
   x=std::min(x,px);y=std::min(y,py);w=right-x;h=bottom-y;
 }
 Document::Document(int w,int h,std::size_t maxBytes,std::size_t maxEntries)
-  : width_(w),height_(h),maxBytes_(maxBytes),maxEntries_(normalizeHistoryLimit(maxEntries)) {
+  : width_(w),height_(h),history_(maxBytes,maxEntries) {
   static std::atomic<std::uint64_t> nextIdentity{0};identity_=++nextIdentity;
   if (w < 1 || h < 1 || w > 32768 || h > 32768 || std::uint64_t(w)*h > 64ull*1024*1024)
     throw std::invalid_argument("Canvas exceeds native coordinate or 256 MiB pixel budget");
@@ -139,14 +148,32 @@ void Document::selectLayer(const std::string& id) {
 std::size_t Document::activeFrameIndex() const {
  if(!timeline_.hasFrame(activeFrameId_))throw std::logic_error("Missing active frame");return timeline_.frameIndex(activeFrameId_);
 }
-void Document::selectFrame(const std::string& id) {
+void Document::selectFrame(const std::string& id,AnimationFrameOrigin origin) {
  commitFloatingPaste();cancelStroke();cancelGradient();cancelLayerOpacity();if(id==activeFrameId_ || !timeline_.hasFrame(id))return;
  freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();freeInstanceSelectionFrame_=id;
  projectActiveLayerGeometry();activeMaskId_.clear();maskIsolated_=false;activeFrameId_=id;projectActiveCelOpacities();change_={0,0,width_,height_};publishChange(false,true);
+ animationChangeBinding_.publish(*this,{AnimationChange::Kind::FrameSelected,origin});
 }
 void Document::selectFrameHeader(const std::string& id,int mode,bool preserve){if(!timeline_.hasFrame(id))return;if(freeTileInstanceView())setFreeTileInstanceView(false);const auto maskContext=activeMaskId_;const bool isolated=maskIsolated_;if(!timelineSelection_.maskRows.empty()){selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();if(!mode){selectedGroupIds_.clear();selectedGroupId_.reset();timelineSelection_.layers.clear();timelineSelection_.layerAnchor.clear();}const auto& frames=timeline_.state().frames;if(mode==2 && !frameAnchor_.empty()){const int a=timeline_.hasFrame(frameAnchor_)?int(timeline_.frameIndex(frameAnchor_)):-1,b=int(timeline_.frameIndex(id));if(a>=0 && b>=0){selectedFrames_.clear();for(int i=std::min(a,b);i<=std::max(a,b);++i)selectedFrames_.push_back(frames[i].id);}}else if(mode==1){auto it=std::find(selectedFrames_.begin(),selectedFrames_.end(),id);if(it==selectedFrames_.end())selectedFrames_.push_back(id);else selectedFrames_.erase(it);std::sort(selectedFrames_.begin(),selectedFrames_.end(),[&](const auto& a,const auto& b){return timeline_.frameIndex(a)<timeline_.frameIndex(b);});}else selectedFrames_={id};if(mode!=1 || frameAnchor_.empty())frameAnchor_=id;if(!preserve)selectFrame(id);if(!maskContext.empty()){activeMaskId_=maskContext;maskIsolated_=isolated;}}
-void Document::moveSelectedFrames(const std::string& target,bool after){cancelStroke();cancelLayerOpacity();timeline::State previous;previous.frames=timeline_.state().frames;previous.loopSections=timeline_.state().loopSections;auto selected=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;auto has=[&](const auto& id){return std::find(selected.begin(),selected.end(),id)!=selected.end();};std::vector<DocumentFrame> moving,remaining;std::vector<std::string> movingIds;int targetOriginal=-1,movingStart=100000,movingEnd=-1;for(int i=0;i<int(previous.frames.size());++i){const auto& f=previous.frames[i];if(f.id==target)targetOriginal=i;if(has(f.id)){moving.push_back(f);movingIds.push_back(f.id);movingStart=std::min(movingStart,i);movingEnd=i;}else remaining.push_back(f);}if(targetOriginal<0 || moving.empty())return;auto targetIt=std::find_if(remaining.begin(),remaining.end(),[&](const auto& f){return f.id==target;});int insertion=targetIt!=remaining.end()?int(targetIt-remaining.begin())+(after?1:0):int(std::count_if(previous.frames.begin(),previous.frames.begin()+targetOriginal,[&](const auto& f){return !has(f.id);}));int side=has(target)?(after?1:-1):targetOriginal==movingStart-1 && after?-1:targetOriginal==movingEnd+1 && !after?1:0;auto reordered=remaining;reordered.insert(reordered.begin()+insertion,moving.begin(),moving.end());auto loops=timeline::reconcileLoopsReorder(previous,remaining,reordered,movingIds,insertion,side);bool same=previous.frames.size()==reordered.size() && previous.loopSections.size()==loops.size();for(std::size_t i=0;i<previous.frames.size() && same;++i)same=previous.frames[i].id==reordered[i].id;for(std::size_t i=0;i<loops.size() && same;++i)same=previous.loopSections[i].startFrameId==loops[i].startFrameId && previous.loopSections[i].endFrameId==loops[i].endFrameId;if(same)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=previous.loopSections;e.beforeSelection=selectedFrames_;timeline_.state_.frames=std::move(reordered);timeline_.state_.loopSections=std::move(loops);selectedFrames_=movingIds;timeline_.buildIndex();projectActiveCelOpacities();captureFrameOrder(e,true);e.afterLoops=timeline_.state().loopSections;e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"移动动画帧");}
-void Document::groupEdits(std::size_t start,const std::vector<std::string>& selection){if(start>=position_)return;if(pendingGroupedProjectOperation_&&!groupingHistory_){projectInformation_.operation();pendingGroupedProjectOperation_=false;}Edit group{{},history_[start].beforeState,history_[position_-1].afterState};group.label=history_[position_-1].label;++historyRevision_;group.beforeSelection=selection;group.afterSelection=selectedFrames_;if(history_[start].beforeFrameAnchor){group.beforeFrameAnchor=history_[start].beforeFrameAnchor;group.afterFrameAnchor=frameAnchor_;group.beforeTimelineSelection=history_[start].beforeTimelineSelection;group.afterTimelineSelection=timelineSelection_;}for(std::size_t i=start;i<position_;++i){historyBytes_-=history_[i].bytes();group.children.push_back(std::move(history_[i]));}history_.resize(start);history_.push_back(std::move(group));position_=history_.size();historyBytes_+=history_.back().bytes();const auto discardedUndo=trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.back().label,discardedUndo);if(!groupingHistory_&&history_.back().documentChanged)notifyRecording();}
+void Document::moveSelectedFrames(const std::string& target,bool after){auto selectionHistory=trackAnimationSelectionHistory(false);cancelStroke();cancelLayerOpacity();timeline::State previous;previous.frames=timeline_.state().frames;previous.loopSections=timeline_.state().loopSections;auto selected=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;auto has=[&](const auto& id){return std::find(selected.begin(),selected.end(),id)!=selected.end();};std::vector<DocumentFrame> moving,remaining;std::vector<std::string> movingIds;int targetOriginal=-1,movingStart=100000,movingEnd=-1;for(int i=0;i<int(previous.frames.size());++i){const auto& f=previous.frames[i];if(f.id==target)targetOriginal=i;if(has(f.id)){moving.push_back(f);movingIds.push_back(f.id);movingStart=std::min(movingStart,i);movingEnd=i;}else remaining.push_back(f);}if(targetOriginal<0 || moving.empty())return;auto targetIt=std::find_if(remaining.begin(),remaining.end(),[&](const auto& f){return f.id==target;});int insertion=targetIt!=remaining.end()?int(targetIt-remaining.begin())+(after?1:0):int(std::count_if(previous.frames.begin(),previous.frames.begin()+targetOriginal,[&](const auto& f){return !has(f.id);}));int side=has(target)?(after?1:-1):targetOriginal==movingStart-1 && after?-1:targetOriginal==movingEnd+1 && !after?1:0;auto reordered=remaining;reordered.insert(reordered.begin()+insertion,moving.begin(),moving.end());auto loops=timeline::reconcileLoopsReorder(previous,remaining,reordered,movingIds,insertion,side);bool same=previous.frames.size()==reordered.size() && previous.loopSections.size()==loops.size();for(std::size_t i=0;i<previous.frames.size() && same;++i)same=previous.frames[i].id==reordered[i].id;for(std::size_t i=0;i<loops.size() && same;++i)same=previous.loopSections[i].startFrameId==loops[i].startFrameId && previous.loopSections[i].endFrameId==loops[i].endFrameId;if(same)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.frameHistory.beforeLoops=previous.loopSections;e.beforeSelection=selectedFrames_;timeline_.state_.frames=std::move(reordered);timeline_.state_.loopSections=std::move(loops);selectedFrames_=movingIds;timeline_.buildIndex();projectActiveCelOpacities();captureFrameOrder(e,true);e.frameHistory.afterLoops=timeline_.state().loopSections;e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"移动动画帧");}
+void Document::groupEdits(std::size_t start,const std::vector<std::string>& selection){
+ if(start>=history_.position())return;
+ std::optional<ProjectInformation> information;
+ if(pendingGroupedProjectOperation_&&!groupingHistory_){information=projectInformation_;information->operation();}
+ const auto discardedUndo=history_.group(start,[&](auto& entries,std::size_t from,std::size_t to){
+  Edit group{{},entries[from].beforeState,entries[to-1].afterState};group.label=entries[to-1].label;
+  group.documentChanged=std::any_of(entries.begin()+from,entries.begin()+to,[](const auto& entry){return entry.documentChanged;});
+  group.beforeSelection=selection;group.afterSelection=selectedFrames_;
+  if(entries[from].beforeFrameAnchor){group.beforeFrameAnchor=entries[from].beforeFrameAnchor;group.afterFrameAnchor=frameAnchor_;group.beforeTimelineSelection=entries[from].beforeTimelineSelection;group.afterTimelineSelection=timelineSelection_;}
+  if(entries[from].beforeAnimationSelection){group.beforeAnimationSelection=entries[from].beforeAnimationSelection;group.afterAnimationSelection=captureAnimationSelection();}
+  for(auto i=from;i<to;++i)group.normalizeAnimationSelection|=entries[i].normalizeAnimationSelection;
+  return group;
+ },[](const Edit& parent,std::size_t childrenBytes){const auto cost=parent.bytes();if(cost>HistoryStore<Edit>::unlimited-childrenBytes)throw std::length_error("History group byte cost exceeded");return cost+childrenBytes;});
+ if(information){std::swap(projectInformation_,*information);pendingGroupedProjectOperation_=false;}
+ ++historyRevision_;
+ if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo);
+ if(!groupingHistory_&&history_.latest().documentChanged)notifyRecording();
+}
 // Whole RGBA cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
 bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||selection_||!activeMaskId_.empty()))throw std::runtime_error("Only complete inactive tilemap Cel copy is migrated");
 
@@ -179,7 +206,7 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  }
  celClipboard_=std::move(items);frameClipboard_.clear();frameClipboardMetadata_.reset();return true;
 }
-bool Document::cutSelectedCels(){if(hasTilemapContent()||hasFreeTileContent())return cutTilemapCels();if(!activeMaskId_.empty())return false;
+bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(hasTilemapContent()||hasFreeTileContent())return cutTilemapCels();if(!activeMaskId_.empty())return false;
  if(active())throw std::runtime_error("Cannot cut Cels during an active preview");
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end() && layerEffectivelyLocked(*l))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;
@@ -187,22 +214,22 @@ bool Document::cutSelectedCels(){if(hasTilemapContent()||hasFreeTileContent())re
  // legacy workspace-cut delegates selection-only Cel cut to deleteSelection.
  // selectedEffectTargets deduplicates shared pixel storage; linked slots survive.
  Edit edit{{},state_,nextState_};std::unordered_set<std::string> sources;
- edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;
+ edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;
  for(const auto& id:timelineSelection_.cels){const auto* slot=timeline_.findCelById(id);if(timelineSelection_.cels.size()>1&&slot&&!timeline_.state().layers[timeline_.layerIndex(slot->layerId)].kind.empty())continue;const auto resolved=timeline_.resolveSurface(id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::runtime_error("Cannot resolve cut Cel");if(!resolved.surface||!sources.insert(timeline_.linkedStorageKey(resolved.source->id)).second)continue;
   const auto& before=*resolved.surface;raster::validate(before);auto after=before;bool changed=false;
   // legacy clearSelection intersects clampSelection(document) with layer content.
   const auto left=std::max<std::int64_t>({0,selection_->x,before.offsetX}),top=std::max<std::int64_t>({0,selection_->y,before.offsetY});
   const auto right=std::min<std::int64_t>({width_,std::int64_t(selection_->x)+selection_->width,std::int64_t(before.offsetX)+before.width}),bottom=std::min<std::int64_t>({height_,std::int64_t(selection_->y)+selection_->height,std::int64_t(before.offsetY)+before.height});
   for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){if(!selectionContains(selection_,int(x),int(y)))continue;auto& value=after.pixels[std::size_t(y-before.offsetY)*before.width+std::size_t(x-before.offsetX)];if(value){value=0;changed=true;}}
-  if(changed)edit.surfaceChanges.push_back({resolved.source->id,before,std::move(after)});
+  if(changed)edit.contentHistory.surfaceChanges.push_back({resolved.source->id,before,std::move(after)});
  }
- if(edit.surfaceChanges.empty())return true;
- reserveHistoryEntries();change_={};applySurfaceEdit(edit,true);selection_.reset();publishChange();pushEdit(std::move(edit),U"删除动画单元格");return true;
+ if(edit.contentHistory.surfaceChanges.empty())return true;
+ reserveHistoryEntries();change_={};applySurfaceEdit(edit,true);setSelectionValue(std::nullopt);publishChange();pushEdit(std::move(edit),U"删除动画单元格");return true;
 }
 
 // Application clipboard passes value snapshots across Document lifetimes; source IDs
 // are only used by pasteCopiedCels to remap links to the destination slots.
-bool Document::pasteCelClipboard(const CelClipboardSnapshot& snapshot){if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);if(!activeMaskId_.empty())return false;
+bool Document::pasteCelClipboard(const CelClipboardSnapshot& snapshot){auto selectionHistory=trackAnimationSelectionHistory(false);if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);if(!activeMaskId_.empty())return false;
  if(snapshot.items.empty())return false;
  if(snapshot.width<1 || snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");
  // legacy animationCelForTarget clones RGBA owners in world coordinates.
@@ -213,7 +240,7 @@ bool Document::pasteCelClipboard(const CelClipboardSnapshot& snapshot){if(hasFre
  try{const bool pasted=pasteCopiedCels(snapshot.sourceIdentity!=identity_);if(!pasted)celClipboard_=previous;return pasted;}catch(...){celClipboard_=previous;throw;}
 }
 // legacy workspace-paste-cel-selection.ts: coordinate-preserving multi-cel floating paste.
-bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items){if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(hasTilemapContent()||hasFreeTileContent())return false;
  if(items.empty()||!items.front().selectionPixels)return false;commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  const auto* target=timelineSelection_.cels.empty()?timeline_.findCel(activeLayerId_,activeFrameId_):timeline_.findCelById(timelineSelection_.cels.back());if(!target)return false;
  const auto& state=timeline_.state();auto index=[](const auto& entries,const std::string& id){for(int i=0;i<int(entries.size());++i)if(entries[i].id==id)return i;return -1;};const int row=index(state.layers,target->layerId),column=index(state.frames,target->frameId);
@@ -238,10 +265,10 @@ bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items
  if(primary!=live.targets.end())std::rotate(live.targets.begin(),primary,primary+1);
  std::unordered_set<std::string> owners;for(auto& target:live.targets){const auto resolved=timeline_.resolveSurface(target.celId);if(!owners.insert(resolved.source->id).second)continue;auto previous=std::find_if(live.targets.begin(),live.targets.end(),[&](const auto& other){return other.ownerId==resolved.source->id;});if(previous!=live.targets.end() && &*previous!=&target){target.preview.swap(previous->preview);target.baseline.swap(previous->baseline);target.ownerId.swap(previous->ownerId);}target.rotSprite.reset();}
  live.source=live.targets.front().source;
- }catch(...){timeline_=std::move(previousTimeline);floating_.reset();selection_=std::move(previousSelection);change_=previousChange;throw;}
+ }catch(...){timeline_=std::move(previousTimeline);floating_.reset();setSelectionValue(std::move(previousSelection));change_=previousChange;throw;}
  nextFrameId_=nextFrameId;return true;
 }
-bool Document::pasteCopiedCels(bool crossDocument){if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;
+bool Document::pasteCopiedCels(bool crossDocument){auto selectionHistory=trackAnimationSelectionHistory(false);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;
  if(celClipboard_.empty())return false;if(celClipboard_.front().selectionPixels)return beginCelSelectionPaste(celClipboard_);if(active() || selection_)throw std::runtime_error("Finish or cancel the current selection before Cel paste");
  const auto* target=timelineSelection_.cels.empty()?timeline_.findCel(activeLayerId_,activeFrameId_):timeline_.findCelById(timelineSelection_.cels.back());if(!target)return false;
  const auto& state=timeline_.state();auto index=[](const auto& items,const std::string& id){for(int i=0;i<int(items.size());++i)if(items[i].id==id)return i;return -1;};const int row=index(state.layers,target->layerId),column=index(state.frames,target->frameId);
@@ -280,7 +307,7 @@ bool Document::pasteCopiedCels(bool crossDocument){if(hasTilemapContent()||hasFr
  }
  timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Cel paste creates invalid links");
  TimelineSelection afterSelection=timelineSelection_;afterSelection.cels=destinations;if(crossDocument)afterSelection.celAnchor=destinations.back();
- Edit e{{},state_,nextState_};e.beforeTimeline=state;e.afterTimeline=validated.state();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=afterSelection;e.beforeSelection=selectedFrames_;e.afterSelection=crossDocument?std::vector<std::string>{}:selectedFrames_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=crossDocument?std::string{}:frameAnchor_;e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});
+ Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=state;e.snapshotHistory.afterTimeline=validated.state();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=afterSelection;e.beforeSelection=selectedFrames_;e.afterSelection=crossDocument?std::vector<std::string>{}:selectedFrames_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=crossDocument?std::string{}:frameAnchor_;e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});
  reserveHistoryEntries();capturePixelAddresses(e);timeline_=std::move(validated);nextFrameId_=nextFrameId;timelineSelection_=std::move(afterSelection);selectedFrames_=*e.afterSelection;frameAnchor_=*e.afterFrameAnchor;projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"粘贴动画单元格");return true;
 }
 bool Document::copySelectedFrames(){if((hasTilemapContent()||hasFreeTileContent())&&active())throw std::runtime_error("Finish the active edit before copying frames"); celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset(); const auto selected=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;const std::unordered_set<std::string> selectedIds(selected.begin(),selected.end());std::vector<std::string> ids;for(const auto& f:timeline_.state().frames)if(selectedIds.count(f.id))ids.push_back(f.id); std::unordered_set<std::string> copiedCels,copiedMasks;for(const auto& c:timeline_.state().cels)if(selectedIds.count(c.frameId))copiedCels.insert(c.id);for(const auto& m:timeline_.state().masks)if(selectedIds.count(m.frameId))copiedMasks.insert(m.mask.id); for(const auto& id:ids){auto fit=std::find_if(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& f){return f.id==id;}); if(fit==timeline_.state().frames.end())continue; FrameClipboardItem item;item.masks.clear();for(const auto& slot:timeline_.state().masks)if(slot.frameId==id){auto copy=slot;copy.mask.surface=timeline::resolvedMask(timeline_.state(),slot.ownerId,slot.frameId)->surface;if(!copiedMasks.count(copy.mask.linkedMaskId))copy.mask.linkedMaskId.clear();item.masks.push_back(std::move(copy));} item.frame=*fit; for(const auto& c:timeline_.state().cels) if(c.frameId==id) item.cels.push_back(c); std::unordered_set<std::string> localIds; for(const auto& c:item.cels)localIds.insert(c.id); for(auto& c:item.cels){if((c.linkedCelId && !localIds.count(*c.linkedCelId))||c.runtimeSharedCelId){auto resolved=timeline_.resolveSurface(c.id);if(resolved.surface)c.surface=*resolved.surface;if(resolved.source){c.tilemap=resolved.source->tilemap;c.freeTiles=resolved.source->freeTiles;c.text=resolved.source->text;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;}if(c.linkedCelId&&!copiedCels.count(*c.linkedCelId))c.linkedCelId.reset();}c.runtimeSharedCelId.reset();} frameClipboard_.push_back(std::move(item)); } if(!frameClipboard_.empty()){auto metadata=std::make_shared<FrameClipboardSnapshot>();metadata->layers=timeline_.state().layers;metadata->groups=timeline_.state().groups;metadata->sourceIdentity=identity_;metadata->width=width_;metadata->height=height_;for(const auto& layer:metadata->layers){const auto* current=timeline_.findCel(layer.id,activeFrameId_);if(!current){const auto geometry=displayedLayerGeometry_.find(layer.id);if(geometry==displayedLayerGeometry_.end())throw std::logic_error("Missing copied layer display geometry");metadata->layerGeometry.push_back(geometry->second);continue;}const auto resolved=timeline_.resolveSurface(current->id);if(!resolved.surface)throw std::logic_error("Missing copied layer geometry");const auto& surface=*resolved.surface;metadata->layerGeometry.push_back({surface.width,surface.height,surface.offsetX,surface.offsetY});}frameClipboardMetadata_=std::move(metadata);}return !frameClipboard_.empty(); }
@@ -289,10 +316,10 @@ bool Document::cutSelectedFrames(){if(hasFreeTileContent()||hasTilemapContent())
  if(!copySelectedFrames())return false;
  const auto selection=selectedFrames_;
  const auto ids=selection.empty()?std::vector<std::string>{frame().id}:selection;
- const auto start=position_;groupingHistory_=true;
+ const auto start=history_.position();groupingHistory_=true;
  for(const auto& id:ids){if(timeline_.state().frames.size()<=1)break;selectFrame(id);deleteFrame();}
  clearFrameSelection();normalizeFrameDeletionSelection();groupingHistory_=false;groupEdits(start,selection);
- return position_>start;
+ return history_.position()>start;
 }
 Document::FrameClipboardSnapshot Document::exportFrameClipboard()const{
  if((hasTilemapContent()||hasFreeTileContent())&&active())throw std::runtime_error("Finish the active edit before copying frames");
@@ -354,7 +381,7 @@ bool Document::pasteFrameClipboard(const FrameClipboardSnapshot& snapshot){if(ha
   slot.frameId=inserted[i];slot.mask.id=maskRemap.at(slot.mask.id);auto linked=maskRemap.find(slot.mask.linkedMaskId);slot.mask.linkedMaskId=linked==maskRemap.end()?std::string{}:linked->second;raster::validate(slot.mask.surface);candidate.masks.push_back(std::move(slot));
  }
  candidate.cels.insert(candidate.cels.end(),incoming.begin(),incoming.end());timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Frame paste creates invalid links");
- Edit edit{{},state_,nextState_};edit.beforeTimeline=before;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=activeFrameId_;edit.beforeSelection=selectedFrames_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeTimelineSelection->cels.clear();edit.beforeTimelineSelection->celAnchor.clear();edit.beforeFrameAnchor=frameAnchor_;edit.afterTimeline=validated.state();edit.afterFrame=inserted.front();edit.afterSelection=inserted;edit.afterTimelineSelection=decltype(timelineSelection_){};edit.afterTimelineSelection->layers=timelineSelection_.layers;edit.afterTimelineSelection->layerAnchor=timelineSelection_.layerAnchor;edit.afterFrameAnchor=inserted.back();edit.maskToActivateOnRedo=std::string{};reserveHistoryEntries();
+ Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=before;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=activeFrameId_;edit.beforeSelection=selectedFrames_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeTimelineSelection->cels.clear();edit.beforeTimelineSelection->celAnchor.clear();edit.beforeFrameAnchor=frameAnchor_;edit.snapshotHistory.afterTimeline=validated.state();edit.afterFrame=inserted.front();edit.afterSelection=inserted;edit.afterTimelineSelection=decltype(timelineSelection_){};edit.afterTimelineSelection->layers=timelineSelection_.layers;edit.afterTimelineSelection->layerAnchor=timelineSelection_.layerAnchor;edit.afterFrameAnchor=inserted.back();edit.maskHistory.maskToActivateOnRedo=std::string{};reserveHistoryEntries();
  activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);nextFrameId_=next;activeFrameId_=inserted.front();projectActiveCelOpacities();selectedFrames_=inserted;timelineSelection_=*edit.afterTimelineSelection;frameAnchor_=inserted.back();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"粘贴动画帧");return true;
 }
 // legacy workspace-commands-animation-frame.ts::importGifAnimationLayer.
@@ -395,14 +422,14 @@ bool Document::importGifAnimationLayer(const Document& source,int startFrameInde
  while(candidate.frames.size()<total){auto frame=incoming.frames[candidate.frames.size()-start];frame.id=fresh("frame-gif-");candidate.frames.push_back(frame);for(const auto& layer:before.layers)candidate.cels.push_back(blank(layer,frame.id));}
  DocumentLayer layer;layer.id=fresh("layer-gif-");layer.name=source.name().empty()?U"GIF":source.name();candidate.layers.push_back(layer);std::vector<std::string> imported;
  for(std::size_t i=0;i<candidate.frames.size();++i){const bool importedSlot=i>=std::size_t(start)&&i<std::size_t(start)+sourceCels.size();auto cel=blank(layer,candidate.frames[i].id,!importedSlot&&candidate.frames[i].id==activeFrameId_?&sourceGeometry:nullptr);if(importedSlot){cel.surface=sourceCels[i-start].surface;cel.opacity=sourceCels[i-start].opacity;cel.zIndex=sourceCels[i-start].zIndex;imported.push_back(cel.id);}candidate.cels.push_back(std::move(cel));}
- timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("GIF import creates invalid links");Edit edit{{},state_,nextState_};edit.beforeTimeline=before;edit.afterTimeline=validated.state();edit.beforeActive=activeLayerId_;edit.afterActive=layer.id;edit.beforeFrame=activeFrameId_;edit.afterFrame=validated.state().frames[start].id;edit.beforeSelection=selectedFrames_;edit.afterSelection={};edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor="";edit.beforeTimelineSelection=timelineSelection_;auto selected=decltype(timelineSelection_){};selected.layers={layer.id};selected.layerAnchor=layer.id;selected.cels=imported;selected.celAnchor=imported.back();edit.afterTimelineSelection=selected;
+ timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("GIF import creates invalid links");Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=before;edit.snapshotHistory.afterTimeline=validated.state();edit.beforeActive=activeLayerId_;edit.afterActive=layer.id;edit.beforeFrame=activeFrameId_;edit.afterFrame=validated.state().frames[start].id;edit.beforeSelection=selectedFrames_;edit.afterSelection={};edit.beforeFrameAnchor=frameAnchor_;edit.afterFrameAnchor="";edit.beforeTimelineSelection=timelineSelection_;auto selected=decltype(timelineSelection_){};selected.layers={layer.id};selected.layerAnchor=layer.id;selected.cels=imported;selected.celAnchor=imported.back();edit.afterTimelineSelection=selected;
  // Legacy GIF import captures/restores animation selection history, exits mask
  // editing and selects only the newly imported ordinary layer.
- edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});
- edit.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.afterGroupUi=GroupUiSnapshot{{},collapsedGroupIds_,{}};
- if(maskSelection){edit.beforeMaskSelection=*maskSelection;edit.afterMaskSelection=std::vector<MaskSlotKey>{};edit.beforeMaskSelectionAnchor.emplace(maskAnchor?*maskAnchor:(maskSelection->empty()?std::optional<MaskSlotKey>{}:std::optional<MaskSlotKey>{maskSelection->back()}));edit.afterMaskSelectionAnchor.emplace(std::nullopt);}
+ edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});
+ edit.layerHistory.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.layerHistory.afterGroupUi=GroupUiSnapshot{{},collapsedGroupIds_,{}};
+ if(maskSelection){edit.maskHistory.beforeMaskSelection=*maskSelection;edit.maskHistory.afterMaskSelection=std::vector<MaskSlotKey>{};edit.maskHistory.beforeMaskSelectionAnchor.emplace(maskAnchor?*maskAnchor:(maskSelection->empty()?std::optional<MaskSlotKey>{}:std::optional<MaskSlotKey>{maskSelection->back()}));edit.maskHistory.afterMaskSelectionAnchor.emplace(std::nullopt);}
  reserveHistoryEntries();
- if(maskSelection){maskSelectionHistory_.slots.clear();maskSelectionHistory_.anchor=edit.afterMaskSelectionAnchor;++maskSelectionHistory_.serial;}
+ if(maskSelection){maskSelectionHistory_.slots.clear();maskSelectionHistory_.anchor=edit.maskHistory.afterMaskSelectionAnchor;++maskSelectionHistory_.serial;}
  activeMaskId_.clear();maskIsolated_=false;applyGroupUi(edit,true);
  timeline_=std::move(validated);nextFrameId_=next;activeLayerId_=layer.id;activeFrameId_=edit.afterFrame;projectActiveCelOpacities();timelineSelection_=std::move(selected);selectedFrames_.clear();frameAnchor_.clear();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"导入 GIF 动画");return true;
 }
@@ -425,14 +452,14 @@ bool Document::pasteCopiedFrames(bool duplicateSelection){
  return pasteTilemapFrames(snapshot,duplicateSelection);
 }
 
-void Document::setAnimationLoop(bool loop){if(animationLoop_==loop)return;Edit e{{},state_,nextState_};e.beforeAnimationLoop=animationLoop_;e.afterAnimationLoop=loop;animationLoop_=loop;pushEdit(std::move(e),U"修改动画循环");}
-std::string Document::createLoopSection(std::optional<timeline::LoopSection> draft){auto ids=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;int left=100000,right=-1;for(int i=0;i<int(timeline_.state().frames.size());++i)if(std::find(ids.begin(),ids.end(),timeline_.state().frames[i].id)!=ids.end()){left=std::min(left,i);right=i;}if(right<0)return {};timeline::LoopSection section;section.id="loop-native-"+std::to_string(identity_)+"-"+std::to_string(nextState_);int n=1;for(;;++n){const auto text="Loop "+std::to_string(n);section.name=U"循环节 "+std::u32string(text.begin()+5,text.end());if(std::none_of(timeline_.state().loopSections.begin(),timeline_.state().loopSections.end(),[&](const auto& s){return s.name==section.name;}))break;}section.startFrameId=timeline_.state().frames[left].id;section.endFrameId=timeline_.state().frames[right].id;if(draft){const auto generatedId=section.id;section=*draft;section.id=generatedId;const auto r=timeline::loopRange(timeline_.state(),section);if(r.start<0 || r.end<0)return {};section.startFrameId=timeline_.state().frames[r.start].id;section.endFrameId=timeline_.state().frames[r.end].id;}Edit e{{},state_,nextState_};e.beforeLoops=timeline_.state().loopSections;timeline_.state_.loopSections.push_back(section);e.afterLoops=timeline_.state().loopSections;pushEdit(std::move(e),U"创建循环节");return section.id;}
-void Document::updateLoopSection(timeline::LoopSection section){cancelStroke();const auto r=timeline::loopRange(timeline_.state(),section);if(r.start<0 || r.end<0)return;section.startFrameId=timeline_.state().frames[r.start].id;section.endFrameId=timeline_.state().frames[r.end].id;if(section.name.empty())section.name=U"Loop";if(section.name.size()>64)section.name.resize(64);if(section.repeatCount)section.repeatCount=std::clamp(*section.repeatCount,1,9999);auto it=std::find_if(timeline_.state_.loopSections.begin(),timeline_.state_.loopSections.end(),[&](const auto& s){return s.id==section.id;});if(it==timeline_.state_.loopSections.end())return;Edit e{{},state_,nextState_};e.beforeLoops=timeline_.state().loopSections;*it=std::move(section);e.afterLoops=timeline_.state().loopSections;pushEdit(std::move(e),U"修改循环节");}
-void Document::deleteLoopSection(const std::string& id){auto& loops=timeline_.state_.loopSections;if(std::none_of(loops.begin(),loops.end(),[&](const auto& s){return s.id==id;}))return;Edit e{{},state_,nextState_};e.beforeLoops=loops;loops.erase(std::remove_if(loops.begin(),loops.end(),[&](const auto& s){return s.id==id;}),loops.end());e.afterLoops=loops;pushEdit(std::move(e),U"删除循环节");}
+void Document::setAnimationLoop(bool loop){if(animationLoop_==loop)return;Edit e{{},state_,nextState_};e.frameHistory.beforeAnimationLoop=animationLoop_;e.frameHistory.afterAnimationLoop=loop;animationLoop_=loop;pushEdit(std::move(e),U"修改动画循环");}
+std::string Document::createLoopSection(std::optional<timeline::LoopSection> draft){auto ids=selectedFrames_.empty()?std::vector<std::string>{frame().id}:selectedFrames_;int left=100000,right=-1;for(int i=0;i<int(timeline_.state().frames.size());++i)if(std::find(ids.begin(),ids.end(),timeline_.state().frames[i].id)!=ids.end()){left=std::min(left,i);right=i;}if(right<0)return {};timeline::LoopSection section;section.id="loop-native-"+std::to_string(identity_)+"-"+std::to_string(nextState_);int n=1;for(;;++n){const auto text="Loop "+std::to_string(n);section.name=U"循环节 "+std::u32string(text.begin()+5,text.end());if(std::none_of(timeline_.state().loopSections.begin(),timeline_.state().loopSections.end(),[&](const auto& s){return s.name==section.name;}))break;}section.startFrameId=timeline_.state().frames[left].id;section.endFrameId=timeline_.state().frames[right].id;if(draft){const auto generatedId=section.id;section=*draft;section.id=generatedId;const auto r=timeline::loopRange(timeline_.state(),section);if(r.start<0 || r.end<0)return {};section.startFrameId=timeline_.state().frames[r.start].id;section.endFrameId=timeline_.state().frames[r.end].id;}Edit e{{},state_,nextState_};e.frameHistory.beforeLoops=timeline_.state().loopSections;timeline_.state_.loopSections.push_back(section);e.frameHistory.afterLoops=timeline_.state().loopSections;pushEdit(std::move(e),U"创建循环节");return section.id;}
+void Document::updateLoopSection(timeline::LoopSection section){cancelStroke();const auto r=timeline::loopRange(timeline_.state(),section);if(r.start<0 || r.end<0)return;section.startFrameId=timeline_.state().frames[r.start].id;section.endFrameId=timeline_.state().frames[r.end].id;if(section.name.empty())section.name=U"Loop";if(section.name.size()>64)section.name.resize(64);if(section.repeatCount)section.repeatCount=std::clamp(*section.repeatCount,1,9999);auto it=std::find_if(timeline_.state_.loopSections.begin(),timeline_.state_.loopSections.end(),[&](const auto& s){return s.id==section.id;});if(it==timeline_.state_.loopSections.end())return;Edit e{{},state_,nextState_};e.frameHistory.beforeLoops=timeline_.state().loopSections;*it=std::move(section);e.frameHistory.afterLoops=timeline_.state().loopSections;pushEdit(std::move(e),U"修改循环节");}
+void Document::deleteLoopSection(const std::string& id){auto& loops=timeline_.state_.loopSections;if(std::none_of(loops.begin(),loops.end(),[&](const auto& s){return s.id==id;}))return;Edit e{{},state_,nextState_};e.frameHistory.beforeLoops=loops;loops.erase(std::remove_if(loops.begin(),loops.end(),[&](const auto& s){return s.id==id;}),loops.end());e.frameHistory.afterLoops=loops;pushEdit(std::move(e),U"删除循环节");}
 bool Document::canReverseSelectedFrames() const {
  return std::count_if(timeline_.state().frames.begin(),timeline_.state().frames.end(),[this](const auto& f){return std::find(selectedFrames_.begin(),selectedFrames_.end(),f.id)!=selectedFrames_.end();})>=2;
 }
-void Document::reverseSelectedFrames() {
+void Document::reverseSelectedFrames() {auto selectionHistory=trackAnimationSelectionHistory(false);
  if(!canReverseSelectedFrames())return;
  cancelStroke();cancelLayerOpacity();
  const auto before=timeline_.state().frames;
@@ -445,10 +472,10 @@ void Document::reverseSelectedFrames() {
   const auto& old=timeline_.state().loopSections[l];
   for(std::size_t i=0;i<before.size();++i){if(old.startFrameId==before[i].id)loops[l].startFrameId=after[i].id;if(old.endFrameId==before[i].id)loops[l].endFrameId=after[i].id;}
  }
- Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeSelection=selectedFrames_;e.beforeLoops=timeline_.state().loopSections;
+ Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeSelection=selectedFrames_;e.frameHistory.beforeLoops=timeline_.state().loopSections;
  timeline_.state_.frames=std::move(after);timeline_.state_.loopSections=std::move(loops);selectedFrames_.clear();
  for(const auto& f:timeline_.state().frames)if(std::find(e.beforeSelection->begin(),e.beforeSelection->end(),f.id)!=e.beforeSelection->end())selectedFrames_.push_back(f.id);
- timeline_.buildIndex();captureFrameOrder(e,true);e.afterSelection=selectedFrames_;e.afterLoops=timeline_.state().loopSections;
+ timeline_.buildIndex();captureFrameOrder(e,true);e.afterSelection=selectedFrames_;e.frameHistory.afterLoops=timeline_.state().loopSections;
  change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"反转帧顺序");
 }
 // Adapter of legacy workspace-animation-selection.ts::normalizeAnimationSelection
@@ -461,8 +488,8 @@ void Document::normalizeFrameDeletionSelection(){
  if(std::find(cells.begin(),cells.end(),timelineSelection_.celAnchor)==cells.end())timelineSelection_.celAnchor=cells.empty()?std::string{}:cells.back();
  if(timelineSelection_.layers.empty()&&selectedGroupIds_.empty()&&selectedFrames_.empty()&&cells.empty()&&timelineSelection_.maskRows.empty()){timelineSelection_.layers={activeLayerId_};if(timelineSelection_.layerAnchor.empty())timelineSelection_.layerAnchor=activeLayerId_;}
 }
-void Document::captureFrameOrder(Edit& e,bool after) const {if(after)e.afterMasks=timeline_.state().masks;else e.beforeMasks=timeline_.state().masks;auto& order=after?e.afterFrames:e.beforeFrames;for(const auto& f:timeline_.state().frames)order.push_back(f.id);(after?e.afterFrame:e.beforeFrame)=activeFrameId_;(after?e.afterFrameAnchor:e.beforeFrameAnchor)=frameAnchor_;(after?e.afterTimelineSelection:e.beforeTimelineSelection)=timelineSelection_;(after?e.afterActive:e.beforeActive)=activeLayerId_;}
-void Document::addFrame(bool duplicate) {
+// captureFrameOrder: definition in its history domain unit.
+void Document::addFrame(bool duplicate) {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  commitFloatingPaste();
  cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()>=10000)throw std::runtime_error("Frame limit reached");
  constexpr std::uint64_t frameByteLimit=256ull*1024*1024;
@@ -479,7 +506,7 @@ void Document::addFrame(bool duplicate) {
   const auto* slot=timeline_.findCel(l.id,frame().id);if(!slot){if(l.kind=="free-tile")continue;throw std::runtime_error("Missing special frame source slot");}const auto source=timeline_.resolveSurface(slot->id);
   if(!source.source||!source.surface||source.issue!=timeline::LinkIssue::None||(l.kind=="tilemap"&&!source.source->tilemap))throw std::runtime_error("Invalid special frame source");
  }
- Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeLoops=timeline_.state().loopSections;const auto previousFrames=timeline_.state().frames;DocumentFrame f;do{f.id="frame-native-"+std::to_string(identity_)+"-"+std::to_string(++nextFrameId_);}while(std::any_of(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& old){return old.id==f.id;}));f.duration=duplicate?frame().duration:100;f.disabled=duplicate&&frame().disabled;
+ Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.frameHistory.beforeLoops=timeline_.state().loopSections;const auto previousFrames=timeline_.state().frames;DocumentFrame f;do{f.id="frame-native-"+std::to_string(identity_)+"-"+std::to_string(++nextFrameId_);}while(std::any_of(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& old){return old.id==f.id;}));f.duration=duplicate?frame().duration:100;f.disabled=duplicate&&frame().disabled;
  for(const auto& l:timeline_.state().layers){DocumentCel c;const auto* sourceSlot=timeline_.findCel(l.id,frame().id);if(duplicate&&sourceSlot){c=*timeline_.resolveSurface(sourceSlot->id).source;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}else{timeline::Surface surface;surface.width=surface.height=1;c.opacity=l.opacity;
  if(l.kind=="free-tile"||l.kind=="tilemap"){
   const auto* slot=timeline_.findCel(l.id,frame().id);const auto source=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};
@@ -492,45 +519,45 @@ void Document::addFrame(bool duplicate) {
  }
  surface.pixels.resize(std::size_t(surface.width)*surface.height);c.surface=std::move(surface);}if(l.autoLinkAnimationCels&&sourceSlot){const auto* slot=sourceSlot;const auto source=timeline_.resolveSurface(slot->id);
  if(source.source && source.surface && (slot->linkedCelId || std::any_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;}))){c.linkedCelId=source.source->id;c.runtimeSharedCelId.reset();c.surface.reset();c.opacity=source.source->opacity;c.zIndex=source.source->zIndex;c.tilemap=source.source->tilemap;c.freeTiles=source.source->freeTiles;c.text=source.source->text;}}
- c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;e.detachedCels.push_back(std::move(c));}
+ c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;e.contentHistory.detachedCels.push_back(std::move(c));}
  {const auto masks=timeline_.state().masks;for(const auto& slot:masks)if(slot.frameId==activeFrameId_&&(duplicate||(!slot.group&&slot.mask.autoLinkAnimationCels))){auto copy=slot;copy.frameId=f.id;copy.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);const auto* root=timeline::resolvedMask(timeline_.state(),slot.ownerId,slot.frameId);copy.mask.surface=root->surface;copy.mask.linkedMaskId=slot.mask.autoLinkAnimationCels?root->id:std::string{};timeline_.state_.masks.push_back(std::move(copy));}}
- e.detachedFrame=f;for(auto& section:timeline_.state_.loopSections){timeline::State old;old.frames=previousFrames;const auto r=timeline::loopRange(old,section);if(r.end>=0 && previousFrames[r.end].id==frame().id){if(section.endFrameId==frame().id)section.endFrameId=f.id;else if(section.startFrameId==frame().id)section.startFrameId=f.id;}}e.afterLoops=timeline_.state().loopSections;const auto index=activeFrameIndex()+1;timeline_.state_.frames.insert(timeline_.state_.frames.begin()+index,f);timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.detachedCels.begin(),e.detachedCels.end());timeline_.buildIndex();activeFrameId_=f.id;projectActiveCelOpacities();selection_.reset();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.beforeSelection=e.afterSelection=selectedFrames_;captureFrameOrder(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建动画帧");
+ e.frameHistory.detachedFrame=f;for(auto& section:timeline_.state_.loopSections){timeline::State old;old.frames=previousFrames;const auto r=timeline::loopRange(old,section);if(r.end>=0 && previousFrames[r.end].id==frame().id){if(section.endFrameId==frame().id)section.endFrameId=f.id;else if(section.startFrameId==frame().id)section.startFrameId=f.id;}}e.frameHistory.afterLoops=timeline_.state().loopSections;const auto index=activeFrameIndex()+1;timeline_.state_.frames.insert(timeline_.state_.frames.begin()+index,f);timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.contentHistory.detachedCels.begin(),e.contentHistory.detachedCels.end());timeline_.buildIndex();activeFrameId_=f.id;projectActiveCelOpacities();setSelectionValue(std::nullopt);clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.beforeSelection=e.afterSelection=selectedFrames_;captureFrameOrder(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建动画帧");
 }
-void Document::deleteFrame() {
+void Document::deleteFrame() {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  commitFloatingPaste();
- cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()==1)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeSelection=selectedFrames_;e.beforeLoops=timeline_.state().loopSections;e.detachedFrame=frame();timeline::State oldLoops;oldLoops.frames=timeline_.state().frames;for(const auto& c:timeline_.state().cels)if(c.frameId==frame().id)e.detachedCels.push_back(c);
+ cancelStroke();cancelLayerOpacity();if(timeline_.state().frames.size()==1)return;Edit e{{},state_,nextState_};captureFrameOrder(e,false);e.beforeSelection=selectedFrames_;e.frameHistory.beforeLoops=timeline_.state().loopSections;e.frameHistory.detachedFrame=frame();timeline::State oldLoops;oldLoops.frames=timeline_.state().frames;for(const auto& c:timeline_.state().cels)if(c.frameId==frame().id)e.contentHistory.detachedCels.push_back(c);
  // Legacy normalizes explicit chains to their surviving canonical source.
  // Native also accepts multi-hop imported links, so bypass a removed alias
  // before erasing it; keep explicit links distinct from runtime sharing.
- for(const auto& removed:e.detachedCels){if(!removed.linkedCelId&&!removed.runtimeSharedCelId)continue;
+ for(const auto& removed:e.contentHistory.detachedCels){if(!removed.linkedCelId&&!removed.runtimeSharedCelId)continue;
   const auto resolved=timeline_.resolveSurface(removed.id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::invalid_argument("Invalid frame deletion cel link");const auto root=resolved.source->id;
-  for(auto& c:timeline_.state_.cels){if(c.frameId==e.detachedFrame->id)continue;const bool explicitLink=c.linkedCelId&&*c.linkedCelId==removed.id;const bool shared=c.runtimeSharedCelId&&*c.runtimeSharedCelId==removed.id;if(!explicitLink&&!shared)continue;e.beforeCels.push_back(c);if(explicitLink)c.linkedCelId=root;if(shared)c.runtimeSharedCelId=root;e.afterCels.push_back(c);}
+  for(auto& c:timeline_.state_.cels){if(c.frameId==e.frameHistory.detachedFrame->id)continue;const bool explicitLink=c.linkedCelId&&*c.linkedCelId==removed.id;const bool shared=c.runtimeSharedCelId&&*c.runtimeSharedCelId==removed.id;if(!explicitLink&&!shared)continue;e.contentHistory.beforeCels.push_back(c);if(explicitLink)c.linkedCelId=root;if(shared)c.runtimeSharedCelId=root;e.contentHistory.afterCels.push_back(c);}
  }
  // Native adapter of legacy shared surface objects surviving normalizeAnimationCelLinks.
- for(const auto& removed:e.detachedCels){if(removed.linkedCelId || removed.runtimeSharedCelId || !removed.surface)continue;
-  std::vector<std::string> survivors;for(const auto& c:timeline_.state().cels)if(c.frameId!=e.detachedFrame->id && timeline_.resolveSurface(c.id).source->id==removed.id)survivors.push_back(c.id);
+ for(const auto& removed:e.contentHistory.detachedCels){if(removed.linkedCelId || removed.runtimeSharedCelId || !removed.surface)continue;
+  std::vector<std::string> survivors;for(const auto& c:timeline_.state().cels)if(c.frameId!=e.frameHistory.detachedFrame->id && timeline_.resolveSurface(c.id).source->id==removed.id)survivors.push_back(c.id);
   if(survivors.empty())continue;
-  for(const auto& id:survivors){auto& c=*std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& x){return x.id==id;});e.beforeCels.push_back(c);c.opacity=removed.opacity;c.zIndex=removed.zIndex;c.text=removed.text;c.tilemap=removed.tilemap;c.freeTiles=removed.freeTiles;c.linkedCelId.reset();if(id==survivors.front()){c.surface=removed.surface;c.runtimeSharedCelId.reset();}else{c.surface.reset();c.runtimeSharedCelId=survivors.front();}e.afterCels.push_back(c);}
+  for(const auto& id:survivors){auto& c=*std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& x){return x.id==id;});e.contentHistory.beforeCels.push_back(c);c.opacity=removed.opacity;c.zIndex=removed.zIndex;c.text=removed.text;c.tilemap=removed.tilemap;c.freeTiles=removed.freeTiles;c.linkedCelId.reset();if(id==survivors.front()){c.surface=removed.surface;c.runtimeSharedCelId.reset();}else{c.surface.reset();c.runtimeSharedCelId=survivors.front();}e.contentHistory.afterCels.push_back(c);}
  }
  // Legacy removes both layer/group mask slots with the deleted frame.
  // Preserve resolved pixels before detaching links to those removed masks,
  // using the same rule as the existing special-frame deletion transaction.
  auto& masks=timeline_.state_.masks;std::unordered_set<std::string> removedMasks;
- for(const auto& slot:masks)if(slot.frameId==e.detachedFrame->id)removedMasks.insert(slot.mask.id);
- for(auto& slot:masks)if(slot.frameId!=e.detachedFrame->id&&!slot.mask.linkedMaskId.empty()&&removedMasks.count(slot.mask.linkedMaskId)){
+ for(const auto& slot:masks)if(slot.frameId==e.frameHistory.detachedFrame->id)removedMasks.insert(slot.mask.id);
+ for(auto& slot:masks)if(slot.frameId!=e.frameHistory.detachedFrame->id&&!slot.mask.linkedMaskId.empty()&&removedMasks.count(slot.mask.linkedMaskId)){
   const auto* resolved=timeline::resolvedMask(timeline_.state(),slot.ownerId,slot.frameId);if(!resolved)throw std::invalid_argument("Missing surviving frame deletion mask");slot.mask.surface=resolved->surface;slot.mask.linkedMaskId.clear();
  }
- masks.erase(std::remove_if(masks.begin(),masks.end(),[&](const auto& slot){return slot.frameId==e.detachedFrame->id;}),masks.end());
- const auto index=activeFrameIndex();timeline_.state_.frames.erase(timeline_.state_.frames.begin()+index);auto& cels=timeline_.state_.cels;cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.frameId==e.detachedFrame->id;}),cels.end());activeFrameId_=timeline_.state_.frames[std::min(index,timeline_.state_.frames.size()-1)].id;
- std::vector<timeline::LoopSection> kept;for(auto section:timeline_.state().loopSections){const auto r=timeline::loopRange(oldLoops,section);if(r.start<0 || r.end<0)continue;if(section.startFrameId==e.detachedFrame->id || section.endFrameId==e.detachedFrame->id){std::vector<std::string> members;for(int i=r.start;i<=r.end;++i)if(oldLoops.frames[i].id!=e.detachedFrame->id)members.push_back(oldLoops.frames[i].id);if(members.empty())continue;section.startFrameId=members.front();section.endFrameId=members.back();}kept.push_back(section);}timeline_.state_.loopSections=std::move(kept);e.afterLoops=timeline_.state().loopSections;
- e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});activeMaskId_.clear();maskIsolated_=false;
+ masks.erase(std::remove_if(masks.begin(),masks.end(),[&](const auto& slot){return slot.frameId==e.frameHistory.detachedFrame->id;}),masks.end());
+ const auto index=activeFrameIndex();timeline_.state_.frames.erase(timeline_.state_.frames.begin()+index);auto& cels=timeline_.state_.cels;cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.frameId==e.frameHistory.detachedFrame->id;}),cels.end());activeFrameId_=timeline_.state_.frames[std::min(index,timeline_.state_.frames.size()-1)].id;
+ std::vector<timeline::LoopSection> kept;for(auto section:timeline_.state().loopSections){const auto r=timeline::loopRange(oldLoops,section);if(r.start<0 || r.end<0)continue;if(section.startFrameId==e.frameHistory.detachedFrame->id || section.endFrameId==e.frameHistory.detachedFrame->id){std::vector<std::string> members;for(int i=r.start;i<=r.end;++i)if(oldLoops.frames[i].id!=e.frameHistory.detachedFrame->id)members.push_back(oldLoops.frames[i].id);if(members.empty())continue;section.startFrameId=members.front();section.endFrameId=members.back();}kept.push_back(section);}timeline_.state_.loopSections=std::move(kept);e.frameHistory.afterLoops=timeline_.state().loopSections;
+ e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});activeMaskId_.clear();maskIsolated_=false;
  // Legacy clears the canvas selection on the initial successful command.
  // Frame history does not own pixel selection; Undo/Redo keep the current one.
- selection_.reset();
+ setSelectionValue(std::nullopt);
  timeline_.buildIndex();projectActiveCelOpacities();normalizeFrameDeletionSelection();captureFrameOrder(e,true);e.afterSelection=selectedFrames_;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画帧");
 }
-void Document::applyCelEdit(const Edit& e,bool redo){const auto& values=redo?e.afterCels:e.beforeCels;if(values.empty())return;for(const auto& value:values){auto it=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.id==value.id;});if(it==timeline_.state_.cels.end())throw std::logic_error("Missing history cel");*it=value;}timeline_.buildIndex();if(e.beforeFrames.empty() && !e.beforeFrame.empty())activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
-void Document::addLinkedFrame(bool allLayers){
+// applyCelEdit: definition in its history domain unit.
+void Document::addLinkedFrame(bool allLayers){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  cancelStroke();cancelLayerOpacity();
  // Legacy chooses a selected Cel first, then a selected frame anchor, then activity.
  const DocumentCel* selected=nullptr;const auto& cells=timelineSelection_.cels;
@@ -541,38 +568,38 @@ void Document::addLinkedFrame(bool allLayers){
  const bool linkAll=!selected&&(allLayers||!selectedFrames_.empty());const bool copyGroupMasks=!selected;
  const auto index=timeline_.frameIndex(sourceFrame);const bool inserted=index+1==timeline_.state().frames.size();
  Edit e{{},state_,nextState_};e.beforeFrame=previousFrame;e.beforeActive=e.afterActive=previousLayer;e.beforeSelection=selectedFrames_;e.beforeTimelineSelection=timelineSelection_;e.beforeFrameAnchor=frameAnchor_;
- e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{inserted?std::string{}:activeMaskId_,{},inserted?false:maskIsolated_,false});
+ e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{inserted?std::string{}:activeMaskId_,{},inserted?false:maskIsolated_,false});
  const bool wasGrouping=groupingHistory_;
  if(inserted){if(sourceFrame!=activeFrameId_)selectFrame(sourceFrame);groupingHistory_=true;try{addFrame();}catch(...){groupingHistory_=wasGrouping;throw;}groupingHistory_=wasGrouping;}
  e.afterFrame=timeline_.state().frames[index+1].id;
  for(const auto& l:timeline_.state().layers){if(!linkAll&&l.id!=sourceLayer)continue;const auto* sourceSlot=timeline_.findCel(l.id,sourceFrame);if(!sourceSlot)continue;const auto source=timeline_.resolveSurface(sourceSlot->id);if(!source.surface||std::none_of(source.surface->pixels.begin(),source.surface->pixels.end(),[](auto p){return (p>>24)!=0;}))continue;
-  auto targetIt=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.layerId==l.id&&c.frameId==e.afterFrame;});if(targetIt==timeline_.state_.cels.end())continue;auto& target=*targetIt;if(target.id==source.source->id)continue;e.beforeCels.push_back(target);target.linkedCelId=source.source->id;target.runtimeSharedCelId.reset();target.surface.reset();target.zIndex=source.source->zIndex;target.opacity=source.source->opacity;target.text=source.source->text;target.tilemap=source.source->tilemap;target.freeTiles=source.source->freeTiles;e.afterCels.push_back(target);
+  auto targetIt=std::find_if(timeline_.state_.cels.begin(),timeline_.state_.cels.end(),[&](const auto& c){return c.layerId==l.id&&c.frameId==e.afterFrame;});if(targetIt==timeline_.state_.cels.end())continue;auto& target=*targetIt;if(target.id==source.source->id)continue;e.contentHistory.beforeCels.push_back(target);target.linkedCelId=source.source->id;target.runtimeSharedCelId.reset();target.surface.reset();target.zIndex=source.source->zIndex;target.opacity=source.source->opacity;target.text=source.source->text;target.tilemap=source.source->tilemap;target.freeTiles=source.source->freeTiles;e.contentHistory.afterCels.push_back(target);
  }
  if(inserted&&copyGroupMasks){const auto masks=timeline_.state().masks;for(const auto& slot:masks)if(slot.group&&slot.frameId==sourceFrame){auto copy=slot;copy.frameId=e.afterFrame;copy.mask.id="mask-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);copy.mask.surface=timeline::resolvedMask(timeline_.state(),slot.ownerId,sourceFrame)->surface;copy.mask.linkedMaskId.clear();timeline_.state_.masks.push_back(std::move(copy));}}
- timeline_.buildIndex();activeFrameId_=e.afterFrame;activeMaskId_.clear();maskIsolated_=false;selection_.reset();clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();timelineSelection_.maskRows.clear();normalizeFrameDeletionSelection();projectActiveCelOpacities();
+ timeline_.buildIndex();activeFrameId_=e.afterFrame;activeMaskId_.clear();maskIsolated_=false;setSelectionValue(std::nullopt);clearFrameSelection();timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();timelineSelection_.maskRows.clear();normalizeFrameDeletionSelection();projectActiveCelOpacities();
  e.afterSelection=selectedFrames_;e.afterTimelineSelection=timelineSelection_;e.afterFrameAnchor=frameAnchor_;change_={0,0,width_,height_};publishChange();
- if(inserted){auto& frameEdit=history_.back();historyBytes_-=frameEdit.bytes();frameEdit.beforeFrame=previousFrame;frameEdit.beforeActive=frameEdit.afterActive=previousLayer;frameEdit.beforeSelection=frameEdit.afterSelection=selectedFrames_;frameEdit.beforeTimelineSelection=frameEdit.afterTimelineSelection=timelineSelection_;frameEdit.beforeFrameAnchor=frameEdit.afterFrameAnchor=frameAnchor_;frameEdit.maskContext=e.maskContext;frameEdit.afterMasks=timeline_.state().masks;frameEdit.detachedCels.clear();for(const auto& c:timeline_.state().cels)if(c.frameId==e.afterFrame)frameEdit.detachedCels.push_back(c);frameEdit.label=U"新建链接动画帧";historyBytes_+=frameEdit.bytes();if(!wasGrouping){if(pendingGroupedProjectOperation_){projectInformation_.operation();pendingGroupedProjectOperation_=false;}notifyHistoryChange(HistoryStackChange::Kind::Push,frameEdit.label);notifyRecording();}}else pushEdit(std::move(e),U"新建链接动画帧");
+ if(inserted){history_.updateLatest([&](Edit& frameEdit){frameEdit.beforeFrame=previousFrame;frameEdit.beforeActive=frameEdit.afterActive=previousLayer;frameEdit.beforeSelection=frameEdit.afterSelection=selectedFrames_;frameEdit.beforeTimelineSelection=frameEdit.afterTimelineSelection=timelineSelection_;frameEdit.beforeFrameAnchor=frameEdit.afterFrameAnchor=frameAnchor_;frameEdit.maskHistory.maskContext=e.maskHistory.maskContext;frameEdit.maskHistory.afterMasks=timeline_.state().masks;frameEdit.contentHistory.detachedCels.clear();for(const auto& c:timeline_.state().cels)if(c.frameId==e.afterFrame)frameEdit.contentHistory.detachedCels.push_back(c);frameEdit.label=U"新建链接动画帧";});const auto& frameEdit=history_.latest();if(!wasGrouping){if(pendingGroupedProjectOperation_){projectInformation_.operation();pendingGroupedProjectOperation_=false;}notifyHistoryChange(HistoryStackChange::Kind::Push,frameEdit.label);notifyRecording();}}else pushEdit(std::move(e),U"新建链接动画帧");
 }
 // legacy animationReversedSlotTargets: reverse selected time slots independently per row.
 bool Document::canReverseSelectedCels()const{
  bool any=false;for(const auto& l:timeline_.state().layers){int n=0;for(const auto& c:timeline_.state().cels)if(c.layerId==l.id && std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)!=timelineSelection_.cels.end())++n;if(n>1){if(layerEffectivelyLocked(l))return false;any=true;}}return any;
 }
-bool Document::reverseSelectedCels(){
+bool Document::reverseSelectedCels(){auto selectionHistory=trackAnimationSelectionHistory(false);
  if(!canReverseSelectedCels())return false;commitFloatingPaste();cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=timelineSelection_;
  for(const auto& l:timeline_.state().layers){std::vector<const DocumentCel*> slots;for(const auto& f:timeline_.state().frames){const auto* c=timeline_.findCel(l.id,f.id);if(c && std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c->id)!=timelineSelection_.cels.end())slots.push_back(c);}if(slots.size()<2)continue;
  std::unordered_map<std::string,std::string> remap;
- for(std::size_t n=0;n<slots.size();++n){const auto opposite=slots.size()-1-n;if(n==opposite)continue;e.beforeCels.push_back(*slots[n]);auto moved=*slots[n];moved.frameId=slots[opposite]->frameId;e.afterCels.push_back(std::move(moved));remap.emplace(slots[n]->id,slots[opposite]->id);}
+ for(std::size_t n=0;n<slots.size();++n){const auto opposite=slots.size()-1-n;if(n==opposite)continue;e.contentHistory.beforeCels.push_back(*slots[n]);auto moved=*slots[n];moved.frameId=slots[opposite]->frameId;e.contentHistory.afterCels.push_back(std::move(moved));remap.emplace(slots[n]->id,slots[opposite]->id);}
  // Native selection uses Cel IDs; legacy uses slot keys, so map the highlight to the same slots.
  for(auto& id:e.afterTimelineSelection->cels){const auto found=remap.find(id);if(found!=remap.end())id=found->second;}
  const auto anchor=remap.find(e.afterTimelineSelection->celAnchor);if(anchor!=remap.end())e.afterTimelineSelection->celAnchor=anchor->second;
  }
- if(e.afterCels.empty())return false;applyCelEdit(e,true);timelineSelection_=*e.afterTimelineSelection;publishChange();pushEdit(std::move(e),U"反转单元格顺序");return true;
+ if(e.contentHistory.afterCels.empty())return false;applyCelEdit(e,true);timelineSelection_=*e.afterTimelineSelection;publishChange();pushEdit(std::move(e),U"反转单元格顺序");return true;
 }
 // legacy animationSlotsCanLink + animationLinkSlotKeys / connectAnimationCels.
 bool Document::canConnectSelectedCels()const{
  for(const auto& l:timeline_.state().layers){int count=0;bool content=false;for(const auto& c:timeline_.state().cels){if(c.layerId!=l.id || std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c.id)==timelineSelection_.cels.end())continue;++count;const auto r=timeline_.resolveSurface(c.id);content|=r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});}if(count>1 && content)return true;}return false;
 }
-bool Document::connectSelectedCels(){
+bool Document::connectSelectedCels(){auto selectionHistory=trackAnimationSelectionHistory(false);
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;
  for(const auto& l:timeline_.state().layers){std::vector<const DocumentCel*> slots;int first=-1,last=-1;const auto& frames=timeline_.state().frames;
  auto content=[&](const DocumentCel* c){const auto r=timeline_.resolveSurface(c->id);return r.surface && std::any_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return (p>>24)!=0;});};
@@ -580,56 +607,46 @@ bool Document::connectSelectedCels(){
  if(first<0 || first==last)continue;
  for(int f=first;f<=last;++f){const auto* c=timeline_.findCel(l.id,frames[f].id);if(!c)continue;if(std::find(timelineSelection_.cels.begin(),timelineSelection_.cels.end(),c->id)!=timelineSelection_.cels.end() || !content(c))slots.push_back(c);}
  const auto original=std::find_if(slots.begin(),slots.end(),content);if(original==slots.end())continue;const auto resolved=timeline_.resolveSurface((*original)->id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel link source");const auto source=*resolved.source;
- for(const auto* c:slots){if(c->id==source.id)continue;if(c->linkedCelId==source.id && !c->runtimeSharedCelId && c->opacity==source.opacity && c->zIndex==source.zIndex)continue;auto next=*c;next.linkedCelId=source.id;next.runtimeSharedCelId.reset();next.surface.reset();next.opacity=source.opacity;next.zIndex=source.zIndex;next.text=source.text;next.tilemap=source.tilemap;next.freeTiles=source.freeTiles;e.beforeCels.push_back(*c);e.afterCels.push_back(std::move(next));}
+ for(const auto* c:slots){if(c->id==source.id)continue;if(c->linkedCelId==source.id && !c->runtimeSharedCelId && c->opacity==source.opacity && c->zIndex==source.zIndex)continue;auto next=*c;next.linkedCelId=source.id;next.runtimeSharedCelId.reset();next.surface.reset();next.opacity=source.opacity;next.zIndex=source.zIndex;next.text=source.text;next.tilemap=source.tilemap;next.freeTiles=source.freeTiles;e.contentHistory.beforeCels.push_back(*c);e.contentHistory.afterCels.push_back(std::move(next));}
  }
- if(e.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"连接动画单元格");return true;
+ if(e.contentHistory.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"连接动画单元格");return true;
 }
 // legacy animation.ts disconnectAnimationCels: selecting a source unlinks its group.
 bool Document::canDisconnectSelectedCels()const{
  const auto* current=timeline_.findCel(activeLayerId_,activeFrameId_);const auto selected=timelineSelection_.cels.empty()?(current?std::vector<std::string>{current->id}:std::vector<std::string>{}):timelineSelection_.cels;
  for(const auto& c:timeline_.state().cels){if(!c.linkedCelId)continue;const auto resolved=timeline_.resolveSurface(c.id);if(std::find(selected.begin(),selected.end(),c.id)!=selected.end() || (resolved.source && std::find(selected.begin(),selected.end(),resolved.source->id)!=selected.end()))return true;}return false;
 }
-bool Document::disconnectSelectedCels(){
+bool Document::disconnectSelectedCels(){auto selectionHistory=trackAnimationSelectionHistory(false);
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  const auto* current=timeline_.findCel(activeLayerId_,activeFrameId_);const auto selected=timelineSelection_.cels.empty()?(current?std::vector<std::string>{current->id}:std::vector<std::string>{}):timelineSelection_.cels;
  Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=activeFrameId_;
  for(const auto& c:timeline_.state().cels){if(!c.linkedCelId)continue;const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source || resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel unlink source");if(std::find(selected.begin(),selected.end(),c.id)==selected.end() && std::find(selected.begin(),selected.end(),resolved.source->id)==selected.end())continue;
- e.beforeCels.push_back(c);auto next=c;next.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;next.opacity=resolved.source->opacity;next.zIndex=resolved.source->zIndex;next.text=resolved.source->text;next.tilemap=resolved.source->tilemap;next.freeTiles=resolved.source->freeTiles;next.linkedCelId.reset();next.runtimeSharedCelId.reset();e.afterCels.push_back(std::move(next));}
- if(e.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"断开动画单元格连接");return true;
+ e.contentHistory.beforeCels.push_back(c);auto next=c;next.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;next.opacity=resolved.source->opacity;next.zIndex=resolved.source->zIndex;next.text=resolved.source->text;next.tilemap=resolved.source->tilemap;next.freeTiles=resolved.source->freeTiles;next.linkedCelId.reset();next.runtimeSharedCelId.reset();e.contentHistory.afterCels.push_back(std::move(next));}
+ if(e.contentHistory.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"断开动画单元格连接");return true;
 }
-void Document::disconnectCel(){cancelStroke();cancelLayerOpacity();const auto* current=timeline_.findCel(activeLayerId_,activeFrameId_);if(!current||!current->linkedCelId)return;Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=frame().id;e.beforeCels.push_back(cel());DocumentCel c=cel();const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source||!resolved.surface||resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel unlink source");c.surface=*resolved.surface;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;c.text=resolved.source->text;c.tilemap=resolved.source->tilemap;c.freeTiles=resolved.source->freeTiles;c.linkedCelId.reset();c.runtimeSharedCelId.reset();e.afterCels.push_back(c);applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"断开动画单元格连接");}
+void Document::disconnectCel(){auto selectionHistory=trackAnimationSelectionHistory(false);cancelStroke();cancelLayerOpacity();const auto* current=timeline_.findCel(activeLayerId_,activeFrameId_);if(!current||!current->linkedCelId)return;Edit e{{},state_,nextState_};e.beforeFrame=e.afterFrame=frame().id;e.contentHistory.beforeCels.push_back(cel());DocumentCel c=cel();const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source||!resolved.surface||resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve Cel unlink source");c.surface=*resolved.surface;c.opacity=resolved.source->opacity;c.zIndex=resolved.source->zIndex;c.text=resolved.source->text;c.tilemap=resolved.source->tilemap;c.freeTiles=resolved.source->freeTiles;c.linkedCelId.reset();c.runtimeSharedCelId.reset();e.contentHistory.afterCels.push_back(c);applyCelEdit(e,true);projectActiveCelOpacities();publishChange();pushEdit(std::move(e),U"断开动画单元格连接");}
 // workspace-animation-commands-helpers updateSelectedAnimationFramesDisabled.
 bool Document::selectedFramesDisabled()const{
  for(const auto& f:timeline_.state().frames)if(selectedFrames_.empty()?f.id==activeFrameId_:std::find(selectedFrames_.begin(),selectedFrames_.end(),f.id)!=selectedFrames_.end())if(!f.disabled)return false;return true;
 }
 bool Document::setSelectedFramesDisabled(bool disabled,bool toggle){
- cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};for(auto& f:timeline_.state_.frames)if((selectedFrames_.empty()?f.id==activeFrameId_:std::find(selectedFrames_.begin(),selectedFrames_.end(),f.id)!=selectedFrames_.end()) && (toggle || f.disabled!=disabled)){e.beforeDisabled.emplace_back(f.id,f.disabled);f.disabled=toggle?!f.disabled:disabled;e.afterDisabled.emplace_back(f.id,f.disabled);}if(e.afterDisabled.empty())return false;pushEdit(std::move(e),U"切换启停用帧状态");return true;
+ cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};for(auto& f:timeline_.state_.frames)if((selectedFrames_.empty()?f.id==activeFrameId_:std::find(selectedFrames_.begin(),selectedFrames_.end(),f.id)!=selectedFrames_.end()) && (toggle || f.disabled!=disabled)){e.frameHistory.beforeDisabled.emplace_back(f.id,f.disabled);f.disabled=toggle?!f.disabled:disabled;e.frameHistory.afterDisabled.emplace_back(f.id,f.disabled);}if(e.frameHistory.afterDisabled.empty())return false;pushEdit(std::move(e),U"切换启停用帧状态");return true;
 }
-void Document::setFrameDuration(int duration) {cancelStroke();cancelLayerOpacity();duration=std::clamp(duration?duration:100,1,60000);if(duration==frame().duration)return;Edit e{{},state_,nextState_};e.targetFrameId=frame().id;e.beforeDuration=frame().duration;e.afterDuration=duration;timeline_.state_.frames[activeFrameIndex()].duration=duration;pushEdit(std::move(e),U"修改帧时长");}
+void Document::setFrameDuration(int duration) {cancelStroke();cancelLayerOpacity();duration=std::clamp(duration?duration:100,1,60000);if(duration==frame().duration)return;Edit e{{},state_,nextState_};e.frameHistory.targetFrameId=frame().id;e.frameHistory.beforeDuration=frame().duration;e.frameHistory.afterDuration=duration;timeline_.state_.frames[activeFrameIndex()].duration=duration;pushEdit(std::move(e),U"修改帧时长");}
 void Document::beginFrameDuration(){cancelStroke();durationBefore_=frame().duration;durationValuesBefore_.clear();const bool includesActive=std::find(selectedFrames_.begin(),selectedFrames_.end(),frame().id)!=selectedFrames_.end();for(const auto& f:timeline_.state().frames)if(includesActive?std::find(selectedFrames_.begin(),selectedFrames_.end(),f.id)!=selectedFrames_.end():f.id==frame().id)durationValuesBefore_.push_back({f.id,f.duration});}
 void Document::previewFrameDuration(int duration){if(durationBefore_)for(auto& f:timeline_.state_.frames)if(std::any_of(durationValuesBefore_.begin(),durationValuesBefore_.end(),[&](const auto& item){return item.first==f.id;}))f.duration=std::clamp(duration?duration:100,1,60000);}
-void Document::commitFrameDuration(){if(!durationBefore_)return;durationBefore_.reset();const auto start=position_;groupingHistory_=true;for(const auto& value:durationValuesBefore_){const auto f=std::find_if(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& x){return x.id==value.first;});if(f->duration==value.second)continue;Edit e{{},state_,nextState_};e.targetFrameId=value.first;e.beforeDuration=value.second;e.afterDuration=f->duration;pushEdit(std::move(e),U"修改帧时长");}groupingHistory_=false;groupEdits(start,selectedFrames_);durationValuesBefore_.clear();}
-void Document::applyFrameEdit(const Edit& e,bool redo) {
- if(e.beforeScriptDurations){const auto& values=*(redo?e.afterScriptDurations:e.beforeScriptDurations);if(values.size()!=timeline_.state_.frames.size())throw std::logic_error("Script duration history frame count changed");for(std::size_t i=0;i<values.size();++i){auto& f=timeline_.state_.frames[i];if(f.id!=values[i].first)throw std::logic_error("Script duration history frame order changed");f.duration=values[i].second;}}
- for(const auto& [id,disabled]:redo?e.afterDisabled:e.beforeDisabled){auto it=std::find_if(timeline_.state_.frames.begin(),timeline_.state_.frames.end(),[&](const auto& f){return f.id==id;});if(it!=timeline_.state_.frames.end())it->disabled=disabled;}
- const auto& order=redo?e.afterFrames:e.beforeFrames;auto& frames=timeline_.state_.frames;auto& cels=timeline_.state_.cels;
- if(!order.empty()){if(e.detachedFrame){const auto& id=e.detachedFrame->id;const bool want=std::find(order.begin(),order.end(),id)!=order.end();auto it=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==id;});if(want && it==frames.end()){frames.push_back(*e.detachedFrame);cels.insert(cels.end(),e.detachedCels.begin(),e.detachedCels.end());}else if(!want && it!=frames.end()){frames.erase(it);cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.frameId==id;}),cels.end());}}if(!e.detachedFrames.empty()){std::unordered_set<std::string> inserted;for(const auto& f:e.detachedFrames)inserted.insert(f.id);const bool want=std::find(order.begin(),order.end(),e.detachedFrames.front().id)!=order.end();if(want){std::unordered_set<std::string> frameIds,celIds;frameIds.reserve(frames.size()+e.detachedFrames.size());celIds.reserve(cels.size()+e.detachedCels.size());for(const auto& f:frames)frameIds.insert(f.id);for(const auto& c:cels)celIds.insert(c.id);for(const auto& f:e.detachedFrames)if(frameIds.insert(f.id).second)frames.push_back(f);for(const auto& c:e.detachedCels)if(celIds.insert(c.id).second)cels.push_back(c);}else{frames.erase(std::remove_if(frames.begin(),frames.end(),[&](const auto& f){return inserted.count(f.id);}),frames.end());cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return inserted.count(c.frameId);}),cels.end());}std::unordered_map<std::string,std::size_t> orderIndex;for(std::size_t i=0;i<order.size();++i)orderIndex.emplace(order[i],i);std::sort(frames.begin(),frames.end(),[&](const auto& a,const auto& b){return orderIndex.at(a.id)<orderIndex.at(b.id);});}else std::sort(frames.begin(),frames.end(),[&](const auto& a,const auto& b){return std::find(order.begin(),order.end(),a.id)<std::find(order.begin(),order.end(),b.id);});timeline_.buildIndex();activeFrameId_=redo?e.afterFrame:e.beforeFrame;change_={0,0,width_,height_};}
- const auto& loops=redo?e.afterLoops:e.beforeLoops;if(loops)timeline_.state_.loopSections=*loops;const auto& selection=redo?e.afterSelection:e.beforeSelection;if(selection)selectedFrames_=*selection;
- if(!e.targetFrameId.empty()){auto it=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==e.targetFrameId;});if(it==frames.end())throw std::logic_error("Missing history frame");it->duration=*(redo?e.afterDuration:e.beforeDuration);}
-}
-void Document::captureLayerOrder(Edit& e,bool after) const {if(after)e.afterMasks=timeline_.state().masks;else e.beforeMasks=timeline_.state().masks;
- auto& order=after?e.afterOrder:e.beforeOrder;for(const auto& l:timeline_.state().layers)order.push_back(l.id);(after?e.afterActive:e.beforeActive)=activeLayerId_;
-}
+void Document::commitFrameDuration(){if(!durationBefore_)return;durationBefore_.reset();const auto start=history_.position();groupingHistory_=true;for(const auto& value:durationValuesBefore_){const auto f=std::find_if(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& x){return x.id==value.first;});if(f->duration==value.second)continue;Edit e{{},state_,nextState_};e.frameHistory.targetFrameId=value.first;e.frameHistory.beforeDuration=value.second;e.frameHistory.afterDuration=f->duration;pushEdit(std::move(e),U"修改帧时长");}groupingHistory_=false;groupEdits(start,selectedFrames_);durationValuesBefore_.clear();}
+// captureLayerOrder: definition in its history domain unit.
 void Document::addLayer() {if(!timeline_.state().groups.empty()){addLayerInGroupContext();return;}
  commitFloatingPaste();
  cancelStroke();cancelLayerOpacity();if(timeline_.state().layers.size()>=256 || std::uint64_t(width_)*height_*(timeline_.state().layers.size()+1)*timeline_.state().frames.size()*4>256*1024*1024)throw std::runtime_error("Layer pixel memory limit reached");Edit e{{},state_,nextState_};captureLayerOrder(e,false);e.beforeFrame=e.afterFrame=activeFrameId_;
  std::size_t index=0;for(std::size_t i=0;i<timeline_.state().layers.size();++i)if(std::find(timelineSelection_.layers.begin(),timelineSelection_.layers.end(),timeline_.state().layers[i].id)!=timelineSelection_.layers.end()){index=i;break;}
  DocumentLayer l;do {l.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);}while(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& old){return old.id==l.id;}));l.name=U"图层 ";for(char c:std::to_string(timeline_.state().layers.size()+1))l.name+=char32_t(c);
  for(const auto& f:timeline_.state().frames) {DocumentCel c;c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;c.opacity=1;
- timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels.resize(std::size_t(width_)*height_);c.surface=std::move(surface);e.detachedCels.push_back(std::move(c));}
- e.detachedLayer=l;timeline_.state_.layers.insert(timeline_.state_.layers.begin()+index,std::move(l));timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.detachedCels.begin(),e.detachedCels.end());timeline_.buildIndex();activeLayerId_=e.detachedLayer->id;
+ timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels.resize(std::size_t(width_)*height_);c.surface=std::move(surface);e.contentHistory.detachedCels.push_back(std::move(c));}
+ e.layerHistory.detachedLayer=l;timeline_.state_.layers.insert(timeline_.state_.layers.begin()+index,std::move(l));timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.contentHistory.detachedCels.begin(),e.contentHistory.detachedCels.end());timeline_.buildIndex();activeLayerId_=e.layerHistory.detachedLayer->id;
  timelineSelection_={};timelineSelection_.layerAnchor=activeLayerId_;selectedFrames_.clear();frameAnchor_.clear();e.afterTimelineSelection=timelineSelection_;e.beforeTimelineSelection=TimelineSelection{};e.beforeSelection=selectedFrames_;e.afterSelection=selectedFrames_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=frameAnchor_;
- captureLayerOrder(e,true);e.beforeActive=e.beforeOrder.front();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建图层");
+ captureLayerOrder(e,true);e.beforeActive=e.layerHistory.beforeOrder.front();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建图层");
 }
 
 
@@ -658,19 +675,19 @@ void Document::moveLayer(std::size_t index) {
 }
 void Document::setLayerLocked(bool locked) {
  commitFloatingPaste();
- cancelStroke();cancelLayerOpacity();if(layer().locked==locked)return;Edit e{{},state_,nextState_};e.targetLayerId=layer().id;e.beforeLocked=layer().locked;e.afterLocked=locked;timeline_.state_.layers[activeLayerIndex()].locked=locked;pushEdit(std::move(e),U"修改图层属性");
+ cancelStroke();cancelLayerOpacity();if(layer().locked==locked)return;Edit e{{},state_,nextState_};e.layerHistory.targetLayerId=layer().id;e.layerHistory.beforeLocked=layer().locked;e.layerHistory.afterLocked=locked;timeline_.state_.layers[activeLayerIndex()].locked=locked;pushEdit(std::move(e),U"修改图层属性");
 }
 void Document::setLayerAutoLinkAnimationCels(const std::string& id,bool enabled) {
  auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==id;});
  if(it==timeline_.state_.layers.end() || it->autoLinkAnimationCels==enabled)return;
- Edit e{{},state_,nextState_};e.targetLayerId=id;e.beforeAutoLink=it->autoLinkAnimationCels;e.afterAutoLink=enabled;
+ Edit e{{},state_,nextState_};e.layerHistory.targetLayerId=id;e.layerHistory.beforeAutoLink=it->autoLinkAnimationCels;e.layerHistory.afterAutoLink=enabled;
  it->autoLinkAnimationCels=enabled;pushEdit(std::move(e),U"修改图层属性");
 }
 // useLayerRowToggleGesture transactions: preview mutable metadata, record final delta once.
 void Document::beginAutoLinkGesture(){commitAutoLinkGesture();autoLinkGestureBefore_.clear();for(const auto& layer:timeline_.state().layers)autoLinkGestureBefore_.emplace_back(layer.id,layer.autoLinkAnimationCels);}
 void Document::previewAutoLinkGesture(const std::string& id,bool enabled){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& layer){return layer.id==id;});if(it!=timeline_.state_.layers.end())it->autoLinkAnimationCels=enabled;}
 bool Document::commitAutoLinkGesture(){
- if(autoLinkGestureBefore_.empty())return false;Edit group{{},state_,nextState_};for(const auto& [id,before]:autoLinkGestureBefore_){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& layer){return layer.id==id;});if(it==timeline_.state().layers.end() || it->autoLinkAnimationCels==before)continue;Edit child{{},state_,nextState_};child.targetLayerId=id;child.beforeAutoLink=before;child.afterAutoLink=it->autoLinkAnimationCels;group.children.push_back(std::move(child));}autoLinkGestureBefore_.clear();if(group.children.empty())return false;pushEdit(std::move(group),U"修改图层属性");return true;
+ if(autoLinkGestureBefore_.empty())return false;Edit group{{},state_,nextState_};for(const auto& [id,before]:autoLinkGestureBefore_){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& layer){return layer.id==id;});if(it==timeline_.state().layers.end() || it->autoLinkAnimationCels==before)continue;Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=id;child.layerHistory.beforeAutoLink=before;child.layerHistory.afterAutoLink=it->autoLinkAnimationCels;group.children.push_back(std::move(child));}autoLinkGestureBefore_.clear();if(group.children.empty())return false;pushEdit(std::move(group),U"修改图层属性");return true;
 }
 // useLayerRowToggleGesture transactions: preview mutable metadata, record final delta once.
 
@@ -679,33 +696,15 @@ bool Document::commitAutoLinkGesture(){
 
 
 
-void Document::applyLayerEdit(const Edit& e,bool redo) {
- const auto& order=redo?e.afterOrder:e.beforeOrder;
- if(!order.empty()) {
-  auto& layers=timeline_.state_.layers;auto& cels=timeline_.state_.cels;
-  if(e.detachedLayer){const auto& id=e.detachedLayer->id;const bool want=std::find(order.begin(),order.end(),id)!=order.end();const auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.id==id;});
-   if(want && it==layers.end()){layers.push_back(*e.detachedLayer);cels.insert(cels.end(),e.detachedCels.begin(),e.detachedCels.end());}else if(!want && it!=layers.end()){layers.erase(it);cels.erase(std::remove_if(cels.begin(),cels.end(),[&](const auto& c){return c.layerId==id;}),cels.end());}}
-  std::sort(layers.begin(),layers.end(),[&](const auto& a,const auto& b){return std::find(order.begin(),order.end(),a.id)<std::find(order.begin(),order.end(),b.id);});timeline_.buildIndex();activeLayerId_=redo?e.afterActive:e.beforeActive;change_={0,0,width_,height_};
- }
- if(!e.targetLayerId.empty()) {
-  auto& layers=timeline_.state_.layers;auto it=std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.id==e.targetLayerId;});if(it==layers.end())throw std::logic_error("Missing history layer");
-  const auto visible=redo?e.afterVisible:e.beforeVisible;const auto opacity=redo?e.afterOpacity:e.beforeOpacity;const auto locked=redo?e.afterLocked:e.beforeLocked;
-  const auto autoLink=redo?e.afterAutoLink:e.beforeAutoLink;if(autoLink)it->autoLinkAnimationCels=*autoLink;
-  const auto& name=redo?e.afterName:e.beforeName;if(name)it->name=*name;
-  const auto& metadata=redo?e.afterLayerMetadata:e.beforeLayerMetadata;if(metadata){it->displayColor=metadata->displayColor;it->description=metadata->description;}
-  const auto& blend=redo?e.afterBlendMode:e.beforeBlendMode;if(blend){it->blendMode=*blend;change_={0,0,width_,height_};}
-  if(visible)it->visible=*visible;if(opacity){it->opacity=*opacity;syncActiveLayerCelOpacity(it->id);}if(locked)it->locked=*locked;if(visible || opacity || locked || autoLink)change_={0,0,width_,height_};
- }
-}
 void Document::setLayerVisible(bool visible) {
  commitFloatingPaste();
- cancelStroke();if(layer().visible==visible)return;Edit edit{{},state_,nextState_};edit.targetLayerId=layer().id;edit.beforeVisible=layer().visible;edit.afterVisible=visible;
+ cancelStroke();if(layer().visible==visible)return;Edit edit{{},state_,nextState_};edit.layerHistory.targetLayerId=layer().id;edit.layerHistory.beforeVisible=layer().visible;edit.layerHistory.afterVisible=visible;
  timeline_.state_.layers.at(activeLayerIndex()).visible=visible;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"显示图层");
 }
 void Document::setLayerOpacity(double opacity) {
  cancelStroke();if(layer().locked || !std::isfinite(opacity))return;opacity=std::clamp(opacity,0.0,1.0);if(layer().opacity==opacity)return;
- Edit edit{{},state_,nextState_};edit.targetLayerId=layer().id;edit.beforeOpacity=layer().opacity;edit.afterOpacity=opacity;
- timeline_.state_.layers.at(activeLayerIndex()).opacity=opacity;syncActiveLayerCelOpacity(edit.targetLayerId);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"图层不透明度");
+ Edit edit{{},state_,nextState_};edit.layerHistory.targetLayerId=layer().id;edit.layerHistory.beforeOpacity=layer().opacity;edit.layerHistory.afterOpacity=opacity;
+ timeline_.state_.layers.at(activeLayerIndex()).opacity=opacity;syncActiveLayerCelOpacity(edit.layerHistory.targetLayerId);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"图层不透明度");
 }
 void Document::beginLayerOpacity() {
  cancelStroke();cancelLayerOpacity();const auto& selected=timelineSelection_.layers;
@@ -738,31 +737,18 @@ void Document::cancelLayerOpacity() {
 }
 void Document::commitLayerOpacity() {
  if(!opacityBefore_)return;opacityBefore_.reset();Edit edit{{},state_,nextState_};
- for(const auto& [id,before]:opacityValuesBefore_){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state().layers.end() || it->opacity==before)continue;Edit child{{},state_,nextState_};child.targetLayerId=id;child.beforeOpacity=before;child.afterOpacity=it->opacity;edit.children.push_back(std::move(child));}
+ for(const auto& [id,before]:opacityValuesBefore_){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state().layers.end() || it->opacity==before)continue;Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=id;child.layerHistory.beforeOpacity=before;child.layerHistory.afterOpacity=it->opacity;edit.children.push_back(std::move(child));}
  const auto whitespace=[](char32_t c){return c==U' ' || (c>=9 && c<=13) || c==0x00a0 || c==0x1680 || (c>=0x2000 && c<=0x200a) || c==0x2028 || c==0x2029 || c==0x202f || c==0x205f || c==0x3000 || c==0xfeff;};
- for(const auto& [id,before]:layerNamesBefore_){if(layerNamesBefore_.size()>1 && !layerNameChanged_)continue;auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state_.layers.end())continue;const auto first=std::find_if_not(it->name.begin(),it->name.end(),whitespace),last=std::find_if_not(it->name.rbegin(),it->name.rend(),whitespace).base();it->name=first>=last?before:std::u32string(first,last);if(it->name==before)continue;Edit child{{},state_,nextState_};child.targetLayerId=id;child.beforeName=before;child.afterName=it->name;edit.children.push_back(std::move(child));}
- for(const auto& [id,before]:layerBlendModesBefore_){const auto& l=timeline_.state().layers[timeline_.layerIndex(id)];if(l.blendMode!=before){Edit child{{},state_,nextState_};child.targetLayerId=id;child.beforeBlendMode=before;child.afterBlendMode=l.blendMode;edit.children.push_back(std::move(child));}}layerBlendModesBefore_.clear();
- for(const auto& before:layerMetadataBefore_){auto& l=timeline_.state_.layers[timeline_.layerIndex(before.layerId)];if(layerMetadataBefore_.size()==1||layerDescriptionChanged_)l.description=trimLayerDescription(l.description);LayerMetadataSnapshot after{l.id,l.displayColor,l.description};if(before.displayColor==after.displayColor&&before.description==after.description)continue;Edit child{{},state_,nextState_};child.targetLayerId=l.id;child.beforeLayerMetadata=before;child.afterLayerMetadata=after;auto name=std::find_if(layerNamesBefore_.begin(),layerNamesBefore_.end(),[&](const auto& n){return n.first==l.id;});child.layerMetadataBytes=layerMetadataHistoryBytes(before,after,name==layerNamesBefore_.end()?l.name:name->second,l.name);edit.children.push_back(std::move(child));}for(const auto& p:linkedDisplayBefore_){const auto& live=timeline_.state().layers[timeline_.layerIndex(p.first)];if(live.displayColor==p.second)continue;Edit child{{},state_,nextState_};child.targetLayerId=live.id;child.beforeLayerMetadata=LayerMetadataSnapshot{live.id,p.second,live.description};child.afterLayerMetadata=LayerMetadataSnapshot{live.id,live.displayColor,live.description};child.layerMetadataBytes=64;edit.children.push_back(std::move(child));}linkedDisplayBefore_.clear();layerMetadataBefore_.clear();
+ for(const auto& [id,before]:layerNamesBefore_){if(layerNamesBefore_.size()>1 && !layerNameChanged_)continue;auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state_.layers.end())continue;const auto first=std::find_if_not(it->name.begin(),it->name.end(),whitespace),last=std::find_if_not(it->name.rbegin(),it->name.rend(),whitespace).base();it->name=first>=last?before:std::u32string(first,last);if(it->name==before)continue;Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=id;child.layerHistory.beforeName=before;child.layerHistory.afterName=it->name;edit.children.push_back(std::move(child));}
+ for(const auto& [id,before]:layerBlendModesBefore_){const auto& l=timeline_.state().layers[timeline_.layerIndex(id)];if(l.blendMode!=before){Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=id;child.layerHistory.beforeBlendMode=before;child.layerHistory.afterBlendMode=l.blendMode;edit.children.push_back(std::move(child));}}layerBlendModesBefore_.clear();
+ for(const auto& before:layerMetadataBefore_){auto& l=timeline_.state_.layers[timeline_.layerIndex(before.layerId)];if(layerMetadataBefore_.size()==1||layerDescriptionChanged_)l.description=trimLayerDescription(l.description);LayerMetadataSnapshot after{l.id,l.displayColor,l.description};if(before.displayColor==after.displayColor&&before.description==after.description)continue;Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=l.id;child.layerHistory.beforeLayerMetadata=before;child.layerHistory.afterLayerMetadata=after;auto name=std::find_if(layerNamesBefore_.begin(),layerNamesBefore_.end(),[&](const auto& n){return n.first==l.id;});child.layerHistory.layerMetadataBytes=layerMetadataHistoryBytes(before,after,name==layerNamesBefore_.end()?l.name:name->second,l.name);edit.children.push_back(std::move(child));}for(const auto& p:linkedDisplayBefore_){const auto& live=timeline_.state().layers[timeline_.layerIndex(p.first)];if(live.displayColor==p.second)continue;Edit child{{},state_,nextState_};child.layerHistory.targetLayerId=live.id;child.layerHistory.beforeLayerMetadata=LayerMetadataSnapshot{live.id,p.second,live.description};child.layerHistory.afterLayerMetadata=LayerMetadataSnapshot{live.id,live.displayColor,live.description};child.layerHistory.layerMetadataBytes=64;edit.children.push_back(std::move(child));}linkedDisplayBefore_.clear();layerMetadataBefore_.clear();
  bool groupChanged=false;for(auto& g:timeline_.state_.groups)for(const auto& b:groupPropertiesBefore_)if(g.id==b.id){if(groupPropertiesBefore_.size()+layerNamesBefore_.size()==1||layerNameChanged_){auto n=trimLayerDescription(g.name);g.name=n.empty()?b.name:n;}if(groupPropertiesBefore_.size()+layerNamesBefore_.size()==1||layerDescriptionChanged_)g.description=trimLayerDescription(g.description);groupChanged=groupChanged||g.name!=b.name||g.opacity!=b.opacity||g.blendMode!=b.blendMode||g.displayColor!=b.displayColor||g.description!=b.description;}
- if(groupChanged){captureGroupEdit(edit,false);captureGroupEdit(edit,true);for(auto& g:edit.beforeLayerStructure->groups)for(const auto& b:groupPropertiesBefore_)if(g.id==b.id)g=b;}
+ if(groupChanged){captureGroupEdit(edit,false);captureGroupEdit(edit,true);for(auto& g:edit.layerHistory.beforeLayerStructure->groups)for(const auto& b:groupPropertiesBefore_)if(g.id==b.id)g=b;}
  groupPropertiesBefore_.clear();layerDescriptionChanged_=false;layerNamesBefore_.clear();layerNameChanged_=false;opacityValuesBefore_.clear();if(groupChanged||!edit.children.empty())pushEdit(std::move(edit),U"修改图层属性");
 }
 
 
 namespace {
-constexpr std::size_t adjustmentByteLimit=256*1024*1024;
-std::size_t adjustmentStorageBudget(const timeline::Timeline& timeline,std::size_t copies){
- std::size_t bytes=0;std::set<std::string> seen;
- for(const auto& cel:timeline.state().cels)if(cel.surface&&seen.insert(timeline.linkedStorageKey(cel.id)).second){
-  const auto& s=*cel.surface;raster::validate(s);
-  raster::coordinate(std::int64_t(s.offsetX)+s.width);raster::coordinate(std::int64_t(s.offsetY)+s.height);
-  if(s.pixels.size()>64*1024*1024 || s.pixels.size()>(adjustmentByteLimit-bytes)/sizeof(Pixel))throw std::length_error("Adjustment exceeds pixel budget");
-  bytes+=s.pixels.size()*sizeof(Pixel);
- }
- for(const auto& m:timeline.state().masks){const auto& surface=m.mask.surface;raster::validate(surface);if(surface.pixels.size()>(adjustmentByteLimit-bytes)/sizeof(Pixel))throw std::length_error("Adjustment mask snapshots exceed pixel budget");bytes+=surface.pixels.size()*sizeof(Pixel);}
- if(!copies || bytes>adjustmentByteLimit/copies)throw std::length_error("Adjustment snapshots exceed pixel budget");
- return bytes;
-}
 const timeline::MaskSlot* adjustmentMask(const timeline::Timeline& t,const std::string& id){for(const auto& m:t.state().masks)if(m.mask.id==id)return &m;return nullptr;}
 bool adjustmentMaskLocked(const timeline::Timeline& t,const timeline::MaskSlot& m){if(m.mask.locked)return true;if(m.group){for(const auto& g:t.state().groups)if(g.id==m.ownerId)return timeline::isGroupEffectivelyLocked(t.state(),g);return true;}if(!t.hasLayer(m.ownerId))return true;return timeline::isLayerEffectivelyLocked(t.state(),t.state().layers[t.layerIndex(m.ownerId)]);}
 bool adjustmentSameGeometry(const timeline::Surface& a,const timeline::Surface& b){return a.width==b.width&&a.height==b.height&&a.offsetX==b.offsetX&&a.offsetY==b.offsetY&&a.storageOriginX==b.storageOriginX&&a.storageOriginY==b.storageOriginY;}
@@ -875,19 +861,7 @@ timeline::Surface immediateTransformCandidate(const timeline::Surface& before,co
 }
 
 }
-void Document::applySurfaceEdit(const Edit& e,bool forward){
- for(const auto& value:e.textChanges){auto it=timeline_.cels_.find(value.id);if(it!=timeline_.cels_.end())timeline_.state_.cels[it->second].text=forward?value.after:value.before;}
- for(const auto& c:e.ownerOffsets){const auto r=timeline_.resolveSurface(c.ownerId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||r.source->id!=c.ownerId)throw std::logic_error("Invalid offset history owner");}
- for(const auto& c:e.ownerOffsets){auto* live=timeline_.mutableOwnedSurface(c.ownerId);if(!live)throw std::logic_error("Missing offset history owner");live->offsetX=forward?c.afterX:c.beforeX;live->offsetY=forward?c.afterY:c.beforeY;change_={0,0,width_,height_};}
- if(e.surfaceChanges.empty())return;
- std::size_t used=adjustmentStorageBudget(timeline_,1);std::vector<timeline::Surface> replacements;std::vector<timeline::Surface*> owners;replacements.reserve(e.surfaceChanges.size());owners.reserve(e.surfaceChanges.size());
- for(const auto& change:e.surfaceChanges){const auto live=timeline_.resolveSurface(change.ownerId);if(live.issue!=timeline::LinkIssue::None||!live.source||!live.surface||live.source->id!=change.ownerId)throw std::logic_error("Invalid convolution history owner");const auto& desired=forward?change.after:change.before;raster::validate(desired);const auto bytes=convolutionSurfaceBytes(desired);if(bytes>adjustmentByteLimit-used)throw std::length_error("Convolution history restore exceeds pixel budget");used+=bytes;}
- for(const auto& change:e.surfaceChanges)replacements.push_back(forward?change.after:change.before);
- for(const auto& change:e.surfaceChanges){auto* owner=timeline_.mutableOwnedSurface(change.ownerId);if(!owner)throw std::logic_error("Missing convolution history owner");owners.push_back(owner);}
- auto active=forward?e.afterActive:e.beforeActive;auto frameId=forward?e.afterFrame:e.beforeFrame;
- for(std::size_t i=0;i<owners.size();++i)std::swap(*owners[i],replacements[i]);
- if(!active.empty())activeLayerId_=std::move(active);if(!frameId.empty())activeFrameId_=std::move(frameId);change_={0,0,width_,height_};
-}
+// applySurfaceEdit: definition in its history domain unit.
 namespace {
 constexpr std::uint64_t filterWorkingLimit=256ull*1024*1024;
 std::uint64_t filterStoredBytes(const timeline::State& s){std::uint64_t bytes=0;for(const auto& c:s.cels)if(c.surface){raster::validate(*c.surface);const auto n=std::uint64_t(c.surface->pixels.size())*sizeof(Pixel);if(n>filterWorkingLimit-bytes)throw std::length_error("Filter document exceeds pixel budget");bytes+=n;}return bytes;}
@@ -940,13 +914,13 @@ bool Document::commitFilterPreviewTask(FilterPreviewTask&& task){
  if(task.lcd){
  auto& next=task.result->state_;const auto& old=timeline_.state();if(next.layers.size()!=old.layers.size()+4||next.groups.size()!=old.groups.size()+1||next.frames.size()!=old.frames.size()||next.cels.size()!=old.cels.size()+4*old.frames.size()||!task.result->diagnoseLinks().empty())throw std::logic_error("Invalid LCD result structure");
  const auto group=std::find_if(next.groups.begin(),next.groups.end(),[&](const auto& g){return g.id==task.groupId;});if(group==next.groups.end())throw std::logic_error("Missing LCD result group");std::unordered_set<std::string> added;for(unsigned i=0;i<4;++i){const auto id=task.layerId+"-"+std::to_string(i);const auto layer=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==id;});if(layer==next.layers.end()||layer->groupId!=std::optional<std::string>(task.groupId))throw std::logic_error("Missing LCD result channel");added.insert(id);}
- Edit edit{{},state_,nextState_};captureGroupEdit(edit,false);captureGroupEdit(edit,true);edit.afterLayerStructure->layers=next.layers;edit.afterLayerStructure->groups=next.groups;edit.afterActive=task.layerId+"-0";edit.afterTimelineSelection=TimelineSelection{};edit.afterTimelineSelection->layerAnchor=task.groupId;edit.afterGroupUi->selected={task.groupId};edit.afterGroupUi->focus=task.groupId;
- edit.structureCels.reserve(4*old.frames.size());for(auto& c:next.cels)if(added.count(c.layerId)){edit.structureCelBytes+=sizeof(c)+c.id.size()+c.layerId.size()+c.frameId.size()+(c.linkedCelId?c.linkedCelId->size():0)+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);edit.structureCels.push_back(std::move(c));}if(edit.structureCels.size()!=4*old.frames.size())throw std::logic_error("Incomplete LCD frame slots");
+ Edit edit{{},state_,nextState_};captureGroupEdit(edit,false);captureGroupEdit(edit,true);edit.layerHistory.afterLayerStructure->layers=next.layers;edit.layerHistory.afterLayerStructure->groups=next.groups;edit.afterActive=task.layerId+"-0";edit.afterTimelineSelection=TimelineSelection{};edit.afterTimelineSelection->layerAnchor=task.groupId;edit.layerHistory.afterGroupUi->selected={task.groupId};edit.layerHistory.afterGroupUi->focus=task.groupId;
+ edit.layerHistory.structureCels.reserve(4*old.frames.size());for(auto& c:next.cels)if(added.count(c.layerId)){edit.layerHistory.structureCelBytes+=sizeof(c)+c.id.size()+c.layerId.size()+c.frameId.size()+(c.linkedCelId?c.linkedCelId->size():0)+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);edit.layerHistory.structureCels.push_back(std::move(c));}if(edit.layerHistory.structureCels.size()!=4*old.frames.size())throw std::logic_error("Incomplete LCD frame slots");
  const bool committed=commitGroupEdit(std::move(edit),U"LCD屏幕滤镜");if(committed){cancelFilterPreview();task.completed=false;}return committed;
  }
  const auto& next=task.result->state();if(next.layers.size()!=timeline_.state().layers.size()+1||next.layers.front().id!=task.layerId||next.frames.size()!=timeline_.state().frames.size()||next.cels.size()!=timeline_.state().cels.size()+next.frames.size()||!task.result->diagnoseLinks().empty())throw std::logic_error("Invalid filter result structure");
- Edit edit{{},state_,nextState_};edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});captureLayerOrder(edit,false);edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeSelection=selectedFrames_;edit.beforeFrameAnchor=frameAnchor_;edit.detachedLayer=next.layers.front();edit.detachedCels.reserve(next.frames.size());for(const auto& c:next.cels)if(c.layerId==task.layerId)edit.detachedCels.push_back(c);if(edit.detachedCels.size()!=next.frames.size())throw std::logic_error("Incomplete filter result frame slots");for(const auto& l:next.layers)edit.afterOrder.push_back(l.id);edit.afterActive=task.layerId;
- auto after=timelineSelection_;after.layers={task.layerId};after.layerAnchor=task.layerId;edit.afterTimelineSelection=after;edit.afterSelection=selectedFrames_;edit.afterFrameAnchor=frameAnchor_;for(const auto& l:timeline_.state().layers)edit.beforeLayerOpacityProjection.push_back({l.id,l.opacity});for(const auto& l:next.layers)edit.afterLayerOpacityProjection.push_back({l.id,l.opacity});
+ Edit edit{{},state_,nextState_};edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});captureLayerOrder(edit,false);edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=timelineSelection_;edit.beforeSelection=selectedFrames_;edit.beforeFrameAnchor=frameAnchor_;edit.layerHistory.detachedLayer=next.layers.front();edit.contentHistory.detachedCels.reserve(next.frames.size());for(const auto& c:next.cels)if(c.layerId==task.layerId)edit.contentHistory.detachedCels.push_back(c);if(edit.contentHistory.detachedCels.size()!=next.frames.size())throw std::logic_error("Incomplete filter result frame slots");for(const auto& l:next.layers)edit.layerHistory.afterOrder.push_back(l.id);edit.afterActive=task.layerId;
+ auto after=timelineSelection_;after.layers={task.layerId};after.layerAnchor=task.layerId;edit.afterTimelineSelection=after;edit.afterSelection=selectedFrames_;edit.afterFrameAnchor=frameAnchor_;for(const auto& l:timeline_.state().layers)edit.layerHistory.beforeLayerOpacityProjection.push_back({l.id,l.opacity});for(const auto& l:next.layers)edit.layerHistory.afterLayerOpacityProjection.push_back({l.id,l.opacity});
  auto active=task.layerId;reserveHistoryEntries();timeline_=std::move(*task.result);activeLayerId_=std::move(active);timelineSelection_=std::move(after);cancelFilterPreview();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),task.lcd?U"LCD屏幕滤镜":std::u32string(filterPresetDefinition(task.preset).name));return true;
 }
 bool Document::applyFilterPreset(FilterPreset preset,std::optional<double> opacity){
@@ -1090,7 +1064,7 @@ bool Document::commitAntiAliasAdjustment(){
  if(!adjustment_->targets.empty()&&adjustmentMask(adjustment_->baseline,adjustment_->targets.front())){
   auto& p=*adjustment_;if(p.contentRevision!=contentRevision_||p.maskContext!=activeMaskId_||p.layerId!=layer().id||p.frameId!=frame().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}if(p.convolutionTargets.empty()){cancelColorAdjustment();return false;}
   for(const auto& id:p.targets){const auto* slot=adjustmentMask(timeline_,id);if(!slot||adjustmentMaskLocked(timeline_,*slot))return false;}
-  Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=p.preview.state().masks;edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});reserveHistoryEntries();timeline_.state_.masks=*edit.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"自动抗锯齿");return true;
+  Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=p.preview.state().masks;edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});reserveHistoryEntries();timeline_.state_.masks=*edit.maskHistory.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"自动抗锯齿");return true;
  }
  // Legacy selected-target command refuses the batch if any selected target locks.
  for(const auto& id:adjustment_->targets){const auto r=timeline_.resolveSurface(id);if(!r.source)throw std::logic_error("Missing anti-alias commit owner");const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& item){return item.id==r.source->layerId;});if(l==timeline_.state().layers.end())throw std::logic_error("Missing anti-alias commit layer");if(layerEffectivelyLocked(*l))return false;}
@@ -1174,8 +1148,8 @@ bool Document::commitSurfaceAdjustment(const std::u32string& label){
   for(const auto* s:{b.surface,a.surface}){const auto bytes=convolutionSurfaceBytes(*s);if(bytes>adjustmentByteLimit-used)throw std::length_error("Convolution history exceeds pixel budget");used+=bytes;}targets.push_back(id);
  }
  if(targets.empty()){cancelColorAdjustment();return false;}
- Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;e.surfaceChanges.reserve(targets.size());
- for(const auto& id:targets)e.surfaceChanges.push_back({id,*p.baseline.resolveSurface(id).surface,*p.preview.resolveSurface(id).surface});
+ Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;e.contentHistory.surfaceChanges.reserve(targets.size());
+ for(const auto& id:targets)e.contentHistory.surfaceChanges.push_back({id,*p.baseline.resolveSurface(id).surface,*p.preview.resolveSurface(id).surface});
  reserveHistoryEntries();struct Install{timeline::Surface* live;timeline::Surface* preview;};std::vector<Install> install;install.reserve(targets.size());
  for(const auto& id:targets){auto* live=timeline_.mutableOwnedSurface(id);auto* preview=p.preview.mutableOwnedSurface(id);if(!live||!preview)throw std::logic_error("Missing convolution install owner");install.push_back({live,preview});}
  for(const auto& t:install)std::swap(*t.live,*t.preview);
@@ -1201,15 +1175,15 @@ bool Document::commitColorAdjustment(){
   const auto* live=adjustmentMask(timeline_,p.maskContext);const auto* before=adjustmentMask(p.baseline,p.maskContext);const auto* after=adjustmentMask(p.preview,p.maskContext);if(!live||!before||!after||adjustmentMaskLocked(timeline_,*live))return false;
   if(before->mask.surface.pixels==after->mask.surface.pixels){cancelColorAdjustment();return false;}
   if(!adjustmentSameGeometry(live->mask.surface,before->mask.surface)||live->mask.surface.pixels!=before->mask.surface.pixels){cancelColorAdjustment();return false;}
-  Edit edit{{},state_,nextState_};edit.beforeMasks=timeline_.state().masks;edit.afterMasks=*edit.beforeMasks;
-  for(auto& slot:*edit.afterMasks)if(slot.mask.id==p.maskContext)slot.mask.surface=after->mask.surface;
-  edit.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});reserveHistoryEntries();timeline_.state_.masks=*edit.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
+  Edit edit{{},state_,nextState_};edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=*edit.maskHistory.beforeMasks;
+  for(auto& slot:*edit.maskHistory.afterMasks)if(slot.mask.id==p.maskContext)slot.mask.surface=after->mask.surface;
+  edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});reserveHistoryEntries();timeline_.state_.masks=*edit.maskHistory.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
  }
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  const auto storageBytes=adjustmentStorageBudget(p.baseline,3);
  std::size_t available=adjustmentByteLimit-3*storageBytes;
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;
- if(!p.maskContext.empty())e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});
+ if(!p.maskContext.empty())e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});
  e.children.reserve(p.targets.size());
  struct Install{timeline::Surface* live;timeline::Surface* preview;};std::vector<Install> install;install.reserve(p.targets.size());
  for(const auto& id:p.targets){
@@ -1228,16 +1202,16 @@ bool Document::commitColorAdjustment(){
   }
   if(!count)continue;
   if(count>available/sizeof(PixelRun))throw std::length_error("Adjustment history staging exceeds pixel budget");available-=count*sizeof(PixelRun);
-  Edit child{{},state_,nextState_};child.targetCelId=id;child.pixelAddress=PixelAddressSpace{b.width,b.height,b.storageOriginX.value_or(0),b.storageOriginY.value_or(0)};child.runs.reserve(count);
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=id;child.contentHistory.pixelAddress=PixelAddressSpace{b.width,b.height,b.storageOriginX.value_or(0),b.storageOriginY.value_or(0)};child.contentHistory.runs.reserve(count);
   for(std::size_t i=0;i<b.pixels.size();++i)if(b.pixels[i]!=a.pixels[i]){
-   if(!child.runs.empty() && child.runs.back().index+child.runs.back().length==i && child.runs.back().before==b.pixels[i] && child.runs.back().after==a.pixels[i])++child.runs.back().length;
-   else child.runs.push_back({i,1,b.pixels[i],a.pixels[i]});
+   if(!child.contentHistory.runs.empty() && child.contentHistory.runs.back().index+child.contentHistory.runs.back().length==i && child.contentHistory.runs.back().before==b.pixels[i] && child.contentHistory.runs.back().after==a.pixels[i])++child.contentHistory.runs.back().length;
+   else child.contentHistory.runs.push_back({i,1,b.pixels[i],a.pixels[i]});
   }
   e.children.push_back(std::move(child));
  }
  if(e.children.empty()){cancelColorAdjustment();return false;}
  reserveHistoryEntries();
- for(const auto& child:e.children){auto* live=timeline_.mutableOwnedSurface(child.targetCelId);auto* preview=p.preview.mutableOwnedSurface(child.targetCelId);if(!live||!preview)throw std::logic_error("Missing adjustment install owner");install.push_back({live,preview});}
+ for(const auto& child:e.children){auto* live=timeline_.mutableOwnedSurface(child.contentHistory.targetCelId);auto* preview=p.preview.mutableOwnedSurface(child.contentHistory.targetCelId);if(!live||!preview)throw std::logic_error("Missing adjustment install owner");install.push_back({live,preview});}
  // Preflight is complete; vector swaps preserve current metadata and cannot allocate.
  for(const auto& target:install)target.live->pixels.swap(target.preview->pixels);
  cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"亮度/对比度");return true;
@@ -1246,7 +1220,7 @@ bool Document::commitColorAdjustment(){
 void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool stampInitial,bool tileSecondary,bool tileErase,repeat::Mode repeatMode){try{
  if(activeMaskId_.empty()&&layer().kind=="free-tile"&&!freeTilePaintMode()){beginFreeTileSourceStroke(p,color,brush,image,angle,baseline,stampInitial,tileSecondary&&tileErase,repeatMode);return;}
  strokeColorReplacement_.reset();projectStrokeStarted_=std::chrono::steady_clock::now();
- commitFloatingPaste();cancelStroke();strokeRepeat_=repeatMode;imagePattern_.reset();if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern_.emplace(*image,brush.imagePaintMode,p.x,p.y);strokeImageAngle_=angle;change_={};if(!activeMaskId_.empty()){if(!maskBrushAvailable())return;auto* mask=mutableActiveMask();maskStrokeBefore_=timeline_.state().masks;auto& source=mask->surface;if(!raster::fullCanvas(source,width_,height_)){auto expanded=raster::expanded(source,{0,0,width_,height_},256*1024*1024);if(expanded)source=std::move(*expanded);}strokePixels_=&static_cast<std::vector<Pixel>&>(source.pixels);strokeCanvasStorage_=raster::fullCanvas(source,width_,height_);strokeStride_=source.width;strokeOffsetX_=source.offsetX;strokeOffsetY_=source.offsetY;strokeAddress_={width_,height_,raster::coordinate(std::int64_t(source.storageOriginX.value_or(0))-source.offsetX),raster::coordinate(std::int64_t(source.storageOriginY.value_or(0))-source.offsetY)};brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);stampSpans_=brushSpans(brush);if(pendingLookup_.size()!=std::size_t(width_)*height_)pendingLookup_.assign(std::size_t(width_)*height_,-1);inheritedStrokeBaseline_.clear();imageStamp_=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;imageEraseCoverage_.clear();inkStampCoverage_.clear();active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();last_=p;color_=timeline::normalizedMaskPixel(color);brush_=brush;hasPreviousStamp_=false;if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();return;}if(layer().kind=="tilemap"){if(layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||hasSelectedGroups()||!timeline_.resolveSurface(cel().id).source||!timeline_.resolveSurface(cel().id).source->tilemap)return;if(!cel().tilemap&&!((tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false)))return;startTilemapStroke(p,tileSecondary);if(tileErase)tilePaintValue_.reset();if(tileSelection_.mode==tiles::Mode::Paint){active_=true;last_=p;paintTilemapLine(p);return;}}else if(!rasterToolsAvailable())return;
+ commitFloatingPaste();cancelStroke();strokeRepeat_=repeatMode;imagePattern_.reset();if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern_.emplace(*image,brush.imagePaintMode,p.x,p.y);strokeImageAngle_=angle;change_={};if(!activeMaskId_.empty()){if(!maskBrushAvailable())return;auto* mask=mutableActiveMask();prepareMaskStroke(true);auto& source=mask->surface;strokePixels_=&static_cast<std::vector<Pixel>&>(source.pixels);strokeCanvasStorage_=raster::fullCanvas(source,width_,height_);strokeStride_=source.width;strokeOffsetX_=source.offsetX;strokeOffsetY_=source.offsetY;strokeAddress_={width_,height_,raster::coordinate(std::int64_t(source.storageOriginX.value_or(0))-source.offsetX),raster::coordinate(std::int64_t(source.storageOriginY.value_or(0))-source.offsetY)};brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);stampSpans_=brushSpans(brush);pendingLookup_.reset(width_,height_);inheritedStrokeBaseline_.clear();imageStamp_=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;imageEraseCoverage_.clear();inkStampCoverage_.clear();active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();last_=p;color_=timeline::normalizedMaskPixel(color);brush_=brush;hasPreviousStamp_=false;if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();return;}if(layer().kind=="tilemap"){if(layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||hasSelectedGroups()||!timeline_.resolveSurface(cel().id).source||!timeline_.resolveSurface(cel().id).source->tilemap)return;if(!cel().tilemap&&!((tileSelection_.mode==tiles::Mode::Paint&&tilemapCellOwnerSupported(cel().id,true,true))||linkedCreateSelectionAvailable(false)||linkedEditSelectionAvailable(false)||linkedHybridSelectionAvailable(false)))return;startTilemapStroke(p,tileSecondary);if(tileErase)tilePaintValue_.reset();if(tileSelection_.mode==tiles::Mode::Paint){active_=true;last_=p;paintTilemapLine(p);return;}}else if(!rasterToolsAvailable())return;
  const auto* slot=timeline_.findCel(layer().id,frame().id);
  // Legacy recordPixel edits display storage; syncActiveAnimationLayer creates
  // the missing Cel only after a nonempty pixel history entry is committed.
@@ -1266,7 +1240,7 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
  auto inherited=baseline?*baseline:std::unordered_map<std::size_t,Pixel>{};
  auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
  brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);auto spans=brushSpans(brush);
- if(pendingLookup_.size()!=std::size_t(width_)*height_)pendingLookup_.assign(std::size_t(width_)*height_,-1);
+ pendingLookup_.reset(width_,height_);
  if(absent)absentStrokeSurface_=std::move(absent);
  auto* owner=absentStrokeSurface_?&*absentStrokeSurface_:timeline_.mutableOwnedSurface(resolved.source->id);if(!owner)throw std::logic_error("Missing writable brush owner");
  if(expansion)std::swap(*owner,*expansion);
@@ -1274,11 +1248,11 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
  inheritedStrokeBaseline_=std::move(inherited);imageStamp_=std::move(imageStamp);imageEraseCoverage_.clear();inkStampCoverage_.clear();stampSpans_=std::move(spans);perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;capturingPerfectTail_=false;active_=true;last_=p;color_=color;brush_=brush;hasPreviousStamp_=false;
  try{if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();}
  catch(...){for(const auto& delta:pending_)strokePixel(delta.index)=delta.before;clearPendingStroke();active_=false;strokePixels_=nullptr;if(expansion)std::swap(*owner,*expansion);absentStrokeSurface_.reset();change_={};throw;}
-}catch(...){if(tileStrokeIncremental_)cancelTilemapStroke();throw;}
+}catch(...){if(maskStroke_){if(active_)cancelStroke();else{rollbackMaskStroke();strokePixels_=nullptr;}}if(tileStrokeIncremental_)cancelTilemapStroke();throw;}
 }
 void Document::capturePerfectPixel(std::size_t i){if(!capturingPerfectTail_||perfectTailPixels_.count(i))return;const int found=pendingLookup_[i];perfectTailPixels_.emplace(i,PerfectTailPixel{strokePixel(i),found,found<0?Pixel{}:pending_[found].after});auto erase=imageEraseCoverage_.find(i);perfectTailErase_[i]=erase==imageEraseCoverage_.end()?std::nullopt:std::optional<int>{erase->second};}
 void Document::capturePerfectInkCoverage(std::uint64_t key){if(!capturingPerfectTail_||perfectTailInk_.count(key))return;auto it=inkStampCoverage_.find(key);perfectTailInk_[key]=it==inkStampCoverage_.end()?std::nullopt:std::optional<int>{it->second};}
-void Document::rollbackPerfectTail(){capturingPerfectTail_=false;for(const auto& [i,v]:perfectTailPixels_){strokePixel(i)=v.value;pendingLookup_[i]=v.pending;if(v.pending>=0)pending_[v.pending].after=v.after;change_.include(int(i%width_),int(i/width_));}pending_.resize(perfectPendingStart_);for(const auto& [i,v]:perfectTailErase_){if(v)imageEraseCoverage_[i]=*v;else imageEraseCoverage_.erase(i);}for(const auto& [i,v]:perfectTailInk_){if(v)inkStampCoverage_[i]=*v;else inkStampCoverage_.erase(i);}perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();hasPreviousStamp_=false;}
+void Document::rollbackPerfectTail(){capturingPerfectTail_=false;for(const auto& [i,v]:perfectTailPixels_){strokePixel(i)=v.value;pendingLookup_.set(i,v.pending);if(v.pending>=0)pending_[v.pending].after=v.after;change_.include(int(i%width_),int(i/width_));}pending_.resize(perfectPendingStart_);for(const auto& [i,v]:perfectTailErase_){if(v)imageEraseCoverage_[i]=*v;else imageEraseCoverage_.erase(i);}for(const auto& [i,v]:perfectTailInk_){if(v)inkStampCoverage_[i]=*v;else inkStampCoverage_.erase(i);}perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();hasPreviousStamp_=false;}
 bool Document::applySmoothBrush(const std::vector<std::size_t>& visited,int strength,std::optional<std::chrono::steady_clock::time_point> started){
  if(active()||!rasterToolsAvailable()||!layer().kind.empty()||!activeMaskId_.empty()||visited.empty())return false;
  for(auto key:visited)if(key>=std::size_t(width_)*height_)throw std::invalid_argument("Invalid smooth coverage");
@@ -1290,7 +1264,7 @@ bool Document::applySmoothBrush(const std::vector<std::size_t>& visited,int stre
  for(auto it=changed.begin();it!=changed.end();){const int x=int(it->first%width_),y=int(it->first/width_);if((selection_&&!selectionContains(selection_,x,y))||raster::readWorld(surface,x,y)==it->second)it=changed.erase(it);else ++it;}
  if(changed.empty())return false;
  beginStroke({0,0},0,{},nullptr,0,nullptr,false);if(!active_)return false;if(started)projectStrokeStarted_=*started;
- try{pending_.reserve(changed.size());for(const auto& entry:changed){const auto index=entry.first;const auto before=strokePixel(index);if(before==entry.second)continue;pending_.push_back({index,before,entry.second});pendingLookup_[index]=int(pending_.size()-1);strokePixel(index)=entry.second;change_.include(int(index%width_),int(index/width_));}HistoryLabelScope label(*this,U"平滑");return commitStroke();}catch(...){cancelStroke();throw;}
+ try{pending_.reserve(changed.size());for(const auto& entry:changed){const auto index=entry.first;const auto before=strokePixel(index);if(before==entry.second)continue;pending_.push_back({index,before,entry.second});pendingLookup_.set(index,int(pending_.size()-1));strokePixel(index)=entry.second;change_.include(int(index%width_),int(index/width_));}HistoryLabelScope label(*this,U"平滑");return commitStroke();}catch(...){cancelStroke();throw;}
 }
 bool Document::plotStrokeColorReplacement(std::size_t index,int coverage){
  if(!strokeColorReplacement_)return false;
@@ -1304,7 +1278,7 @@ bool Document::plotStrokeColorReplacement(std::size_t index,int coverage){
  capturePerfectPixel(index);imageEraseCoverage_[index]=coverage;const Pixel target=strokeColorReplacement_->second;Pixel value=0;
  for(int shift=0;shift<32;shift+=8){const int a=(before>>shift)&255,b=(target>>shift)&255;value|=Pixel(std::floor(a+(b-a)*coverage/255.0+.5))<<shift;}
  if(value==current)return true;
- if(found<0){pending_.push_back({index,current,value});pendingLookup_[index]=int(pending_.size()-1);}else pending_[found].after=value;
+ if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;
  strokePixel(index)=value;change_.include(int(index%width_),int(index/width_));return true;
 }
 void Document::plot(int x, int y) {
@@ -1315,11 +1289,11 @@ void Document::plot(int x, int y) {
   const auto current=strokePixel(index);
   if(pendingLookup_[index]>=0) return;
   const auto inherited=inheritedStrokeBaseline_.find(index);
-  auto value=inkBrushComposite(inherited==inheritedStrokeBaseline_.end()?current:inherited->second,color_,brush_.opacity,brush_.ink);if(maskStrokeBefore_)value=timeline::normalizedMaskPixel(value);
+  auto value=inkBrushComposite(inherited==inheritedStrokeBaseline_.end()?current:inherited->second,color_,brush_.opacity,brush_.ink);if(maskStroke_)value=timeline::normalizedMaskPixel(value);
   if(current==value) return;
   // legacy core/history.ts recordPixelKnownCurrent: record only touched pixels.
   pending_.push_back({index,current,value});
-  pendingLookup_[index]=int(pending_.size()-1);
+  pendingLookup_.set(index,int(pending_.size()-1));
   strokePixel(index)=value;change_.include(x,y);
 
 }
@@ -1336,7 +1310,7 @@ void Document::stamp(int x,int y) {
    else if((color_>>24)==0){int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(sample.color)coverage=int(std::floor(coverage*(*sample.color>>24)/255.0+.5));auto seen=imageEraseCoverage_.find(index);if(!coverage || (seen!=imageEraseCoverage_.end() && seen->second>=coverage))continue;imageEraseCoverage_[index]=coverage;value=coverage==255?0:(before&0xffffff)|(Pixel(std::floor((before>>24)*(1-coverage/255.0)+.5))<<24);}
    else if(!stamp.intrinsicSize){const auto source=sample.color.value_or(color_);const int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));const auto key=(std::uint64_t(index)<<32)|source;auto seen=inkStampCoverage_.find(key);if(!coverage||(seen!=inkStampCoverage_.end()&&seen->second>=coverage))continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;value=inkBrushComposite(before,source,brush_.opacity,InkMode::Simple,sample.coverage);}
    else {if(int(std::floor(sample.coverage*brush_.opacity/100.0+.5))==0)continue;value=imageBrushDirectPixel(sample.color.value_or(color_),sample.coverage,brush_.opacity);}
-   if(maskStrokeBefore_)value=timeline::normalizedMaskPixel(value);if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_[index]=int(pending_.size()-1);}else pending_[found].after=value;strokePixel(index)=value;change_.include(p.x,p.y);
+   if(maskStroke_)value=timeline::normalizedMaskPixel(value);if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(p.x,p.y);
   }return;}
   const auto anchor=brush_.size/2;
   for(const auto& span:stampSpans_) {
@@ -1392,7 +1366,7 @@ bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& po
  // transaction. Never run a pending stroke against the live document.
  std::size_t bytes=0;for(const auto& cel:timeline_.state().cels)if(cel.surface)bytes+=cel.surface->pixels.size()*sizeof(Pixel);for(const auto& mask:timeline_.state().masks)bytes+=mask.mask.surface.pixels.size()*sizeof(Pixel);for(const auto& set:timeline_.state().tilesets)bytes+=set.pixels.size()*sizeof(Pixel);
  if(bytes>64*1024*1024||std::uint64_t(width_)*height_*24>256*1024*1024-bytes*2)throw std::length_error("Curve preview exceeds document pixel budget");
- auto draft=std::make_unique<Document>(width_,height_);draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->selection_=selection_;draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
+ auto draft=std::make_unique<Document>(width_,height_);draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
  const bool changed=draft->paintGeometricBrushPath(points,color,brush,image,angle,initial.sourceShapeSeed);
  auto& g=*gradient_;g.preview=draft->canvasPixels();g.region=layer().kind=="free-tile"&&!changed?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{0,0,width_,height_,{}}};
  if(g.mask){const auto* mask=draft->mutableActiveMask();if(!mask)throw std::logic_error("Missing curve mask preview");g.mask->display=*mask;}
@@ -1435,7 +1409,7 @@ void Document::updateStroke(Point point) {
   publishChange();
   last_ = point;
 }
-void Document::mergeLastStrokeEdits(){if(position_>=2 && position_==history_.size())groupEdits(position_-2,selectedFrames_);}
+void Document::mergeLastStrokeEdits(){if(history_.position()>=2 && history_.position()==history_.size())groupEdits(history_.position()-2,selectedFrames_);}
 std::unordered_map<std::size_t,Pixel> Document::strokeBaseline() const {auto result=inheritedStrokeBaseline_;for(const auto& delta:pending_)result.emplace(delta.index,delta.before);return result;}
 std::vector<std::pair<std::size_t,Pixel>> Document::strokeBaselinePoints() const {
   std::vector<std::pair<std::size_t,Pixel>> result;result.reserve(inheritedStrokeBaseline_.size()+pending_.size());
@@ -1448,27 +1422,51 @@ bool Document::commitStroke() {
  if(liquifyStroke_)return commitLiquify();
   if(tileStrokeIncremental_||tileStrokeBefore_)return commitTilemapStroke();
   if (!active_) return false;
-  if(maskStrokeBefore_){bool changed=false;for(const auto& delta:pending_)changed=changed||delta.before!=delta.after;auto before=std::move(*maskStrokeBefore_);maskStrokeBefore_.reset();active_=false;strokePixels_=nullptr;clearPendingStroke();if(!changed)return false;const auto committed=commitMasks(std::move(before),U"绘制蒙版");if(committed)projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));return committed;}
+  if(maskStroke_)return commitMaskStroke();
   Edit edit{{}, state_, nextState_};
-  edit.pixelAddress=strokeAddress_;
+  edit.contentHistory.pixelAddress=strokeAddress_;
   edit.pixels.reserve(pending_.size());
   for(const auto& delta:pending_) if(delta.before!=delta.after) edit.pixels.push_back(delta);
   if(edit.pixels.empty()) {active_=false;strokePixels_=nullptr;absentStrokeSurface_.reset();clearPendingStroke();return false;}
-  std::optional<timeline::Timeline> beforeMaterialization;
-  if(absentStrokeSurface_){
-    auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;
-    for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);
-    created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=*absentStrokeSurface_;const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));
-    // Legacy syncActiveAnimationLayer prefers the newly committed active cel
-    // before sharing storage across the group's connected frame components.
-    timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();beforeMaterialization.emplace(std::move(timeline_));timeline_=std::move(prepared);
+  // Keep only storage bindings for rollback. Linked-layer synchronization can
+  // replace geometry/bindings, but does not mutate their pixel payloads.
+  struct Binding {std::size_t index;timeline::Surface surface;};
+  std::vector<Binding> bindings;
+  std::optional<std::pair<std::string,std::string>> insertedSlot;
+  std::string insertedId,oldDirtyOwner;
+  bool inserted=false;
+  auto borrow=[](const timeline::Surface& source){timeline::Surface out;out.width=source.width;out.height=source.height;out.offsetX=source.offsetX;out.offsetY=source.offsetY;out.storageOriginX=source.storageOriginX;out.storageOriginY=source.storageOriginY;out.pixels.share(source.pixels);return out;};
+  auto invalidate=[&]{timeline_.resolved_.clear();timeline_.selectionContent_.clear();timeline_.visibleContent_.clear();timeline_.thumbnailStorage_.clear();timeline_.invalidateCompositeOrder();};
+  auto rollback=[&]{
+    if(!inserted)return;
+    for(auto& binding:bindings)*timeline_.state_.cels[binding.index].surface=std::move(binding.surface);
+    timeline_.cels_.erase(insertedId);timeline_.slots_.erase(*insertedSlot);timeline_.state_.cels.pop_back();timeline_.linkedDirtyOwner_=std::move(oldDirtyOwner);invalidate();
+  };
+  const auto beforeRevision=revision_;
+  auto finish=[&]{active_=false;strokePixels_=nullptr;absentStrokeSurface_.reset();clearPendingStroke();};
+  try{
+    if(absentStrokeSurface_){
+      timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;
+      for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);
+      created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=borrow(*absentStrokeSurface_);
+      insertedId=created.id;insertedSlot.emplace(created.layerId,created.frameId);edit.contentHistory.targetCelId=insertedId;oldDirtyOwner=timeline_.linkedDirtyOwner_;
+      if(timeline_.hasLinkedLayers()){
+        bindings.reserve(timeline_.state().cels.size());
+        for(std::size_t i=0;i<timeline_.state().cels.size();++i)if(timeline_.state().cels[i].surface)bindings.push_back({i,borrow(*timeline_.state().cels[i].surface)});
+      }
+      reserveHistoryEntries();timeline_.addCel(std::move(created));inserted=true;
+      // Legacy syncActiveAnimationLayer prefers the newly committed active cel.
+      timeline_.synchronizeLinkedLayers(insertedId);invalidate();
+    }else edit.contentHistory.targetCelId=cel().id;
+    pushEdit(std::move(edit),U"绘制");
+  }catch(...){
+    if(revision_==beforeRevision)rollback();
+    else{finish();if(inserted)publishChange();}
+    throw;
   }
-  try{edit.targetCelId=cel().id;pushEdit(std::move(edit),U"绘制");}catch(...){if(beforeMaterialization)timeline_=std::move(*beforeMaterialization);throw;}
   projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-projectStrokeStarted_).count()));
-  active_ = false;strokePixels_=nullptr;absentStrokeSurface_.reset(); clearPendingStroke();
-  // Materialization replaces timeline storage after the last preview update.
-  // Publish that installation so dependent render/recording caches see it.
-  if(beforeMaterialization)publishChange();
+  finish();
+  if(inserted)publishChange();
   return true;
 }
 void Document::cancelStroke() {
@@ -1485,8 +1483,8 @@ void Document::cancelStroke() {
     const auto index=delta.index;
     if(strokePixel(index)!=delta.before) {strokePixel(index)=delta.before;change_.include(int(index%width_),int(index/width_));}
   }
-  publishChange();clearPendingStroke();
-  active_ = false;strokePixels_=nullptr;absentStrokeSurface_.reset();if(maskStrokeBefore_){timeline_.state_.masks=std::move(*maskStrokeBefore_);maskStrokeBefore_.reset();}
+  rollbackMaskStroke();publishChange();clearPendingStroke();
+  active_ = false;strokePixels_=nullptr;absentStrokeSurface_.reset();
 }
 Document Document::fromClipboardRaster(const SelectionClipboard& source) {
   // Legacy pasteAsNewDocument creates RGBA with the default two-color palette.
@@ -1518,10 +1516,10 @@ bool Document::resizeImage(int width,int height,ImageInterpolation method){
  for(const auto& c:timeline_.state().cels)if(c.surface){const auto p=planImageResizeSurface(*c.surface,width_,height_,width,height);reserve(3ull*c.surface->pixels.size()*sizeof(Pixel)+2ull*p.bytes);}
  if(selection_)reserve(3ull*(selection_->mask.size()+std::uint64_t(width)*height));
  auto masks=resizedImageMasks(timeline_.state(),width_,height_,width,height,method,remaining);
- Edit e{{},state_,nextState_};e.beforeDimensions={{width_,height_}};e.afterDimensions={{width,height}};e.beforeCels=timeline_.state().cels;e.afterCels=e.beforeCels;
- for(auto& c:e.afterCels)if(c.surface)c.surface=imageResizedSurface(*c.surface,planImageResizeSurface(*c.surface,width_,height_,width,height),method);
- if(!masks.empty()){e.beforeMasks=timeline_.state().masks;e.afterMasks=std::move(masks);}
- e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.afterPixelsSelection=resizeImageSelection(selection_,width_,height_,width,height);
+ Edit e{{},state_,nextState_};e.snapshotHistory.beforeDimensions={{width_,height_}};e.snapshotHistory.afterDimensions={{width,height}};e.contentHistory.beforeCels=timeline_.state().cels;e.contentHistory.afterCels=e.contentHistory.beforeCels;
+ for(auto& c:e.contentHistory.afterCels)if(c.surface)c.surface=imageResizedSurface(*c.surface,planImageResizeSurface(*c.surface,width_,height_,width,height),method);
+ if(!masks.empty()){e.maskHistory.beforeMasks=timeline_.state().masks;e.maskHistory.afterMasks=std::move(masks);}
+ e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=selection_;e.pixelSelectionHistory.afterPixelsSelection=resizeImageSelection(selection_,width_,height_,width,height);
  reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"图像大小");return true;
 }
 std::optional<PixelRegion> Document::visibleContentBounds(bool allFrames) const {
@@ -1551,7 +1549,7 @@ bool Document::cropCanvas(std::optional<TransformPoint> pivot){
  if(!bounds)throw std::runtime_error("请先选择要裁切的区域");
  return cropCanvasRegion({bounds->x,bounds->y,bounds->width,bounds->height},pivot);
 }
-bool Document::resizeCanvas(int width,int height,CanvasAnchor anchor,std::optional<int> offsetX,std::optional<int> offsetY,bool trimOutside,std::optional<TransformPoint> pivot){
+bool Document::resizeCanvas(int width,int height,CanvasAnchor anchor,std::optional<int> offsetX,std::optional<int> offsetY,bool trimOutside,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  validateImportedImageDimensions(width,height);
  const auto shift=canvasResizeOffset(width_,height_,width,height,anchor,offsetX,offsetY);if(pivot&&(!std::isfinite(pivot->x)||!std::isfinite(pivot->y)))throw std::invalid_argument("Invalid canvas selection pivot");
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())throw std::runtime_error("Finish the active edit before resizing the canvas");
@@ -1562,139 +1560,77 @@ bool Document::resizeCanvas(int width,int height,CanvasAnchor anchor,std::option
  std::size_t clipped=0;
  for(const auto& c:timeline_.state().cels){const auto r=timeline_.resolveSurface(c.id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::invalid_argument("Invalid canvas resize owner");if(r.source->id!=c.id)continue;const auto p=planCanvasResizeSurface(*r.surface,width,height,shift.x,shift.y,trimOutside);if(p.clipped){reserveBytes(std::uint64_t(r.surface->pixels.size())*sizeof(Pixel)+2ull*p.bytes);++clipped;}plans.push_back({c.id,r.surface,p});}
  auto maskBudget=adjustmentByteLimit-used;auto masks=resizedCanvasMasks(timeline_.state(),width,height,shift.x,shift.y,trimOutside,maskBudget);
- Edit edit{{},state_,nextState_};edit.beforeDimensions={{width_,height_}};edit.afterDimensions={{width,height}};edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.surfaceChanges.reserve(clipped);edit.ownerOffsets.reserve(plans.size());
- if(!masks.empty()){edit.beforeMasks=timeline_.state().masks;edit.afterMasks=std::move(masks);}
+ Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeDimensions={{width_,height_}};edit.snapshotHistory.afterDimensions={{width,height}};edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.contentHistory.surfaceChanges.reserve(clipped);edit.contentHistory.ownerOffsets.reserve(plans.size());
+ if(!masks.empty()){edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=std::move(masks);}
  std::vector<timeline::Surface> install;install.reserve(clipped);std::vector<timeline::Surface*> installOwners,offsetOwners;installOwners.reserve(clipped);offsetOwners.reserve(plans.size());
- for(const auto& p:plans){const auto& s=*p.source;if(p.geometry.clipped){std::size_t available=p.geometry.bytes;auto after=canvasResizeCroppedSurface(s,p.geometry,available);edit.surfaceChanges.push_back({p.owner,s,std::move(after)});install.push_back(edit.surfaceChanges.back().after);}else if(s.offsetX!=p.geometry.offsetX||s.offsetY!=p.geometry.offsetY){edit.ownerOffsets.push_back({p.owner,s.offsetX,s.offsetY,p.geometry.offsetX,p.geometry.offsetY});}}
- if(selection_){SelectionMask shifted{0,0,width,height,{}};shifted.mask.resize(std::size_t(width)*height);for(int y=0;y<height;++y)for(int x=0;x<width;++x){const auto sx=std::int64_t(x)-shift.x,sy=std::int64_t(y)-shift.y;const bool inside=sx>=std::numeric_limits<int>::min()&&sx<=std::numeric_limits<int>::max()&&sy>=std::numeric_limits<int>::min()&&sy<=std::numeric_limits<int>::max();shifted.mask[std::size_t(y)*width+x]=inside&&selectionContains(selection_,int(sx),int(sy))?1:0;}edit.afterPixelsSelection=trimSelection(std::move(shifted));}
- edit.beforeTrimPivot.emplace(pivot);if(!edit.afterPixelsSelection)pivot.reset();else if(pivot){pivot->x+=shift.x;pivot->y+=shift.y;}edit.afterTrimPivot.emplace(pivot);
- auto selectionAfter=edit.afterPixelsSelection;reserveHistoryEntries();
- for(const auto& c:edit.surfaceChanges){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas resize owner");installOwners.push_back(owner);}for(const auto& c:edit.ownerOffsets){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas offset owner");offsetOwners.push_back(owner);}
- for(std::size_t i=0;i<install.size();++i)std::swap(*installOwners[i],install[i]);for(std::size_t i=0;i<offsetOwners.size();++i){offsetOwners[i]->offsetX=edit.ownerOffsets[i].afterX;offsetOwners[i]->offsetY=edit.ownerOffsets[i].afterY;}
- if(edit.afterMasks)timeline_.state_.masks=*edit.afterMasks;
- width_=width;height_=height;selection_=std::move(selectionAfter);selectionPivotHistory_.pivot=pivot;++selectionPivotHistory_.serial;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"画布大小");return true;
+ for(const auto& p:plans){const auto& s=*p.source;if(p.geometry.clipped){std::size_t available=p.geometry.bytes;auto after=canvasResizeCroppedSurface(s,p.geometry,available);edit.contentHistory.surfaceChanges.push_back({p.owner,s,std::move(after)});install.push_back(edit.contentHistory.surfaceChanges.back().after);}else if(s.offsetX!=p.geometry.offsetX||s.offsetY!=p.geometry.offsetY){edit.contentHistory.ownerOffsets.push_back({p.owner,s.offsetX,s.offsetY,p.geometry.offsetX,p.geometry.offsetY});}}
+ if(selection_){SelectionMask shifted{0,0,width,height,{}};shifted.mask.resize(std::size_t(width)*height);for(int y=0;y<height;++y)for(int x=0;x<width;++x){const auto sx=std::int64_t(x)-shift.x,sy=std::int64_t(y)-shift.y;const bool inside=sx>=std::numeric_limits<int>::min()&&sx<=std::numeric_limits<int>::max()&&sy>=std::numeric_limits<int>::min()&&sy<=std::numeric_limits<int>::max();shifted.mask[std::size_t(y)*width+x]=inside&&selectionContains(selection_,int(sx),int(sy))?1:0;}edit.pixelSelectionHistory.afterPixelsSelection=trimSelection(std::move(shifted));}
+ edit.pixelSelectionHistory.beforeTrimPivot.emplace(pivot);if(!edit.pixelSelectionHistory.afterPixelsSelection)pivot.reset();else if(pivot){pivot->x+=shift.x;pivot->y+=shift.y;}edit.pixelSelectionHistory.afterTrimPivot.emplace(pivot);
+ auto selectionAfter=edit.pixelSelectionHistory.afterPixelsSelection;reserveHistoryEntries();
+ for(const auto& c:edit.contentHistory.surfaceChanges){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas resize owner");installOwners.push_back(owner);}for(const auto& c:edit.contentHistory.ownerOffsets){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas offset owner");offsetOwners.push_back(owner);}
+ for(std::size_t i=0;i<install.size();++i)std::swap(*installOwners[i],install[i]);for(std::size_t i=0;i<offsetOwners.size();++i){offsetOwners[i]->offsetX=edit.contentHistory.ownerOffsets[i].afterX;offsetOwners[i]->offsetY=edit.contentHistory.ownerOffsets[i].afterY;}
+ if(edit.maskHistory.afterMasks)timeline_.state_.masks=*edit.maskHistory.afterMasks;
+ width_=width;height_=height;setSelectionValue(std::move(selectionAfter));selectionPivotHistory_.pivot=pivot;++selectionPivotHistory_.serial;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"画布大小");return true;
 }
 bool Document::cropCanvasRegion(PixelRegion region,std::optional<TransformPoint> pivot){return resizeCanvas(region.w,region.h,CanvasAnchor::NorthWest,-region.x,-region.y,true,pivot);}
-void Document::applyEdit(const Edit& edit,bool forward){if(edit.localHistorySnapshot){auto name=forward?edit.afterHistoryName:edit.beforeHistoryName;applyRollbackPayload(*(forward?edit.afterRollback:edit.beforeRollback));name_=std::move(name);modified_=forward?edit.afterHistoryDirty:edit.beforeHistoryDirty;return;}if(edit.localHistoryPixels){applyLocalHistoryPixels(*edit.localHistoryPixels,forward);return;}if(edit.beforeSourceProperties){applyFreeTileSourceSnapshot(*(forward?edit.afterSourceProperties:edit.beforeSourceProperties));change_={0,0,width_,height_};return;}const bool freePaintBefore=tileSelection_.freePaint;const bool sourceEdit=edit.freeTileSourceAddition||edit.freeTileSourceDeletion||edit.freeTileSourceReorder;const auto sourceEditLayer=sourceEdit?activeLayerId_:std::string{},sourceEditFrame=sourceEdit?activeFrameId_:std::string{};if(edit.tilemapPixels){applyTilemapPixelHistory(edit,forward);return;}if(edit.beforeTilesetSlots){auto t=std::find_if(timeline_.state_.tilesets.begin(),timeline_.state_.tilesets.end(),[&](const auto& v){return v.id==edit.tilesetSlotsId;});if(t==timeline_.state_.tilesets.end())throw std::logic_error("Missing tileset during slot history");t->tileSlots=forward?*edit.afterTilesetSlots:*edit.beforeTilesetSlots;}if(edit.beforeTileSelection&&!edit.beforeLayerStructure)tileSelection_=forward?*edit.afterTileSelection:*edit.beforeTileSelection;if(edit.beforeMasks){timeline_.state_.masks=forward?*edit.afterMasks:*edit.beforeMasks;if(forward&&edit.maskToActivateOnRedo){activeMaskId_=*edit.maskToActivateOnRedo;maskIsolated_=false;}if(!forward&&edit.maskEditingOnUndo){activeMaskId_=edit.maskEditingOnUndo->first;maskIsolated_=edit.maskEditingOnUndo->second;}if(edit.beforeMaskSelection||edit.maskEditingOnUndo){const auto& frame=forward?edit.afterFrame:edit.beforeFrame;const auto& layer=forward?edit.afterActive:edit.beforeActive;if(timeline_.hasFrame(frame))activeFrameId_=frame;if(timeline_.hasLayer(layer))activeLayerId_=layer;}if(std::none_of(timeline_.state().masks.begin(),timeline_.state().masks.end(),[&](const auto& m){return m.mask.id==activeMaskId_;})){activeMaskId_.clear();maskIsolated_=false;}}if(edit.beforeMaskSelection){maskSelectionHistory_.slots=forward?edit.afterMaskSelection.value_or(std::vector<std::pair<std::string,std::string>>{}):*edit.beforeMaskSelection;maskSelectionHistory_.anchor=forward?edit.afterMaskSelectionAnchor:edit.beforeMaskSelectionAnchor;++maskSelectionHistory_.serial;}if(edit.beforeRollback)applyRollbackPayload(*(forward?edit.afterRollback:edit.beforeRollback));if(edit.beforeSlices)sliceState_=forward?*edit.afterSlices:*edit.beforeSlices;if(edit.beforeLayerStructure)applyLayerStructure(edit,forward);if(edit.beforeTrimPivot){selectionPivotHistory_.pivot=forward?*edit.afterTrimPivot:*edit.beforeTrimPivot;++selectionPivotHistory_.serial;}if(edit.beforeAnimationLoop)animationLoop_=forward?*edit.afterAnimationLoop:*edit.beforeAnimationLoop;if(edit.beforeTimeline){auto restored=forward?*edit.afterTimeline:*edit.beforeTimeline;if(edit.layerTilesets)restored.tilesets=tilesetsForLayerEdit(edit,forward);timeline_=timeline::Timeline(std::move(restored));activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}if(edit.beforeDimensions){const auto dims=forward?*edit.afterDimensions:*edit.beforeDimensions;width_=dims.first;height_=dims.second;if(edit.beforeTimeline)change_={0,0,width_,height_};}if(!edit.children.empty()){if(forward)for(const auto& child:edit.children)applyEdit(child,true);else for(auto it=edit.children.rbegin();it!=edit.children.rend();++it)applyEdit(*it,false);}else{if(!edit.pixels.empty() || !edit.runs.empty() || edit.dense){const auto* target=timeline_.findCelById(edit.targetCelId);selectLayer(target->layerId);selectFrame(target->frameId);}applyPixelEdit(edit,forward);applySurfaceEdit(edit,forward);applyCelPropertiesEdit(edit,forward);applyPaletteEdit(edit,forward);applyLayerEdit(edit,forward);applyFrameEdit(edit,forward);applyCelEdit(edit,forward);}if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edit.afterActive:edit.beforeActive);selectFrame(forward?edit.afterFrame:edit.beforeFrame);}if(edit.pixelSelectionEdit)selection_=forward?edit.afterPixelsSelection:edit.beforePixelsSelection;const auto& selection=forward?edit.afterSelection:edit.beforeSelection;if(selection)selectedFrames_=*selection;const auto& timelineSelection=forward?edit.afterTimelineSelection:edit.beforeTimelineSelection;if(timelineSelection)timelineSelection_=*timelineSelection;const auto& anchor=forward?edit.afterFrameAnchor:edit.beforeFrameAnchor;if(anchor)frameAnchor_=*anchor;if(forward&&edit.beforeTimeline&&edit.maskToActivateOnRedo){activeMaskId_=*edit.maskToActivateOnRedo;maskIsolated_=false;}if(edit.beforeTimelineSelection && !edit.beforeActive.empty()){activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}for(const auto& value:forward?edit.afterLayerOpacityProjection:edit.beforeLayerOpacityProjection){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==value.first;});if(it!=timeline_.state_.layers.end())it->opacity=value.second;}if(edit.maskContext){activeMaskId_=forward?edit.maskContext->after:edit.maskContext->before;maskIsolated_=forward?edit.maskContext->afterIsolated:edit.maskContext->beforeIsolated;}applyGroupUi(edit,forward);if(edit.beforeFreeTileSelection){const auto& ui=forward?*edit.afterFreeTileSelection:*edit.beforeFreeTileSelection;freeInstanceSelected_=ui.selected;freeInstancePrimary_=ui.primary;freeInstanceAnchor_=ui.anchor;freeInstanceSelectionFrame_=ui.frame;freeInstanceViewLayer_=ui.viewLayer;}if(sourceEdit){if(timeline_.hasLayer(sourceEditLayer))activeLayerId_=sourceEditLayer;if(timeline_.hasFrame(sourceEditFrame))activeFrameId_=sourceEditFrame;}if(edit.freeTileSourceDeletion||edit.freeTileSourceReorder)tileSelection_.freePaint=freePaintBefore;if(edit.freeTileSourceAddition||(edit.freeTileSourceDeletion&&forward)){freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();freeInstanceSelectionFrame_=activeFrameId_;}if(edit.beforeScriptGeometry)displayedLayerGeometry_=forward?*edit.afterScriptGeometry:*edit.beforeScriptGeometry;projectActiveCelOpacities();}
-HistoryPanelTimeline Document::historyTimeline()const{HistoryPanelTimeline out;out.position=position_;out.revision=historyRevision_;out.entries.reserve(history_.size());for(std::size_t i=0;i<history_.size();++i)out.entries.push_back({i+1,history_[i].label});return out;}
-bool Document::setHistoryPosition(std::size_t target){if(active_)return false;target=std::min(target,history_.size());const auto steps=(position_>target?position_-target:target-position_)+16;for(std::size_t i=0;i<steps&&position_!=target;++i){const auto before=position_;if(position_>target)undo();else redo();if(position_==before&&((position_>target&&!canUndo())||(position_<target&&!canRedo())))break;}return position_==target;}
-void Document::undo() {
+HistoryPanelTimeline Document::historyTimeline()const{HistoryPanelTimeline out;out.position=history_.position();out.revision=historyRevision_;out.entries.reserve(history_.size());for(std::size_t i=0;i<history_.size();++i)out.entries.push_back({i+1,history_.at(i).label});return out;}
+bool Document::setHistoryPosition(std::size_t target){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(active_)return false;target=std::min(target,history_.size());const auto steps=(history_.position()>target?history_.position()-target:target-history_.position())+16;for(std::size_t i=0;i<steps&&history_.position()!=target;++i){const auto before=history_.position();if(history_.position()>target)undo();else redo();if(history_.position()==before&&((history_.position()>target&&!canUndo())||(history_.position()<target&&!canRedo())))break;}return history_.position()==target;}
+void Document::undo() {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
   cancelGradient();
-  if(floating_){if(floating_->restoredFromDeselect)floating_.reset();else{cancelFloatingPaste();return;}}cancelStroke();
+  if(floating_){if(floating_->restoredFromDeselect)commitFloatingPaste();else{cancelFloatingPaste();return;}}cancelStroke();
   if (!canUndo()) return;
-  const auto& edit = history_[position_-1];
-  std::optional<FloatingPaste> restored;if(edit.restoredClipboard)restored=*edit.restoredClipboard;
-  change_={};applyEdit(edit,false);--position_;++historyRevision_;
-  if(restored)floating_=std::move(restored);
-  publishChange(bool(edit.beforeRollback));historyBytes_-=edit.bytes();
+  const auto& edit=history_.at(history_.position()-1);
+  std::optional<FloatingPaste> restored;if(edit.contentHistory.restoredClipboard)restored=*edit.contentHistory.restoredClipboard;
+  history_.undo([&](const Edit& entry){replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,false);});},[&](const Edit& entry){
+    ++historyRevision_;if(restored)floating_=std::move(restored);publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
+  });
   state_ = edit.beforeState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Undo,edit.label);if(edit.documentChanged)notifyRecording(true);
 }
-void Document::redo() {
+void Document::redo() {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
   cancelGradient();
   commitFloatingPaste();cancelStroke();
   if (!canRedo()) return;
-  const auto& edit = history_[position_];
-  change_={};applyEdit(edit,true);++position_;++historyRevision_;
-  publishChange(bool(edit.beforeRollback));historyBytes_+=edit.bytes();
+  const auto& edit=history_.at(history_.position());
+  history_.redo([&](const Edit& entry){replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,true);});},[&](const Edit& entry){
+    ++historyRevision_;publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
+  });
   state_ = edit.afterState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Redo,edit.label);if(edit.documentChanged)notifyRecording(true);
 }
-PaletteState Document::capturePaletteEdit(int kind,int id) const {
-  if(kind==1) return palette_;
-  PaletteState state;state.columns=palette_.columns;state.entries.clear();state.slots.clear();
-  state.primary=palette_.primary;state.secondary=palette_.secondary;
-  if(kind==2) {state.independentOrder=palette_.independentOrder;state.slots=palette_.slots;state.selected=palette_.selected;state.primaryId=palette_.primaryId;}
-  else if(const auto entry=paletteEntry(id)) state.entries.push_back(*entry);
-  return state;
-}
-std::size_t Document::Edit::bytes() const {
- if(localHistoryPixels)return localHistoryPixels->retainedBytes;
- if(beforeSourceProperties){std::size_t bytes=256;for(const auto* value:{beforeSourceProperties.get(),afterSourceProperties.get()})bytes+=value->source.name.size()+value->source.description.size()+value->source.preservedJson.size()+value->tilesetName.size()*sizeof(char32_t);return bytes;}
- if(beforeRollback)return rollbackBytes;
- if(celProperties)return celProperties->historyBytes();if(layerMetadataBytes)return *layerMetadataBytes;
-  if(paletteKind==3)return 32;
-  if(paletteKind==4){const auto units=[](const std::u32string& name){return name.size()+std::count_if(name.begin(),name.end(),[](char32_t c){return c>0xffff;});};return (units(beforePalette->entries.front().name)+units(afterPalette->entries.front().name))*2+16;}
-  if(paletteKind==8)return beforePalette->entries.size()*40;
-  if(paletteKind==1||paletteKind==7)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4+64;
-  if(paletteKind==2||paletteKind==11)return (beforePalette->order().size()+afterPalette->order().size()+beforePalette->slots.size()+afterPalette->slots.size()+beforePalette->selected.size()+afterPalette->selected.size())*4+32;
+// capturePaletteEdit: definition in its history domain unit.
 
-  if(paletteKind==10)return (beforePalette->entries.size()+afterPalette->entries.size())*40+(beforePalette->slots.size()+afterPalette->slots.size())*4;
-  if(paletteKind==9)return (beforePalette->slots.size()+afterPalette->slots.size())*4;
-  std::size_t textBytes=0;for(const auto& t:textChanges)for(const auto* value:{&t.before,&t.after})if(*value){textBytes+=sizeof(TextCelData)+(*value)->text.size()*2+(*value)->styleRuns.size()*sizeof(TextStyleRun)+(*value)->transforms.size()*sizeof(TextTransform);for(const auto& transform:(*value)->transforms)textBytes+=(transform.source.projectProperties.size()+transform.target.projectProperties.size())*sizeof(char16_t);}
-    std::size_t durationBytes=0;for(const auto* values:{&beforeScriptDurations,&afterScriptDurations})if(*values)for(const auto& [id,duration]:**values)durationBytes+=sizeof(std::pair<std::string,int>)+id.size();
-    std::size_t metadataBytes=beforeSlices?(beforeSlices->items.size()+afterSlices->items.size())*48:0;if(paletteKind==12){for(const auto* p:{&*beforePalette,&*afterPalette}){metadataBytes+=p->entries.size()*sizeof(PaletteEntry)+(p->slots.size()+p->selected.size()+p->order().size())*sizeof(int);for(const auto& e:p->entries)metadataBytes+=e.name.size()*sizeof(char32_t);}}
-    std::size_t size=durationBytes+metadataBytes+(layerTilesets?layerTilesets->bytes():0)+(tilemapPixels?tilemapPixels->bytes():0)+textBytes+restoredClipboardBytes+(pixelAddress?sizeof(PixelAddressSpace):0)+(beforeName?beforeName->size()*sizeof(char32_t):0)+(afterName?afterName->size()*sizeof(char32_t):0)+pixels.size()*sizeof(Delta)+runs.size()*sizeof(PixelRun)+targetCelId.size()+((beforeVisible||beforeOpacity||beforeBlendMode)?32:0);
-  for(const auto* selection:{&beforeMaskSelection,&afterMaskSelection})if(*selection)for(const auto& key:**selection)size+=sizeof(key)+key.first.size()+key.second.size();
-  for(const auto* anchor:{&beforeMaskSelectionAnchor,&afterMaskSelectionAnchor})if(*anchor&&**anchor)size+=(***anchor).first.size()+(***anchor).second.size();
-  if(maskEditingOnUndo)size+=sizeof(*maskEditingOnUndo)+maskEditingOnUndo->first.size();
-  for(const auto* masks:{&beforeMasks,&afterMasks})if(*masks)for(const auto& m:**masks)size+=sizeof(m)+m.mask.surface.pixels.size()*4;
-  for(const auto* t:{&beforeTimeline,&afterTimeline})if(*t)for(const auto& m:(*t)->masks)size+=sizeof(m)+m.mask.surface.pixels.size()*4;
-  for(const auto* t:{&beforeTimeline,&afterTimeline})if(*t){size+=sheetImportFreeMetadataBytes(**t);for(const auto& c:(*t)->cels){size+=128+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);if(c.tilemap)for(const auto& v:c.tilemap->cells)size+=sizeof(v)+(v?v->tilesetId.size()+v->tileId.size():0);}for(const auto& set:(*t)->tilesets){size+=sizeof(set)+set.pixels.size()*sizeof(Pixel);for(const auto& id:set.tileIds)size+=sizeof(id)+id.size();for(const auto& slot:set.tileSlots)size+=sizeof(slot)+(slot?slot->size():0);}}
-  if(dense)size+=(dense->before.size()+dense->after.size())*sizeof(Pixel);
-  for(const auto* snapshot:{&beforePalette,&afterPalette}) if(*snapshot) {
-    size+=sizeof(PaletteState)+(*snapshot)->slots.size()*sizeof(int)+(*snapshot)->selected.size()*sizeof(int)+((*snapshot)->independentOrder?(*snapshot)->independentOrder->size()*sizeof(int):0);
-    for(const auto& entry:(*snapshot)->entries) size+=sizeof(PaletteEntry)+entry.name.size()*sizeof(char32_t);
-  }
-  size+=(beforeOrder.size()+afterOrder.size())*64;
-  if(detachedCel && detachedCel->surface) size+=detachedCel->surface->pixels.size()*sizeof(Pixel);
-  for(const auto& c:detachedCels)if(c.surface)size+=c.surface->pixels.size()*sizeof(Pixel);
-  for(const auto* cels:{&beforeCels,&afterCels})for(const auto& c:*cels)size+=128+(c.surface?c.surface->pixels.size()*sizeof(Pixel):0);
-  for(const auto* selection:{&beforePixelsSelection,&afterPixelsSelection})if(*selection)size+=48+(*selection)->mask.size();
-  for(const auto* selection:{&beforeTimelineSelection,&afterTimelineSelection})if(*selection){for(const auto& id:(*selection)->layers)size+=id.size()+32;for(const auto& id:(*selection)->cels)size+=id.size()+32;}
-  for(const auto& c:ownerOffsets)size+=sizeof(OwnerOffsetChange)+c.ownerId.size();
-  if(maskContext)size+=sizeof(Edit::MaskContextHistory)+maskContext->before.size()+maskContext->after.size();
-  for(const auto& change:surfaceChanges)size+=sizeof(SurfaceChange)+change.ownerId.size()+(change.before.pixels.size()+change.after.pixels.size())*sizeof(Pixel);
-  for(const auto& child:children)size+=child.bytes();
-  for(const auto* loops:{&beforeLoops,&afterLoops})if(*loops)size+=(*loops)->size()*256;
-  size+=(beforeFrames.size()+afterFrames.size()+beforeDisabled.size()+afterDisabled.size()+detachedFrames.size())*64;
-  for(const auto* geometry:{&beforeScriptGeometry,&afterScriptGeometry})if(*geometry)for(const auto& [id,g]:**geometry)size+=sizeof(g)+sizeof(std::string)+id.size();
-  size+=(beforeLayerOpacityProjection.size()+afterLayerOpacityProjection.size())*80;
- for(const auto* snapshot:{&beforeLayerStructure,&afterLayerStructure})if(*snapshot){
-  if((*snapshot)->frames)for(const auto& f:*(*snapshot)->frames)size+=sizeof(f)+f.id.size();
-  for(const auto& value:(*snapshot)->celOpacities)size+=sizeof(value)+value.first.size();
-  for(const auto& mask:(*snapshot)->masks)size+=sizeof(mask)+mask.mask.surface.pixels.size()*sizeof(Pixel);
-  for(const auto& l:(*snapshot)->layers)size+=sizeof(l)+l.id.size()+l.name.size()*sizeof(char32_t)+l.blendMode.size()+l.description.size()*sizeof(char32_t)+(l.groupId?l.groupId->size():0)+(l.adjustment?l.adjustment->gradientMap.stops.size()*sizeof(GradientStop):0)+(l.layerStyles?l.layerStyles->preservedJson.size()+l.layerStyles->gradientMap.stops.size()*sizeof(GradientStop):0);
-  for(const auto& g:(*snapshot)->groups)size+=sizeof(g)+g.id.size()+g.name.size()*sizeof(char32_t)+g.blendMode.size()+g.description.size()*sizeof(char32_t)+(g.parentGroupId?g.parentGroupId->size():0)+(g.layerStyles?g.layerStyles->preservedJson.size()+g.layerStyles->gradientMap.stops.size()*sizeof(GradientStop):0);
- }
- for(const auto* snapshot:{&beforeGroupUi,&afterGroupUi})if(*snapshot){for(const auto& id:(*snapshot)->selected)size+=id.size()+sizeof(std::string);for(const auto& id:(*snapshot)->collapsed)size+=id.size()+sizeof(std::string);if((*snapshot)->focus)size+=(*snapshot)->focus->size();}
-for(const auto* slots:{&beforeTilesetSlots,&afterTilesetSlots})if(*slots)for(const auto& id:**slots)size+=sizeof(id)+(id?id->size():0);size+=tilesetSlotsId.size();size+=structureCelBytes;return size;
-}
 // Legacy HistoryStack.setMaxEntries: discard oldest undo entries first,
 // then farthest redo entries. Never change document pixels, dirty or revision.
 void Document::notifyHistoryChange(HistoryStackChange::Kind kind,const std::u32string& label,std::size_t discardedUndo,std::size_t discardedRedo){
+ animationChangeBinding_.publish(*this,{AnimationChange::Kind::HistoryChanged,AnimationFrameOrigin::Manual,kind});
  if(historyChangeBinding_.observer)historyChangeBinding_.publish(*this,{kind,label,discardedUndo,discardedRedo,historyRevision_});
 }
 void Document::clearHistory(){
- history_.clear();position_=0;historyBytes_=0;groupingHistory_=false;pendingGroupedProjectOperation_=false;++historyRevision_;
+ history_.clear();groupingHistory_=false;pendingGroupedProjectOperation_=false;++historyRevision_;
  notifyHistoryChange(HistoryStackChange::Kind::Clear);
 }
 void Document::setHistoryEntryLimit(std::size_t limit) {
-  const auto next=normalizeHistoryLimit(limit);if(next==maxEntries_)return;
-  const auto previous=history_.size(),previousPosition=position_;maxEntries_=next;
-  trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);
-  // Redo entries do not contribute to legacy memoryBytes. Keep the nearest
-  // redo step when dropping the far end of the native chronological vector.
-  if(history_.size()>maxEntries_)history_.resize(maxEntries_);
-  if(previous!=history_.size()){++historyRevision_;const auto discardedUndo=previousPosition-position_;notifyHistoryChange(HistoryStackChange::Kind::Trim,{},discardedUndo,previous-history_.size()-discardedUndo);}
+ const auto discarded=history_.setLimit(limit);
+ if(discarded.undo||discarded.redo){++historyRevision_;notifyHistoryChange(HistoryStackChange::Kind::Trim,{},discarded.undo,discarded.redo);}
 }
-void Document::reserveHistoryEntries(std::size_t additional){
- // Legacy arrays amortize append growth. Exact reserve(position+1) on a
- // native vector instead relocated every retained Edit on every commit.
- const auto maximum=history_.max_size();if(additional>maximum-position_)throw std::length_error("History entry capacity exceeded");
- const auto required=position_+additional,current=history_.capacity();if(required<=current)return;
- const auto growth=std::max<std::size_t>(current/2,8);
- const auto grown=current>maximum-growth?maximum:current+growth;
- history_.reserve(std::max(required,grown));
-}
+void Document::reserveHistoryEntries(std::size_t additional){history_.reserve(additional);}
 void Document::pushEdit(Edit edit,std::u32string label) {
- if(edit.beforeMasks){auto& masks=timeline_.state_.masks;std::set<std::string> wanted;for(const auto& m:masks){bool owner=m.group?std::any_of(timeline_.state().groups.begin(),timeline_.state().groups.end(),[&](const auto& g){return g.id==m.ownerId;}):timeline_.hasLayer(m.ownerId);if(owner&&timeline_.hasFrame(m.frameId))wanted.insert(m.mask.id);}for(auto& m:masks)if(wanted.count(m.mask.id)&&!m.mask.linkedMaskId.empty()&&!wanted.count(m.mask.linkedMaskId)){const auto* root=timeline::resolvedMask(timeline_.state(),m.ownerId,m.frameId);m.mask.surface=root->surface;m.mask.linkedMaskId.clear();}masks.erase(std::remove_if(masks.begin(),masks.end(),[&](const auto& m){return !wanted.count(m.mask.id);}),masks.end());edit.afterMasks=masks;}
+ if(edit.maskHistory.beforeMasks){auto& masks=timeline_.state_.masks;std::set<std::string> wanted;for(const auto& m:masks){bool owner=m.group?std::any_of(timeline_.state().groups.begin(),timeline_.state().groups.end(),[&](const auto& g){return g.id==m.ownerId;}):timeline_.hasLayer(m.ownerId);if(owner&&timeline_.hasFrame(m.frameId))wanted.insert(m.mask.id);}for(auto& m:masks)if(wanted.count(m.mask.id)&&!m.mask.linkedMaskId.empty()&&!wanted.count(m.mask.linkedMaskId)){const auto* root=timeline::resolvedMask(timeline_.state(),m.ownerId,m.frameId);m.mask.surface=root->surface;m.mask.linkedMaskId.clear();}masks.erase(std::remove_if(masks.begin(),masks.end(),[&](const auto& m){return !wanted.count(m.mask.id);}),masks.end());edit.maskHistory.afterMasks=masks;}
+
+ if(edit.beforeAnimationSelection){
+  auto sameIds=[](const auto& ids,const auto& records){if(ids.size()!=records.size())return false;for(const auto& id:ids)if(std::none_of(records.begin(),records.end(),[&](const auto& record){return record.id==id;}))return false;return true;};
+  if(!edit.frameHistory.beforeFrames.empty()&&!sameIds(edit.frameHistory.beforeFrames,timeline_.state().frames))edit.normalizeAnimationSelection=true;
+  if(!edit.layerHistory.beforeOrder.empty()&&!sameIds(edit.layerHistory.beforeOrder,timeline_.state().layers))edit.normalizeAnimationSelection=true;
+  if(edit.layerHistory.beforeLayerStructure){const auto& old=*edit.layerHistory.beforeLayerStructure;std::vector<std::string> layers,groups;for(const auto& layer:old.layers)layers.push_back(layer.id);for(const auto& group:old.groups)groups.push_back(group.id);if(!sameIds(layers,timeline_.state().layers)||!sameIds(groups,timeline_.state().groups))edit.normalizeAnimationSelection=true;}
+  if(edit.normalizeAnimationSelection)normalizeAnimationSelection();
+  edit.afterAnimationSelection=captureAnimationSelection();
+ }
 
   edit.label=historyLabelOverride_.empty()?std::move(label):historyLabelOverride_;if(edit.label.empty())edit.label=U"修改图层属性";++historyRevision_;
   capturePixelAddresses(edit);
-  reserveHistoryEntries();history_.resize(position_);
-  historyBytes_+=edit.bytes();history_.push_back(std::move(edit));++position_;if(history_.back().documentChanged){if(groupingHistory_)pendingGroupedProjectOperation_=true;else projectInformation_.operation();}if(history_.back().documentChanged){state_=nextState_++;modified_=true;}++revision_;
-  const auto discardedUndo=groupingHistory_?0:trimHistoryUndo(history_,position_,historyBytes_,maxBytes_,maxEntries_);
-  if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.back().label,discardedUndo);
-  if(!groupingHistory_&&history_.back().documentChanged)notifyRecording();
+  history_.push(std::move(edit),false);++historyPushRevision_;if(history_.latest().documentChanged){if(groupingHistory_)pendingGroupedProjectOperation_=true;else projectInformation_.operation();}if(history_.latest().documentChanged){state_=nextState_++;modified_=true;}++revision_;
+  const auto discardedUndo=groupingHistory_?0:history_.enforceLimits();
+  if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo);
+  if(!groupingHistory_&&history_.latest().documentChanged)notifyRecording();
 }
 const PaletteEntry* Document::paletteEntry(int id) const {
   for(const auto& entry:palette_.entries) if(entry.id==id) return &entry;
@@ -1762,13 +1698,13 @@ std::vector<int> Document::movedPaletteSlots(const std::vector<int>& slots,const
 // completed preview, and normalization belongs to the command boundary.
 bool Document::reorderPaletteColors(const std::vector<int>& ids,const std::vector<int>& targetSlots,int columns){
  columns=std::clamp(columns,1,256);const auto before=currentPaletteSlots(palette_);auto next=normalizePaletteSlots(palette_.entries,palette_.order(),targetSlots,columns);if(next==before&&palette_.columns==columns)return false;
- const std::unordered_set<int> occupied(before.begin(),before.end());const auto moving=std::count_if(ids.begin(),ids.end(),[&](int id){return occupied.count(id);});cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=9;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.afterPalette->entries.clear();edit.beforePalette->slots=before;edit.beforePalette->columns=palette_.columns;edit.afterPalette->slots=next;edit.afterPalette->columns=columns;palette_.columns=columns;palette_.slots=std::move(next);palette_.independentOrder.reset();pushEdit(std::move(edit),moving>1?U"批量调整颜色板顺序":U"调整颜色板顺序");return true;
+ const std::unordered_set<int> occupied(before.begin(),before.end());const auto moving=std::count_if(ids.begin(),ids.end(),[&](int id){return occupied.count(id);});cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=9;edit.paletteHistory.beforePalette=PaletteState{};edit.paletteHistory.afterPalette=PaletteState{};edit.paletteHistory.beforePalette->entries.clear();edit.paletteHistory.afterPalette->entries.clear();edit.paletteHistory.beforePalette->slots=before;edit.paletteHistory.beforePalette->columns=palette_.columns;edit.paletteHistory.afterPalette->slots=next;edit.paletteHistory.afterPalette->columns=columns;palette_.columns=columns;palette_.slots=std::move(next);palette_.independentOrder.reset();pushEdit(std::move(edit),moving>1?U"批量调整颜色板顺序":U"调整颜色板顺序");return true;
 }
 // Actual movePaletteColor swaps only the primary slot with its neighbor,
 // including an empty neighbor. It never moves the entire selected group.
 bool Document::movePaletteColor(int direction){
  if(direction!=-1&&direction!=1)return false;auto before=currentPaletteSlots(palette_);const auto current=std::find(before.begin(),before.end(),palette_.primaryId?palette_.primaryId:-1);if(current==before.end())return false;const auto target=std::ptrdiff_t(current-before.begin())+direction;if(target<0||std::size_t(target)>=before.size())return false;auto after=before;std::swap(after[std::size_t(current-before.begin())],after[std::size_t(target)]);
- cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=9;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.afterPalette->entries.clear();edit.beforePalette->slots=std::move(before);edit.beforePalette->columns=palette_.columns;edit.afterPalette->slots=after;edit.afterPalette->columns=palette_.columns;palette_.slots=std::move(after);palette_.independentOrder.reset();pushEdit(std::move(edit),U"调整颜色板顺序");return true;
+ cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=9;edit.paletteHistory.beforePalette=PaletteState{};edit.paletteHistory.afterPalette=PaletteState{};edit.paletteHistory.beforePalette->entries.clear();edit.paletteHistory.afterPalette->entries.clear();edit.paletteHistory.beforePalette->slots=std::move(before);edit.paletteHistory.beforePalette->columns=palette_.columns;edit.paletteHistory.afterPalette->slots=after;edit.paletteHistory.afterPalette->columns=palette_.columns;palette_.slots=std::move(after);palette_.independentOrder.reset();pushEdit(std::move(edit),U"调整颜色板顺序");return true;
 }
 void Document::repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns,bool storeColumns){
  reorderPaletteColors(ids,movedPaletteSlots(slots,ids,target,anchor,columns),storeColumns?columns:palette_.columns);
@@ -1799,7 +1735,7 @@ void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::ve
  const auto sourceSlots=normalizePaletteSlots(palette_.entries,palette_.order(),viewSlots?*viewSlots:palette_.slots,viewColumns>0?viewColumns:palette_.columns);std::size_t allocations=0;
  if(targets.empty()){const auto end=std::min<std::size_t>(sourceSlots.size(),65536);const auto available=std::count(sourceSlots.begin(),sourceSlots.begin()+end,0)+(65536-end);allocations=std::min<std::size_t>(count,available);}
  else{for(auto slot:indices)if(slot<65536&&(slot>=sourceSlots.size()||!sourceSlots[slot]))++allocations;}
- requirePaletteIds(palette_,allocations);const bool independentOrder=palette_.independentOrder.has_value();cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=7;edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,false);palette_.slots=sourceSlots;if(viewColumns>0)palette_.columns=std::clamp(viewColumns,1,256);std::vector<int> ids;
+ requirePaletteIds(palette_,allocations);const bool independentOrder=palette_.independentOrder.has_value();cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=7;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,false);palette_.slots=sourceSlots;if(viewColumns>0)palette_.columns=std::clamp(viewColumns,1,256);std::vector<int> ids;
  // Entry indices survive vector reallocation; monotonic hole search preserves
  // legacy earliest-empty append order without scanning the occupied prefix again.
  std::unordered_map<int,std::size_t> positions;positions.reserve(palette_.entries.size()+allocations);for(std::size_t i=0;i<palette_.entries.size();++i)positions.emplace(palette_.entries[i].id,i);std::size_t hole=0;
@@ -1810,28 +1746,28 @@ void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::ve
  }
 
  const auto columns=std::size_t(palette_.columns);palette_.slots.resize(std::max(columns,((palette_.slots.size()+columns-1)/columns)*columns),0);
- palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?0:ids.back());else clearPaletteSelection();const auto& before=*edit.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
+ palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?0:ids.back());else clearPaletteSelection();const auto& before=*edit.paletteHistory.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.paletteHistory.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 
 int Document::addPaletteColor(Pixel color,bool selectAdded,std::optional<std::size_t> targetSlot,const std::vector<int>* viewSlots,int viewColumns) {
   requirePaletteIds(palette_,1);if(targetSlot&&*targetSlot>=65536)throw std::length_error("Palette target exceeds native slot range");
-  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,false);edit.paletteKind=1;const int id=allocatePaletteId(palette_);auto slots=currentPaletteSlots(palette_);
+  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,false);edit.paletteHistory.paletteKind=1;const int id=allocatePaletteId(palette_);auto slots=currentPaletteSlots(palette_);
   const auto append=[&](std::vector<int>& into,int columns){const auto hole=std::find(into.begin(),into.end(),0);if(hole!=into.end())*hole=id;else{const auto n=into.size();into.resize(n+columns,0);into[n]=id;}};
   append(slots,palette_.columns);
-  if(targetSlot){slots=viewSlots?*viewSlots:edit.beforePalette->slots;const int columns=viewColumns>0?std::clamp(viewColumns,1,256):palette_.columns;append(slots,columns);slots=movedPaletteSlots(slots,{id},int(*targetSlot),id,columns);palette_.columns=columns;}
+  if(targetSlot){slots=viewSlots?*viewSlots:edit.paletteHistory.beforePalette->slots;const int columns=viewColumns>0?std::clamp(viewColumns,1,256):palette_.columns;append(slots,columns);slots=movedPaletteSlots(slots,{id},int(*targetSlot),id,columns);palette_.columns=columns;}
   const auto name=std::to_string(id);palette_.entries.push_back({id,std::u32string(name.begin(),name.end()),color});palette_.slots=std::move(slots);
   palette_.independentOrder.reset();palette_.selected=selectAdded?std::vector<int>{id}:std::vector<int>{};palette_.primaryId=selectAdded?id:0;
-  edit.afterPalette=capturePaletteEdit(1);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
+  edit.paletteHistory.afterPalette=capturePaletteEdit(1);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
 }
 void Document::deletePaletteColors(const std::vector<int>& ids) {
   // Actual workspace-palette::deletePaletteColors removes visible identities
   // only. Entries remain available for later reuse and earlier color history.
   const auto order=palette_.order();const std::unordered_set<int> visible(order.begin(),order.end());std::unordered_set<int> removed;removed.reserve(std::min(ids.size(),visible.size()));for(int id:ids)if(visible.count(id))removed.insert(id);if(removed.empty())return;
-  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(2);edit.beforePalette->slots=currentPaletteSlots(palette_);edit.beforePalette->setOrder(order);edit.paletteKind=2;palette_.slots=edit.beforePalette->slots;
+  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(2);edit.paletteHistory.beforePalette->slots=currentPaletteSlots(palette_);edit.paletteHistory.beforePalette->setOrder(order);edit.paletteHistory.paletteKind=2;palette_.slots=edit.paletteHistory.beforePalette->slots;
   for(auto& slot:palette_.slots)if(slot&&removed.count(slot))slot=0;
   palette_.independentOrder.reset();auto& selected=palette_.selected;selected.erase(std::remove_if(selected.begin(),selected.end(),[&](int id){return removed.count(id);}),selected.end());
   if(std::find(selected.begin(),selected.end(),palette_.primaryId)==selected.end())palette_.primaryId=selected.empty()?0:selected.back();
-  edit.afterPalette=capturePaletteEdit(2);pushEdit(std::move(edit),removed.size()>1?U"批量移除颜色板颜色":U"从颜色板移除颜色");
+  edit.paletteHistory.afterPalette=capturePaletteEdit(2);pushEdit(std::move(edit),removed.size()>1?U"批量移除颜色板颜色":U"从颜色板移除颜色");
 }
 void Document::updatePaletteColor(int id,Pixel color) {
   const auto current=paletteEntry(id);if(!current || current->color==color) return;
@@ -1839,10 +1775,10 @@ void Document::updatePaletteColor(int id,Pixel color) {
     // legacy workspace-commands-color: document frames x bottom-to-top layers,
     // owner dedup BEFORE lock filtering, hidden layers included, no selection clip.
     const Pixel source=current->color;Edit compound{{},state_,nextState_};compound.beforeActive=compound.afterActive=layer().id;compound.beforeFrame=compound.afterFrame=frame().id;compound.beforeSelection=compound.afterSelection=selectedFrames_;
-    Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteKind=3;paletteEdit.colorId=id;paletteEdit.beforePalette=capturePaletteEdit(3,id);paletteEdit.afterPalette=*paletteEdit.beforePalette;for(auto& entry:paletteEdit.afterPalette->entries)if(entry.id==id)entry.color=color;if(paletteEdit.afterPalette->primary==source)paletteEdit.afterPalette->primary=color;if(paletteEdit.afterPalette->secondary==source)paletteEdit.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
+    Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteHistory.paletteKind=3;paletteEdit.paletteHistory.colorId=id;paletteEdit.paletteHistory.beforePalette=capturePaletteEdit(3,id);paletteEdit.paletteHistory.afterPalette=*paletteEdit.paletteHistory.beforePalette;for(auto& entry:paletteEdit.paletteHistory.afterPalette->entries)if(entry.id==id)entry.color=color;if(paletteEdit.paletteHistory.afterPalette->primary==source)paletteEdit.paletteHistory.afterPalette->primary=color;if(paletteEdit.paletteHistory.afterPalette->secondary==source)paletteEdit.paletteHistory.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
     if(!timeline_.state().tilesets.empty()){auto resourceState=timeline_.state();
     if(synchronizePaletteResources(resourceState,source,color)){
-      Edit resources{{},state_,nextState_};resources.beforeTimeline=timeline_.state();resources.afterTimeline=std::move(resourceState);resources.beforeActive=resources.afterActive=activeLayerId_;resources.beforeFrame=resources.afterFrame=activeFrameId_;compound.children.push_back(std::move(resources));
+      Edit resources{{},state_,nextState_};resources.snapshotHistory.beforeTimeline=timeline_.state();resources.snapshotHistory.afterTimeline=std::move(resourceState);resources.beforeActive=resources.afterActive=activeLayerId_;resources.beforeFrame=resources.afterFrame=activeFrameId_;compound.children.push_back(std::move(resources));
     }}
     // Visit only existing slots, retaining frame-first / bottom-to-top order.
     // Sparse timelines must not scan every empty layer x frame combination.
@@ -1852,14 +1788,14 @@ void Document::updatePaletteColor(int id,Pixel color) {
       for(const auto& c:state.cels){const auto f=frameOrder.find(c.frameId),l=layerOrder.find(c.layerId);if(f!=frameOrder.end()&&l!=layerOrder.end())targets.push_back({&c,f->second,l->second});}std::sort(targets.begin(),targets.end(),[](const auto& a,const auto& b){return a.frame!=b.frame?a.frame<b.frame:a.layer<b.layer;});
     }else for(std::size_t f=0;f<state.frames.size();++f)for(std::size_t l=0;l<state.layers.size();++l)if(const auto* c=timeline_.findCel(state.layers[state.layers.size()-1-l].id,state.frames[f].id))targets.push_back({c,f,l});
     std::vector<bool> locked;locked.reserve(state.layers.size());for(auto l=state.layers.rbegin();l!=state.layers.rend();++l)locked.push_back(layerEffectivelyLocked(*l));std::unordered_set<const void*> seen;seen.reserve(targets.size());
-    for(const auto& target:targets){const auto resolved=timeline_.resolveSurface(target.cel->id);if(resolved.source&&(resolved.source->tilemap||resolved.source->freeTiles))continue;if(!resolved.source||!resolved.surface||!seen.insert(resolved.surface->pixels.identity()).second||locked[target.layer])continue;Edit child{{},state_,nextState_};child.targetCelId=resolved.source->id;child.pixelAddress=PixelAddressSpace{resolved.surface->width,resolved.surface->height,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};const auto& pixels=resolved.surface->pixels;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]==source){if(!child.runs.empty()&&child.runs.back().index+child.runs.back().length==i)++child.runs.back().length;else child.runs.push_back({i,1,source,color});}if(!child.runs.empty())compound.children.push_back(std::move(child));}
+    for(const auto& target:targets){const auto resolved=timeline_.resolveSurface(target.cel->id);if(resolved.source&&(resolved.source->tilemap||resolved.source->freeTiles))continue;if(!resolved.source||!resolved.surface||!seen.insert(resolved.surface->pixels.identity()).second||locked[target.layer])continue;Edit child{{},state_,nextState_};child.contentHistory.targetCelId=resolved.source->id;child.contentHistory.pixelAddress=PixelAddressSpace{resolved.surface->width,resolved.surface->height,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};const auto& pixels=resolved.surface->pixels;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]==source){if(!child.contentHistory.runs.empty()&&child.contentHistory.runs.back().index+child.contentHistory.runs.back().length==i)++child.contentHistory.runs.back().length;else child.contentHistory.runs.push_back({i,1,source,color});}if(!child.contentHistory.runs.empty())compound.children.push_back(std::move(child));}
     auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);reserveHistoryEntries();change_={};applyEdit(compound,true);publishChange();pushEdit(std::move(compound),U"调整颜色板颜色");return;
   }
-  auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(3,id);edit.paletteKind=3;edit.colorId=id;
+  auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(3,id);edit.paletteHistory.paletteKind=3;edit.paletteHistory.colorId=id;
   const auto before=current->color;
   for(auto& entry:palette_.entries) if(entry.id==id) entry.color=color;
   if(palette_.primary==before) palette_.primary=color;if(palette_.secondary==before) palette_.secondary=color;
-  edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
+  edit.paletteHistory.afterPalette=capturePaletteEdit(edit.paletteHistory.paletteKind,edit.paletteHistory.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 // Exact legacy core/palette.ts comparators; stable full paletteOrder slot sorting.
 bool Document::sortPaletteColors(PaletteSortMode mode,bool descending){
@@ -1871,7 +1807,7 @@ bool Document::sortPaletteColors(PaletteSortMode mode,bool descending){
  std::stable_sort(ids.begin(),ids.end(),[&](int left,int right){const auto& l=keys.at(left);const auto& r=keys.at(right);const Pixel a=l.color,b=r.color;const auto& x=l.derived;const auto& y=r.derived;double d=0;
  switch(mode){case PaletteSortMode::Saturation:d=x.saturation-y.saturation;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Brightness:d=x.brightness-y.brightness;if(!d)d=x.saturation-y.saturation;break;case PaletteSortMode::Luminance:d=x.luminance-y.luminance;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Red:case PaletteSortMode::Green:case PaletteSortMode::Blue:{int first=mode==PaletteSortMode::Red?0:mode==PaletteSortMode::Green?8:16;for(int shift:{first,0,8,16,24}){d=double((a>>shift)&255)-double((b>>shift)&255);if(d)break;}break;}case PaletteSortMode::Alpha:d=double(a>>24)-double(b>>24);break;default:break;}
  if(!d)d=hue(a,b,x,y);return descending?d>0:d<0;});
- const auto before=currentPaletteSlots(palette_);ids.resize(std::max(ids.size(),before.size()),0);if(ids==before)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=9;e.beforePalette=PaletteState{};e.afterPalette=PaletteState{};e.beforePalette->entries.clear();e.afterPalette->entries.clear();e.beforePalette->slots=before;e.beforePalette->columns=palette_.columns;e.afterPalette->slots=ids;e.afterPalette->setOrder(paletteOrderFromSlots(ids));e.afterPalette->columns=palette_.columns;palette_.slots=std::move(ids);palette_.setOrder(paletteOrderFromSlots(palette_.slots));pushEdit(std::move(e),U"排序颜色板颜色");return true;
+ const auto before=currentPaletteSlots(palette_);ids.resize(std::max(ids.size(),before.size()),0);if(ids==before)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteHistory.paletteKind=9;e.paletteHistory.beforePalette=PaletteState{};e.paletteHistory.afterPalette=PaletteState{};e.paletteHistory.beforePalette->entries.clear();e.paletteHistory.afterPalette->entries.clear();e.paletteHistory.beforePalette->slots=before;e.paletteHistory.beforePalette->columns=palette_.columns;e.paletteHistory.afterPalette->slots=ids;e.paletteHistory.afterPalette->setOrder(paletteOrderFromSlots(ids));e.paletteHistory.afterPalette->columns=palette_.columns;palette_.slots=std::move(ids);palette_.setOrder(paletteOrderFromSlots(palette_.slots));pushEdit(std::move(e),U"排序颜色板颜色");return true;
 }
 namespace {
 struct PaletteGradientSampler {
@@ -1892,23 +1828,23 @@ void Document::gradientPaletteSlots(std::vector<std::size_t> indices,int columns
  auto endpoint=[&](std::size_t slot,Pixel fallback){auto found=positions.find(next.slots[slot]);return found==positions.end()?fallback:next.entries[found->second].color;};const auto start=endpoint(indices.front(),palette_.primary),end=endpoint(indices.back(),palette_.secondary);
  const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<indices.size();++i){const Pixel color=sample(i,indices.size());
  const auto slot=indices[i];auto found=positions.find(next.slots[slot]);if(found!=positions.end())next.entries[found->second].color=color;else{const int id=allocatePaletteId(next);const auto number=std::to_string(id);positions.emplace(id,next.entries.size());next.entries.push_back({id,std::u32string(number.begin(),number.end()),color});next.slots[slot]=id;}}
- cancelStroke();Edit e{{},state_,nextState_};e.paletteKind=10;e.beforePalette=palette_;normalizePaletteSnapshot(*e.beforePalette,true);next.independentOrder.reset();e.afterPalette=next;reserveHistoryEntries();palette_=std::move(next);pushEdit(std::move(e),U"生成颜色板渐变");
+ cancelStroke();Edit e{{},state_,nextState_};e.paletteHistory.paletteKind=10;e.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*e.paletteHistory.beforePalette,true);next.independentOrder.reset();e.paletteHistory.afterPalette=next;reserveHistoryEntries();palette_=std::move(next);pushEdit(std::move(e),U"生成颜色板渐变");
 }
 // legacy workspace-palette::gradientPaletteColors: only selected IDs in
 // raw order, no slot creation/reordering and no role/selection changes.
 bool Document::gradientPaletteColors(bool byHue){
  const std::unordered_set<int> selected(palette_.selected.begin(),palette_.selected.end());std::vector<int> ids;for(int id:palette_.order())if(selected.count(id))ids.push_back(id);if(ids.size()<2)return false;
  std::unordered_map<int,const PaletteEntry*> entries;for(const auto& e:palette_.entries)entries[e.id]=&e;const auto first=entries.find(ids.front()),last=entries.find(ids.back());if(first==entries.end()||last==entries.end())return false;const auto start=first->second->color,end=last->second->color;
- Edit edit{{},state_,nextState_};edit.paletteKind=8;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.beforePalette->slots.clear();edit.afterPalette->entries.clear();edit.afterPalette->slots.clear();
- const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<ids.size();++i)if(const auto found=entries.find(ids[i]);found!=entries.end()){const Pixel before=found->second->color,after=sample(i,ids.size());if(before!=after){edit.beforePalette->entries.push_back({ids[i],U"",before});edit.afterPalette->entries.push_back({ids[i],U"",after});}}
- if(edit.beforePalette->entries.empty())return false;cancelStroke();reserveHistoryEntries();applyPaletteEdit(edit,true);pushEdit(std::move(edit),byHue?U"生成颜色板色调渐变":U"生成颜色板渐变");return true;
+ Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=8;edit.paletteHistory.beforePalette=PaletteState{};edit.paletteHistory.afterPalette=PaletteState{};edit.paletteHistory.beforePalette->entries.clear();edit.paletteHistory.beforePalette->slots.clear();edit.paletteHistory.afterPalette->entries.clear();edit.paletteHistory.afterPalette->slots.clear();
+ const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<ids.size();++i)if(const auto found=entries.find(ids[i]);found!=entries.end()){const Pixel before=found->second->color,after=sample(i,ids.size());if(before!=after){edit.paletteHistory.beforePalette->entries.push_back({ids[i],U"",before});edit.paletteHistory.afterPalette->entries.push_back({ids[i],U"",after});}}
+ if(edit.paletteHistory.beforePalette->entries.empty())return false;cancelStroke();reserveHistoryEntries();applyPaletteEdit(edit,true);pushEdit(std::move(edit),byHue?U"生成颜色板色调渐变":U"生成颜色板渐变");return true;
 }
 // legacy workspace-palette.ts paletteOperationIds/applyPaletteColors/reversePaletteColors.
 bool Document::reversePaletteColors(){
  const auto order=palette_.order();const std::set<int> selected(palette_.selected.begin(),palette_.selected.end());std::unordered_map<int,std::size_t> positions;positions.reserve(palette_.entries.size());for(std::size_t i=0;i<palette_.entries.size();++i)positions.emplace(palette_.entries[i].id,i);std::vector<int> ids;for(int id:order)if(selected.count(id))ids.push_back(id);if(ids.size()<2)ids=order;
- std::vector<std::optional<Pixel>> colors;colors.reserve(ids.size());for(int id:ids){auto it=positions.find(id);colors.push_back(it==positions.end()?std::nullopt:std::optional<Pixel>(palette_.entries[it->second].color));}Edit edit{{},state_,nextState_};edit.paletteKind=8;edit.beforePalette=PaletteState{};edit.afterPalette=PaletteState{};edit.beforePalette->entries.clear();edit.beforePalette->slots.clear();edit.afterPalette->entries.clear();edit.afterPalette->slots.clear();
- for(std::size_t i=0;i<ids.size();++i){const auto before=colors[i],after=colors[ids.size()-1-i];if(before&&after&&before!=after){edit.beforePalette->entries.push_back({ids[i],U"",*before});edit.afterPalette->entries.push_back({ids[i],U"",*after});}}
- if(edit.beforePalette->entries.empty())return false;cancelStroke();reserveHistoryEntries();for(const auto& source:edit.afterPalette->entries)palette_.entries[positions.at(source.id)].color=source.color;pushEdit(std::move(edit),U"反向颜色板颜色");return true;
+ std::vector<std::optional<Pixel>> colors;colors.reserve(ids.size());for(int id:ids){auto it=positions.find(id);colors.push_back(it==positions.end()?std::nullopt:std::optional<Pixel>(palette_.entries[it->second].color));}Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=8;edit.paletteHistory.beforePalette=PaletteState{};edit.paletteHistory.afterPalette=PaletteState{};edit.paletteHistory.beforePalette->entries.clear();edit.paletteHistory.beforePalette->slots.clear();edit.paletteHistory.afterPalette->entries.clear();edit.paletteHistory.afterPalette->slots.clear();
+ for(std::size_t i=0;i<ids.size();++i){const auto before=colors[i],after=colors[ids.size()-1-i];if(before&&after&&before!=after){edit.paletteHistory.beforePalette->entries.push_back({ids[i],U"",*before});edit.paletteHistory.afterPalette->entries.push_back({ids[i],U"",*after});}}
+ if(edit.paletteHistory.beforePalette->entries.empty())return false;cancelStroke();reserveHistoryEntries();for(const auto& source:edit.paletteHistory.afterPalette->entries)palette_.entries[positions.at(source.id)].color=source.color;pushEdit(std::move(edit),U"反向颜色板颜色");return true;
 }
 void Document::setPaletteRole(Pixel color,bool secondary,bool locked) {
   const int id=secondary?palette_.secondaryId:palette_.primaryId;
@@ -1927,9 +1863,9 @@ void Document::renamePaletteColor(int id,const std::u32string& name) {
   const auto entry=paletteEntry(id);if(!entry) return;
   const std::u32string next(javascriptTrim(name));
   if(entry->name==next) return;
-  cancelStroke();Edit edit{{},state_,nextState_};edit.beforePalette=capturePaletteEdit(4,id);edit.paletteKind=4;edit.colorId=id;
+  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(4,id);edit.paletteHistory.paletteKind=4;edit.paletteHistory.colorId=id;
   for(auto& candidate:palette_.entries) if(candidate.id==id) candidate.name=next;
-  edit.afterPalette=capturePaletteEdit(edit.paletteKind,edit.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
+  edit.paletteHistory.afterPalette=capturePaletteEdit(edit.paletteHistory.paletteKind,edit.paletteHistory.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 // legacy workspace-palette.ts applyPalette: reuse each RGBA entry once; retain hidden IDs.
 void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,const std::vector<std::optional<std::size_t>>& slots,const std::vector<std::u32string>* names){
@@ -1943,7 +1879,7 @@ void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,c
  next.slots=normalizePaletteSlots(next.entries,ids,columns?next.slots:std::vector<int>{},next.columns);
  bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(std::size_t i=0;same&&i<palette_.entries.size();++i)same=next.entries[i].name==palette_.entries[i].name;if(same)return;
  next.independentOrder.reset();next.selected.clear();next.primaryId=0;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
- cancelStroke();Edit edit{{},state_,nextState_};edit.paletteKind=11;edit.beforePalette=palette_;normalizePaletteSnapshot(*edit.beforePalette,true);edit.afterPalette=next;palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");
+ cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=11;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,true);edit.paletteHistory.afterPalette=next;palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");
 }
 void Document::applyExtractedPalette(const std::vector<Pixel>& colors,bool append,int columns){
  if(colors.empty())return;
@@ -1951,35 +1887,8 @@ void Document::applyExtractedPalette(const std::vector<Pixel>& colors,bool appen
  // PalettePanel extraction calls applyPalette without an explicit layout.
  (void)columns;applyStoredPalette(wanted);
 }
-void Document::annotatePaletteView(PaletteViewSelection before,PaletteViewSelection after){if(!position_)return;auto& edit=history_[position_-1];if(!edit.beforePalette)return;edit.beforePaletteView=std::move(before);edit.afterPaletteView=after;paletteViewRestore_=std::move(after);++paletteViewRestoreSerial_;}
-void Document::applyPaletteEdit(const Edit& edit,bool redo) {
-  if(!edit.beforePalette) return;
-  const auto& state=redo?*edit.afterPalette:*edit.beforePalette;
-  const auto& view=redo?edit.afterPaletteView:edit.beforePaletteView;if(view){paletteViewRestore_=view;++paletteViewRestoreSerial_;}
-  if(edit.paletteKind==12){palette_=state;return;}
-  if(edit.paletteKind==11){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.selected=state.selected;palette_.primaryId=state.primaryId;std::unordered_map<int,const std::u32string*> names;names.reserve(state.entries.size());for(const auto& e:state.entries)names[e.id]=&e.name;for(auto& e:palette_.entries)if(const auto found=names.find(e.id);found!=names.end())e.name=*found->second;return;}
-  if(edit.paletteKind==10){palette_.entries=state.entries;palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.nextId=state.nextId;return;}
-  if(edit.paletteKind==9){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;return;}
-  if(edit.paletteKind==8){std::unordered_map<int,Pixel> colors;colors.reserve(state.entries.size());for(const auto& source:state.entries)colors[source.id]=source.color;for(auto& entry:palette_.entries)if(auto found=colors.find(entry.id);found!=colors.end())entry.color=found->second;return;}
-  if(edit.paletteKind==7){const auto secondary=palette_.secondary;const int secondaryId=palette_.secondaryId;palette_=state;palette_.secondary=secondary;palette_.secondaryId=secondaryId;return;}
-  if(edit.paletteKind==6){palette_.entries=state.entries;palette_.nextId=state.nextId;palette_.primary=state.primary;palette_.secondary=state.secondary;return;}
-  if(edit.paletteKind==5){palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.selected=state.selected;palette_.primaryId=state.primaryId;return;}
-  if(edit.paletteKind==4) {
-    for(auto& entry:palette_.entries) if(entry.id==edit.colorId)
-      for(const auto& source:state.entries) if(source.id==entry.id) entry.name=source.name;
-    return;
-  }
-  if(edit.paletteKind==3) {
-    Pixel before=0,after=0;
-    for(const auto& entry:edit.beforePalette->entries) if(entry.id==edit.colorId) before=entry.color;
-    for(const auto& entry:state.entries) if(entry.id==edit.colorId) after=entry.color;
-    for(auto& entry:palette_.entries) if(entry.id==edit.colorId) entry.color=after;
-    if(!redo) {palette_.primary=state.primary;palette_.secondary=state.secondary;}
-    else {if(palette_.primary==before) palette_.primary=after;if(palette_.secondary==before) palette_.secondary=after;}
-    return;
-  }
-  palette_.independentOrder=state.independentOrder;palette_.slots=state.slots;palette_.columns=state.columns;palette_.selected=state.selected;palette_.primaryId=state.primaryId;
-  if(edit.paletteKind==1) {palette_.entries=state.entries;palette_.nextId=state.nextId;palette_.primary=state.primary;}
+void Document::annotatePaletteView(PaletteViewSelection before,PaletteViewSelection after){
+ history_.annotateLatestApplied([&](Edit& edit){if(!edit.paletteHistory.beforePalette)return;edit.paletteHistory.beforePaletteView=std::move(before);edit.paletteHistory.afterPaletteView=after;paletteViewRestore_=std::move(after);++paletteViewRestoreSerial_;});
 }
 const PaletteEntry* Document::displayPaletteEntry(int id) const {for(const auto& entry:displayPalette().entries)if(entry.id==id)return &entry;return nullptr;}
 bool Document::beginPaletteReplacement(std::optional<Pixel> restorePrimary){
@@ -1998,7 +1907,7 @@ void Document::cancelPaletteReplacement(){if(paletteReplacement_){if(paletteRepl
 bool Document::commitPaletteReplacement(){
  if(!paletteReplacement_)return false;const auto& p=*paletteReplacement_;if(p.contentRevision!=contentRevision_){cancelPaletteReplacement();return false;}bool changed=false;for(std::size_t i=0;i<p.baseline.entries.size();++i)changed|=p.baseline.entries[i].color!=p.preview.entries[i].color;
  auto before=p.baseline;if(p.restorePrimary)before.primary=*p.restorePrimary;auto after=p.preview;paletteReplacement_.reset();
- if(!changed){palette_=std::move(after);return false;}Edit edit{{},state_,nextState_};edit.paletteKind=6;edit.beforePalette=std::move(before);edit.afterPalette=after;reserveHistoryEntries();palette_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色板颜色");return true;
+ if(!changed){palette_=std::move(after);return false;}Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=6;edit.paletteHistory.beforePalette=std::move(before);edit.paletteHistory.afterPalette=after;reserveHistoryEntries();palette_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色板颜色");return true;
 }
 void Document::acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,bool exact) {
   if(exact&&active()) throw std::logic_error("Cannot accept a saved uncommitted preview");
@@ -2012,14 +1921,14 @@ void Document::markSaved() {
   if (active()) throw std::logic_error("Cannot mark an uncommitted preview saved");
   modified_ = false;
 }
-void Document::commitSelection(std::optional<SelectionMask> before,std::optional<SelectionMask> after,bool resetFrames){commitFloatingPaste();selection_=after;if(selectionEqual(before,after))return;Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionEdit=true;e.beforePixelsSelection=std::move(before);e.afterPixelsSelection=std::move(after);if(resetFrames)clearFrameSelection();pushEdit(std::move(e),U"创建选区");}
-void Document::selectAllPixels(){commitFloatingPaste();selection_=SelectionMask{0,0,width_,height_,{}};}
-void Document::selectTimelineCelContent(const std::string& id,bool additive){
+void Document::commitSelection(std::optional<SelectionMask> before,std::optional<SelectionMask> after,bool resetFrames){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);commitFloatingPaste();setSelectionValue(after);if(selectionEqual(before,after)){animationChangeBinding_.publish(*this,{AnimationChange::Kind::SelectionPreviewChanged});return;}Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=std::move(before);e.pixelSelectionHistory.afterPixelsSelection=std::move(after);if(resetFrames)clearFrameSelection();pushEdit(std::move(e),U"创建选区");animationChangeBinding_.publish(*this,{AnimationChange::Kind::SelectionPreviewChanged});}
+void Document::selectAllPixels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);commitFloatingPaste();setSelectionValue(SelectionMask{0,0,width_,height_,{}});animationChangeBinding_.publish(*this,{AnimationChange::Kind::SelectionPreviewChanged});}
+void Document::selectTimelineCelContent(const std::string& id,bool additive){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  commitFloatingPaste();const auto* target=timeline_.findCelById(id);if(!target)return;const auto before=selection_;const auto incoming=timeline_.contentSelection(id,width_,height_,!active_);
- const auto after=combineSelection(before,incoming,additive?1:0);selectTimelineCel(id);selection_=before;commitSelection(before,after);
+ const auto after=combineSelection(before,incoming,additive?1:0);selectTimelineCel(id);setSelectionValue(before);commitSelection(before,after);
 }
-void Document::deselectPixels(){
- if(floating_&&floating_->restoredFromDeselect){if(canRedo()){floating_.reset();redo();}else floating_.reset();return;}
+void Document::deselectPixels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
+ if(floating_&&floating_->restoredFromDeselect){commitFloatingPaste();if(canRedo())redo();return;}
  std::shared_ptr<FloatingPaste> restored;std::size_t restoredBytes=0;
  if(floating_&&floating_->clipboard&&!floating_->beforeCelTimeline){
   bool changed=floating_->deferred;for(const auto& t:floating_->targets)for(const auto& entry:t.preview)if(entry.second.before!=entry.second.after){changed=true;break;}
@@ -2029,8 +1938,8 @@ void Document::deselectPixels(){
   }
  }
  reserveHistoryEntries(2);const auto originalTransient=floating_?floating_->transientBytes:0;if(floating_&&restored)floatingAddBytes(floating_->transientBytes,restoredBytes);bool committedPixels=false;try{committedPixels=commitFloatingPaste();}catch(...){if(floating_)floating_->transientBytes=originalTransient;throw;}if(!committedPixels){restored.reset();restoredBytes=0;}else if(restored&&restored->targets.size()==1&&restored->targets.front().celId.empty()){restored->targets.front().celId=cel().id;restored->targets.front().ownerId=cel().id;}if(!selection_)return;
- Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionEdit=true;e.beforePixelsSelection=selection_;e.restoredClipboard=std::move(restored);e.restoredClipboardBytes=restoredBytes;
- selection_.reset();clearFrameSelection();pushEdit(std::move(e),U"取消选择");
+ Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=selection_;e.contentHistory.restoredClipboard=std::move(restored);e.contentHistory.restoredClipboardBytes=restoredBytes;
+ setSelectionValue(std::nullopt);clearFrameSelection();pushEdit(std::move(e),U"取消选择");animationChangeBinding_.publish(*this,{AnimationChange::Kind::SelectionPreviewChanged});
 }
 void Document::invertPixels(){if(!selection_)return;commitFloatingPaste();commitSelection(selection_,invertSelection(selection_,width_,height_));}
 std::optional<SelectionClipboard> Document::copyPixels() {if(!selection_)return {};SelectionClipboard out;if(floating_){const auto bounds=transformBounds(floating_->transform);out.width=bounds.width;out.height=bounds.height;out.originX=bounds.x;out.originY=bounds.y;out.pixels.resize(std::size_t(out.width)*out.height);out.mask.resize(out.pixels.size());auto transform=floating_->transform;transform.x-=bounds.x;transform.y-=bounds.y;if(transform.flipOriginX)*transform.flipOriginX-=bounds.x;if(transform.flipOriginY)*transform.flipOriginY-=bounds.y;if(transform.quad)for(auto& point:*transform.quad){point.x-=bounds.x;point.y-=bounds.y;}SelectionRotSpriteSource sampler(floating_->source);auto cells=floating_->rotSprite?rotSpriteSelectionCells(floating_->source,transform,out.width,out.height,sampler):fastSelectionTransformCells(floating_->source,transform,out.width,out.height);for(auto cell:cells){auto i=std::size_t(cell.y)*out.width+cell.x;out.pixels[i]=cell.value;out.mask[i]=1;}if(cells.empty())return {};celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset();return out;}const auto clamped=rectangleSelection(selection_->x,selection_->y,selection_->width,selection_->height,width_,height_);if(!clamped)return {};const auto* present=activeSurfaceIfPresent();if(!present)return {};const auto& source=*present;raster::validate(source);const bool dense=raster::fullCanvas(source,width_,height_);out.width=clamped->width;out.height=clamped->height;out.originX=clamped->x;out.originY=clamped->y;out.pixels.resize(out.width*out.height);out.mask.resize(out.pixels.size());bool any=false;for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){const int px=clamped->x+x,py=clamped->y+y;if(!selectionContains(selection_,px,py))continue;const auto value=dense?source.pixels[std::size_t(py)*width_+px]:raster::readWorld(source,px,py);if(value>>24){const auto index=y*out.width+x;out.pixels[index]=value;out.mask[index]=1;any=true;}}if(!any)return {};celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset();return out;}
@@ -2043,8 +1952,8 @@ std::optional<SelectionClipboard> Document::copyMergedPixels(){
  if(!any)return {};
  celClipboard_.clear();frameClipboard_.clear();frameClipboardMetadata_.reset();return out;
 }
-bool Document::commitImmediateTransform(const std::vector<std::string>& ids,const std::optional<SelectionMask>& capture,const SelectionTransform& transform,bool wholeFlip,bool packedFlip,bool horizontal,std::optional<SelectionMask> afterSelection,bool selectionOnly){
- auto noPixels=[&](){if(selectionOnly&&!selectionEqual(selection_,afterSelection)){commitSelection(selection_,std::move(afterSelection));return true;}if(!wholeFlip&&!packedFlip&&(transform.flipHorizontal||transform.flipVertical))selection_=std::move(afterSelection);return false;};
+bool Document::commitImmediateTransform(const std::vector<std::string>& ids,const std::optional<SelectionMask>& capture,const SelectionTransform& transform,bool wholeFlip,bool packedFlip,bool horizontal,std::optional<SelectionMask> afterSelection,bool selectionOnly){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
+ auto noPixels=[&](){if(selectionOnly&&!selectionEqual(selection_,afterSelection)){commitSelection(selection_,std::move(afterSelection));return true;}if(!wholeFlip&&!packedFlip&&(transform.flipHorizontal||transform.flipVertical))setSelectionValue(std::move(afterSelection));return false;};
  if(!wholeFlip&&!capture)return noPixels();
  if(capture){const auto count=floatingArea(capture->width,capture->height);raster::coordinate(std::int64_t(capture->x)+capture->width);raster::coordinate(std::int64_t(capture->y)+capture->height);if(!capture->mask.empty()&&capture->mask.size()!=count)throw std::invalid_argument("Invalid transform selection");}
  const auto destination=wholeFlip?SelectionMask{}:checkedFloatingBounds(transform);
@@ -2056,47 +1965,47 @@ bool Document::commitImmediateTransform(const std::vector<std::string>& ids,cons
   plans.push_back({r.source->id,r.surface,std::move(allocation)});
  }
  floatingAddBytes(used,workspace);if(capture)floatingAddBytes(used,capture->mask.size());if(selection_)floatingAddBytes(used,selection_->mask.size());if(afterSelection)floatingAddBytes(used,afterSelection->mask.size());
- Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=afterSelection;edit.surfaceChanges.reserve(plans.size());
+ Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=afterSelection;edit.contentHistory.surfaceChanges.reserve(plans.size());
  std::vector<timeline::Surface> install;install.reserve(plans.size());std::vector<timeline::Surface*> owners;owners.reserve(plans.size());
  for(const auto& p:plans){auto candidate=immediateTransformCandidate(*p.before,capture,transform,wholeFlip,packedFlip,horizontal,width_,height_);bool changed=false;
   if(candidate.width==p.before->width&&candidate.height==p.before->height&&candidate.offsetX==p.before->offsetX&&candidate.offsetY==p.before->offsetY)changed=candidate.pixels!=p.before->pixels;
   else for(int y=0;y<candidate.height&&!changed;++y)for(int x=0;x<candidate.width;++x)if(candidate.pixels[std::size_t(y)*candidate.width+x]!=raster::readWorld(*p.before,std::int64_t(candidate.offsetX)+x,std::int64_t(candidate.offsetY)+y)){changed=true;break;}
-  if(!changed)continue;edit.surfaceChanges.push_back({p.owner,*p.before,candidate});install.push_back(std::move(candidate));
+  if(!changed)continue;edit.contentHistory.surfaceChanges.push_back({p.owner,*p.before,candidate});install.push_back(std::move(candidate));
  }
- if(edit.surfaceChanges.empty())return noPixels();
- for(const auto& change:edit.surfaceChanges){auto* live=timeline_.mutableOwnedSurface(change.ownerId);if(!live)throw std::logic_error("Missing immediate transform owner");owners.push_back(live);}
- reserveHistoryEntries();capturePixelAddresses(edit);for(std::size_t i=0;i<owners.size();++i)std::swap(*owners[i],install[i]);selection_=std::move(afterSelection);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"变换选区内容");return true;
+ if(edit.contentHistory.surfaceChanges.empty())return noPixels();
+ for(const auto& change:edit.contentHistory.surfaceChanges){auto* live=timeline_.mutableOwnedSurface(change.ownerId);if(!live)throw std::logic_error("Missing immediate transform owner");owners.push_back(live);}
+ reserveHistoryEntries();capturePixelAddresses(edit);for(std::size_t i=0;i<owners.size();++i)std::swap(*owners[i],install[i]);setSelectionValue(std::move(afterSelection));change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"变换选区内容");return true;
 }
-bool Document::flipPaintCellSelection(bool horizontal){
+bool Document::flipPaintCellSelection(bool horizontal){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  const auto expanded=expandedPaintCellSelection(true);if(!expanded)return false;const auto resolvedOwner=timeline_.resolveSurface(cel().id);const auto& grid=*resolvedOwner.source->tilemap;
  const auto bytes=std::uint64_t(grid.cells.size())*1024;if(bytes>256*1024*1024-adjustmentStorageBudget(timeline_,1))throw std::length_error("Paint cell flip exceeds document budget");
  std::set<std::size_t> selected;int left=grid.columns,right=-1,top=grid.rows,bottom=-1;for(std::size_t i=0;i<grid.cells.size();++i){const int x=int(i%grid.columns),y=int(i/grid.columns);if(selectionContains(expanded,activeSurface().offsetX+x*grid.tileWidth,activeSurface().offsetY+y*grid.tileHeight)){selected.insert(i);left=std::min(left,x);right=std::max(right,x);top=std::min(top,y);bottom=std::max(bottom,y);}}
  auto mirrored=[&](const std::optional<tiles::Cell>& cell){return mirroredTimelineTilemapCell(cell,horizontal,grid.tileWidth,grid.tileHeight);};
  TilemapPixelHistory payload;payload.celId=resolvedOwner.source->id;payload.tilesetEdit=false;payload.independentCellOwner=true;payload.cellOffsetLayout=true;payload.linkedCellOwner=true;payload.beforeSet.id=layer().tilemapTilesetId;for(const auto i:selected){const int x=int(i%grid.columns),y=int(i/grid.columns);const auto target=std::size_t(horizontal?y:top+bottom-y)*grid.columns+std::size_t(horizontal?left+right-x:x);if(!selected.count(target))continue;const auto value=mirrored(grid.cells[i]);if(value!=grid.cells[target])payload.cells.push_back({target,grid.cells[target],value});}
  auto after=selection_;if(after&&!after->mask.empty()){auto source=after->mask;for(int y=0;y<after->height;++y)for(int x=0;x<after->width;++x)after->mask[std::size_t(y)*after->width+x]=source[std::size_t(horizontal?y:after->height-1-y)*after->width+(horizontal?after->width-1-x:x)];}
- if(payload.cells.empty()){selection_=std::move(after);return false;}
- Edit edit{{},state_,nextState_};edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(payload));edit.beforeTileSelection=edit.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
+ if(payload.cells.empty()){setSelectionValue(std::move(after));return false;}
+ Edit edit{{},state_,nextState_};edit.terminalHistory=std::make_shared<const TilemapPixelHistory>(std::move(payload));edit.tileHistory.beforeTileSelection=edit.tileHistory.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.layerHistory.beforeGroupUi=edit.layerHistory.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
  // legacy Paint flip history contains cell edits only; the flipped mask stays through Undo/Redo.
- const auto label=horizontal?U"水平翻转瓦片选区":U"垂直翻转瓦片选区";reserveHistoryEntries();edit.label.reserve(32);applyEdit(edit,true);selection_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),label);return true;
+ const auto label=horizontal?U"水平翻转瓦片选区":U"垂直翻转瓦片选区";reserveHistoryEntries();edit.label.reserve(32);applyEdit(edit,true);setSelectionValue(std::move(after));change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),label);return true;
 }
-bool Document::flipContent(bool horizontal){
+bool Document::flipContent(bool horizontal){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  // Whole-Cel timeline edits take precedence over the active layer type, but
  // an explicit free-instance pick still owns its existing narrower command.
  if((hasTilemapContent()||hasFreeTileContent())&&!selection_&&!floating_&&activeMaskId_.empty()&&!(layer().kind=="free-tile"&&!selectedFreeTileInstances().empty())){
   const auto targets=timelineContentFlipTargets(*this);if(targets.empty())return false;
-  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
+  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.layerHistory.beforeGroupUi=edit.layerHistory.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
   std::size_t used=adjustmentStorageBudget(timeline_,1);
   for(const auto& id:targets){const auto* source=timeline_.findCelById(id);const auto owner=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==source->layerId;});const auto& surface=*source->surface;raster::validate(surface);
    floatingAddBytes(used,std::uint64_t(surface.pixels.size())*sizeof(Pixel)*3);
    Edit child{{},state_,nextState_};
    if(owner->kind=="free-tile"){
     floatingAddBytes(used,std::uint64_t(source->freeTiles->instances.size())*sizeof(free_tiles::Instance)*3);auto after=*source;for(auto& i:after.freeTiles->instances)if(!i.locked){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}if(after.freeTiles==source->freeTiles)continue;
-    after.surface->pixels=free_tiles::render(*owner->freeTiles,*after.freeTiles,timeline_.state().tilesets,surface.width,surface.height);child.beforeCels={*source};child.afterCels={std::move(after)};
+    after.surface->pixels=free_tiles::render(*owner->freeTiles,*after.freeTiles,timeline_.state().tilesets,surface.width,surface.height);child.contentHistory.beforeCels={*source};child.contentHistory.afterCels={std::move(after)};
    }else if(owner->kind=="tilemap"){
     const auto& grid=*source->tilemap;floatingAddBytes(used,std::uint64_t(grid.cells.size())*1024);auto after=*source;for(int y=0;y<grid.rows;++y)for(int x=0;x<grid.columns;++x)after.tilemap->cells[std::size_t(y)*grid.columns+x]=mirroredTimelineTilemapCell(grid.cells[std::size_t(horizontal?y:grid.rows-1-y)*grid.columns+(horizontal?grid.columns-1-x:x)],horizontal,grid.tileWidth,grid.tileHeight);if(after.tilemap->cells==grid.cells)continue;
-    const auto rendered=tiles::render(*after.tilemap,timeline_.state().tilesets);std::vector<Pixel> cache(surface.pixels.size());const int width=grid.columns*grid.tileWidth,height=grid.rows*grid.tileHeight;for(int y=0;y<std::min(surface.height,height);++y)std::copy_n(rendered.begin()+std::size_t(y)*width,std::min(surface.width,width),cache.begin()+std::size_t(y)*surface.width);after.surface->pixels=std::move(cache);child.beforeCels={*source};child.afterCels={std::move(after)};
+    const auto rendered=tiles::render(*after.tilemap,timeline_.state().tilesets);std::vector<Pixel> cache(surface.pixels.size());const int width=grid.columns*grid.tileWidth,height=grid.rows*grid.tileHeight;for(int y=0;y<std::min(surface.height,height);++y)std::copy_n(rendered.begin()+std::size_t(y)*width,std::min(surface.width,width),cache.begin()+std::size_t(y)*surface.width);after.surface->pixels=std::move(cache);child.contentHistory.beforeCels={*source};child.contentHistory.afterCels={std::move(after)};
    }else if(owner->kind.empty()){
-    child.targetCelId=id;child.pixelAddress=PixelAddressSpace{surface.width,surface.height,surface.storageOriginX.value_or(0),surface.storageOriginY.value_or(0)};
+    child.contentHistory.targetCelId=id;child.contentHistory.pixelAddress=PixelAddressSpace{surface.width,surface.height,surface.storageOriginX.value_or(0),surface.storageOriginY.value_or(0)};
     for(int y=0;y<surface.height;++y)for(int x=0;x<surface.width;++x){const auto at=std::size_t(y)*surface.width+x,from=std::size_t(horizontal?y:surface.height-1-y)*surface.width+(horizontal?surface.width-1-x:x);if(surface.pixels[at]!=surface.pixels[from]){floatingAddBytes(used,sizeof(Delta));child.pixels.push_back({at,surface.pixels[at],surface.pixels[from]});}}
     if(child.pixels.empty())continue;
    }else continue;
@@ -2142,13 +2051,13 @@ bool Document::flipContent(bool horizontal){
   SelectionTransform target{double(bounds.x),double(bounds.y),double(bounds.width),double(bounds.height)};target.flipHorizontal=horizontal;target.flipVertical=!horizontal;
   return commitImmediateTransform(ids,capture,target,whole,!animationSelection,horizontal,std::move(afterMask),!animationSelection);
  }
- Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=afterMask;std::unordered_set<std::string> sources;
+ Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=afterMask;std::unordered_set<std::string> sources;
  for(const auto* c:targets){const auto& l=owner(c);if(layerEffectivelyLocked(l) || (whole && explicitTimeline && !layerEffectivelyVisible(l)))continue;const auto resolved=timeline_.resolveSurface(c->id);if(!resolved.source || !resolved.surface || !sources.insert(timeline_.linkedStorageKey(resolved.source->id)).second)continue;const auto& before=resolved.surface->pixels;auto after=before;
   for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(selectionContains(bounds,x,y))after[std::size_t(y)*width_+x]=0;
   for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){if(!selectionContains(bounds,x,y))continue;const int tx=horizontal?2*bounds.x+bounds.width-1-x:x,ty=horizontal?y:2*bounds.y+bounds.height-1-y;if(tx>=0 && ty>=0 && tx<width_ && ty<height_){const auto value=before[std::size_t(y)*width_+x];auto& destination=after[std::size_t(ty)*width_+tx];if(animationSelection){if(value>>24)destination=selectionContains(bounds,tx,ty)?value:brushComposite(destination,value,100);}else destination=value;}}
-  Edit child{{},state_,nextState_};child.targetCelId=c->id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])child.pixels.push_back({i,before[i],after[i]});if(!child.pixels.empty())edit.children.push_back(std::move(child));
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=c->id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])child.pixels.push_back({i,before[i],after[i]});if(!child.pixels.empty())edit.children.push_back(std::move(child));
  }
- if(edit.children.empty()){if(animationSelection){selection_=std::move(afterMask);return false;}if(!selectionEqual(selection_,afterMask)){commitSelection(selection_,afterMask);return true;}return false;}
+ if(edit.children.empty()){if(animationSelection){setSelectionValue(std::move(afterMask));return false;}if(!selectionEqual(selection_,afterMask)){commitSelection(selection_,afterMask);return true;}return false;}
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
 }
 bool Document::rotateContent180(){return rotateContent(180);}
@@ -2175,7 +2084,7 @@ bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transfo
  if(angle!=180){SelectionClipboard geometry;geometry.width=bounds->width;geometry.height=bounds->height;geometry.mask=bounds->mask;if(geometry.mask.empty())geometry.mask.assign(std::size_t(geometry.width)*geometry.height,1);geometry.pixels.assign(geometry.mask.size(),0xffffffff);auto transformed=transformedSelectionMask(geometry,rotation);if(!transformed)return false;afterSelection=*transformed;}
  bool sparse=false;std::vector<std::string> ids;ids.reserve(targets.size());for(const auto* target:targets){ids.push_back(target->id);const auto r=timeline_.resolveSurface(target->id);if(r.surface&&!raster::fullCanvas(*r.surface,width_,height_))sparse=true;}
  if(sparse)return commitImmediateTransform(ids,bounds,rotation,false,false,false,std::move(afterSelection),false);
- Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=afterSelection;
+ Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=afterSelection;
  std::unordered_set<std::string> sources;
  for(const auto* target:targets){const auto resolved=timeline_.resolveSurface(target->id);if(!resolved.source || !resolved.surface || !sources.insert(timeline_.linkedStorageKey(resolved.source->id)).second)continue;const auto& before=resolved.surface->pixels;auto after=before;
   for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(selectionContains(bounds,x,y))after[std::size_t(y)*width_+x]=0;
@@ -2188,11 +2097,11 @@ bool Document::rotateContent(int angle){if(!activeMaskId_.empty())return transfo
    // selection geometry deliberately retains transformed bounds outside it.
    for(auto cell:fastSelectionTransformCells(source,rotation,width_,height_)){if(!(cell.value>>24))continue;auto& destination=after[std::size_t(cell.y)*width_+cell.x];destination=brushComposite(destination,cell.value,100);}
   }
-  Edit child{{},state_,nextState_};child.targetCelId=target->id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])child.pixels.push_back({i,before[i],after[i]});if(!child.pixels.empty())edit.children.push_back(std::move(child));
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])child.pixels.push_back({i,before[i],after[i]});if(!child.pixels.empty())edit.children.push_back(std::move(child));
  }
  if(edit.children.empty())return false;reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"旋转选区内容");return true;
 }
-bool Document::centerActiveContent(bool horizontal,bool vertical){
+bool Document::centerActiveContent(bool horizontal,bool vertical){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(!horizontal && !vertical)return false;
  // Legacy centers pending selection geometry before consulting layer pixels.
  if(floating_&&selection_){
@@ -2209,7 +2118,7 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){
   SelectionClipboard source;source.width=bounds->width;source.height=bounds->height;const auto count=floatingArea(source.width,source.height);source.mask.resize(count);source.pixels.resize(count);
   for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x){const auto wx=raster::coordinate(std::int64_t(bounds->x)+x),wy=raster::coordinate(std::int64_t(bounds->y)+y);if(!selectionContains(bounds,wx,wy))continue;const auto i=std::size_t(y)*source.width+x;source.mask[i]=1;source.pixels[i]=raster::readWorld(surface,wx,wy);}
   if(!beginMaskFloating(source,bounds->x,bounds->y,false,false))return false;floating_->beforeSelection=beforeSelection;auto target=floating_->transform;target.x+=dx;target.y+=dy;
-  try{transformFloatingPaste(target,false);if(!beforeSelection)selection_.reset();return commitFloatingPaste();}catch(...){cancelFloatingPaste();throw;}
+  try{transformFloatingPaste(target,false);if(!beforeSelection)setSelectionValue(std::nullopt);return commitFloatingPaste();}catch(...){cancelFloatingPaste();throw;}
  }
  auto bounds=selection_;
  const auto* present=activeSurfaceIfPresent();if(!present)return false;const auto& initial=*present;raster::validate(initial);
@@ -2225,9 +2134,9 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){
   if(layerEffectivelyLocked(layer()))return false;cancelStroke();const auto resolved=timeline_.resolveSurface(cel().id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)throw std::logic_error("Invalid center content owner");const auto& before=*resolved.surface;raster::validate(before);
   const auto capture=selection_?selection_:std::optional<SelectionMask>{*bounds};if(!capture)return false;
   const auto l=std::max<std::int64_t>(capture->x,before.offsetX),t=std::max<std::int64_t>(capture->y,before.offsetY),r=std::min<std::int64_t>(std::int64_t(capture->x)+capture->width,std::int64_t(before.offsetX)+before.width),b=std::min<std::int64_t>(std::int64_t(capture->y)+capture->height,std::int64_t(before.offsetY)+before.height);if(r<=l||b<=t)return false;
-  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=selection_;if(edit.afterPixelsSelection){edit.afterPixelsSelection->x=raster::coordinate(std::int64_t(edit.afterPixelsSelection->x)+dx);edit.afterPixelsSelection->y=raster::coordinate(std::int64_t(edit.afterPixelsSelection->y)+dy);}
+  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=selection_;if(edit.pixelSelectionHistory.afterPixelsSelection){edit.pixelSelectionHistory.afterPixelsSelection->x=raster::coordinate(std::int64_t(edit.pixelSelectionHistory.afterPixelsSelection->x)+dx);edit.pixelSelectionHistory.afterPixelsSelection->y=raster::coordinate(std::int64_t(edit.pixelSelectionHistory.afterPixelsSelection->y)+dy);}
   if(capture->mask.empty()&&l==before.offsetX&&t==before.offsetY&&r==std::int64_t(before.offsetX)+before.width&&b==std::int64_t(before.offsetY)+before.height){
-   const int x=raster::coordinate(std::int64_t(before.offsetX)+dx),y=raster::coordinate(std::int64_t(before.offsetY)+dy);raster::coordinate(std::int64_t(x)+before.width);raster::coordinate(std::int64_t(y)+before.height);edit.ownerOffsets.push_back({resolved.source->id,before.offsetX,before.offsetY,x,y});reserveHistoryEntries();applySurfaceEdit(edit,true);selection_=edit.afterPixelsSelection;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
+   const int x=raster::coordinate(std::int64_t(before.offsetX)+dx),y=raster::coordinate(std::int64_t(before.offsetY)+dy);raster::coordinate(std::int64_t(x)+before.width);raster::coordinate(std::int64_t(y)+before.height);edit.contentHistory.ownerOffsets.push_back({resolved.source->id,before.offsetX,before.offsetY,x,y});reserveHistoryEntries();applySurfaceEdit(edit,true);setSelectionValue(edit.pixelSelectionHistory.afterPixelsSelection);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
   }
   raster::Rect64 requested{l+dx,t+dy,r+dx,b+dy};const auto left=std::min<std::int64_t>(before.offsetX,requested.left),top=std::min<std::int64_t>(before.offsetY,requested.top),right=std::max<std::int64_t>(std::int64_t(before.offsetX)+before.width,requested.right),bottom=std::max<std::int64_t>(std::int64_t(before.offsetY)+before.height,requested.bottom);raster::coordinate(left);raster::coordinate(top);raster::coordinate(right);raster::coordinate(bottom);
   std::size_t used=adjustmentStorageBudget(timeline_,1);floatingAddBytes(used,convolutionSurfaceBytes(before)*3);floatingAddBytes(used,std::uint64_t(floatingArea(raster::coordinate(right-left),raster::coordinate(bottom-top)))*sizeof(Pixel)*3);
@@ -2235,15 +2144,15 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){
   for(auto y=t;y<b;++y)for(auto x=l;x<r;++x)if(selectionContains(capture,int(x),int(y)))if(auto index=raster::worldIndex(after,x,y))after.pixels[*index]=0;
   for(auto y=t;y<b;++y)for(auto x=l;x<r;++x){if(!selectionContains(capture,int(x),int(y)))continue;const auto value=raster::readWorld(before,x,y);if(!(value>>24))continue;const auto index=raster::worldIndex(after,x+dx,y+dy);if(index)after.pixels[*index]=brushComposite(after.pixels[*index],value,100);}
   bool changed=false;for(int y=0;y<after.height&&!changed;++y)for(int x=0;x<after.width;++x)if(after.pixels[std::size_t(y)*after.width+x]!=raster::readWorld(before,std::int64_t(after.offsetX)+x,std::int64_t(after.offsetY)+y)){changed=true;break;}if(!changed)return false;
-  edit.surfaceChanges.push_back({resolved.source->id,before,std::move(after)});reserveHistoryEntries();applySurfaceEdit(edit,true);selection_=edit.afterPixelsSelection;change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
+  edit.contentHistory.surfaceChanges.push_back({resolved.source->id,before,std::move(after)});reserveHistoryEntries();applySurfaceEdit(edit,true);setSelectionValue(edit.pixelSelectionHistory.afterPixelsSelection);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
  }
  if(layerEffectivelyLocked(layer()))return false;cancelStroke();const auto before=pixels();auto after=before;
  // legacy centerActiveContent only operates on activePaintLayer here, even
  // when other timeline targets are selected; hidden raster layers are allowed.
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(selectionContains(bounds,x,y))after[std::size_t(y)*width_+x]=0;
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){if(!selectionContains(bounds,x,y))continue;const auto value=before[std::size_t(y)*width_+x];const auto tx=std::int64_t(x)+dx,ty=std::int64_t(y)+dy;if(!(value>>24) || tx<0 || ty<0 || tx>=width_ || ty>=height_)continue;auto& destination=after[std::size_t(ty)*width_+tx];destination=selectionContains(bounds,tx,ty)?value:brushComposite(destination,value,100);}
- Edit edit{{},state_,nextState_};edit.targetCelId=cel().id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])edit.pixels.push_back({i,before[i],after[i]});if(edit.pixels.empty())return false;
- edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;edit.afterPixelsSelection=selection_;if(edit.afterPixelsSelection){edit.afterPixelsSelection->x+=dx;edit.afterPixelsSelection->y+=dy;}
+ Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=cel().id;for(std::size_t i=0;i<before.size();++i)if(before[i]!=after[i])edit.pixels.push_back({i,before[i],after[i]});if(edit.pixels.empty())return false;
+ edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=selection_;if(edit.pixelSelectionHistory.afterPixelsSelection){edit.pixelSelectionHistory.afterPixelsSelection->x+=dx;edit.pixelSelectionHistory.afterPixelsSelection->y+=dy;}
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
 }
 bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){commitFloatingPaste();return fillAttachedMaskSelection(color);}
@@ -2259,11 +2168,11 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
 
   const auto area=std::size_t(bounds->width)*bounds->height;const bool dense=area>=512*512&&(!selection_||selection_->mask.empty()||changed*3>=area);
   std::size_t used=adjustmentStorageBudget(timeline_,1);floatingAddBytes(used,std::uint64_t(width_)*height_*sizeof(Pixel));floatingAddBytes(used,dense?std::uint64_t(area)*sizeof(Pixel)*2:std::uint64_t(changed)*sizeof(Delta));
-  Edit edit{{},state_,nextState_};edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.pixelAddress=PixelAddressSpace{width_,height_,0,0};
-  timeline::Cel created;created.id="cel-"+activeLayerId_+"-"+activeFrameId_;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+activeLayerId_+"-"+activeFrameId_+"-"+std::to_string(suffix);created.layerId=activeLayerId_;created.frameId=activeFrameId_;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::vector<Pixel>(std::size_t(width_)*height_))};edit.targetCelId=created.id;
+  Edit edit{{},state_,nextState_};edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,0,0};
+  timeline::Cel created;created.id="cel-"+activeLayerId_+"-"+activeFrameId_;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+activeLayerId_+"-"+activeFrameId_+"-"+std::to_string(suffix);created.layerId=activeLayerId_;created.frameId=activeFrameId_;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::vector<Pixel>(std::size_t(width_)*height_))};edit.contentHistory.targetCelId=created.id;
   DensePixels region{bounds->x,bounds->y,bounds->width,bounds->height,{},{}};if(dense){region.before.assign(area,0);region.after.assign(area,0);}else edit.pixels.reserve(changed);
   PixelRegion dirty;for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){if(selection_&&!selectionContains(selection_,x,y))continue;const auto index=std::size_t(y)*width_+x;created.surface->pixels[index]=color;if(dense)region.after[std::size_t(y-bounds->y)*bounds->width+x-bounds->x]=color;else edit.pixels.push_back({index,0,color});dirty.include(x,y);}
-  if(dense)edit.dense=std::move(region);auto candidate=timeline_.state();const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");}catch(...){timeline_=std::move(previous);throw;}change_=dirty;publishChange();return true;
+  if(dense)edit.contentHistory.dense=std::move(region);auto candidate=timeline_.state();const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");}catch(...){timeline_=std::move(previous);throw;}change_=dirty;publishChange();return true;
  }
  std::vector<const DocumentCel*> targets;
  if(!timelineSelection_.cels.empty()){
@@ -2295,20 +2204,20 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
    const auto padding=selection_?64:0;const raster::Rect64 requested{std::max(0,bounds->x-padding),std::max(0,bounds->y-padding),std::min<std::int64_t>(width_,std::int64_t(bounds->x)+bounds->width+padding),std::min<std::int64_t>(height_,std::int64_t(bounds->y)+bounds->height+padding)};
    auto expansion=covered?std::optional<timeline::Surface>{}:raster::expanded(source,requested,(adjustmentByteLimit-*sparseStaging)/2);auto after=expansion?std::move(*expansion):source;floatingAddBytes(*sparseStaging,convolutionSurfaceBytes(after)*2);bool changed=false;
    for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){if(selection_&&!selectionContains(selection_,x,y))continue;const auto index=raster::worldIndex(after,x,y);if(!index)continue;changed|=after.pixels[*index]!=color;after.pixels[*index]=color;}
-   if(changed){Edit child{{},state_,nextState_};child.surfaceChanges.push_back({resolved.source->id,source,std::move(after)});edit.children.push_back(std::move(child));}continue;
+   if(changed){Edit child{{},state_,nextState_};child.contentHistory.surfaceChanges.push_back({resolved.source->id,source,std::move(after)});edit.children.push_back(std::move(child));}continue;
   }
-  Edit child{{},state_,nextState_};child.targetCelId=target->id;bool changed=false;
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;bool changed=false;
   DensePixels region{bounds->x,bounds->y,bounds->width,bounds->height,{},{}};if(dense){region.before.reserve(area);region.after.reserve(area);}
   for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){
    const auto index=std::size_t(y)*width_+x;const auto before=resolved.surface->pixels[index];const auto after=(!selection_ || selectionContains(selection_,x,y))?color:before;
    if(dense){region.before.push_back(before);region.after.push_back(after);}else if(before!=after)child.pixels.push_back({index,before,after});changed|=before!=after;
   }
-  if(changed){if(dense)child.dense=std::move(region);edit.children.push_back(std::move(child));}
+  if(changed){if(dense)child.contentHistory.dense=std::move(region);edit.children.push_back(std::move(child));}
  }
  if(edit.children.empty())return false;
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
-bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(layer().kind=="free-tile"){
+bool Document::deleteSelectedPixels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(layer().kind=="free-tile"){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared
  // source in instance world coordinates; never erase a derived Cel cache.
  if(active()||!selection_||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode()||!layer().freeTiles||!freeTileCel().freeTiles||!freeTileCel().surface||layerEffectivelyLocked(layer()))return false;
@@ -2323,7 +2232,7 @@ bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancel
  // preserves instance/source selection instead of applying paste session changes.
  Document draft(1,1);draft.width_=width_;draft.height_=height_;draft.timeline_=timeline_;draft.activeLayerId_=activeLayerId_;draft.activeFrameId_=activeFrameId_;draft.tileSelection_=tileSelection_;draft.freeInstanceSelected_=freeInstanceSelected_;draft.freeInstancePrimary_=freeInstancePrimary_;draft.freeInstanceAnchor_=freeInstanceAnchor_;draft.freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;draft.freeInstanceViewLayer_=freeInstanceViewLayer_;
  if(!draft.pasteFreeTilePixels(clear,{content.x,content.y})||draft.historyPosition()==0)return false;
- Edit edit{{},state_,nextState_};edit.beforeTimeline=timeline_.state();edit.afterTimeline=std::move(draft.timeline_.state_);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除选区");selection_.reset();return true;
+ Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.afterTimeline=std::move(draft.timeline_.state_);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除选区");setSelectionValue(std::nullopt);return true;
  }if(!activeMaskId_.empty())return deleteMaskSelection();
  // legacy deleteSelection resolves selection-origin pending pixels first; clipboard-origin cancels.
  // Frozen tile modes share legacy copy/cancel/commit routing; Paint pixel deletion remains refused.
@@ -2355,7 +2264,7 @@ bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancel
  edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;
  edit.beforeSelection=edit.afterSelection=selectedFrames_;
- edit.pixelSelectionEdit=true;edit.beforePixelsSelection=selection_;
+ edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;
  for(const auto* target:targets){
   const auto owner=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==target->layerId;});
   if(owner==timeline_.state().layers.end() || !owner->kind.empty() || layerEffectivelyLocked(*owner))continue;
@@ -2379,8 +2288,8 @@ bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancel
   const auto right=std::min<std::int64_t>(std::int64_t(clamped->x)+clamped->width,std::int64_t(source.offsetX)+maxX+1);
   const auto bottom=std::min<std::int64_t>(std::int64_t(clamped->y)+clamped->height,std::int64_t(source.offsetY)+maxY+1);
   if(right<=left || bottom<=top)continue;
-  Edit child{{},state_,nextState_};child.targetCelId=target->id;
-  child.pixelAddress=PixelAddressSpace{source.width,source.height,source.storageOriginX.value_or(0),source.storageOriginY.value_or(0)};
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;
+  child.contentHistory.pixelAddress=PixelAddressSpace{source.width,source.height,source.storageOriginX.value_or(0),source.storageOriginY.value_or(0)};
   for(auto y=top;y<bottom;++y)for(auto x=left;x<right;++x){
    if(!selectionContains(selection_,int(x),int(y)))continue;
    const auto index=std::size_t(y-source.offsetY)*source.width+std::size_t(x-source.offsetX);
@@ -2391,7 +2300,7 @@ bool Document::deleteSelectedPixels(){if(floating_&&floating_->clipboard){cancel
  if(edit.children.empty())return false;
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"删除选区");return true;
 }
-bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty(),clipboardFloating=floating_&&floating_->clipboard;if(activeMaskId_.empty()&&!clipboardFloating&&hasFreeTileContent()&&!freeSource&&!layer().kind.empty()&&layer().kind!="tilemap")return false;if(activeMaskId_.empty()&&!clipboardFloating&&hasTilemapContent()&&!freeSource&&!layer().kind.empty()&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();selection_.reset();return bool(clipboard);}
+bool Document::cutPixels(std::optional<SelectionClipboard>& clipboard){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool freeSource=layer().kind=="free-tile"&&activeMaskId_.empty(),clipboardFloating=floating_&&floating_->clipboard;if(activeMaskId_.empty()&&!clipboardFloating&&hasFreeTileContent()&&!freeSource&&!layer().kind.empty()&&layer().kind!="tilemap")return false;if(activeMaskId_.empty()&&!clipboardFloating&&hasTilemapContent()&&!freeSource&&!layer().kind.empty()&&!tilemapSelectionCutAvailable())return false;if(!selection_)return false;clipboard=copyPixels();const bool deleteOriginal=!floating_ || (!floating_->clipboard && !floating_->copy);if(floating_)cancelFloatingPaste();if(deleteOriginal)deleteSelectedPixels();setSelectionValue(std::nullopt);return bool(clipboard);}
 bool Document::floatingSymmetryRotation(const FloatingPaste& f,const SelectionTransform& t)const{return (f.symmetryRotation||f.symmetryShear)&&f.beforeSelection&&!f.clipboard&&!f.tilemap&&f.maskId.empty()&&symmetryHas(f.symmetryAxes)&&(f.symmetryShear||(t.shearX==0&&t.shearY==0))&&!t.quad;}
 void Document::configureSymmetryContentRotation(FloatingPaste& f){
  f.symmetryShear=false;f.symmetryRotation=false;if(f.clipboard||f.tilemap||!f.maskId.empty()||!f.beforeSelection)return;f.symmetryRotation=symmetryHas(symmetryAxes);f.symmetryScale=false;f.symmetryAxes=symmetryAxes;f.symmetryCenter=symmetryCenter();for(auto& target:f.targets)target.symmetryRotation.reset();
@@ -2558,7 +2467,7 @@ void Document::transformSparseFloatingPaste(const SelectionTransform& transform,
  }
  for(auto& stage:stages){stage.live=timeline_.mutableOwnedSurface(stage.owner);if(!stage.live)throw std::logic_error("Missing floating install owner");}
  for(auto& stage:stages){auto& target=f.targets[stage.index];std::swap(*stage.live,stage.candidate);target.ownerId.swap(stage.owner);if(stage.baseline)target.baseline=std::move(stage.baseline);target.preview.swap(stage.changes);if(!translation)target.rotSprite=std::move(stage.sampler);}
- f.restoredFromDeselect=false;f.sparse=true;f.rotSprite=rotSprite;f.transform=transform;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));selection_=std::move(selection);change_={0,0,width_,height_};publishChange();
+ f.restoredFromDeselect=false;f.sparse=true;f.rotSprite=rotSprite;f.transform=transform;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));setSelectionValue(std::move(selection));change_={0,0,width_,height_};publishChange();
 }
 
 // Legacy workspace-commands-clipboard.ts / selection-move.ts: mask is an
@@ -2599,15 +2508,15 @@ void Document::transformMaskFloating(const SelectionTransform& transform,bool ro
  }
  const bool changed=next.offsetX!=baseline.offsetX||next.offsetY!=baseline.offsetY||next.width!=baseline.width||next.height!=baseline.height||next.pixels!=baseline.pixels;
  std::unordered_map<std::size_t,Delta> deltas;if(changed)deltas.emplace(0,Delta{0,0,1});auto selected=floatingSelectionMask(f,transform);if(!changed)next=baseline;
- mutableActiveMask()->surface=std::move(next);target.preview=std::move(deltas);target.rotSprite=std::move(sampler);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));f.restoredFromDeselect=false;selection_=std::move(selected);change_={0,0,width_,height_};publishChange();
+ mutableActiveMask()->surface=std::move(next);target.preview=std::move(deltas);target.rotSprite=std::move(sampler);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));f.restoredFromDeselect=false;setSelectionValue(std::move(selected));change_={0,0,width_,height_};publishChange();
 }
 bool Document::commitMaskFloating(){
  auto& f=*floating_;if(f.maskId!=activeMaskId_||!f.beforeMasks)throw std::logic_error("Mask floating target changed before commit");
- const bool changed=!f.targets.front().preview.empty(),selected=!selectionEqual(f.beforeSelection,selection_);Edit edit{{},state_,changed?nextState_:state_};edit.documentChanged=changed;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=f.beforeSelection;edit.afterPixelsSelection=selection_;
- if(changed){edit.beforeMasks=*f.beforeMasks;edit.afterMasks=timeline_.state().masks;}checkFloatingBudget(f,0);reserveHistoryEntries();floating_.reset();if(changed||selected)pushEdit(std::move(edit),U"变换选区内容");return changed;
+ const bool changed=!f.targets.front().preview.empty(),selected=!selectionEqual(f.beforeSelection,selection_);Edit edit{{},state_,changed?nextState_:state_};edit.documentChanged=changed;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;edit.pixelSelectionHistory.afterPixelsSelection=selection_;
+ if(changed){edit.maskHistory.beforeMasks=*f.beforeMasks;edit.maskHistory.afterMasks=timeline_.state().masks;}checkFloatingBudget(f,0);reserveHistoryEntries();floating_.reset();if(changed||selected)pushEdit(std::move(edit),U"变换选区内容");return changed;
 }
 void Document::cancelMaskFloating(){
- if(!floating_)return;auto& f=*floating_;if(f.beforeMasks)timeline_.state_.masks=std::move(*f.beforeMasks);selection_=std::move(f.beforeSelection);floating_.reset();change_={0,0,width_,height_};publishChange();
+ if(!floating_)return;auto& f=*floating_;if(f.beforeMasks)timeline_.state_.masks=std::move(*f.beforeMasks);setSelectionValue(std::move(f.beforeSelection));floating_.reset();change_={0,0,width_,height_};publishChange();
 }
 bool Document::transformMaskImmediate(bool flip,bool horizontal,int angle){
  if(!flip&&angle!=90&&angle!=-90&&angle!=180)return false;commitFloatingPaste();cancelStroke();cancelGradient();if(!maskBrushAvailable())return false;
@@ -2617,8 +2526,8 @@ bool Document::transformMaskImmediate(bool flip,bool horizontal,int angle){
  if(!beginMaskFloating(source,bounds->x,bounds->y,false,false))return false;floating_->beforeSelection=beforeSelection;SelectionTransform target{double(bounds->x),double(bounds->y),double(bounds->width),double(bounds->height),double(angle)};target.flipHorizontal=flip&&horizontal;target.flipVertical=flip&&!horizontal;
  try{transformFloatingPaste(target,false);return commitFloatingPaste();}catch(...){cancelFloatingPaste();throw;}
 }
-bool Document::deleteMaskSelection(){
- if(floating_){if(floating_->clipboard){cancelFloatingPaste();return true;}commitFloatingPaste();}if(!selection_||!maskBrushAvailable())return false;const bool changed=fillAttachedMaskSelection(palette_.secondary);if(changed)selection_.reset();return changed;
+bool Document::deleteMaskSelection(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
+ if(floating_){if(floating_->clipboard){cancelFloatingPaste();return true;}commitFloatingPaste();}if(!selection_||!maskBrushAvailable())return false;const bool changed=fillAttachedMaskSelection(palette_.secondary);if(changed)setSelectionValue(std::nullopt);return changed;
 }
 
 bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int y){if(!activeMaskId_.empty())return beginMaskFloating(clipboard,x,y,true,true);
@@ -2635,10 +2544,10 @@ bool Document::beginFloatingPaste(const SelectionClipboard& clipboard,int x,int 
  try{moveFloatingPaste(x,y);}catch(...){cancelFloatingPaste();throw;}
  return true;
 }
-bool Document::beginLayerTransform(){
+bool Document::beginLayerTransform(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(!activeMaskId_.empty()){
  commitFloatingPaste();cancelStroke();cancelGradient();if(!maskBrushAvailable())return false;const auto& surface=mutableActiveMask()->surface;int l=width_,t=height_,r=-1,b=-1;
- for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(raster::readWorld(surface,x,y)>>24){l=std::min(l,x);t=std::min(t,y);r=std::max(r,x);b=std::max(b,y);}if(r<l)return false;selection_=SelectionMask{l,t,r-l+1,b-t+1,{}};return true;
+ for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(raster::readWorld(surface,x,y)>>24){l=std::min(l,x);t=std::min(t,y);r=std::max(r,x);b=std::max(b,y);}if(r<l)return false;setSelectionValue(SelectionMask{l,t,r-l+1,b-t+1,{}});return true;
  }
  if(layer().kind=="free-tile"){
   if(layer().kind!="free-tile"||!activeMaskId_.empty()||hasSelectedGroups()||!selectedFrames_.empty())return false;
@@ -2646,7 +2555,7 @@ bool Document::beginLayerTransform(){
   for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c||c->layerId!=activeLayerId_||c->frameId!=activeFrameId_)return false;}
   commitFloatingPaste();cancelStroke();cancelGradient();const auto bounds=freeTileSelectionTargetBounds(*this);if(!bounds)return false;
   auto visible=combineSelection(SelectionMask{bounds->x,bounds->y,bounds->w,bounds->h,{}},SelectionMask{0,0,width_,height_,{}},3);if(!visible)return false;
-  selection_=std::move(visible);return true;
+  setSelectionValue(std::move(visible));return true;
  }
  const auto commandLayers=selectedLayerIdsWithGroups();if(hasSelectedGroups()&&commandLayers.empty())return false;
  commitFloatingPaste();cancelStroke();std::unordered_set<std::string> selected(commandLayers.begin(),commandLayers.end());for(const auto& id:timelineSelection_.cels)if(const auto* target=timeline_.findCelById(id))selected.insert(target->layerId);
@@ -2661,7 +2570,7 @@ bool Document::beginLayerTransform(){
 
  int left=width_,top=height_,right=-1,bottom=-1;
  for(const auto& l:timeline_.state().layers){if(!selected.count(l.id))continue;if(layerEffectivelyLocked(l) || !layerEffectivelyVisible(l))return false;const auto* target=timeline_.findCel(l.id,activeFrameId_);if(!target)continue;const auto resolved=timeline_.resolveSurface(target->id);if(!resolved.surface)continue;const auto& s=*resolved.surface;raster::validate(s);for(int y=0;y<s.height;++y)for(int x=0;x<s.width;++x){const auto wx=std::int64_t(s.offsetX)+x,wy=std::int64_t(s.offsetY)+y;if(wx<0||wy<0||wx>=width_||wy>=height_||!(s.pixels[std::size_t(y)*s.width+x]>>24))continue;left=std::min(left,int(wx));top=std::min(top,int(wy));right=std::max(right,int(wx));bottom=std::max(bottom,int(wy));}}
- if(right<left)return false;selection_=SelectionMask{left,top,right-left+1,bottom-top+1,{}};return true;
+ if(right<left)return false;setSelectionValue(SelectionMask{left,top,right-left+1,bottom-top+1,{}});return true;
 }
 bool Document::linkedCreateFloatingSupported(const FloatingPaste& f)const{
  // Frozen explicit-chain Create owner; preview may have no in-canvas selection.
@@ -2773,27 +2682,27 @@ std::optional<SelectionMask> Document::expandedPaintCellSelection(bool discreteF
  paintSelectionCells(g,originX,originY,*selection_,[&](std::size_t i){const int x=originX+int(i%g.columns)*g.tileWidth,y=originY+int(i/g.columns)*g.tileHeight;bool hit=false;for(int py=std::max({y,selection_->y,clipTop});!hit&&py<std::min({y+g.tileHeight,selection_->y+selection_->height,clipBottom});++py)for(int px=std::max({x,selection_->x,clipLeft});px<std::min({x+g.tileWidth,selection_->x+selection_->width,clipRight});++px)if(selectionContains(selection_,px,py)){hit=true;break;}if(hit){indexes.push_back(i);left=std::min(left,std::max(clipLeft,x));top=std::min(top,std::max(clipTop,y));right=std::max(right,std::min(clipRight,x+g.tileWidth));bottom=std::max(bottom,std::min(clipBottom,y+g.tileHeight));}});
  if(indexes.empty())return {};SelectionMask result{left,top,right-left,bottom-top,{}};result.mask.resize(std::size_t(result.width)*result.height);std::size_t count=0;for(const auto i:indexes){const int x=originX+int(i%g.columns)*g.tileWidth,y=originY+int(i/g.columns)*g.tileHeight;for(int py=std::max(clipTop,y);py<std::min(clipBottom,y+g.tileHeight);++py)for(int px=std::max(clipLeft,x);px<std::min(clipRight,x+g.tileWidth);++px){result.mask[std::size_t(py-top)*result.width+px-left]=1;++count;}}if(count==result.mask.size())result.mask.clear();return result;
 }
-bool Document::beginPaintCellMove(bool copy,bool keyboard){
+bool Document::beginPaintCellMove(bool copy,bool keyboard){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  auto expanded=expandedPaintCellSelection();if(!expanded)return false;const auto target=timeline_.resolveSurface(cel().id);const auto& g=*target.source->tilemap;const auto bytes=std::uint64_t(g.cells.size())*1024+std::uint64_t(width_)*height_*4;if(bytes>256*1024*1024-adjustmentStorageBudget(timeline_,1))throw std::length_error("Paint selection move exceeds document budget");
  PaintCellMove move;move.layerId=layer().id;move.frameId=frame().id;move.celId=target.source->id;move.expanded=*expanded;move.beforeSelection=keyboard?selection_:expanded;move.copy=copy;
  paintSelectionCells(g,activeSurface().offsetX,activeSurface().offsetY,*expanded,[&](std::size_t i){const int x=activeSurface().offsetX+int(i%g.columns)*g.tileWidth,y=activeSurface().offsetY+int(i/g.columns)*g.tileHeight;bool hit=false;for(int py=std::max(y,expanded->y);!hit&&py<std::min(y+g.tileHeight,expanded->y+expanded->height);++py)for(int px=std::max(x,expanded->x);px<std::min(x+g.tileWidth,expanded->x+expanded->width);++px)if(selectionContains(expanded,px,py)){hit=true;break;}if(hit)move.sources.push_back({i,g.cells[i],g.cells[i]});});
- paintCellMove_=std::move(move);selection_=std::move(expanded);return true;
+ paintCellMove_=std::move(move);setSelectionValue(std::move(expanded));return true;
 }
-void Document::updatePaintCellMove(int dx,int dy,bool clamp){
+void Document::updatePaintCellMove(int dx,int dy,bool clamp){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(!paintCellMove_)return;auto& move=*paintCellMove_;if(tileSelection_.mode!=tiles::Mode::Paint||layer().id!=move.layerId||frame().id!=move.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||!tilemapCellOwnerSupported(cel().id,true,true)||timeline_.resolveSurface(cel().id).source->id!=move.celId)throw std::logic_error("Paint cell move target changed");const auto& g=*timeline_.findCelById(move.celId)->tilemap;
  int columns=int(std::floor(double(dx)/g.tileWidth+.5)),rows=int(std::floor(double(dy)/g.tileHeight+.5));if(clamp){columns=std::clamp(columns,int(std::ceil(double(activeSurface().offsetX-move.expanded.x)/g.tileWidth)),int(std::floor(double(activeSurface().offsetX+g.columns*g.tileWidth-move.expanded.x-move.expanded.width)/g.tileWidth)));rows=std::clamp(rows,int(std::ceil(double(activeSurface().offsetY-move.expanded.y)/g.tileHeight)),int(std::floor(double(activeSurface().offsetY+g.rows*g.tileHeight-move.expanded.y-move.expanded.height)/g.tileHeight)));}if(columns==move.columns&&rows==move.rows)return;
- std::map<std::size_t,std::optional<tiles::Cell>> original,updates;if(move.preview&&move.preview->tilemapPixels)for(const auto& c:move.preview->tilemapPixels->cells){original[c.index]=c.before;updates[c.index]=c.before;}
+ std::map<std::size_t,std::optional<tiles::Cell>> original,updates;if(move.preview&&move.preview->tilemapPixels())for(const auto& c:move.preview->tilemapPixels()->cells){original[c.index]=c.before;updates[c.index]=c.before;}
  auto baseline=[&](std::size_t i){const auto found=original.find(i);return found==original.end()?g.cells[i]:found->second;};
  if(!move.copy)for(const auto& c:move.sources)updates[c.index]={};for(const auto& c:move.sources){const auto x=std::int64_t(c.index%g.columns)+columns,y=std::int64_t(c.index/g.columns)+rows;if(x>=0&&y>=0&&x<g.columns&&y<g.rows)updates[std::size_t(y)*g.columns+std::size_t(x)]=c.before;}
  const int ox=columns*g.tileWidth,oy=rows*g.tileHeight;const auto& source=move.expanded;const std::optional<SelectionMask> sourceSelection{source};int left=width_,top=height_,right=0,bottom=0;for(int y=source.y;y<source.y+source.height;++y)for(int x=source.x;x<source.x+source.width;++x)if(selectionContains(sourceSelection,x,y)&&x+ox>=0&&y+oy>=0&&x+ox<width_&&y+oy<height_){left=std::min(left,x+ox);top=std::min(top,y+oy);right=std::max(right,x+ox+1);bottom=std::max(bottom,y+oy+1);}
  std::optional<SelectionMask> after;if(right>left&&bottom>top){SelectionMask shifted{left,top,right-left,bottom-top,{}};shifted.mask.resize(std::size_t(shifted.width)*shifted.height);std::size_t count=0;for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)if(selectionContains(sourceSelection,x-ox,y-oy)){shifted.mask[std::size_t(y-top)*shifted.width+x-left]=1;++count;}if(count==shifted.mask.size())shifted.mask.clear();after=std::move(shifted);}
  TilemapPixelHistory apply,history;apply.celId=history.celId=move.celId;apply.tilesetEdit=history.tilesetEdit=false;apply.independentCellOwner=history.independentCellOwner=true;apply.cellOffsetLayout=history.cellOffsetLayout=true;apply.linkedCellOwner=history.linkedCellOwner=true;apply.beforeSet.id=history.beforeSet.id=layer().tilemapTilesetId;for(const auto& entry:updates){const auto before=baseline(entry.first);apply.cells.push_back({entry.first,g.cells[entry.first],entry.second});if(before!=entry.second)history.cells.push_back({entry.first,before,entry.second});}
- Edit edit{{},state_,nextState_};edit.pixelSelectionEdit=true;edit.beforePixelsSelection=move.beforeSelection;edit.afterPixelsSelection=after;edit.beforeTileSelection=edit.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(apply));
- auto retained=std::make_shared<Edit>(edit);retained->documentChanged=!history.cells.empty();if(retained->documentChanged)retained->tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(history));else{retained->tilemapPixels.reset();retained->afterState=state_;}retained->label.reserve(32);reserveHistoryEntries();change_={};applyEdit(edit,true);move.preview=std::move(retained);move.columns=columns;move.rows=rows;publishChange();
+ Edit edit{{},state_,nextState_};edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=move.beforeSelection;edit.pixelSelectionHistory.afterPixelsSelection=after;edit.tileHistory.beforeTileSelection=edit.tileHistory.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.layerHistory.beforeGroupUi=edit.layerHistory.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};edit.terminalHistory=std::make_shared<const TilemapPixelHistory>(std::move(apply));
+ auto retained=std::make_shared<Edit>(edit);retained->documentChanged=!history.cells.empty();if(retained->documentChanged)retained->terminalHistory=std::make_shared<const TilemapPixelHistory>(std::move(history));else{retained->terminalHistory=std::monostate{};retained->afterState=state_;}retained->label.reserve(32);reserveHistoryEntries();change_={};applyEdit(edit,true);move.preview=std::move(retained);move.columns=columns;move.rows=rows;publishChange();
 }
-bool Document::finishPaintCellMove(bool cancel){
- if(!paintCellMove_)return false;auto& move=*paintCellMove_;if(cancel){change_={};if(move.preview&&move.preview->tilemapPixels)applyEdit(*move.preview,false);selection_=move.beforeSelection;paintCellMove_.reset();publishChange();return false;}
- if(tileSelection_.mode!=tiles::Mode::Paint||layer().id!=move.layerId||frame().id!=move.frameId)throw std::logic_error("Paint cell move target changed");auto edit=move.preview;const bool changed=edit&&edit->documentChanged;const bool selected=edit&&!selectionEqual(edit->beforePixelsSelection,edit->afterPixelsSelection);paintCellMove_.reset();if(edit&&(changed||selected))pushEdit(std::move(*edit),U"移动瓦片选区内容");return changed;
+bool Document::finishPaintCellMove(bool cancel){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_,bool(paintCellMove_));
+ if(!paintCellMove_)return false;auto& move=*paintCellMove_;if(cancel){change_={};if(move.preview&&move.preview->tilemapPixels())applyEdit(*move.preview,false);setSelectionValue(move.beforeSelection);paintCellMove_.reset();publishChange();return false;}
+ if(tileSelection_.mode!=tiles::Mode::Paint||layer().id!=move.layerId||frame().id!=move.frameId)throw std::logic_error("Paint cell move target changed");auto edit=move.preview;const bool changed=edit&&edit->documentChanged;const bool selected=edit&&!selectionEqual(edit->pixelSelectionHistory.beforePixelsSelection,edit->pixelSelectionHistory.afterPixelsSelection);paintCellMove_.reset();if(edit&&(changed||selected))pushEdit(std::move(*edit),U"移动瓦片选区内容");return changed;
 }
 bool Document::nudgeSelectionContent(int dx,int dy,bool allFrameLayers){const bool freeFloating=floating_&&bool(floating_->freeTile),rasterClipboard=floating_&&floating_->clipboard&&floating_->maskId.empty()&&layer().kind.empty()&&!layerEffectivelyLocked(layer());const bool mixedRaster=(hasFreeTileContent()||hasTilemapContent())&&activeMaskId_.empty()&&layer().kind.empty()&&!layerEffectivelyLocked(layer())&&(!floating_||(!floating_->freeTile&&!floating_->tilemap&&floating_->maskId.empty()));if((!activeMaskId_.empty()||freeFloating||rasterClipboard||mixedRaster||(!hasFreeTileContent()&&!hasTilemapContent()&&layer().kind.empty()))&&selection_){
  // Legacy moveActiveSelectionWithSelectionHistory clamps keyboard movement;
@@ -2805,13 +2714,13 @@ bool Document::nudgeSelectionContent(int dx,int dy,bool allFrameLayers){const bo
  auto transform=floating_->transform;transform.x+=dx;transform.y+=dy;if(transform.flipOriginX)*transform.flipOriginX+=dx;if(transform.flipOriginY)*transform.flipOriginY+=dy;if(transform.quad)for(auto& point:*transform.quad){point.x+=dx;point.y+=dy;}transformFloatingPaste(transform,floating_->rotSprite);return true;
 }
 void Document::prepareSelectionBoxMove(){if(floating_ && !floating_->clipboard)commitFloatingPaste();}
-void Document::commitSelectionBox(std::optional<SelectionMask> before){if(selectionEqual(before,selection_))return;Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionEdit=true;e.beforePixelsSelection=std::move(before);e.afterPixelsSelection=selection_;pushEdit(std::move(e),U"移动选框");}
+void Document::commitSelectionBox(std::optional<SelectionMask> before){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(selectionEqual(before,selection_))return;Edit e{{},state_,state_};e.documentChanged=false;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=std::move(before);e.pixelSelectionHistory.afterPixelsSelection=selection_;pushEdit(std::move(e),U"移动选框");}
 void Document::moveFloatingPaste(int x,int y){if(!floating_)return;auto transform=floating_->transform;if(transform.width<1 || transform.height<1){transform.width=floating_->source.width;transform.height=floating_->source.height;}transform.x=x;transform.y=y;transformFloatingPaste(transform,floating_->rotSprite);}
-void Document::transformFloatingPaste(const SelectionTransform& transform,bool rotSprite){
+void Document::transformFloatingPaste(const SelectionTransform& transform,bool rotSprite){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(!floating_)return;if(floating_->freeTile){const bool previous=floating_->rotSprite;floating_->rotSprite=rotSprite;try{transformFreeTileSelectionMove(transform);}catch(...){floating_->rotSprite=previous;throw;}return;}auto& f=*floating_;const auto bounds=checkedFloatingBounds(transform);if(f.tilemap&&(tileSelection_.mode!=f.tilemapMode||layer().id!=f.layerId||frame().id!=f.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer())||(!tilemapDeltaSupported()&&!linkedCreateFloatingSupported(f)&&!linkedEditFloatingSupported(f)&&!linkedHybridFloatingSupported(f))))throw std::logic_error("Tilemap floating target changed");if(!f.maskId.empty()){transformMaskFloating(transform,rotSprite);return;}
  if(f.targets.empty()){
   if(f.clipboard||timeline_.findCel(f.layerId,f.frameId)||layer().id!=f.layerId||frame().id!=f.frameId||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))throw std::logic_error("Empty floating target changed");
-  std::size_t extra=0;if(!floatingTranslation(transform,f.source))floatingAddBytes(extra,std::uint64_t(floatingArea(bounds.width,bounds.height))*192);checkFloatingBudget(f,extra);auto selected=floatingSelectionMask(f,transform);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));selection_=std::move(selected);return;
+  std::size_t extra=0;if(!floatingTranslation(transform,f.source))floatingAddBytes(extra,std::uint64_t(floatingArea(bounds.width,bounds.height))*192);checkFloatingBudget(f,extra);auto selected=floatingSelectionMask(f,transform);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));setSelectionValue(std::move(selected));return;
  }
  if(f.deferred){
   if(f.restoredFromDeselect){const auto old=f.transform;transformSparseFloatingPaste(transform,rotSprite);f.deferred=false;noteFloatingOverlayChange(f,old,transform);return;}
@@ -2819,12 +2728,12 @@ void Document::transformFloatingPaste(const SelectionTransform& transform,bool r
    if(!f.clipboard||timeline_.findCel(f.layerId,f.frameId)||layer().id!=f.layerId||frame().id!=f.frameId||!layer().kind.empty()||layerEffectivelyLocked(layer()))throw std::logic_error("Absent paste target changed");
    std::size_t extra=0;if(!floatingTranslation(transform,f.source))floatingAddBytes(extra,std::uint64_t(floatingArea(bounds.width,bounds.height))*192);if(rotSprite&&!f.targets.front().rotSprite)floatingAddBytes(extra,std::uint64_t(f.source.pixels.size())*5+12*1024*1024);checkFloatingBudget(f,extra);
    auto selected=floatingSelectionMask(f,transform);auto sampler=f.targets.front().rotSprite;if(rotSprite&&!sampler)sampler=std::make_shared<SelectionRotSpriteSource>(f.source);
-   noteFloatingOverlayChange(f,f.transform,transform);f.targets.front().rotSprite=std::move(sampler);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));selection_=std::move(selected);return;
+   noteFloatingOverlayChange(f,f.transform,transform);f.targets.front().rotSprite=std::move(sampler);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));setSelectionValue(std::move(selected));return;
   }
   const auto& target=f.targets.front();const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||(!target.ownerId.empty()&&r.source->id!=target.ownerId))throw std::logic_error("Floating overlay owner changed");
   const auto layerIt=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==r.source->layerId;});if(layerIt==timeline_.state().layers.end()||layerEffectivelyLocked(*layerIt))throw std::logic_error("Floating layer is locked");
   std::size_t extra=0;if(floatingSymmetryRotation(f,transform)&&(!target.symmetryRotation||!target.symmetryRotation->matches(transform,rotSprite)))floatingAddBytes(extra,std::uint64_t(std::min(floatingArea(bounds.width,bounds.height),floatingArea(width_,height_)))*(192+symmetryMatrices(f.symmetryAxes).size()*sizeof(SymmetryRotationWrite)*2));if(!floatingTranslation(transform,f.source))floatingAddBytes(extra,std::uint64_t(floatingArea(bounds.width,bounds.height))*192);if(rotSprite&&!target.rotSprite)floatingAddBytes(extra,std::uint64_t(target.source.pixels.size())*5+12*1024*1024);checkFloatingBudget(f,extra);auto selection=floatingSelectionMask(f,transform);auto sampler=target.rotSprite;if(rotSprite&&!sampler)sampler=std::make_shared<SelectionRotSpriteSource>(target.source);auto owner=r.source->id;auto rotation=target.symmetryRotation;if(floatingSymmetryRotation(f,transform)){if(!rotation||!rotation->matches(transform,rotSprite))rotation=symmetryContentRotation(target.source,*f.beforeSelection,transform,width_,height_,f.symmetryAxes,f.symmetryCenter,rotSprite,sampler.get());}else rotation.reset();
-  noteFloatingOverlayChange(f,f.transform,transform);f.targets.front().ownerId.swap(owner);f.targets.front().rotSprite=std::move(sampler);f.targets.front().symmetryRotation=std::move(rotation);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));selection_=std::move(selection);return;
+  noteFloatingOverlayChange(f,f.transform,transform);f.targets.front().ownerId.swap(owner);f.targets.front().rotSprite=std::move(sampler);f.targets.front().symmetryRotation=std::move(rotation);f.transform=transform;f.rotSprite=rotSprite;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));setSelectionValue(std::move(selection));return;
  }
 
  bool sparse=f.sparse;for(const auto& target:f.targets){const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid floating owner");if(!target.ownerId.empty()&&target.ownerId!=r.source->id)throw std::logic_error("Floating owner changed");raster::validate(*r.surface);sparse=sparse||!raster::fullCanvas(*r.surface,width_,height_);}
@@ -2860,31 +2769,31 @@ void Document::transformFloatingPaste(const SelectionTransform& transform,bool r
   }catch(...){g.preview.swap(next);throw;}
  }
  change_={};for(auto& stage:stages){auto& target=f.targets[stage.target];if(!f.tilemapPreview){auto& storage=stage.live->pixels;for(const auto& item:target.preview){const auto& d=item.second;if(storage[d.index]!=d.before){storage[d.index]=d.before;change_.include(int(d.index%width_),int(d.index/width_));}}for(const auto& item:stage.preview){const auto& d=item.second;storage[d.index]=d.after;change_.include(int(d.index%width_),int(d.index/width_));}}target.preview.swap(stage.preview);target.ownerId.swap(stage.owner);if(!translation)target.rotSprite=std::move(stage.sampler);}
- f.restoredFromDeselect=false;f.rotSprite=rotSprite;f.transform=transform;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));selection_=std::move(selection);if(f.tilemapPreview){change_={0,0,width_,height_};++gradientRevision_;}publishChange();
+ f.restoredFromDeselect=false;f.rotSprite=rotSprite;f.transform=transform;f.x=int(std::floor(transform.x));f.y=int(std::floor(transform.y));setSelectionValue(std::move(selection));if(f.tilemapPreview){change_={0,0,width_,height_};++gradientRevision_;}publishChange();
 }
 bool Document::commitDeferredFloatingPaste(){
  auto& pending=*floating_;if(pending.targets.size()==1&&pending.targets.front().celId.empty()){
   if(!pending.clipboard||timeline_.findCel(pending.layerId,pending.frameId)||layer().id!=pending.layerId||frame().id!=pending.frameId||!layer().kind.empty()||layerEffectivelyLocked(layer()))throw std::logic_error("Absent paste commit target changed");
   checkFloatingBudget(pending,std::uint64_t(width_)*height_*(sizeof(Pixel)+sizeof(Delta)));
-  auto pixels=floatingOverlayRegion({0,0,width_,height_});Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=pending.layerId;edit.beforeFrame=edit.afterFrame=pending.frameId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=pending.beforeSelection;edit.afterPixelsSelection=selection_;
+  auto pixels=floatingOverlayRegion({0,0,width_,height_});Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=pending.layerId;edit.beforeFrame=edit.afterFrame=pending.frameId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=pending.beforeSelection;edit.pixelSelectionHistory.afterPixelsSelection=selection_;
   PixelRegion dirty;std::size_t changedCount=0;for(std::size_t i=0;i<pixels.size();++i)if(pixels[i]){++changedCount;dirty.include(int(i%width_),int(i/width_));}
   const auto bounds=checkedFloatingBounds(pending.transform);const int left=std::max(0,bounds.x),top=std::max(0,bounds.y),right=int(std::min<std::int64_t>(width_,std::int64_t(bounds.x)+bounds.width)),bottom=int(std::min<std::int64_t>(height_,std::int64_t(bounds.y)+bounds.height));const auto area=right>left&&bottom>top?std::size_t(right-left)*(bottom-top):0;
   // Legacy packed transform is dense; translation chooses dense above 1/4 coverage.
   const bool dense=floatingRepeat_==repeat::Mode::Off&&changedCount&&area&&(!floatingTranslation(pending.transform,pending.source)||changedCount>area/4);
-  if(dense){DensePixels region{left,top,right-left,bottom-top,std::vector<Pixel>(area),{}};region.after.reserve(area);for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)region.after.push_back(pixels[std::size_t(y)*width_+x]);edit.dense=std::move(region);}
+  if(dense){DensePixels region{left,top,right-left,bottom-top,std::vector<Pixel>(area),{}};region.after.reserve(area);for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)region.after.push_back(pixels[std::size_t(y)*width_+x]);edit.contentHistory.dense=std::move(region);}
   else{edit.pixels.reserve(changedCount);for(std::size_t i=0;i<pixels.size();++i)if(pixels[i])edit.pixels.push_back({i,0,pixels[i]});}
   const bool changed=changedCount!=0,selected=!selectionEqual(pending.beforeSelection,selection_);edit.documentChanged=changed;if(!changed)edit.afterState=state_;reserveHistoryEntries();
-  if(changed){auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+pending.layerId+"-"+pending.frameId;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+pending.layerId+"-"+pending.frameId+"-"+std::to_string(suffix);created.layerId=pending.layerId;created.frameId=pending.frameId;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::move(pixels))};edit.targetCelId=created.id;edit.pixelAddress=PixelAddressSpace{width_,height_,0,0};const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),U"变换选区内容");}catch(...){timeline_=std::move(previous);throw;}}
+  if(changed){auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+pending.layerId+"-"+pending.frameId;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+pending.layerId+"-"+pending.frameId+"-"+std::to_string(suffix);created.layerId=pending.layerId;created.frameId=pending.frameId;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::move(pixels))};edit.contentHistory.targetCelId=created.id;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,0,0};const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),U"变换选区内容");}catch(...){timeline_=std::move(previous);throw;}}
   else if(selected)pushEdit(std::move(edit),U"变换选区内容");
   noteFloatingOverlayChange(pending,pending.transform,pending.transform);floating_.reset();if(changed){change_=dirty;publishChange();}return changed;
  }
- auto& f=*floating_;if((floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))||floatingSymmetryTranslation(f,f.transform)||floatingSymmetryScale(f,f.transform)||floatingSymmetryRotation(f,f.transform)||!floatingTranslation(f.transform,f.source)){const auto old=f.transform;transformSparseFloatingPaste(f.transform,f.rotSprite);f.deferred=false;if(floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))selection_=repeat::wrapSelection(selection_,width_,height_,floatingRepeat_);noteFloatingOverlayChange(f,old,f.transform);return commitSparseFloatingPaste();}
+ auto& f=*floating_;if((floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))||floatingSymmetryTranslation(f,f.transform)||floatingSymmetryScale(f,f.transform)||floatingSymmetryRotation(f,f.transform)||!floatingTranslation(f.transform,f.source)){const auto old=f.transform;transformSparseFloatingPaste(f.transform,f.rotSprite);f.deferred=false;if(floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))setSelectionValue(repeat::wrapSelection(selection_,width_,height_,floatingRepeat_));noteFloatingOverlayChange(f,old,f.transform);return commitSparseFloatingPaste();}
  auto& target=f.targets.front();const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||r.source->id!=target.ownerId)throw std::logic_error("Floating commit owner changed");const auto li=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==r.source->layerId;});if(li==timeline_.state().layers.end()||li->locked)throw std::logic_error("Floating layer is locked");const auto& before=*r.surface;raster::validate(before);
  const auto dx=std::int64_t(f.x)-f.sourceX,dy=std::int64_t(f.y)-f.sourceY;const bool zero=!f.copy&&!dx&&!dy;
  const bool whole=!f.copy&&!f.clipboard&&f.beforeSelection&&f.beforeSelection->mask.empty()&&f.sourceX<=before.offsetX&&f.sourceY<=before.offsetY&&std::int64_t(f.sourceX)+f.source.width>=std::int64_t(before.offsetX)+before.width&&std::int64_t(f.sourceY)+f.source.height>=std::int64_t(before.offsetY)+before.height;
- Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=f.layerId;edit.beforeFrame=edit.afterFrame=f.frameId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=f.beforeSelection;edit.afterPixelsSelection=selection_;
+ Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=f.layerId;edit.beforeFrame=edit.afterFrame=f.frameId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;edit.pixelSelectionHistory.afterPixelsSelection=selection_;
  std::optional<timeline::Surface> candidate;bool changed=false,geometryChanged=false;
- if(!zero&&whole){const auto nx=raster::coordinate(std::int64_t(before.offsetX)+dx),ny=raster::coordinate(std::int64_t(before.offsetY)+dy);raster::coordinate(std::int64_t(nx)+before.width);raster::coordinate(std::int64_t(ny)+before.height);edit.ownerOffsets.push_back({target.ownerId,before.offsetX,before.offsetY,nx,ny});changed=true;}
+ if(!zero&&whole){const auto nx=raster::coordinate(std::int64_t(before.offsetX)+dx),ny=raster::coordinate(std::int64_t(before.offsetY)+dy);raster::coordinate(std::int64_t(nx)+before.width);raster::coordinate(std::int64_t(ny)+before.height);edit.contentHistory.ownerOffsets.push_back({target.ownerId,before.offsetX,before.offsetY,nx,ny});changed=true;}
  else if(!zero){
   raster::Rect64 sourceRect,targetRect;
   if(f.clipboard){targetRect={std::max<std::int64_t>(0,f.x),std::max<std::int64_t>(0,f.y),std::min<std::int64_t>(width_,std::int64_t(f.x)+f.source.width),std::min<std::int64_t>(height_,std::int64_t(f.y)+f.source.height)};sourceRect=targetRect;}
@@ -2896,20 +2805,20 @@ bool Document::commitDeferredFloatingPaste(){
    auto nextValue=[&](std::int64_t x,std::int64_t y){auto value=raster::readWorld(before,x,y);const auto sx=x-f.sourceX,sy=y-f.sourceY;if(!f.copy&&sx>=0&&sy>=0&&sx<original.width&&sy<original.height&&original.mask[std::size_t(sy)*original.width+std::size_t(sx)]==1)value=0;const auto tx=x-f.x,ty=y-f.y;if(tx>=0&&ty>=0&&tx<target.source.width&&ty<target.source.height){const auto i=std::size_t(ty)*target.source.width+std::size_t(tx);if(target.source.mask[i]==1&&(target.source.pixels[i]>>24))value=brushComposite(value,target.source.pixels[i],100);}return value;};
    auto writeRegion=[&](raster::Rect64 rect){for(auto y=rect.top;y<rect.bottom;++y)for(auto x=rect.left;x<rect.right;++x){const auto value=nextValue(x,y);const auto i=raster::worldIndex(*candidate,x,y);if(!i)continue;if(candidate->pixels[*i]!=value){candidate->pixels[*i]=value;changed=true;}}};
    if(!f.copy)writeRegion(sourceRect);writeRegion(targetRect);
-   if(changed)edit.surfaceChanges.push_back({target.ownerId,before,*candidate});
+   if(changed)edit.contentHistory.surfaceChanges.push_back({target.ownerId,before,*candidate});
   }
  }
  const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);edit.documentChanged=changed;if(!changed)edit.afterState=state_;checkFloatingBudget(f,0);capturePixelAddresses(edit);reserveHistoryEntries();auto* live=timeline_.mutableOwnedSurface(target.ownerId);if(!live)throw std::logic_error("Missing floating commit owner");
  noteFloatingOverlayChange(f,f.transform,f.transform);
- if(changed||geometryChanged){if(!edit.ownerOffsets.empty()){live->offsetX=edit.ownerOffsets.front().afterX;live->offsetY=edit.ownerOffsets.front().afterY;}else std::swap(*live,*candidate);change_={0,0,width_,height_};publishChange();}
+ if(changed||geometryChanged){if(!edit.contentHistory.ownerOffsets.empty()){live->offsetX=edit.contentHistory.ownerOffsets.front().afterX;live->offsetY=edit.contentHistory.ownerOffsets.front().afterY;}else std::swap(*live,*candidate);change_={0,0,width_,height_};publishChange();}
  floating_.reset();if(changed||selectionChanged)pushEdit(std::move(edit),U"变换选区内容");return changed;
 }
 bool Document::commitSparseFloatingPaste(){
  auto& f=*floating_;std::size_t extra=0;std::vector<const FloatingTarget*> changed;changed.reserve(f.targets.size());
  for(const auto& target:f.targets){if(!target.baseline)continue;const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||r.source->id!=target.ownerId)throw std::logic_error("Floating owner changed before commit");raster::validate(*r.surface);if(target.preview.empty())continue;floatingAddBytes(extra,convolutionSurfaceBytes(*target.baseline));floatingAddBytes(extra,convolutionSurfaceBytes(*r.surface));changed.push_back(&target);}
  if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());checkFloatingBudget(f,extra);
- Edit e{{},state_,changed.empty()?state_:nextState_};e.documentChanged=!changed.empty();e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.surfaceChanges.reserve(changed.size());
- for(const auto* target:changed)e.surfaceChanges.push_back({target->ownerId,*target->baseline,*timeline_.resolveSurface(target->celId).surface});
+ Edit e{{},state_,changed.empty()?state_:nextState_};e.documentChanged=!changed.empty();e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;e.pixelSelectionHistory.afterPixelsSelection=selection_;e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.contentHistory.surfaceChanges.reserve(changed.size());
+ for(const auto* target:changed)e.contentHistory.surfaceChanges.push_back({target->ownerId,*target->baseline,*timeline_.resolveSurface(target->celId).surface});
  const bool pixelsChanged=!changed.empty(),selectionChanged=!selectionEqual(f.beforeSelection,selection_);reserveHistoryEntries();capturePixelAddresses(e);floating_.reset();if(pixelsChanged||selectionChanged)pushEdit(std::move(e),U"变换选区内容");return pixelsChanged;
 }
 std::optional<bool> Document::commitHybridCellFloating(){
@@ -2930,8 +2839,8 @@ std::optional<bool> Document::commitHybridCellFloating(){
  bool changed=false;TilemapPixelHistory payload;payload.celId=resolvedOwner.source->id;payload.tilesetEdit=false;payload.independentCellOwner=f.linkedHybrid;payload.linkedCellOwner=f.linkedHybrid;payload.cellOffsetLayout=true;payload.beforeSet.id=layer().tilemapTilesetId;
  // Include equal refs in the apply set to replace transient RGBA pixels with exact rendered cells.
  for(const auto& entry:updates){changed=changed||grid.cells[entry.first]!=entry.second;payload.cells.push_back({entry.first,grid.cells[entry.first],entry.second});}
- Edit edit{{},state_,changed?nextState_:state_};edit.documentChanged=changed;edit.pixelSelectionEdit=true;edit.beforePixelsSelection=f.beforeSelection;edit.afterPixelsSelection=selection_;
- if(changed){edit.tilemapPixels=std::make_shared<const TilemapPixelHistory>(std::move(payload));edit.beforeTileSelection=edit.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.beforeGroupUi=edit.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};}
+ Edit edit{{},state_,changed?nextState_:state_};edit.documentChanged=changed;edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;edit.pixelSelectionHistory.afterPixelsSelection=selection_;
+ if(changed){edit.terminalHistory=std::make_shared<const TilemapPixelHistory>(std::move(payload));edit.tileHistory.beforeTileSelection=edit.tileHistory.afterTileSelection=tileSelection_;edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeFrameAnchor=edit.afterFrameAnchor=frameAnchor_;edit.layerHistory.beforeGroupUi=edit.layerHistory.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};}
  const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);reserveHistoryEntries();edit.label.reserve(32);
  // Deferred compositor pixels never touched the cache; dense preview is replaced by exact cell patches.
  if(changed)applyEdit(edit,true);else if(!f.deferred&&!f.tilemapPreview){auto* live=timeline_.mutableOwnedSurface(f.targets.front().ownerId);if(!live)throw std::logic_error("Missing Hybrid floating owner");for(const auto& entry:f.targets.front().preview)live->pixels[entry.first]=entry.second.before;}
@@ -2948,7 +2857,7 @@ bool Document::commitTilemapFloating(){
   const auto bounds=checkedFloatingBounds(f.transform);include(bounds);if(floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(f.transform,f.source))if(auto wrapped=repeat::wrapSelection(bounds,width_,height_,floatingRepeat_))include(*wrapped);if(!f.copy)include({f.sourceX,f.sourceY,f.source.width,f.source.height,{}});
   checkFloatingBudget(f,std::uint64_t(indexes.size())*(std::uint64_t(grid.tileWidth)*grid.tileHeight*8+128));tiles::CellPixelEdits regional;tiles::Catalog catalog(timeline_.state().tilesets);
   for(auto i:indexes){const PixelRegion cell{ox+int(i%grid.columns)*grid.tileWidth,oy+int(i/grid.columns)*grid.tileHeight,grid.tileWidth,grid.tileHeight};auto before=tiles::cellPixels(grid.cells[i],grid.tileWidth,grid.tileHeight,catalog),after=floatingOverlayRegion(cell,true);for(int y=0;y<cell.h;++y)for(int x=0;x<cell.w;++x)if(cell.x+x<0||cell.y+y<0||cell.x+x>=width_||cell.y+y>=height_)after[std::size_t(y)*cell.w+x]=before[std::size_t(y)*cell.w+x];if(before!=after)regional.emplace(i,std::make_pair(std::move(before),std::move(after)));}
-  const auto beforeSelection=f.beforeSelection,afterSelection=selection_;const bool selectionChanged=!selectionEqual(beforeSelection,afterSelection);Edit selectionEdit{{},state_,state_};selectionEdit.documentChanged=false;selectionEdit.pixelSelectionEdit=true;selectionEdit.beforePixelsSelection=beforeSelection;selectionEdit.afterPixelsSelection=afterSelection;reserveHistoryEntries();
+  const auto beforeSelection=f.beforeSelection,afterSelection=selection_;const bool selectionChanged=!selectionEqual(beforeSelection,afterSelection);Edit selectionEdit{{},state_,state_};selectionEdit.documentChanged=false;selectionEdit.pixelSelectionHistory.pixelSelectionEdit=true;selectionEdit.pixelSelectionHistory.beforePixelsSelection=beforeSelection;selectionEdit.pixelSelectionHistory.afterPixelsSelection=afterSelection;reserveHistoryEntries();
   auto pending=std::move(floating_);floating_.reset();bool changed=false;try{changed=commitTilemapPixelCanvas({},{},U"变换选区内容",{},false,&beforeSelection,&afterSelection,false,false,false,false,false,pending->linkedHybrid,false,&regional);if(!changed&&selectionChanged)pushEdit(std::move(selectionEdit),U"变换选区内容");}catch(...){floating_=std::move(pending);throw;}++floatingOverlayRevision_;change_={0,0,width_,height_};publishChange();return changed;
  }
  const bool offsetGrid=(f.tilemapMode==tiles::Mode::Paint||f.tilemapMode==tiles::Mode::Create)&&!raster::fullCanvas(activeSurface(),width_,height_);
@@ -2957,7 +2866,7 @@ bool Document::commitTilemapFloating(){
  checkFloatingBudget(f,std::uint64_t(width_)*height_*8+(f.beforeSelection?f.beforeSelection->mask.size():0)+(selection_?selection_->mask.size():0));
  auto after=offsetGrid?std::move(offsetAfter):(f.tilemapPreview?f.tilemapPreview->preview:canvasPixels()),before=offsetGrid?canvasPixels():(f.tilemapPreview?f.tilemapPreview->tilemapBaseline:after);for(const auto& entry:f.targets.front().preview)before[entry.first]=entry.second.before;
  const auto beforeSelection=f.beforeSelection,afterSelection=selection_;const auto editCell=f.tilemapEditCell;const bool selectionChanged=!selectionEqual(beforeSelection,afterSelection);
- Edit selectionEdit{{},state_,state_};if(selectionChanged){selectionEdit.documentChanged=false;selectionEdit.pixelSelectionEdit=true;selectionEdit.beforePixelsSelection=beforeSelection;selectionEdit.afterPixelsSelection=afterSelection;selectionEdit.label.reserve(16);}reserveHistoryEntries();
+ Edit selectionEdit{{},state_,state_};if(selectionChanged){selectionEdit.documentChanged=false;selectionEdit.pixelSelectionHistory.pixelSelectionEdit=true;selectionEdit.pixelSelectionHistory.beforePixelsSelection=beforeSelection;selectionEdit.pixelSelectionHistory.afterPixelsSelection=afterSelection;selectionEdit.label.reserve(16);}reserveHistoryEntries();
  const bool sharedPreview=bool(f.tilemapPreview);auto pending=std::move(floating_);floating_.reset();if(sharedPreview)++gradientRevision_;bool changed=false;
  timeline::Surface* hybridRaw=nullptr;if(pending->tilemapMode==tiles::Mode::Hybrid&&!pending->tilemapPreview){hybridRaw=timeline_.mutableOwnedSurface(pending->targets.front().ownerId);if(!hybridRaw){floating_=std::move(pending);throw std::logic_error("Missing Hybrid floating owner");}for(const auto& entry:pending->targets.front().preview)hybridRaw->pixels[entry.first]=entry.second.before;}
  try{changed=commitTilemapPixelCanvas(before,after,U"变换选区内容",editCell,false,&beforeSelection,&afterSelection,false,false,false,pending->linkedCreate,pending->linkedEdit,pending->linkedHybrid,pending->tilemapMode==tiles::Mode::Paint);if(!changed&&selectionChanged)pushEdit(std::move(selectionEdit),U"变换选区内容");}
@@ -2965,32 +2874,41 @@ bool Document::commitTilemapFloating(){
  if(hybridRaw){change_={0,0,width_,height_};publishChange();}
  if(sharedPreview){change_={0,0,width_,height_};publishChange();}return changed;
 }
-bool Document::commitFloatingPaste(){
- if(!floating_)return false;if(!floating_->freeTile&&!floating_->tilemap&&floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(floating_->transform,floating_->source))selection_=repeat::wrapSelection(selection_,width_,height_,floatingRepeat_);if(floating_->freeTile)return commitFreeTileSelectionMove();if(floating_->tilemap)return commitTilemapFloating();if(floating_->restoredFromDeselect){floating_.reset();return false;}if(!floating_->maskId.empty())return commitMaskFloating();if(floating_->deferred)return commitDeferredFloatingPaste();if(floating_->sparse&&!floating_->beforeCelTimeline)return commitSparseFloatingPaste();auto& f=*floating_;
+bool Document::commitFloatingPaste(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_,bool(floating_));
+ const bool hadFloating=bool(floating_);const bool changed=commitFloatingPasteImpl();
+ if(hadFloating&&!floating_)animationChangeBinding_.publish(*this,{AnimationChange::Kind::FloatingSettled});
+ return changed;
+}
+bool Document::commitFloatingPasteImpl(){
+ if(!floating_)return false;if(!floating_->freeTile&&!floating_->tilemap&&floatingRepeat_!=repeat::Mode::Off&&floatingTranslation(floating_->transform,floating_->source))setSelectionValue(repeat::wrapSelection(selection_,width_,height_,floatingRepeat_));if(floating_->freeTile)return commitFreeTileSelectionMove();if(floating_->tilemap)return commitTilemapFloating();if(floating_->restoredFromDeselect){floating_.reset();return false;}if(!floating_->maskId.empty())return commitMaskFloating();if(floating_->deferred)return commitDeferredFloatingPaste();if(floating_->sparse&&!floating_->beforeCelTimeline)return commitSparseFloatingPaste();auto& f=*floating_;
  for(const auto& target:f.targets)if(!target.ownerId.empty()){const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||r.source->id!=target.ownerId)throw std::logic_error("Floating commit owner changed");}
  std::size_t extra=0;if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());
  if(f.beforeCelTimeline)floatingAddBytes(extra,adjustmentStorageBudget(timeline_,1));else for(const auto& target:f.targets)floatingAddBytes(extra,std::uint64_t(target.preview.size())*sizeof(Delta));checkFloatingBudget(f,extra);
- Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionEdit=true;e.beforePixelsSelection=f.beforeSelection;e.afterPixelsSelection=selection_;
+ Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;e.pixelSelectionHistory.afterPixelsSelection=selection_;
  // Legacy historyEntryWithAnimationSelection restores document editing on both sides.
- if(f.beforeCelTimeline)e.maskContext=std::make_shared<Edit::MaskContextHistory>(Edit::MaskContextHistory{{},{},false,false});
+ if(f.beforeCelTimeline)e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});
  if(f.beforeCelTimeline&&f.beforeCelTimeline->frames.size()==timeline_.state().frames.size()){
   const bool pixelsChanged=std::any_of(f.targets.begin(),f.targets.end(),[](const auto& target){return std::any_of(target.preview.begin(),target.preview.end(),[](const auto& entry){return entry.second.before!=entry.second.after;});});
   if(!pixelsChanged){const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);e.documentChanged=false;e.afterState=state_;floating_.reset();if(selectionChanged)pushEdit(std::move(e),U"变换选区内容");return false;}
  }
- if(f.beforeCelTimeline){e.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;reserveHistoryEntries();e.beforeTimeline=std::move(f.beforeCelTimeline);floating_.reset();pushEdit(std::move(e),U"变换选区内容");return true;}
- for(const auto& target:f.targets){Edit child{{},state_,nextState_};child.targetCelId=target.celId;for(const auto& item:target.preview){const auto& delta=item.second;if(delta.before!=delta.after)child.pixels.push_back(delta);}if(!child.pixels.empty())e.children.push_back(std::move(child));}
+ if(f.beforeCelTimeline){e.snapshotHistory.afterTimeline=timeline_.state();e.beforeTimelineSelection=e.afterTimelineSelection=f.beforeTimelineSelection;e.beforeSelection=e.afterSelection=f.beforeSelectedFrames;reserveHistoryEntries();e.snapshotHistory.beforeTimeline=std::move(f.beforeCelTimeline);floating_.reset();pushEdit(std::move(e),U"变换选区内容");return true;}
+ for(const auto& target:f.targets){Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target.celId;for(const auto& item:target.preview){const auto& delta=item.second;if(delta.before!=delta.after)child.pixels.push_back(delta);}if(!child.pixels.empty())e.children.push_back(std::move(child));}
  const bool pixelsChanged=!e.children.empty(),selectionChanged=!selectionEqual(f.beforeSelection,selection_);if(!pixelsChanged){e.documentChanged=false;e.afterState=state_;}
- if(e.children.size()==1){e.targetCelId=e.children.front().targetCelId;e.pixels=std::move(e.children.front().pixels);e.children.clear();}
+ if(e.children.size()==1){e.contentHistory.targetCelId=e.children.front().contentHistory.targetCelId;e.pixels=std::move(e.children.front().pixels);e.children.clear();}
  capturePixelAddresses(e);reserveHistoryEntries();floating_.reset();if(pixelsChanged||selectionChanged)pushEdit(std::move(e),U"变换选区内容");return pixelsChanged;
 }
-void Document::cancelFloatingPaste(){
- if(!floating_)return;if(floating_->restoredFromDeselect){floating_.reset();return;}auto& f=*floating_;if(!f.maskId.empty()){cancelMaskFloating();return;}if(f.deferred){noteFloatingOverlayChange(f,f.transform,f.transform);selection_=std::move(f.beforeSelection);floating_.reset();return;}
- if(f.beforeCelTimeline){std::size_t extra=0;for(const auto& cel:f.beforeCelTimeline->cels)if(cel.surface)floatingAddBytes(extra,convolutionSurfaceBytes(*cel.surface));checkFloatingBudget(f,extra);timeline::Timeline restored(*f.beforeCelTimeline);timeline_=std::move(restored);timelineSelection_=std::move(f.beforeTimelineSelection);selectedFrames_=std::move(f.beforeSelectedFrames);activeLayerId_=std::move(f.layerId);activeFrameId_=std::move(f.frameId);selection_=std::move(f.beforeSelection);floating_.reset();change_={0,0,width_,height_};publishChange();return;}
- if(f.tilemapPreview){for(const auto& target:f.targets){const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||(!target.ownerId.empty()&&r.source->id!=target.ownerId))throw std::logic_error("Floating cancel owner changed");}selection_=std::move(f.beforeSelection);floating_.reset();++gradientRevision_;change_={0,0,width_,height_};publishChange();return;}
+void Document::cancelFloatingPaste(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_,bool(floating_));
+ const bool hadFloating=bool(floating_);cancelFloatingPasteImpl();
+ if(hadFloating&&!floating_)animationChangeBinding_.publish(*this,{AnimationChange::Kind::FloatingSettled});
+}
+void Document::cancelFloatingPasteImpl(){
+ if(!floating_)return;if(floating_->restoredFromDeselect){floating_.reset();return;}auto& f=*floating_;if(!f.maskId.empty()){cancelMaskFloating();return;}if(f.deferred){noteFloatingOverlayChange(f,f.transform,f.transform);setSelectionValue(std::move(f.beforeSelection));floating_.reset();return;}
+ if(f.beforeCelTimeline){std::size_t extra=0;for(const auto& cel:f.beforeCelTimeline->cels)if(cel.surface)floatingAddBytes(extra,convolutionSurfaceBytes(*cel.surface));checkFloatingBudget(f,extra);timeline::Timeline restored(*f.beforeCelTimeline);timeline_=std::move(restored);timelineSelection_=std::move(f.beforeTimelineSelection);selectedFrames_=std::move(f.beforeSelectedFrames);activeLayerId_=std::move(f.layerId);activeFrameId_=std::move(f.frameId);setSelectionValue(std::move(f.beforeSelection));floating_.reset();change_={0,0,width_,height_};publishChange();return;}
+ if(f.tilemapPreview){for(const auto& target:f.targets){const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||(!target.ownerId.empty()&&r.source->id!=target.ownerId))throw std::logic_error("Floating cancel owner changed");}setSelectionValue(std::move(f.beforeSelection));floating_.reset();++gradientRevision_;change_={0,0,width_,height_};publishChange();return;}
  struct Restore{FloatingTarget* target;timeline::Surface* live;};std::vector<Restore> restore;restore.reserve(f.targets.size());
  for(auto& target:f.targets){if(f.sparse&&!target.baseline)continue;const auto r=timeline_.resolveSurface(target.celId);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||(!target.ownerId.empty()&&r.source->id!=target.ownerId))throw std::logic_error("Floating cancel owner changed");auto* live=timeline_.mutableOwnedSurface(r.source->id);if(!live)throw std::logic_error("Missing floating cancel owner");restore.push_back({&target,live});}
  change_={};for(auto& item:restore){auto& target=*item.target;if(f.sparse){std::swap(*item.live,*target.baseline);change_={0,0,width_,height_};}else for(const auto& entry:target.preview){const auto& delta=entry.second;if(item.live->pixels[delta.index]!=delta.before){item.live->pixels[delta.index]=delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}}}
- const bool sharedPreview=bool(f.tilemapPreview);selection_=std::move(f.beforeSelection);floating_.reset();if(sharedPreview){++gradientRevision_;change_={0,0,width_,height_};}publishChange();
+ const bool sharedPreview=bool(f.tilemapPreview);setSelectionValue(std::move(f.beforeSelection));floating_.reset();if(sharedPreview){++gradientRevision_;change_={0,0,width_,height_};}publishChange();
 }
 
 }
@@ -3012,9 +2930,9 @@ void Document::projectActiveLayerGeometry(){
 void Document::projectActiveCelOpacities(){projectActiveLayerGeometry();for(auto& l:timeline_.state_.layers)l.opacity=frameCelOpacity(timeline_,l,activeFrameId_);}
 bool Document::beginCelProperties(const std::string& id,const std::vector<std::string>& frozen){commitCelProperties();commitFloatingPaste();cancelStroke();cancelLayerOpacity();const auto* c=timeline_.findCelById(id);if(!c)return false;auto r=timeline_.resolveSurface(id);if(r.issue!=timeline::LinkIssue::None||!r.source)return false;celPropertyPreview_=CelPropertyPreview{identity_,c->layerId,c->frameId,frozen.empty()?std::vector<std::string>{id}:frozen,{}};return true;}
 bool Document::previewCelProperties(double opacity,double z){if(!celPropertyPreview_||celPropertyPreview_->identity!=identity_)return false;auto& p=*celPropertyPreview_;auto plan=planCelProperties(timeline_,p.layerId,p.frameId,opacity,z,p.targets);if(!plan.changed())return false;p.steps.push_back(std::move(plan));try{applyCelPropertiesPlan(timeline_.state_,p.steps.back(),true);timeline_.invalidateCompositeOrder();}catch(...){p.steps.pop_back();throw;}projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();return true;}
-void Document::commitCelProperties(){if(!celPropertyPreview_)return;if(celPropertyPreview_->identity!=identity_||celPropertyPreview_->steps.empty()){celPropertyPreview_.reset();return;}Edit e{{},state_,nextState_};e.children.reserve(celPropertyPreview_->steps.size());reserveHistoryEntries();for(auto& p:celPropertyPreview_->steps){Edit child{{},state_,nextState_};child.celProperties=std::move(p);e.children.push_back(std::move(child));}celPropertyPreview_.reset();if(e.children.size()==1){auto child=std::move(e.children.front());pushEdit(std::move(child),U"修改单元格属性");}else pushEdit(std::move(e),U"修改单元格属性");}
+void Document::commitCelProperties(){if(!celPropertyPreview_)return;if(celPropertyPreview_->identity!=identity_||celPropertyPreview_->steps.empty()){celPropertyPreview_.reset();return;}Edit e{{},state_,nextState_};e.children.reserve(celPropertyPreview_->steps.size());reserveHistoryEntries();for(auto& p:celPropertyPreview_->steps){Edit child{{},state_,nextState_};child.contentHistory.celProperties=std::move(p);e.children.push_back(std::move(child));}celPropertyPreview_.reset();if(e.children.size()==1){auto child=std::move(e.children.front());pushEdit(std::move(child),U"修改单元格属性");}else pushEdit(std::move(e),U"修改单元格属性");}
 void Document::cancelCelProperties(){if(!celPropertyPreview_)return;auto p=std::move(*celPropertyPreview_);celPropertyPreview_.reset();if(p.identity!=identity_||p.steps.empty())return;for(auto i=p.steps.rbegin();i!=p.steps.rend();++i)applyCelPropertiesPlan(timeline_.state_,*i,false);timeline_.invalidateCompositeOrder();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();}
-void Document::applyCelPropertiesEdit(const Edit& e,bool forward){if(!e.celProperties)return;applyCelPropertiesPlan(timeline_.state_,*e.celProperties,forward);timeline_.invalidateCompositeOrder();projectActiveCelOpacities();change_={0,0,width_,height_};}
+// applyCelPropertiesEdit: definition in its history domain unit.
 }
 
 namespace moon {

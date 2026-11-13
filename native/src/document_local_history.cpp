@@ -1,9 +1,13 @@
 #include "document.h"
 #include "local_history_edit.h"
+#include "raster_geometry.h"
 #include <stdexcept>
 #include <cstring>
 #include <algorithm>
 #include <type_traits>
+#include <cmath>
+#include <limits>
+#include <unordered_map>
 namespace moon {
 void Document::applyLocalHistoryPixels(const local_history::PixelHistoryEdit& edit,bool forward){
  // Resolve and validate all owners before the first write. No selection API:
@@ -30,17 +34,64 @@ void Document::applyLocalHistoryPixels(const local_history::PixelHistoryEdit& ed
   std::vector<Destination> fields;
   if(patch.metadata)for(const auto& target:patch.metadata->fields){
    auto field=destination(target);propertiesChanged|=!target.id.empty();
-   std::visit([&](auto* value){using T=std::remove_reference_t<decltype(*value)>;if constexpr(std::is_same_v<T,std::string>)value->reserve(std::max(std::get<std::string>(patch.metadata->before).size(),std::get<std::string>(patch.metadata->after).size()));else if constexpr(std::is_same_v<T,std::u32string>)value->reserve(std::max(patch.metadata->beforeUnicode.size(),patch.metadata->afterUnicode.size()));},field);
+   // Reject a malformed later patch before any earlier patch can write.
+   // Both directions must be usable by compound-history compensation.
+   std::visit([&](auto* value){using T=std::remove_reference_t<decltype(*value)>;
+    for(const auto* candidate:{&patch.metadata->before,&patch.metadata->after}){
+     if constexpr(std::is_same_v<T,bool>){if(!std::holds_alternative<bool>(*candidate))throw std::logic_error("Invalid local history boolean");}
+     else if constexpr(std::is_same_v<T,std::string>||std::is_same_v<T,std::u32string>){if(!std::holds_alternative<std::string>(*candidate))throw std::logic_error("Invalid local history string");}
+     else if constexpr(!std::is_same_v<T,std::u32string>){
+      if(!std::holds_alternative<double>(*candidate))throw std::logic_error("Invalid local history number");
+      if constexpr(std::is_integral_v<T>){const auto number=std::trunc(std::get<double>(*candidate));
+       // The upper uint64 bound is exclusive because UINT64_MAX rounds to 2^64 as double.
+       const bool invalid=!std::isfinite(number)||(std::is_unsigned_v<T>?(number<0||number>=std::ldexp(1.0,std::numeric_limits<T>::digits)):(number<std::numeric_limits<T>::lowest()||number>std::numeric_limits<T>::max()));
+       if(invalid)throw std::logic_error("Local history integer exceeds range");
+      }
+     }
+    }
+    if constexpr(std::is_same_v<T,std::string>)value->reserve(std::max(std::get<std::string>(patch.metadata->before).size(),std::get<std::string>(patch.metadata->after).size()));
+    else if constexpr(std::is_same_v<T,std::u32string>)value->reserve(std::max(patch.metadata->beforeUnicode.size(),patch.metadata->afterUnicode.size()));
+   },field);
    fields.push_back(field);
   }
   metadataTargets.push_back(std::move(fields));
   std::vector<timeline::Surface*> targets;targets.reserve(patch.owners.size());
+  if(!patch.metadata&&(!patch.before||!patch.after||patch.before->size()!=patch.after->size()))throw std::logic_error("Incomplete local history pixel patch");
   for(const auto& id:patch.owners){auto* surface=timeline_.mutableOwnedSurface(id);
-   if(!surface||patch.offset>surface->pixels.size()*4||patch.after->size()>surface->pixels.size()*4-patch.offset)throw std::logic_error("Local history pixel owner changed");
+   if(!surface)throw std::logic_error("Local history pixel owner changed");
+   raster::validate(*surface);
+   if(patch.offset>surface->pixels.size()*4||(!patch.metadata&&patch.after->size()>surface->pixels.size()*4-patch.offset))throw std::logic_error("Local history pixel owner changed");
    targets.push_back(surface);
   }owners.push_back(std::move(targets));
  }
- // All owners and string capacities are prepared before the first write.
+ // Frame projection may resolve links and grow the geometry map. Prepare it
+ // against the final metadata values before publishing any bytes or fields.
+ auto geometry=edit.projectFrame?displayedLayerGeometry_:decltype(displayedLayerGeometry_){};
+ std::vector<double> opacities;
+ if(edit.projectFrame){
+  opacities.reserve(timeline_.state_.layers.size());
+  std::unordered_map<const void*,double> projectedNumbers;
+  for(std::size_t step=0;step<edit.patches.size();++step){const auto index=forward?step:edit.patches.size()-1-step;const auto& patch=edit.patches[index];if(!patch.metadata)continue;
+   for(const auto& field:metadataTargets[index]){
+    if(const auto* pointer=std::get_if<double*>(&field))projectedNumbers[*pointer]=std::get<double>(forward?patch.metadata->after:patch.metadata->before);
+    else if(const auto* pointer=std::get_if<std::optional<double>*>(&field))projectedNumbers[*pointer]=std::get<double>(forward?patch.metadata->after:patch.metadata->before);
+   }
+  }
+  auto projected=[&](auto* target){auto value=*target;const auto found=projectedNumbers.find(target);if(found!=projectedNumbers.end())value=found->second;return value;
+  };
+  for(auto& layer:timeline_.state_.layers){
+   auto opacity=projected(&layer.opacity);
+   if(const auto* cel=timeline_.findCel(layer.id,activeFrameId_)){
+    const auto resolved=timeline_.resolveSurface(cel->id);
+    if(resolved.issue!=timeline::LinkIssue::None||!resolved.source)throw std::invalid_argument("Invalid Cel properties link");
+    if(resolved.surface){const auto& surface=*resolved.surface;geometry[layer.id]={surface.width,surface.height,surface.offsetX,surface.offsetY};}
+    auto* source=&timeline_.state_.cels[timeline_.cels_.at(resolved.source->id)];const auto celOpacity=projected(&source->opacity);
+    if(celOpacity&&std::isfinite(*celOpacity))opacity=std::clamp(*celOpacity,0.,1.);
+   }
+   opacities.push_back(opacity);
+  }
+ }
+ // All owners, values, string capacities and projection are prepared.
  for(std::size_t step=0;step<edit.patches.size();++step){
   const auto index=forward?step:edit.patches.size()-1-step;const auto& patch=edit.patches[index];
   if(patch.metadata){const auto& value=forward?patch.metadata->after:patch.metadata->before;
@@ -64,7 +115,7 @@ void Document::applyLocalHistoryPixels(const local_history::PixelHistoryEdit& ed
 #endif
   }
  }
- if(edit.projectFrame)projectActiveCelOpacities();
+ if(edit.projectFrame){displayedLayerGeometry_.swap(geometry);for(std::size_t i=0;i<opacities.size();++i)timeline_.state_.layers[i].opacity=opacities[i];}
  if(propertiesChanged)timeline_.invalidateCompositeOrder();
  change_=edit.region&&(edit.frameId.empty()||edit.frameId==activeFrameId_)?PixelRegion{edit.x,edit.y,edit.width,edit.height}:PixelRegion{0,0,width_,height_};
 }

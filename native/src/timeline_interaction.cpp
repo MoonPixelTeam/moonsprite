@@ -1,16 +1,113 @@
 #include "document.h"
+#include "cel_properties.h"
 #include "free_tile_source_transfer.h"
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <type_traits>
+#include <string_view>
 
 namespace moon {
 namespace {
 bool contains(const std::vector<std::string>& ids,const std::string& id){return std::find(ids.begin(),ids.end(),id)!=ids.end();}
 void toggle(std::vector<std::string>& ids,const std::string& id){auto it=std::find(ids.begin(),ids.end(),id);if(it==ids.end())ids.push_back(id);else ids.erase(it);}
 template<class T> int indexOf(const std::vector<T>& items,const std::string& id){auto it=std::find_if(items.begin(),items.end(),[&](const T& item){return item.id==id;});return it==items.end()?-1:int(it-items.begin());}
+std::string_view selectionKey(const std::string& value){return value;}
+std::pair<std::string_view,std::string_view> selectionKey(const AnimationSessionSelection::MaskSlot& value){return {value.first,value.second};}
+std::pair<std::string_view,std::string_view> selectionKey(const AnimationCellSlot& value){return {value.rowId,value.frameId};}
+struct SelectionKeyHash {
+ std::size_t operator()(std::string_view value)const{return std::hash<std::string_view>{}(value);}
+ std::size_t operator()(const std::pair<std::string_view,std::string_view>& value)const{const auto a=operator()(value.first),b=operator()(value.second);return a^(b+std::size_t(0x9e3779b9)+(a<<6)+(a>>2));}
+};
 }
 // Ports workspace-commands-layer-selection's replace/toggle/range semantics.
+Document::AnimationSelectionSnapshot Document::captureAnimationSelection()const{
+ AnimationSelectionSnapshot snapshot;
+ snapshot.identity=identity_;snapshot.selection=timelineSelection_;snapshot.frames=selectedFrames_;
+ snapshot.groups=selectedGroupIds_;snapshot.groupFocus=selectedGroupId_;
+ snapshot.activeLayer=activeLayerId_;snapshot.activeFrame=activeFrameId_;snapshot.frameAnchor=frameAnchor_;
+ snapshot.activeMask=activeMaskId_;snapshot.maskIsolated=maskIsolated_;
+ snapshot.sessionSelection=animationChangeBinding_.captureSessionSelection(*this);
+ if(!activeMaskId_.empty())for(const auto& mask:timeline_.state().masks)if(mask.frameId==activeFrameId_){
+  const auto* root=timeline::resolvedMask(timeline_.state(),mask.ownerId,mask.frameId);
+  if(root&&root->id==activeMaskId_){snapshot.activeMaskSlot=MaskSlotKey{mask.ownerId,mask.frameId};break;}
+ }
+ return snapshot;
+}
+bool Document::restoreAnimationSelection(AnimationSelectionSnapshot snapshot){
+ if(snapshot.identity!=identity_||!timeline_.hasLayer(snapshot.activeLayer)||!timeline_.hasFrame(snapshot.activeFrame))return false;
+ // Prepare context projection without going through user commands. Restoring
+ // selection must not settle a floating edit, publish content, or mark dirty.
+ const bool frameChanged=activeFrameId_!=snapshot.activeFrame;
+ auto geometry=displayedLayerGeometry_;std::vector<double> opacities;if(frameChanged)opacities.reserve(timeline_.state().layers.size());
+ for(const auto& layer:timeline_.state().layers){
+  if(const auto* cel=timeline_.findCel(layer.id,snapshot.activeFrame)){const auto resolved=timeline_.resolveSurface(cel->id);if(resolved.surface){const auto& surface=*resolved.surface;geometry[layer.id]={surface.width,surface.height,surface.offsetX,surface.offsetY};}}
+  if(frameChanged)opacities.push_back(frameCelOpacity(timeline_,layer,snapshot.activeFrame));
+ }
+ bool mask=false;if(snapshot.activeMaskSlot){const auto* root=timeline::resolvedMask(timeline_.state(),snapshot.activeMaskSlot->first,snapshot.activeMaskSlot->second);mask=root&&root->id==snapshot.activeMask;}
+ auto freeFrame=frameChanged?snapshot.activeFrame:std::string{};
+ if(freeInstanceViewLayer_!=snapshot.activeLayer){freeInstanceViewLayer_.clear();freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();}
+ if(frameChanged){freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();freeInstanceSelectionFrame_.swap(freeFrame);}
+ timelineSelection_=std::move(snapshot.selection);selectedFrames_=std::move(snapshot.frames);selectedGroupIds_=std::move(snapshot.groups);selectedGroupId_=std::move(snapshot.groupFocus);
+ activeLayerId_=std::move(snapshot.activeLayer);activeFrameId_=std::move(snapshot.activeFrame);frameAnchor_=std::move(snapshot.frameAnchor);
+ activeMaskId_=mask?std::move(snapshot.activeMask):std::string{};maskIsolated_=mask&&snapshot.maskIsolated;displayedLayerGeometry_.swap(geometry);
+ if(frameChanged){for(std::size_t i=0;i<opacities.size();++i)timeline_.state_.layers[i].opacity=opacities[i];change_={0,0,width_,height_};}
+ if(snapshot.sessionSelection)animationChangeBinding_.restoreSessionSelection(*this,std::move(*snapshot.sessionSelection));
+ return true;
+}
+Document::AnimationSelectionHistoryScope::AnimationSelectionHistoryScope(Document& document,bool normalize):document_(document),before_(document.captureAnimationSelection()),state_(document.state_),pushRevision_(document.historyPushRevision_),exceptions_(std::uncaught_exceptions()),normalize_(normalize){}
+Document::AnimationSelectionHistoryScope::~AnimationSelectionHistoryScope()noexcept(false){if(std::uncaught_exceptions()==exceptions_)document_.finishAnimationSelectionHistory(*this);}
+void Document::finishAnimationSelectionHistory(AnimationSelectionHistoryScope& scope){
+ if(scope.before_.identity!=identity_||scope.pushRevision_==historyPushRevision_||!history_.position()||history_.position()!=history_.size()||history_.latest().beforeState!=scope.state_)return;
+ if(scope.normalize_)normalizeAnimationSelection();
+ auto after=captureAnimationSelection();
+ history_.updateLatestApplied([&](Edit& entry){entry.beforeAnimationSelection=std::move(scope.before_);entry.afterAnimationSelection=std::move(after);entry.normalizeAnimationSelection|=scope.normalize_;});
+ ++historyRevision_;const auto discarded=groupingHistory_?0:history_.enforceLimits();
+ if(discarded)notifyHistoryChange(HistoryStackChange::Kind::Trim,{},discarded);
+}
+void Document::normalizeAnimationSelection(){
+ auto value=captureAnimationSelection();const auto& state=timeline_.state();
+ std::unordered_set<std::string_view> groupIds,maskOwners;groupIds.reserve(state.groups.size());maskOwners.reserve(state.masks.size());
+ for(const auto& group:state.groups)groupIds.insert(group.id);
+ for(const auto& mask:state.masks)maskOwners.insert(mask.ownerId);
+ auto layer=[&](const std::string& id){return timeline_.hasLayer(id);};
+ auto group=[&](const std::string& id){return groupIds.count(id)!=0;};
+ auto frame=[&](const std::string& id){return timeline_.hasFrame(id);};
+ auto owner=[&](const std::string& id){return layer(id)||group(id);};
+ auto uniqueValid=[](auto& values,auto valid){using Value=typename std::decay_t<decltype(values)>::value_type;using Key=decltype(selectionKey(std::declval<const Value&>()));std::vector<Value> result;result.reserve(values.size());std::unordered_set<Key,SelectionKeyHash> seen;seen.reserve(values.size());for(const auto& item:values)if(valid(item)&&seen.insert(selectionKey(item)).second)result.push_back(item);values.swap(result);};
+ uniqueValid(value.selection.layers,layer);uniqueValid(value.groups,group);uniqueValid(value.frames,frame);
+ uniqueValid(value.selection.cels,[&](const auto& id){const auto* cel=timeline_.findCelById(id);return cel&&layer(cel->layerId)&&frame(cel->frameId);});
+ uniqueValid(value.selection.maskRows,owner);
+ if(value.sessionSelection){auto& session=*value.sessionSelection;
+  uniqueValid(session.groups,[&](const auto& slot){return group(slot.rowId)&&frame(slot.frameId);});
+  uniqueValid(session.masks,[&](const auto& slot){return owner(slot.first)&&frame(slot.second)&&maskOwners.count(slot.first);});
+ }
+ if(!layer(value.activeLayer))value.activeLayer=!value.selection.layers.empty()?value.selection.layers.back():state.layers.empty()?std::string{}:state.layers.back().id;
+ if(!frame(value.activeFrame))value.activeFrame=state.frames.empty()?std::string{}:state.frames.front().id;
+ if(!value.frames.empty()){
+  value.selection.cels.clear();if(value.sessionSelection){value.sessionSelection->groups.clear();value.sessionSelection->masks.clear();}
+ }else if(!value.selection.cels.empty()){
+  value.selection.maskRows.clear();if(value.sessionSelection)value.sessionSelection->masks.clear();
+ }else if(value.sessionSelection&&!value.sessionSelection->masks.empty()){
+  value.selection.maskRows.clear();value.sessionSelection->groups.clear();
+ }
+ auto anchor=[](const auto& values,const std::string& previous){return std::find(values.begin(),values.end(),previous)!=values.end()?previous:values.empty()?std::string{}:values.back();};
+ value.frameAnchor=anchor(value.frames,value.frameAnchor);value.selection.celAnchor=anchor(value.selection.cels,value.selection.celAnchor);
+ if(value.sessionSelection){auto& session=*value.sessionSelection;
+  if(!session.maskAnchor||std::find(session.masks.begin(),session.masks.end(),*session.maskAnchor)==session.masks.end())session.maskAnchor=session.masks.empty()?std::nullopt:std::optional<AnimationSessionSelection::MaskSlot>(session.masks.back());
+  if(!session.groupAnchor||std::find(session.groups.begin(),session.groups.end(),*session.groupAnchor)==session.groups.end())session.groupAnchor=session.groups.empty()?std::nullopt:std::optional<AnimationCellSlot>(session.groups.back());
+  session.frameSelection=!value.frames.empty();
+ }
+ if(value.groups.size()!=1||!value.groupFocus||std::find(value.groups.begin(),value.groups.end(),*value.groupFocus)==value.groups.end())value.groupFocus.reset();
+ // Legacy stores the implicit editing target in selectedLayerIds separately
+ // from layerSelectionExplicit. Native uses activeLayerId_ plus empty rows for
+ // that state; synthesizing a row here would turn implicit focus into selection.
+ if(!value.selection.layerAnchor.empty()&&!owner(value.selection.layerAnchor))value.selection.layerAnchor=!value.groups.empty()?value.groups.back():!value.selection.layers.empty()?value.selection.layers.back():value.activeLayer;
+ if(!value.activeMask.empty()&&std::none_of(state.masks.begin(),state.masks.end(),[&](const auto& mask){return mask.mask.id==value.activeMask;})){value.activeMask.clear();value.activeMaskSlot.reset();value.maskIsolated=false;}
+ // Native ordinary selections are cel identities, so an empty layer/frame slot
+ // has no identity to retain. Existing empty group and mask slots remain values.
+ restoreAnimationSelection(std::move(value));
+}
 void Document::selectTimelineLayer(const std::string& id,int mode){
  if(!timeline_.state().groups.empty()){selectTimelineRow({LayerPanelKind::Layer,id,0},mode);return;}
  selectedGroupIds_.clear();selectedGroupId_.reset();
@@ -35,7 +132,7 @@ void Document::selectTimelineCel(const std::string& id,int mode,const std::vecto
  timelineSelection_.celAnchor=contains(selected,id)?id:selected.empty()?std::string{}:selected.back();
  const auto* focus=timeline_.findCelById(timelineSelection_.celAnchor);selectLayer(focus?focus->layerId:layerId);selectFrame(frameId);
 }
-void Document::moveTimelineCels(const std::string& anchorId,const std::string& targetId,bool copy){
+void Document::moveTimelineCels(const std::string& anchorId,const std::string& targetId,bool copy){auto selectionHistory=trackAnimationSelectionHistory(false);
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  const auto* anchor=timeline_.findCelById(anchorId);const auto* target=timeline_.findCelById(targetId);if(!anchor || !target || timelineSelection_.cels.empty())return;
  const auto& s=timeline_.state();int dr=indexOf(s.layers,target->layerId)-int(timeline_.layerIndex(anchor->layerId)),dc=indexOf(s.frames,target->frameId)-int(timeline_.frameIndex(anchor->frameId));if(!dr && !dc)return;
@@ -51,8 +148,8 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
  // Shared surface objects in legacy outlive overwritten canonical slots. Keep
  // surviving linked siblings on an owned source before replacing any slot.
  for(const auto& c:s.cels)if(!affected.count(c.id)){const auto resolved=timeline_.resolveSurface(c.id);if(resolved.source && mutated.count(resolved.source->id))affected.insert(c.id);}
- for(const auto& c:s.cels)if(affected.count(c.id))e.beforeCels.push_back(c);
- auto after=e.beforeCels;
+ for(const auto& c:s.cels)if(affected.count(c.id))e.contentHistory.beforeCels.push_back(c);
+ auto after=e.contentHistory.beforeCels;
  auto mutableCel=[&](const std::string& id)->DocumentCel&{return *std::find_if(after.begin(),after.end(),[&](const auto& c){return c.id==id;});};
  std::unordered_map<std::string,std::string> survivors;
  for(auto& c:after){const bool slot=std::any_of(placements.begin(),placements.end(),[&](const auto& p){return p.target==c.id || (!copy && p.source.id==c.id);});if(slot)continue;const auto resolved=timeline_.resolveSurface(c.id);if(!resolved.source || !mutated.count(resolved.source->id))continue;
@@ -71,8 +168,8 @@ void Document::moveTimelineCels(const std::string& anchorId,const std::string& t
  timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Cel drag creates invalid links");}
  const bool transferred=stagedSets.size()!=s.tilesets.size();
  std::optional<timeline::Timeline> transferredTimeline;
- if(transferred){auto candidate=s;candidate.layers=std::move(stagedLayers);candidate.tilesets=std::move(stagedSets);for(const auto& value:after){auto slot=std::find_if(candidate.cels.begin(),candidate.cels.end(),[&](const auto& c){return c.id==value.id;});*slot=value;}std::size_t pixels=0;for(const auto& texture:candidate.tilesets){if(texture.pixels.size()>64*1024*1024-pixels)throw std::length_error("Cel drag resource memory limit");pixels+=texture.pixels.size();}for(const auto& c:candidate.cels)if(c.surface){if(c.surface->pixels.size()>64*1024*1024-pixels)throw std::length_error("Cel drag memory limit");pixels+=c.surface->pixels.size();}transferredTimeline.emplace(std::move(candidate));if(!transferredTimeline->diagnoseLinks().empty())throw std::runtime_error("Cel drag transfer creates invalid links");e.beforeTimeline=s;e.afterTimeline=transferredTimeline->state();LayerTilesetHistory resources;for(std::size_t i=s.tilesets.size();i<transferredTimeline->state().tilesets.size();++i)resources.after.push_back({i,transferredTimeline->state().tilesets[i]});e.layerTilesets=std::make_shared<const LayerTilesetHistory>(std::move(resources));e.beforeTimeline->tilesets.clear();e.afterTimeline->tilesets.clear();e.beforeCels.clear();}
- reserveHistoryEntries();if(!transferred)e.afterCels=std::move(after);e.afterTimelineSelection=selected;e.afterActive=target->layerId;e.afterFrame=target->frameId;if(transferred){timeline_=std::move(*transferredTimeline);nextTileId_=resourceCounter;activeFrameId_=e.afterFrame;}else applyCelEdit(e,true);timelineSelection_=std::move(selected);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
+ if(transferred){auto candidate=s;candidate.layers=std::move(stagedLayers);candidate.tilesets=std::move(stagedSets);for(const auto& value:after){auto slot=std::find_if(candidate.cels.begin(),candidate.cels.end(),[&](const auto& c){return c.id==value.id;});*slot=value;}std::size_t pixels=0;for(const auto& texture:candidate.tilesets){if(texture.pixels.size()>64*1024*1024-pixels)throw std::length_error("Cel drag resource memory limit");pixels+=texture.pixels.size();}for(const auto& c:candidate.cels)if(c.surface){if(c.surface->pixels.size()>64*1024*1024-pixels)throw std::length_error("Cel drag memory limit");pixels+=c.surface->pixels.size();}transferredTimeline.emplace(std::move(candidate));if(!transferredTimeline->diagnoseLinks().empty())throw std::runtime_error("Cel drag transfer creates invalid links");e.snapshotHistory.beforeTimeline=s;e.snapshotHistory.afterTimeline=transferredTimeline->state();LayerTilesetHistory resources;for(std::size_t i=s.tilesets.size();i<transferredTimeline->state().tilesets.size();++i)resources.after.push_back({i,transferredTimeline->state().tilesets[i]});e.layerHistory.layerTilesets=std::make_shared<const LayerTilesetHistory>(std::move(resources));e.snapshotHistory.beforeTimeline->tilesets.clear();e.snapshotHistory.afterTimeline->tilesets.clear();e.contentHistory.beforeCels.clear();}
+ reserveHistoryEntries();if(!transferred)e.contentHistory.afterCels=std::move(after);e.afterTimelineSelection=selected;e.afterActive=target->layerId;e.afterFrame=target->frameId;if(transferred){timeline_=std::move(*transferredTimeline);nextTileId_=resourceCounter;activeFrameId_=e.afterFrame;}else applyCelEdit(e,true);timelineSelection_=std::move(selected);activeLayerId_=e.afterActive;change_={0,0,width_,height_};publishChange();pushEdit(std::move(e));
 }
 
 void Document::copyTimelineFrames(const std::string& target,bool after){

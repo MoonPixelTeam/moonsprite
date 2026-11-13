@@ -21,9 +21,12 @@ class DocumentSnapshot {
   std::vector<DocumentSlice> slices_;
   std::size_t brush_=0,part_=0,offset_=0;
 public:
+  enum class Progress {SourceChanged,Pending,Complete};
   explicit DocumentSnapshot(const Document& document,std::string newProjectId={});
   bool matches(const Document& document) const;
   bool advance(const Document& document,std::chrono::steady_clock::time_point deadline);
+  // Validate once and distinguish an expected source edit from a pending copy.
+  Progress advanceChecked(const Document&,std::chrono::steady_clock::time_point);
   Document finish();
 };
 }

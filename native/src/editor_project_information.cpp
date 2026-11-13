@@ -1,10 +1,10 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "ui_frame_capture.h"
 #include "project_information_dialog.h"
 namespace moon::editor {
 void Editor::showProjectInformation(bool verify){
  if(pending_!=Pending::None||!documentOpen_||homeOpen_)return;
- ProjectInformationDialog popup(font_,skin_,toolIcons_,document);popup.setDisplay(display(),false);
+ ProjectInformationDialog popup(font_,skin_,toolIcons_,currentDocument());popup.setDisplay(display(),false);
  const auto file=palettePreferencePath().parent_path()/"project-info-layout-v1.txt";gfx::Rect geometry;bool readable=true;
  if(!smoke_)try{if(std::filesystem::exists(file)){std::ifstream in(file);std::string tag;int x,y,w,h;if(!(in>>tag>>x>>y>>w>>h)||tag!="project-info-layout-v1"||w<1||h<1||w>32768||h>32768)throw std::runtime_error("Invalid project information window geometry");geometry={x,y,w,h};}}catch(const std::exception& e){readable=false;status_=U"项目信息窗口布局读取失败："+unicodeText(e.what());}
  const auto area=bounds();const auto minimum=popup.minimumDialogSize(geometry.w);const int availableW=std::max(minimum.w,area.w-12*uiScale),availableH=std::max(minimum.h,area.h-12*uiScale);
@@ -16,5 +16,5 @@ void Editor::showProjectInformation(bool verify){
  if(!smoke_&&readable)try{const auto r=popup.bounds();const auto text=std::string("project-info-layout-v1 ")+std::to_string(r.x)+" "+std::to_string(r.y)+" "+std::to_string(r.w)+" "+std::to_string(r.h)+"\n";writeExportBytesAtomic(file,{text.begin(),text.end()});}catch(const std::exception& e){status_=U"项目信息窗口布局保存失败："+unicodeText(e.what());}
  requestFocus();refresh();if(failure)std::rethrow_exception(failure);
 }
-void Editor::smokeProjectInformation(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("openProjectInfo")||menuCommands_.enabled("openProjectInfo"))throw std::runtime_error("Project information disabled without document");documentOpen_=true;homeOpen_=false;refresh();if(!menuCommands_.enabled("openProjectInfo"))throw std::runtime_error("Project information actual menu enabled");const auto history=document.historyPosition(),revision=document.revision();const auto info=document.projectInformation();projectInformationVerify_=true;menuCommands_.invoke("openProjectInfo");projectInformationVerify_=false;if(document.historyPosition()!=history||document.revision()!=revision||document.projectInformation().operationCount!=info.operationCount||document.projectInformation().updatedAt!=info.updatedAt)throw std::runtime_error("Viewing project information changed project");}
+void Editor::smokeProjectInformation(){smoke_=true;pending_=Pending::None;documentOpen_=false;homeOpen_=true;refresh();if(!menuCommands_.connected("openProjectInfo")||menuCommands_.enabled("openProjectInfo"))throw std::runtime_error("Project information disabled without document");documentOpen_=true;homeOpen_=false;refresh();if(!menuCommands_.enabled("openProjectInfo"))throw std::runtime_error("Project information actual menu enabled");const auto history=currentDocument().historyPosition(),revision=currentDocument().revision();const auto info=currentDocument().projectInformation();projectInformationVerify_=true;menuCommands_.invoke("openProjectInfo");projectInformationVerify_=false;if(currentDocument().historyPosition()!=history||currentDocument().revision()!=revision||currentDocument().projectInformation().operationCount!=info.operationCount||currentDocument().projectInformation().updatedAt!=info.updatedAt)throw std::runtime_error("Viewing project information changed project");}
 }

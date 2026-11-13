@@ -9,7 +9,6 @@
 #include <vector>
 #include <stdexcept>
 namespace moon {
-struct PresetFilterOptions {FilterPreset preset=FilterPreset::CrtSubtle;double opacity=1;bool lcd=false;int lcdWidth=1,lcdHeight=1;};
 class PresetFilterDialog final:public PixelDialog {
  const PixelFont& font_;const Skin& skin_;const Skin& icons_;
  int choice_=0;int lcdWidth_=1,lcdHeight_=1;bool lcdAvailable_=true,updatingNumbers_=false;std::array<double,6> opacity_{{1,.72,1,.35,1,.24}};bool live_=true,busy_=false,queued_=true,closed_=false;

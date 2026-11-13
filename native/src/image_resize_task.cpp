@@ -20,7 +20,7 @@ void ImageResizeTask::tick(const Document& d){
   if(phase_==Phase::Capturing){if(selectionCopied_<selectionSize_){auto& target=selection_->mask;if(!selectionCopied_)target.reserve(selectionSize_);const auto count=std::min(selectionSize_-selectionCopied_,RasterSnapshot::tickPixels*sizeof(Pixel));target.insert(target.end(),selectionData_+selectionCopied_,selectionData_+selectionCopied_+count);selectionCopied_+=count;return;}if(!capture_->advance(d.timeline().state(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
    auto state=capture_->take();capture_.reset();auto work=std::make_shared<Work>();work_=work;const auto layer=layer_,frame=frame_;const auto sw=sw_,sh=sh_,w=width_,h=height_;const auto method=method_;const bool detection=detection_;auto selection=selection_;phase_=Phase::Working;
    executor_([work,state=std::move(state),selection=std::move(selection),layer,frame,sw,sh,w,h,method,detection]()mutable{
-    try{if(work->cancelled)throw ImageResizeCancelled{};auto source=std::make_unique<Document>(1,1);source->width_=sw;source->height_=sh;source->timeline_=timeline::Timeline(std::move(state));source->activeLayerId_=layer;source->activeFrameId_=frame;source->selection_=std::move(selection);
+    try{if(work->cancelled)throw ImageResizeCancelled{};auto source=std::make_unique<Document>(1,1);source->width_=sw;source->height_=sh;source->timeline_=timeline::Timeline(std::move(state));source->activeLayerId_=layer;source->activeFrameId_=frame;source->setSelectionValue(std::move(selection));
      ImageResizeCancellationScope cancellation(&work->cancelled);if(detection)work->detectedScale=detectDocumentPixelScale(source->timeline_,frame,sw,sh,[work]{return work->cancelled.load();});else source->resizeImage(w,h,method);if(work->cancelled)throw ImageResizeCancelled{};work->result=std::move(source);
     }catch(const ImageResizeCancelled&){}catch(const std::exception& error){work->error=error.what();}work->ready=true;
    });return;
@@ -32,9 +32,9 @@ bool ImageResizeTask::commit(Document& d){
  if(phase_!=Phase::Ready||detection_)return false;if(!matches(d)){error_="Document changed during image resize";phase_=Phase::Failed;return false;}
  try{
   auto& source=*work_->result;if(source.history_.empty()){phase_=Phase::Applied;return true;}
-  auto edit=std::move(source.history_.back());edit.beforeState=d.state_;edit.afterState=d.nextState_;
+  auto edit=source.history_.takeLatest();edit.beforeState=d.state_;edit.afterState=d.nextState_;
   // Preserve live editing context rather than the worker's minimal context.
-  if(edit.beforeTimeline){edit.beforeActive=edit.afterActive=d.activeLayerId_;edit.beforeFrame=edit.afterFrame=d.activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=d.timelineSelection_;edit.beforeSelection=edit.afterSelection=d.selectedFrames_;}
+  if(edit.snapshotHistory.beforeTimeline){edit.beforeActive=edit.afterActive=d.activeLayerId_;edit.beforeFrame=edit.afterFrame=d.activeFrameId_;edit.beforeTimelineSelection=edit.afterTimelineSelection=d.timelineSelection_;edit.beforeSelection=edit.afterSelection=d.selectedFrames_;}
   d.reserveHistoryEntries();d.applyEdit(edit,true);d.change_={0,0,d.width_,d.height_};d.publishChange();d.pushEdit(std::move(edit),U"图像大小");phase_=Phase::Applied;work_->result.reset();return true;
  }catch(const std::exception& error){error_=error.what();phase_=Phase::Failed;return false;}
 }

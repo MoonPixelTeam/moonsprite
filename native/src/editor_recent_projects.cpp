@@ -1,5 +1,6 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "project_file.h"
+#include "ui_frame_capture.h"
 namespace moon::editor {
 void Editor::loadRecentProjects(){const auto directory=recentSettingsOverride_.empty()?homeRecentPath().parent_path():recentSettingsOverride_;auto read=[](const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};try{const auto file=directory/"home-recent-v2.txt";homeRecent_=recent::decode(read(std::filesystem::exists(file)?file:directory/"home-recent.txt"),!std::filesystem::exists(file));recentHidden_=read(directory/"moonsprite.home-recent-privacy.v1")=="hidden";const auto density=read(directory/"moonsprite.home-project-layout.v1");recentDensity_=density=="small"?0:density=="large"?2:1;for(const auto& value:homeRecent_){std::error_code error;if(!std::filesystem::is_regular_file(std::filesystem::u8path(value.path),error))recentErrors_[value.path]="File is missing or cannot be read";}updateRecentMenu();}catch(const std::exception& e){status_=U"最近文件读取失败："+unicodeText(e.what());}}
 void Editor::saveRecentProjects(){if(smoke_&&recentSettingsOverride_.empty())return;try{const auto directory=recentSettingsOverride_.empty()?homeRecentPath().parent_path():recentSettingsOverride_;std::filesystem::create_directories(directory);const auto bytes=recent::encode(homeRecent_);writeExportBytesAtomic(directory/"home-recent-v2.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_=U"最近文件记录写入失败："+unicodeText(e.what());}}
@@ -27,7 +28,7 @@ void Editor::smokeRecentProjects(){
  auto index=[&](const std::string& path){for(std::size_t i=0;i<homeRecent_.size();++i)if(homeRecent_[i].path==path)return i;throw std::runtime_error("Recent path not found");};
  openRecentProject(missing.u8string());check(pending_==Pending::OpenError&&homeRecent_.size()==3,"Open failure retains list record");pending_=Pending::None;menuBar_->setEnabled(true);refresh();recentPane_->smokeRemove(index(missing.u8string()));check(homeRecent_.size()==2&&!recentErrors_.count(missing.u8string()),"Actual failed-row remove only changes recent metadata");
  recentPane_->reordered({second.u8string(),first.u8string()});check(homeRecent_[0].path==first.u8string(),"Reorder preserves pinned partition");
- recentMenuRows_[0]->Click();check(sameProjectPath(documentPath_,first)&&document.width()==2,"Actual file recent menu opens its corresponding project");showHome(true);refresh();check(recentPane_->count()==homeRecent_.size(),"Menu open success synchronizes home model");
+ recentMenuRows_[0]->Click();check(sameProjectPath(currentPath(),first)&&currentDocument().width()==2,"Actual file recent menu opens its corresponding project");showHome(true);refresh();check(recentPane_->count()==homeRecent_.size(),"Menu open success synchronizes home model");
  recentPane_->remove(second.u8string());check(std::filesystem::exists(second)&&homeRecent_.size()==1,"Drag-out/remove callback does not delete project file");
  saveRecentProjects();loadRecentProjects();check(homeRecent_.size()==1&&homeRecent_[0].path==first.u8string()&&homeRecent_[0].pinned,"Final isolated persistence");
 }

@@ -1,5 +1,6 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "project_file.h"
+#include "ui_frame_capture.h"
 #include "brush_library_delete_dialog.h"
 namespace moon::editor {
 std::filesystem::path Editor::galleryDirectory()const{if(!recentSettingsOverride_.empty())return recentSettingsOverride_/"gallery";wchar_t path[32768]{};const auto n=GetModuleFileNameW(nullptr,path,32768);if(!n||n==32768)throw std::runtime_error("Cannot locate MoonSprite gallery");return std::filesystem::path(path).parent_path()/"gallery";}
@@ -37,7 +38,7 @@ void Editor::smokeGallery(){
  recordHomeRecent(first);deleteGalleryProject(first.u8string(),1);check(std::filesystem::exists(first)&&galleryProjects_.size()==3,"Cancel gallery deletion preserves file and list");deleteGalleryProject(first.u8string(),2);check(std::filesystem::exists(first),"Escape gallery deletion preserves project");
  deleteGalleryProject(first.u8string(),3);check(!std::filesystem::exists(first)&&galleryProjects_.size()==2&&std::none_of(homeRecent_.begin(),homeRecent_.end(),[&](const auto& p){return p.path==first.u8string();})&&galleryPins_.empty(),"Confirmed delete removes only file, recent and gallery pin");
  const auto example=galleryDirectory()/gallery::exampleName;deleteGalleryProject(example.u8string(),3);check(gallery::read(galleryMarker())=="deleted","Example delete records opt out");loadHomeSection();wait();check(galleryProjects_.size()==1&&!std::filesystem::exists(example),"Refresh never reinstalls deleted example");
- recentPane_->smokeOpen(0);check(sameProjectPath(documentPath_,second)&&document.width()==3,"Gallery actual open callback");showHome(true);wait();
+ recentPane_->smokeOpen(0);check(sameProjectPath(currentPath(),second)&&currentDocument().width()==3,"Gallery actual open callback");showHome(true);wait();
  auto saved=galleryProjects_;std::vector<recent::Project> many;for(int i=0;i<10000;++i)many.push_back({(galleryDirectory()/(std::to_string(i)+".moonsprite")).u8string(),i,false});recentPane_->setProjects(many,{},false);recentPane_->setDensity(0);recentPane_->smokeScrollTo(5000*36*uiScale);check(recentPane_->count()==10000&&recentPane_->controlRows()<128,"Gallery controls bounded by visible viewport");auto pinCallback=recentPane_->pin;std::string clicked;recentPane_->pin=[&](const std::string& p){clicked=p;};recentPane_->smokePin(5000);check(clicked==many[5000].path,"Recycled card callback resolves full record index");recentPane_->pin=pinCallback;recentPane_->setDensity(1);recentPane_->setProjects(saved,{},false);recentPane_->smokeScrollTo(0);
  loadHomeSection();homeSection_=0;loadHomeSection();Sleep(30);galleryTick();check(homeSection_==0&&recentPane_->count()!=10000,"Background gallery result cannot replace recent view");homeSection_=1;loadHomeSection();wait();
 }

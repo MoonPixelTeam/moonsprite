@@ -1,5 +1,14 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "color_picker_scheme_ui.h"
+#include "ui/move_region.h"
+#include "ui/system.h"
+#include "palette_layout.h"
+#include "layer_label_separator.h"
+#include "preview_panel.h"
+#include "floating_column_surface.h"
+#include "floating_panel_geometry.h"
+#include "dialog_background.h"
+#include "interaction_profile.h"
 #include "free_tile_instances_panel.h"
 #include <unordered_set>
 #include "latest_task_queue.h"
@@ -24,13 +33,7 @@ struct WorkspaceWrites final:ui::Property {
 };
 }
 // PreviewPanel.tsx zoom-shortcut handler; reuse the existing anchored preview view.
-void PreviewPanel::zoomPreviewTo(double next,std::optional<gfx::Point> pointer){
- syncPreview();previewLayout();
- if(!std::isfinite(next)||next<=0||previewBox_.w<=0||previewBox_.h<=0||next==previewScale())return;
- const auto position=pointer.value_or(previewBox_.center());
- previewView_.setZoom(document_.width(),document_.height(),double(previewBox_.w)/uiScale,double(previewBox_.h)/uiScale,next,{double(position.x-previewBox_.x)/uiScale,double(position.y-previewBox_.y)/uiScale},uiScale);
- invalidate();
-}
+
 
 
 panels::Geometry Editor::columnGeometry(gfx::Rect rc)const{InteractionScope interactionScope(0,"geometry");
@@ -106,7 +109,7 @@ void Editor::restorePickerSquare(int id) {
 
     // Restore against uncompressed 12px hue/alpha strips, even when the current
     // viewport is too short to expose a usable field.
-    auto fieldSlot=[&]{auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());box.shrink(1);return PickerBox{0,0,box.w,box.h-24};};
+    auto fieldSlot=[&]{auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!currentView().recent.values().empty());box.shrink(1);return PickerBox{0,0,box.w,box.h-24};};
 
     auto field=fieldSlot();int delta=field.w-field.h;if(std::abs(delta)<=1)return;
 
@@ -324,7 +327,7 @@ void Editor::raiseDockWidgets() {
 
 void Editor::beginPanelGesture(int id,const ui::MouseMessage& mouse,int edges,bool wholeGroup) {
 
-    if(pending_!=Pending::None || (pending_==Pending::None && document.active()) || timelineGesture_.kind || panelGesture_.id>=0)return;
+    if(pending_!=Pending::None || (pending_==Pending::None && currentDocument().active()) || timelineGesture_.kind || panelGesture_.id>=0)return;
 
     if(mouse.right()){showColumnContextMenu(Column(id));return;}if(!mouse.left())return;
 
@@ -585,7 +588,7 @@ bool Editor::dispatchPanelGesture(ui::Message* msg){if(advancedActive()&&pending
 Editor::PanelResizeHit Editor::panelResizeAt(gfx::Point point)const{
     if(advancedActive())return {};
 
-    if(!docking_.custom || homeOpen_ || pending_!=Pending::None || document.active())return {};
+    if(!docking_.custom || homeOpen_ || pending_!=Pending::None || currentDocument().active())return {};
 
     for(auto close:columnClose_)if(close && close->isVisible() && close->bounds().contains(point))return {};
 
@@ -705,7 +708,7 @@ void Editor::buildColumnContextMenu(PixelMenu& menu,Column column) {
     if(int(column)==2||int(column)==13){auto child=new PixelMenu(skin_);auto entry=new PixelMenuItem(font_,skin_,U"显示密度");entry->setSubmenu(child);menu.addChild(entry);const char32_t* labels[]{U"紧凑",U"常规",U"详细",U"扩展",U"大",U"超大"};for(int i=0;i<6;++i){auto item=new PixelMenuItem(font_,skin_,labels[i]);item->menuMarks=&toolIcons_;item->checked=[this,i]{return timelineDensity_==i;};item->Click.connect([this,i]{setTimelineDensity(i);});child->addChild(item);}}
 
     if(int(column)==13){add(U"实例图层设置","properties",[this]{showFreeTileInstancePanelSettings();});menu.addChild(new PixelMenuSeparator(skin_));}
-    if(int(column)==11){auto item=add(U"清空未使用瓦片","delete",[this]{if(document.layer().kind=="free-tile"){tilesetPanel_->cancelPending();if(document.clearUnusedTilesetTiles(tilesetPanel_->selectedTilesetId()))refresh();}else tilesetPanel_->clearUnused();});item->setEnabled(pending_==Pending::None&&tilesetPanel_&&(tilesetPanel_->canManage()||tilesetPanel_->canAddSource()));menu.addChild(new PixelMenuSeparator(skin_));}
+    if(int(column)==11){auto item=add(U"清空未使用瓦片","delete",[this]{if(currentDocument().layer().kind=="free-tile"){tilesetPanel_->cancelPending();if(currentDocument().clearUnusedTilesetTiles(tilesetPanel_->selectedTilesetId()))refresh();}else tilesetPanel_->clearUnused();});item->setEnabled(pending_==Pending::None&&tilesetPanel_&&(tilesetPanel_->canManage()||tilesetPanel_->canAddSource()));menu.addChild(new PixelMenuSeparator(skin_));}
     add(U"隐藏 "+std::u32string(names[int(column)])+U" 栏目","eyeOff",[this,column]{cancelStroke();if(int(column)==13){freeTileInstancesOpen_=false;refresh();}else if(int(column)==12)menuCommands_.invoke("toggleBrushLibraryPanel");else if(int(column)==11)menuCommands_.invoke("toggleTilesetPanel");else if(int(column)==10)menuCommands_.invoke("panelTabletAssist");else if(int(column)==9)menuCommands_.invoke("panelReference");else if(int(column)==8)menuCommands_.invoke("panelHistory");else if(panels::isPicker(int(column)))togglePickerColumn(int(column));else {const char* commands[]{"togglePalettePanel","toggleColorPanel","toggleLayersPanel","togglePreviewPanel"};menuCommands_.invoke(commands[int(column)]);}});
 
     menu.addChild(new PixelMenuSeparator(skin_));
@@ -789,7 +792,7 @@ gfx::Rect Editor::canvasViewport() const {
 
     auto r=canvasFullViewport();if(!runtimePreferences_.flag("editing.canvasViewScrollbarsEnabled"))return r;
 
-    const double a=viewRotation_.degrees*3.14159265358979323846/180;const gfx::Size b(int(std::ceil(std::abs(std::cos(a))*canvas_.w+std::abs(std::sin(a))*canvas_.h)),int(std::ceil(std::abs(std::sin(a))*canvas_.w+std::abs(std::cos(a))*canvas_.h)));const bool horizontal=b.w>r.w,vertical=b.h>r.h;
+    const double a=currentView().rotation.degrees*3.14159265358979323846/180;const gfx::Size b(int(std::ceil(std::abs(std::cos(a))*currentView().canvas.w+std::abs(std::sin(a))*currentView().canvas.h)),int(std::ceil(std::abs(std::sin(a))*currentView().canvas.w+std::abs(std::cos(a))*currentView().canvas.h)));const bool horizontal=b.w>r.w,vertical=b.h>r.h;
 
     if(vertical || b.h>r.h-(horizontal?6*uiScale:0))r.w-=6*uiScale;
 
@@ -809,7 +812,7 @@ void Editor::layoutCanvasScrollBars() {
 
       const auto track=PixelScrollBar::gridBounds(r,vertical);if(bar->bounds()!=track)bar->setDockBounds(track);bar->configure(upper-lower+page,page,upper-origin);bar->wheelStep=24*uiScale;
 
-      bar->setVisible(documentOpen_ && !homeOpen_ && (vertical?r.w<full.w:r.y2()<full.y2()));bar->setEnabled(pending_==Pending::None && !document.active());};
+      bar->setVisible(documentOpen_ && !homeOpen_ && (vertical?r.w<full.w:r.y2()<full.y2()));bar->setEnabled(pending_==Pending::None && !currentDocument().active());};
 
     setup(canvasHorizontal_,false);setup(canvasVertical_,true);
 
@@ -817,13 +820,13 @@ void Editor::layoutCanvasScrollBars() {
 
 gfx::Rect Editor::changedCanvasPixels() const {
 
-    const auto region=document.lastContentChange();if(region.empty()) return {};if(viewRotation_.active())return canvasViewport();
+    const auto region=currentDocument().lastContentChange();if(region.empty()) return {};if(currentView().rotation.active())return canvasViewport();
 
     const double scale=canvasScale();
 
-    const int left=int(std::floor(canvas_.x+region.x*scale))-1,top=int(std::floor(canvas_.y+region.y*scale))-1;
+    const int left=int(std::floor(currentView().canvas.x+region.x*scale))-1,top=int(std::floor(currentView().canvas.y+region.y*scale))-1;
 
-    const int right=int(std::ceil(canvas_.x+(region.x+region.w)*scale))+1,bottom=int(std::ceil(canvas_.y+(region.y+region.h)*scale))+1;
+    const int right=int(std::ceil(currentView().canvas.x+(region.x+region.w)*scale))+1,bottom=int(std::ceil(currentView().canvas.y+(region.y+region.h)*scale))+1;
 
     return gfx::Rect(left,top,right-left,bottom-top)&canvasViewport();
 
@@ -831,19 +834,19 @@ gfx::Rect Editor::changedCanvasPixels() const {
 
 void Editor::invalidateStrokePixels(std::uint64_t before) {
 
-    if(document.contentRevision()==before) return;
+    if(currentDocument().contentRevision()==before) return;
 
-    renderer_.noteChange(document);
+    renderer_.noteChange(currentDocument());
 
     if(timelineThumbnailSize()){layoutLayers();invalidateTimelineGrid();}
 
-    if(recentDrag_.observe(recentColors_,RecentPaintKind::Draw,eraser_,strokeColor_,true)) {
+    if(recentDrag_.observe(currentView().recent,RecentPaintKind::Draw,currentTools().eraser,strokeColor_,true)) {
 
       layoutPalette();const auto rc=uiLogical(bounds());const auto l=columnLayout(rc,0);auto dock=l.pickerPanel();dock.offset(rc.x,rc.y);invalidateRect(uiPhysical(dock));
 
     }
 
-    const auto area=changedCanvasPixels();if(tileRepeatIdentity_==document.identity()&&tileRepeat_!=repeat::Mode::Off)invalidateRect(canvasViewport());else if(!area.isEmpty()) invalidateRect(area);
+    const auto area=changedCanvasPixels();if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off)invalidateRect(canvasViewport());else if(!area.isEmpty()) invalidateRect(area);
 
     if(previewPanel_ && previewPanel_->isVisible()){previewPanel_->noteContentChange();previewPanel_->invalidate();}
 
@@ -853,13 +856,13 @@ void Editor::fitCanvas() {
 
     const auto rc=uiLogical(bounds()); const auto l=workspaceLayout(rc);
 
-    zoom_=std::max(1,std::min(8,std::min((l.workW-24)/document.width(),(l.workspaceContent().h-24)/document.height())));
+    currentView().zoom=std::max(1,std::min(8,std::min((l.workW-24)/currentDocument().width(),(l.workspaceContent().h-24)/currentDocument().height())));
 
-    canvas_=uiPhysical(gfx::Rect(rc.x+l.workX+(l.workW-document.width()*zoom_)/2,
+    currentView().canvas=uiPhysical(gfx::Rect(rc.x+l.workX+(l.workW-currentDocument().width()*currentView().zoom)/2,
 
-                     rc.y+l.top+(l.workspacePanel().h-document.height()*zoom_)/2,
+                     rc.y+l.top+(l.workspacePanel().h-currentDocument().height()*currentView().zoom)/2,
 
-                     document.width()*zoom_,document.height()*zoom_));
+                     currentDocument().width()*currentView().zoom,currentDocument().height()*currentView().zoom));
 
     layoutCanvasScrollBars();invalidate();
 
@@ -867,7 +870,7 @@ void Editor::fitCanvas() {
 
 void Editor::zoomCanvas(gfx::Point anchor,int direction) {
 
-    const double next=runtimePreferences_.index("editing.wheelZoomMode.Select")==0?std::clamp(zoom_*std::pow(2.,direction/4.),.0625,64.):nextCanvasScale(zoom_,direction);
+    const double next=runtimePreferences_.index("editing.wheelZoomMode.Select")==0?std::clamp(currentView().zoom*std::pow(2.,direction/4.),.0625,64.):nextCanvasScale(currentView().zoom,direction);
 
     setCanvasZoom(anchor,next);
 
@@ -877,13 +880,13 @@ gfx::Rect Editor::statusBounds() const {const auto rc=uiLogical(clientBounds());
 
 void Editor::setCanvasZoom(gfx::Point anchor,double next) {
 
-    if(next==zoom_) return;
+    if(next==currentView().zoom) return;
 
-    const auto before=canvasDocumentPoint(anchor);const auto origin=zoomedCanvasOrigin({canvas_.x,canvas_.y},{anchor.x,anchor.y},canvasScale(),next*uiScale);
+    const auto before=canvasDocumentPoint(anchor);const auto origin=zoomedCanvasOrigin({currentView().canvas.x,currentView().canvas.y},{anchor.x,anchor.y},canvasScale(),next*uiScale);
 
-    zoom_=next;canvas_=gfx::Rect(origin.x,origin.y,int(std::lround(document.width()*canvasScale())),int(std::lround(document.height()*canvasScale())));
+    currentView().zoom=next;currentView().canvas=gfx::Rect(origin.x,origin.y,int(std::lround(currentDocument().width()*canvasScale())),int(std::lround(currentDocument().height()*canvasScale())));
 
-    const auto after=canvasDocumentToDisplay(before);const auto delta=viewRotation_.inverse({double(anchor.x-after.x),double(anchor.y-after.y)},{0,0});if(runtimePreferences_.index("editing.rotationIndicatorPosition.Select")==1){canvas_.x+=anchor.x-after.x;canvas_.y+=anchor.y-after.y;}else{canvas_.x+=int(std::lround(delta.x));canvas_.y+=int(std::lround(delta.y));}constrainCanvas();saveDocumentView();
+    const auto after=canvasDocumentToDisplay(before);const auto delta=currentView().rotation.inverse({double(anchor.x-after.x),double(anchor.y-after.y)},{0,0});if(runtimePreferences_.index("editing.rotationIndicatorPosition.Select")==1){currentView().canvas.x+=anchor.x-after.x;currentView().canvas.y+=anchor.y-after.y;}else{currentView().canvas.x+=int(std::lround(delta.x));currentView().canvas.y+=int(std::lround(delta.y));}constrainCanvas();saveDocumentView();
 
     // Legacy scheduleZoomPreview reuses the content draw scheduler. Zoom is
 
@@ -895,14 +898,14 @@ void Editor::setCanvasZoom(gfx::Point anchor,double next) {
 
   }
 
-void Editor::useZoomTool() {liquifyTool_=false;liquifyResetPosition_.reset();smoothTool_=false;airbrushTool_=false;rotateTool_=false;
+void Editor::useZoomTool() {currentTools().liquifyTool=false;liquifyResetPosition_.reset();currentTools().smoothTool=false;currentTools().airbrushTool=false;currentTools().rotateTool=false;
 
-    if(document.active() && !document.floating())return;
+    if(currentDocument().active() && !currentDocument().floating())return;
 
     if(selectionDragging_ || floatingDragging_ || shapeDragging_ || gradientDragging_ || gradientPending_ || fillDragging_ || eyedropperGesture_.active() || navigation_.zoomDragging_)return;
 
-    document.commitFloatingPaste();
-    textTool_=false;moveTool_=false;selectionTool_=shapeTool_=gradientTool_=fillTool_=handTool_=eraser_=eyedropperTool_=false;navigation_.zoomTool_=true;toolRowScroll_=0;refresh();updateNavigationCursor();
+    currentDocument().commitFloatingPaste();
+    currentTools().textTool=false;currentTools().moveTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=currentTools().eyedropperTool=false;currentTools().zoomTool=true;toolRowScroll_=0;refresh();updateNavigationCursor();
 
   }
 
@@ -989,14 +992,14 @@ void Editor::layoutPalette(int only) {
 
     int columns=std::max(1,(area.w-padding*2-1)/step);
 
-    const auto storedSlots=paletteManual_?normalizePaletteSlots(document.palette().entries,document.palette().order(),document.palette().slots,document.palette().columns):std::vector<int>{};
-    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(storedSlots,document.palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&!fit.slots[count-1])--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
+    const auto storedSlots=paletteManual_?normalizePaletteSlots(currentDocument().palette().entries,currentDocument().palette().order(),currentDocument().palette().slots,currentDocument().palette().columns):std::vector<int>{};
+    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(storedSlots,currentDocument().palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&!fit.slots[count-1])--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
 
     const bool overflow=(count+columns-1)/columns>rows;
 
     if(overflow){area.w=std::max(1,area.w-6);columns=std::max(1,(area.w-padding*2-1)/step);}
 
-    if(paletteManual_){const auto fitted=fitPaletteSlotsToGrid(storedSlots,document.palette().columns,columns);columns=fitted.columns;if(columns!=paletteColumns_){paletteColumns_=columns;syncPaletteButtons();}}
+    if(paletteManual_){const auto fitted=fitPaletteSlotsToGrid(storedSlots,currentDocument().palette().columns,columns);columns=fitted.columns;if(columns!=paletteColumns_){paletteColumns_=columns;syncPaletteButtons();}}
 
     if(paletteGrowth_)columns=paletteGrowth_->preview.columns;
 
@@ -1010,15 +1013,15 @@ void Editor::layoutPalette(int only) {
 
     if(paletteHorizontalBar_){auto track=PixelScrollBar::edgeBounds(paletteContentBounds(),false);if(overflow)track.w=std::max(uiScale,track.w-6*uiScale);paletteHorizontalBar_->setDockBounds(track);paletteHorizontalBar_->setVisible(columnShown(0)&&horizontal);paletteHorizontalBar_->setEnabled(pending_==Pending::None);paletteHorizontalBar_->wheelStep=step*uiScale;}
 
-    paletteScrollXPixels_=horizontal?std::clamp(paletteScrollXPixels_,0,std::max(0,contentWidth-paletteViewportBounds().w)):0;if(paletteHorizontalBar_)paletteHorizontalBar_->configure(contentWidth,paletteViewportBounds().w,paletteScrollXPixels_);
+    currentView().paletteScrollX=horizontal?std::clamp(currentView().paletteScrollX,0,std::max(0,contentWidth-paletteViewportBounds().w)):0;if(paletteHorizontalBar_)paletteHorizontalBar_->configure(contentWidth,paletteViewportBounds().w,currentView().paletteScrollX);
 
     const int contentHeight=(2*padding+((count+columns-1)/columns)*step+1)*uiScale;
 
-    paletteScrollPixels_=overflow?std::clamp(paletteScrollPixels_,0,std::max(0,contentHeight-paletteViewportBounds().h)):0;
+    currentView().paletteScroll=overflow?std::clamp(currentView().paletteScroll,0,std::max(0,contentHeight-paletteViewportBounds().h)):0;
 
-    if(paletteScrollBar_)paletteScrollBar_->configure(contentHeight,paletteViewportBounds().h,paletteScrollPixels_);
+    if(paletteScrollBar_)paletteScrollBar_->configure(contentHeight,paletteViewportBounds().h,currentView().paletteScroll);
 
-    if(paletteGrowthHandle_){const auto slot=paletteGrowth_?paletteGrowth_->preview.handleSlot:swatches_.size();const auto physical=toDisplay(gfx::Rect(area.x+padding+int(slot%columns)*step,area.y+padding+int(slot/columns)*step,cell,cell)).offset(0,-paletteScrollPixels_);paletteGrowthHandle_->setBounds(physical & paletteViewportBounds());paletteGrowthHandle_->setVisible(!paletteManual_&&columnShown(0)&&!(paletteGesture_&&paletteGesture_->moving)&&physical.intersects(paletteViewportBounds()));paletteGrowthHandle_->setEnabled(pending_==Pending::None);paletteGrowthHandle_->active=paletteGrowth_.has_value();}
+    if(paletteGrowthHandle_){const auto slot=paletteGrowth_?paletteGrowth_->preview.handleSlot:swatches_.size();const auto physical=toDisplay(gfx::Rect(area.x+padding+int(slot%columns)*step,area.y+padding+int(slot/columns)*step,cell,cell)).offset(0,-currentView().paletteScroll);paletteGrowthHandle_->setBounds(physical & paletteViewportBounds());paletteGrowthHandle_->setVisible(!paletteManual_&&columnShown(0)&&!(paletteGesture_&&paletteGesture_->moving)&&physical.intersects(paletteViewportBounds()));paletteGrowthHandle_->setEnabled(pending_==Pending::None);paletteGrowthHandle_->active=paletteGrowth_.has_value();}
 
     restorePaletteView();
     // Scrollbar visibility and dock geometry are settled for this layout pass.
@@ -1026,9 +1029,9 @@ void Editor::layoutPalette(int only) {
     const auto paletteViewport=paletteViewportBounds();
     const bool compareViewport=smoke_ && _wgetenv(L"MOONSPRITE_PALETTE_VIEWPORT_REFERENCE");
 
-    std::optional<PaletteSlotRange> manualRange;if(paletteManual_){if(paletteBoxRange_&&paletteBoxRange_->identity==document.identity())manualRange=paletteSlotRange(columns,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<paletteButtonIds_.size();++i)if(paletteButtonIds_[i]&&std::find(document.palette().selected.begin(),document.palette().selected.end(),paletteButtonIds_[i])!=document.palette().selected.end()){const auto x=i%columns,y=i/columns;if(!manualRange)manualRange=PaletteSlotRange{x,y,x,y};else{manualRange->left=std::min(manualRange->left,x);manualRange->right=std::max(manualRange->right,x);manualRange->top=std::min(manualRange->top,y);manualRange->bottom=std::max(manualRange->bottom,y);}}}const bool manualBox=manualRange.has_value();
+    std::optional<PaletteSlotRange> manualRange;if(paletteManual_){if(paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity())manualRange=paletteSlotRange(columns,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<paletteButtonIds_.size();++i)if(paletteButtonIds_[i]&&std::find(currentDocument().palette().selected.begin(),currentDocument().palette().selected.end(),paletteButtonIds_[i])!=currentDocument().palette().selected.end()){const auto x=i%columns,y=i/columns;if(!manualRange)manualRange=PaletteSlotRange{x,y,x,y};else{manualRange->left=std::min(manualRange->left,x);manualRange->right=std::max(manualRange->right,x);manualRange->top=std::min(manualRange->top,y);manualRange->bottom=std::max(manualRange->bottom,y);}}}const bool manualBox=manualRange.has_value();
 
-    const bool shared=manualBox||document.palette().selected.size()>1;
+    const bool shared=manualBox||currentDocument().palette().selected.size()>1;
 
     paletteSelectionBorder_={};paletteSelectionEdges_.clear();
 
@@ -1042,7 +1045,7 @@ void Editor::layoutPalette(int only) {
 
       auto cellBounds=gfx::Rect(area.x+padding+int(i%columns)*step,area.y+padding+row*step,cell,cell);
 
-      auto physical=toDisplay(cellBounds).offset(-paletteScrollXPixels_,-paletteScrollPixels_);swatches_[i]->paletteViewport=[this]{return paletteViewportBounds();};if(swatches_[i]->active && shared)paletteSelectionBorder_=paletteSelectionBorder_.isEmpty()?physical:(paletteSelectionBorder_|physical);
+      auto physical=toDisplay(cellBounds).offset(-currentView().paletteScrollX,-currentView().paletteScroll);swatches_[i]->paletteViewport=[this]{return paletteViewportBounds();};if(swatches_[i]->active && shared)paletteSelectionBorder_=paletteSelectionBorder_.isEmpty()?physical:(paletteSelectionBorder_|physical);
 
       if(swatches_[i]->active && !shared)physical=skin_.selectionMaterialBounds(physical);
 
@@ -1203,7 +1206,7 @@ void Editor::layoutPalette(int only) {
 
     }
 
-    if(manualBox){const auto range=*manualRange;const auto origin=toDisplay(gfx::Rect(area.x+padding,area.y+padding,1,1)).origin()-gfx::Point(paletteScrollXPixels_,paletteScrollPixels_);const gfx::Rect border(origin.x+int(range.left)*step*uiScale,origin.y+int(range.top)*step*uiScale,int(range.right-range.left)*step*uiScale+cell*uiScale,int(range.bottom-range.top)*step*uiScale+cell*uiScale);paletteSelectionBorder_=border;paletteSelectionEdges_.clear();const auto material=skin_.selectionMaterialBounds(border);paletteSelectionEdges_.push_back({border,material,{material},0});}
+    if(manualBox){const auto range=*manualRange;const auto origin=toDisplay(gfx::Rect(area.x+padding,area.y+padding,1,1)).origin()-gfx::Point(currentView().paletteScrollX,currentView().paletteScroll);const gfx::Rect border(origin.x+int(range.left)*step*uiScale,origin.y+int(range.top)*step*uiScale,int(range.right-range.left)*step*uiScale+cell*uiScale,int(range.bottom-range.top)*step*uiScale+cell*uiScale);paletteSelectionBorder_=border;paletteSelectionEdges_.clear();const auto material=skin_.selectionMaterialBounds(border);paletteSelectionEdges_.push_back({border,material,{material},0});}
 
     if(paletteSelectionOverlay_){const bool show=shared && columnShown(0) && !paletteSelectionBorder_.isEmpty();paletteSelectionOverlay_->setVisible(show);if(show)paletteSelectionOverlay_->setBounds(skin_.selectionMaterialBounds(paletteSelectionBorder_)&paletteViewport);paletteSelectionOverlay_->invalidate();}
 
@@ -1221,7 +1224,7 @@ void Editor::layoutPalette(int only) {
 
       secondaryRole_->setBounds(toDisplay(gfx::Rect(rc.x+l.rightX+Layout::inset+2*(15+uiGap)+22+uiGap,rc.y+paletteActionsY(l)+1,22,14)));
 
-      primaryRole_->swatch=document.displayPalette().primary;secondaryRole_->swatch=document.displayPalette().secondary;
+      primaryRole_->swatch=currentDocument().displayPalette().primary;secondaryRole_->swatch=currentDocument().displayPalette().secondary;
 
       // Palette chrome stays the same when the picker is hidden or tabbed.
 
@@ -1253,11 +1256,11 @@ void Editor::layoutPalette(int only) {
 
     if(colorPicker_ && (only<0 || only==1)) {
 
-      auto inner=columnLayout(rc,1).pickerGradient((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !recentColors_.values().empty()));inner.offset(rc.x,rc.y);inner.shrink(1);inner=toDisplay(inner);
+      auto inner=columnLayout(rc,1).pickerGradient((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !currentView().recent.values().empty()));inner.offset(rc.x,rc.y);inner.shrink(1);inner=toDisplay(inner);
 
       if(colorPicker_->bounds()!=inner)colorPicker_->setBounds(inner);
 
-      colorPicker_->syncColors(document.displayPalette().primary,document.displayPalette().secondary);
+      colorPicker_->syncColors(currentDocument().displayPalette().primary,currentDocument().displayPalette().secondary);
 
       colorPicker_->setVisible(columnShown(1));
 
@@ -1269,19 +1272,19 @@ void Editor::layoutPalette(int only) {
 
     if(pickerPrimary_ && (only<0 || only==1)) {
 
-      const auto box=columnLayout(rc,1).pickerGradient((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !recentColors_.values().empty()));
+      const auto box=columnLayout(rc,1).pickerGradient((runtimePreferences_.flag("colorLayers.recentColorsVisible") && !currentView().recent.values().empty()));
 
       const int x=rc.x+box.x,y=rc.y+box.y2()+uiGap;
 
       const bool shown=columnShown(1);
 
-      bool inPalette=false;for(int id:document.palette().slots) if(const auto entry=document.paletteEntry(id)) if(entry->color==document.palette().primary) inPalette=true;
+      bool inPalette=false;for(int id:currentDocument().palette().slots) if(const auto entry=currentDocument().paletteEntry(id)) if(entry->color==currentDocument().palette().primary) inPalette=true;
 
       pickerPrimary_->setBounds(toDisplay(gfx::Rect(x,y,box.w-(inPalette?0:15+uiGap),20)));
 
       pickerSecondary_->setBounds(toDisplay(gfx::Rect(x,y+20+uiGap,box.w,20)));
 
-      pickerPrimary_->swatch=document.displayPalette().primary;pickerSecondary_->swatch=document.displayPalette().secondary;
+      pickerPrimary_->swatch=currentDocument().displayPalette().primary;pickerSecondary_->swatch=currentDocument().displayPalette().secondary;
 
       pickerPrimary_->setVisible(shown);pickerSecondary_->setVisible(shown);
 
@@ -1295,7 +1298,7 @@ void Editor::layoutPalette(int only) {
 
       const int capacity=std::max(0,(box.w+uiGap)/(recentSize+uiGap));
 
-      while(recentButtons_.size()<recentColors_.values().size()) {
+      while(recentButtons_.size()<currentView().recent.values().size()) {
 
         const auto index=recentButtons_.size();auto b=button(U"",[]{});b->paletteCell=true;b->recentColorSwatch=true;
 
@@ -1303,7 +1306,7 @@ void Editor::layoutPalette(int only) {
 
           if(!mouse.left() && !mouse.right()) return;
 
-          colorPicker_->finishInteraction();setSharedColor(recentColors_.values().at(index),mouse.right());refresh();
+          colorPicker_->finishInteraction();setSharedColor(currentView().recent.values().at(index),mouse.right());refresh();
 
         };recentButtons_.push_back(b);
 
@@ -1311,9 +1314,9 @@ void Editor::layoutPalette(int only) {
 
       for(std::size_t i=0;i<recentButtons_.size();++i) {
 
-        auto b=recentButtons_[i];const bool exists=runtimePreferences_.flag("colorLayers.recentColorsVisible") && i<recentColors_.values().size();
+        auto b=recentButtons_[i];const bool exists=runtimePreferences_.flag("colorLayers.recentColorsVisible") && i<currentView().recent.values().size();
 
-        if(exists) b->swatch=recentColors_.values()[i];
+        if(exists) b->swatch=currentView().recent.values()[i];
 
         b->setBounds(toDisplay(gfx::Rect(x+int(i)*(recentSize+uiGap),y+2*(20+uiGap),recentSize,recentSize)));
 
@@ -1427,7 +1430,7 @@ void Editor::onResize(ui::ResizeEvent& ev) {
     InteractionScope resizeScope(14,"window-layout");
 
     restoreAdvancedVisibility();
-    const auto oldView=canvasViewport();const bool positioned=!canvas_.isEmpty();const auto previousWindow=floatingArea(uiLogical(bounds()));
+    const auto oldView=canvasViewport();const bool positioned=!currentView().canvas.isEmpty();const auto previousWindow=floatingArea(uiLogical(bounds()));
 
     setBoundsQuietly(ev.bounds());const auto rc=uiLogical(bounds());
 
@@ -1437,7 +1440,7 @@ void Editor::onResize(ui::ResizeEvent& ev) {
 
     const auto l=workspaceLayout(rc);
 
-    if(positioned){const auto nextView=canvasViewport();const auto delta=nextView.center()-oldView.center();canvas_.offset(delta);
+    if(positioned){const auto nextView=canvasViewport();const auto delta=nextView.center()-oldView.center();currentView().canvas.offset(delta);
 
       if(navigation_.pan_.active){navigation_.pan_.origin.x+=delta.x;navigation_.pan_.origin.y+=delta.y;}}
 
@@ -1461,7 +1464,7 @@ void Editor::onResize(ui::ResizeEvent& ev) {
 
     layoutPalette();layoutLayers();panelScrollDrag_.resized();
 
-    if(canvas_.isEmpty()) fitCanvas();
+    if(currentView().canvas.isEmpty()) fitCanvas();
 
     layoutCanvasScrollBars();layoutModal();raiseDockWidgets();applyHomeVisibility();
     // layoutModal places preferences; applyHomeVisibility restores them after
@@ -1495,19 +1498,19 @@ void Editor::createExtraPickerColumns(){
     p.settings=button(U"",[this,id]{auto& p=pickerColumns_[id];p.picker->finishInteraction();auto at=p.settings->bounds();showColorPickerSchemeMenu(font_,skin_,toolIcons_,p.picker->scheme(),{at.x,at.y2()},display(),{},p.picker->moonField(),[this,id](PickerMoonField f){pickerColumns_[id].picker->setMoonField(f);if(!smoke_&&pickerMoonFieldReadable_)try{saveColorPickerMoonField(palettePreferencePath().parent_path()/"color-picker-moon-field-v1.txt",f);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},p.picker->quantization(),[this,id](PickerQuantization q){for(auto& column:pickerColumns_)if(column.picker)column.picker->setQuantization(q);if(!smoke_&&pickerQuantizationReadable_)try{saveColorPickerQuantization(palettePreferencePath().parent_path()/"color-picker-quantization-v1.txt",q);}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();},false);requestFocus();});p.settings->iconSkin=&toolIcons_;p.settings->icon="moreLines";
     p.primary=button(U"",[this]{showRoleColorEditor(false);});p.primary->colorRole=true;
     p.secondary=button(U"",[this]{showRoleColorEditor(true);});p.secondary->colorRole=true;
-    p.add=button(U"",[this]{try{document.addPaletteColor(document.palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});p.add->iconSkin=&toolIcons_;p.add->icon="plus";
+    p.add=button(U"",[this]{try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});p.add->iconSkin=&toolIcons_;p.add->icon="plus";
     columnClose_[id]=button(U"",[this,id]{togglePickerColumn(id);});columnClose_[id]->iconSkin=&toolIcons_;columnClose_[id]->icon="close";columnClose_[id]->skinStyle="icon_button";columnClose_[id]->setVisible(false);
   }
 }
 void Editor::layoutPickerColumn(int id){
-  auto& p=pickerColumns_[id];if(!p.picker)return;const auto rc=uiLogical(clientBounds());const auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!recentColors_.values().empty());auto inner=box;inner.offset(rc.x,rc.y);inner.shrink(1);if(p.picker->bounds()!=toDisplay(inner))p.picker->setBounds(toDisplay(inner));p.picker->syncColors(document.displayPalette().primary,document.displayPalette().secondary);
+  auto& p=pickerColumns_[id];if(!p.picker)return;const auto rc=uiLogical(clientBounds());const auto box=columnLayout(rc,id).pickerGradient(runtimePreferences_.flag("colorLayers.recentColorsVisible")&&!currentView().recent.values().empty());auto inner=box;inner.offset(rc.x,rc.y);inner.shrink(1);if(p.picker->bounds()!=toDisplay(inner))p.picker->setBounds(toDisplay(inner));p.picker->syncColors(currentDocument().displayPalette().primary,currentDocument().displayPalette().secondary);
   const bool shown=columnShown(id);p.picker->setVisible(shown);p.picker->setEnabled(pending_==Pending::None);const auto actions=columnChrome(id).actions;
   p.settings->setBounds(toDisplay({rc.x+actions.x2()-15,rc.y+actions.y,15,15}));p.restore->setBounds(toDisplay({rc.x+actions.x2()-31,rc.y+actions.y,15,15}));
-  const int x=rc.x+box.x,y=rc.y+box.y2()+uiGap;bool inPalette=false;for(int slot:document.palette().slots)if(auto entry=document.paletteEntry(slot))inPalette|=entry->color==document.palette().primary;
-  p.primary->setBounds(toDisplay({x,y,box.w-(inPalette?0:15+uiGap),20}));p.secondary->setBounds(toDisplay({x,y+22,box.w,20}));p.add->setBounds(toDisplay({x+box.w-15,y+2,15,15}));p.primary->swatch=document.displayPalette().primary;p.secondary->swatch=document.displayPalette().secondary;
+  const int x=rc.x+box.x,y=rc.y+box.y2()+uiGap;bool inPalette=false;for(int slot:currentDocument().palette().slots)if(auto entry=currentDocument().paletteEntry(slot))inPalette|=entry->color==currentDocument().palette().primary;
+  p.primary->setBounds(toDisplay({x,y,box.w-(inPalette?0:15+uiGap),20}));p.secondary->setBounds(toDisplay({x,y+22,box.w,20}));p.add->setBounds(toDisplay({x+box.w-15,y+2,15,15}));p.primary->swatch=currentDocument().displayPalette().primary;p.secondary->swatch=currentDocument().displayPalette().secondary;
   for(auto b:{p.settings,p.restore,p.primary,p.secondary,p.add}){b->setVisible(shown);b->setEnabled(pending_==Pending::None);}p.add->setVisible(shown&&!inPalette);
-  while(p.recent.size()<recentColors_.values().size()){auto index=p.recent.size();auto b=button(U"",[]{});b->paletteCell=true;b->recentColorSwatch=true;b->palettePress=[this,id,index](const ui::MouseMessage& m){if(!m.left()&&!m.right())return;pickerColumns_[id].picker->finishInteraction();setSharedColor(recentColors_.values().at(index),m.right());refresh();};p.recent.push_back(b);}
-  for(std::size_t i=0;i<p.recent.size();++i){auto b=p.recent[i];bool exists=runtimePreferences_.flag("colorLayers.recentColorsVisible")&&i<recentColors_.values().size();if(exists)b->swatch=recentColors_.values()[i];b->setBounds(toDisplay({x+int(i)*14,y+44,12,12}));b->setVisible(shown&&exists&&int(i)<(box.w+2)/14);b->setEnabled(pending_==Pending::None);}
+  while(p.recent.size()<currentView().recent.values().size()){auto index=p.recent.size();auto b=button(U"",[]{});b->paletteCell=true;b->recentColorSwatch=true;b->palettePress=[this,id,index](const ui::MouseMessage& m){if(!m.left()&&!m.right())return;pickerColumns_[id].picker->finishInteraction();setSharedColor(currentView().recent.values().at(index),m.right());refresh();};p.recent.push_back(b);}
+  for(std::size_t i=0;i<p.recent.size();++i){auto b=p.recent[i];bool exists=runtimePreferences_.flag("colorLayers.recentColorsVisible")&&i<currentView().recent.values().size();if(exists)b->swatch=currentView().recent.values()[i];b->setBounds(toDisplay({x+int(i)*14,y+44,12,12}));b->setVisible(shown&&exists&&int(i)<(box.w+2)/14);b->setEnabled(pending_==Pending::None);}
 }
 
 

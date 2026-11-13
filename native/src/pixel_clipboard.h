@@ -1,7 +1,7 @@
 #pragma once
 #include "selection_model.h"
 #include "image_import_limits.h"
-#include "new_document_clipboard.h"
+#include "system_clipboard_size.h"
 #include <memory>
 #include <windows.h>
 #include "clip.h"

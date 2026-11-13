@@ -1,5 +1,5 @@
-#include "editor_implementation.h"
 #include "editor.h"
+#include "legacy_tools.h"
 
 namespace moon::editor {
 
@@ -7,7 +7,7 @@ void Editor::smokeToolRailMatrix() {
   const auto path=assets_.parent_path()/"tool-rail-stage.txt";
   std::ofstream(path,std::ios::trunc)<<"begin\n";
   smoke_=true; homeOpen_=false; documentOpen_=true; pending_=Pending::None;
-  document=Document(16,12); setBounds(gfx::Rect(0,0,1280,960)); fitCanvas(); refresh();
+  replaceDocumentForSmoke(Document(16,12)); setBounds(gfx::Rect(0,0,1280,960)); fitCanvas(); refresh();
   auto require=[&](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   auto choose=[&](std::size_t group,int choice,const char* id){
     showToolGroup(group,true,choice);
@@ -36,7 +36,7 @@ void Editor::smokeToolRailMatrix() {
           gradientTolerance_ && gradientContiguous_ && gradientReference_ && gradientConnectivity_ &&
           gradientDither_ && gradientFreeformButton_ && gradientMode_,"gradient controls not connected");
   {auto [g,i]=groupOf("shape.rectangle");showToolGroup(g,true,i);useShapeTool(ShapeKind::Rectangle);}
-  require(shapeTool_ && shapeRoundedButton_ && shapeRatioButton_,"shape controls not connected");
+  require(currentTools().shapeTool && shapeRoundedButton_ && shapeRatioButton_,"shape controls not connected");
   {auto [g,i]=groupOf("eyedropper");showToolGroup(g,true,i);useEyedropperTool();}
   require(eyedropperSourceButton_ && eyedropperForegroundButton_ && eyedropperBackgroundButton_ &&
           eyedropperReplaceButton_,"eyedropper controls not connected");
@@ -48,7 +48,7 @@ void Editor::smokeToolRailMatrix() {
   // Tilemap context is exercised by the existing tilemap migration smoke; this rail
   // check records the shared route without fabricating a tilemap layer in the editor.
   std::ofstream(path,std::ios::app)<<"mask enabled\ntilemap route delegated\ncomplete\n";
-  document=Document(); refresh();
+  replaceDocumentForSmoke(Document()); refresh();
 }
 
 }

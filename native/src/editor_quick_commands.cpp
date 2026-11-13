@@ -1,6 +1,6 @@
 #include "editor.h"
 #include "image_resize_task.h"
-#include "editor_implementation.h"
+#include "ui_frame_capture.h"
 #include "quick_command_metadata.h"
 #include "quick_command_tooltip.h"
 #include "quick_command_composite.h"
@@ -21,7 +21,7 @@ void Editor::initializeQuickCommands(){
   b->setProperty(std::make_shared<quick::Composite>([this](ui::Widget& widget,ui::PaintEvent& event,const quick::Composite::Paint& paint){compositeControl(widget,event,paint);}));
   b->setProperty(std::make_shared<quick::ShortcutTooltip>([this](const std::string& id){return quick::primaryShortcut(shortcutBindings_,id);}));
   b->changed=[this,i](const quick::Bar& bar){quickBarsConfig_[i]=bar;saveQuickCommands();syncQuickCommands();};
-  b->enabled=[this](const std::string& id){return quickCommandEnabled(id);};b->checked=[this](const std::string& id){auto m=metadata(id);if(id=="selectionOutline")return bool(document.selection())&&showSelectionOutline_;return m&&menuCommands_.checked(m->command);};
+  b->enabled=[this](const std::string& id){return quickCommandEnabled(id);};b->checked=[this](const std::string& id){auto m=metadata(id);if(id=="selectionOutline")return bool(currentDocument().selection())&&currentView().showSelectionOutline;return m&&menuCommands_.checked(m->command);};
   b->execute=[this](const std::string& id,bool right){runQuickCommand(id,right);};b->settings=[this]{preferenceSection_=1;showPreferences();};
  }
 }
@@ -33,8 +33,8 @@ void Editor::syncQuickCommands(){
 }
 bool Editor::quickCommandEnabled(const std::string& id)const{
  if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||imageResizeTask_)return false;
- if(id=="quickAntiAlias")return !document.active()&&!document.hasFreeTileContent();
- if(id=="deleteSelection")return bool(document.selection());
+ if(id=="quickAntiAlias")return !currentDocument().active()&&!currentDocument().hasFreeTileContent();
+ if(id=="deleteSelection")return bool(currentDocument().selection());
  if(id=="swapForegroundBackground")return true;
  if(id=="detectImageScale")return true;
  const auto* m=metadata(id);if(!m||!menuCommands_.connected(m->command)||!menuCommands_.enabled(m->command))return false;
@@ -43,13 +43,13 @@ bool Editor::quickCommandEnabled(const std::string& id)const{
 }
 void Editor::runQuickCommand(const std::string& id,bool right){
  if(pending_!=Pending::None)return;
- if(right){if(id=="fillForeground"){if(quickCommandEnabled(id)){document.fillSelectionOrCanvas(document.palette().secondary);refresh();}}else if(id=="customGrid")showCustomGridSettings();else if(id=="pixelGrid"||id=="relativeLuminance"){preferenceSection_=2;showPreferences();}return;}
+ if(right){if(id=="fillForeground"){if(quickCommandEnabled(id)){currentDocument().fillSelectionOrCanvas(currentDocument().palette().secondary);refresh();}}else if(id=="customGrid")showCustomGridSettings();else if(id=="pixelGrid"||id=="relativeLuminance"){preferenceSection_=2;showPreferences();}return;}
  paletteFocused_=false;if(!quickCommandEnabled(id))return;
- if(id=="detectImageScale"){try{quickResize_=resizeDetecting_=true;imageResizeTask_=std::make_shared<ImageResizeTask>(document,document.width(),document.height(),ImageInterpolation::Nearest,imageResizeExecutor_,true);imageResizeTimer_.start();status_=U"正在识别像素倍率…";}catch(const std::exception& e){quickResize_=resizeDetecting_=false;status_=unicodeText(e.what());}}
- else if(id=="tileRepeatX"||id=="tileRepeatY"||id=="tileRepeatBoth"){const auto mode=id=="tileRepeatX"?repeat::Mode::X:id=="tileRepeatY"?repeat::Mode::Y:repeat::Mode::Both;setTileRepeat(tileRepeatIdentity_==document.identity()&&tileRepeat_==mode?repeat::Mode::Off:mode);}
+ if(id=="detectImageScale"){try{quickResize_=resizeDetecting_=true;imageResizeTask_=std::make_shared<ImageResizeTask>(currentDocument(),currentDocument().width(),currentDocument().height(),ImageInterpolation::Nearest,imageResizeExecutor_,true);imageResizeTimer_.start();status_=U"正在识别像素倍率…";}catch(const std::exception& e){quickResize_=resizeDetecting_=false;status_=unicodeText(e.what());}}
+ else if(id=="tileRepeatX"||id=="tileRepeatY"||id=="tileRepeatBoth"){const auto mode=id=="tileRepeatX"?repeat::Mode::X:id=="tileRepeatY"?repeat::Mode::Y:repeat::Mode::Both;setTileRepeat(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat==mode?repeat::Mode::Off:mode);}
  else if(id=="quickAntiAlias")openAntiAlias();
  else if(id=="swapForegroundBackground"){swapSharedColors();}
- else if(id=="deleteSelection")document.deleteSelectedPixels();
+ else if(id=="deleteSelection")currentDocument().deleteSelectedPixels();
  else if(auto m=metadata(id))menuCommands_.invoke(m->command);
  refresh();
 }
@@ -63,7 +63,7 @@ void Editor::quickPreferenceChanged(const std::string& key,const std::string& va
 bool Editor::quickPreferenceHidden(const std::string& key)const{return key.rfind("quickCommands.bar",0)==0&&key.size()>19&&key.substr(19).rfind("command.",0)==0&&quickPreferenceCollapsed_[key[17]-'0'];}
 void Editor::quickPreferenceAction(const std::string& key){const int i=key[17]-'0';if(i<0||i>=4)return;quickPreferenceCollapsed_[i]=!quickPreferenceCollapsed_[i];syncPreferenceCatalog();layoutModal();invalidate();}
 void Editor::smokeQuickCommands(){
- smoke_=true;homeOpen_=false;documentOpen_=true;runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]="true";const auto saved=quickBarsConfig_;const auto revision=document.revision();quickBarsConfig_=quick::defaultBars();refresh();if(!quickBars_[0]->isVisible())throw std::runtime_error("Quick bar invisible");quickBars_[0]->smoke();if(!quickBarsConfig_[0].expanded||document.revision()!=revision)throw std::runtime_error("Quick bar toggle/history");
+ smoke_=true;homeOpen_=false;documentOpen_=true;runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]="true";const auto saved=quickBarsConfig_;const auto revision=currentDocument().revision();quickBarsConfig_=quick::defaultBars();refresh();if(!quickBars_[0]->isVisible())throw std::runtime_error("Quick bar invisible");quickBars_[0]->smoke();if(!quickBarsConfig_[0].expanded||currentDocument().revision()!=revision)throw std::runtime_error("Quick bar toggle/history");
  const auto savedBindings=shortcutBindings_;
  auto tooltip=[&](const std::string& icon){ui::TooltipManager* tips=nullptr;PixelButton* button=nullptr;for(auto child:quickBars_[0]->children()){if(auto t=dynamic_cast<ui::TooltipManager*>(child))tips=t;if(auto b=dynamic_cast<PixelButton*>(child);b&&b->icon==icon)button=b;}if(!tips||!button)throw std::runtime_error("Quick tooltip widget missing");return tips->getTooltipFor(button);};
  shortcutBindings_["flipHorizontal"]={"Ctrl+MouseBack","F8"};syncQuickCommands();if(tooltip("selectionFlipHorizontal").find("Ctrl+鼠标侧键 1")==std::string::npos||tooltip("selectionFlipHorizontal").find("F8")!=std::string::npos)throw std::runtime_error("Quick tooltip primary/localized binding");
@@ -73,28 +73,28 @@ void Editor::smokeQuickCommands(){
  for(auto edge:{quick::Edge::Top,quick::Edge::Right,quick::Edge::Bottom,quick::Edge::Left}){quickBarsConfig_[0].edge=edge;syncQuickCommands();if(!canvasViewport().contains(quickBars_[0]->bounds()))throw std::runtime_error("Quick bar outside viewport");}
  quickBarsDraft_=quickBarsConfig_;syncQuickPreferenceValues();quickPreferenceChanged("quickCommands.bar0.name","Custom");quickPreferenceChanged("quickCommands.bar0.edge","2");if(quickBarsDraft_[0].name!=u"Custom"||quickBarsDraft_[0].edge!=quick::Edge::Bottom)throw std::runtime_error("Quick preference wiring");
 
- document=Document(4,4);document.fillSelectionOrCanvas(0xff123456);document.selectAllPixels();refresh();const auto selected=document.selection();const auto history=document.historySize();runQuickCommand("canvasMirrorHorizontal",false);if(!viewRotation_.mirrorX||document.historySize()!=history||!document.selection())throw std::runtime_error("Quick mirror affected pixels/history/selection");runQuickCommand("canvasMirrorHorizontal",false);
- std::vector<Pixel> pixels(24*16);for(int y=0;y<16;++y)for(int x=0;x<24;++x)pixels[y*24+x]=((x/4+y/4)%2)?0xff112233:0xff445566;document=Document::fromImage(24,16,pixels,U"快捷倍率");refresh();runQuickCommand("detectImageScale",false);waitImageResizeForSmoke();if(document.width()!=6||document.height()!=4||document.historySize()!=1||pending_!=Pending::None)throw std::runtime_error("Quick detection direct resize");document.undo();if(document.pixels()!=pixels)throw std::runtime_error("Quick detection undo");
+ replaceDocumentForSmoke(Document(4,4));currentDocument().fillSelectionOrCanvas(0xff123456);currentDocument().selectAllPixels();refresh();const auto selected=currentDocument().selection();const auto history=currentDocument().historySize();runQuickCommand("canvasMirrorHorizontal",false);if(!currentView().rotation.mirrorX||currentDocument().historySize()!=history||!currentDocument().selection())throw std::runtime_error("Quick mirror affected pixels/history/selection");runQuickCommand("canvasMirrorHorizontal",false);
+ std::vector<Pixel> pixels(24*16);for(int y=0;y<16;++y)for(int x=0;x<24;++x)pixels[y*24+x]=((x/4+y/4)%2)?0xff112233:0xff445566;replaceDocumentForSmoke(Document::fromImage(24,16,pixels,U"快捷倍率"));refresh();runQuickCommand("detectImageScale",false);waitImageResizeForSmoke();if(currentDocument().width()!=6||currentDocument().height()!=4||currentDocument().historySize()!=1||pending_!=Pending::None)throw std::runtime_error("Quick detection direct resize");currentDocument().undo();if(currentDocument().pixels()!=pixels)throw std::runtime_error("Quick detection undo");
 
- std::function<void()> held;imageResizeExecutor_=[&](std::function<void()> work){held=std::move(work);};runQuickCommand("detectImageScale",false);for(int i=0;i<1000&&!held;++i)tickImageResize();if(!held)throw std::runtime_error("Quick detection worker not queued");const auto beforeCancel=document.historySize();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);held();if(imageResizeTask_||quickResize_||document.historySize()!=beforeCancel)throw std::runtime_error("Quick detection cancel history");imageResizeExecutor_={};
+ std::function<void()> held;imageResizeExecutor_=[&](std::function<void()> work){held=std::move(work);};runQuickCommand("detectImageScale",false);for(int i=0;i<1000&&!held;++i)tickImageResize();if(!held)throw std::runtime_error("Quick detection worker not queued");const auto beforeCancel=currentDocument().historySize();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);held();if(imageResizeTask_||quickResize_||currentDocument().historySize()!=beforeCancel)throw std::runtime_error("Quick detection cancel history");imageResizeExecutor_={};
  quickBarsConfig_[0].edge=quick::Edge::Top;refresh();manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"quick-command-bar.bmp");quickBarsConfig_=saved;refresh();
  // Explicit paste commands must ignore palette/frame routing and share one
  // structural undo transaction for image-as-layer.
- document=Document(8,8);documentOpen_=true;homeOpen_=false;const auto pasteOwner=document.layer().id;
+ replaceDocumentForSmoke(Document(8,8));documentOpen_=true;homeOpen_=false;const auto pasteOwner=currentDocument().layer().id;
  SelectionClipboard pasteImage;pasteImage.width=2;pasteImage.height=1;pasteImage.originX=1;pasteImage.originY=2;pasteImage.pixels={0xff123456,0xffabcdef};
  auto clipboardReader=pixelClipboard_.exchangeSystemImageReaderForSmoke([pasteImage]{return std::optional<SelectionClipboard>{pasteImage};});
  const auto pastePreference=runtimePreferences_.get("editing.pasteTarget.Select");runtimePreferences_.values["editing.pasteTarget.Select"]="0";
- layerClipboardSnapshot_.reset();freeTileInstanceClipboard_.reset();paletteFocused_=true;frameSelectionExplicit_=true;refresh();
+ layerClipboardSnapshot_.reset();freeTileInstanceClipboard_.reset();paletteFocused_=true;currentView().frameSelection=true;refresh();
  if(!menuCommands_.connected("pasteAsNewLayer")||!shortcutSupported("pasteAsNewLayer"))throw std::runtime_error("Special paste command/shortcut missing");
- const auto pasteHistory=document.historySize();if(!menuItems_.at("pasteAsNewLayer")->available())throw std::runtime_error("Paste new layer menu disabled");menuItems_.at("pasteAsNewLayer")->Click();const auto pasteLayer=document.layer().id;
- if(pasteLayer==pasteOwner||document.timeline().state().layers.size()!=2||document.historySize()!=pasteHistory+1||!selectionTool_||!document.selection()||document.selection()->x!=1||document.selection()->y!=2)throw std::runtime_error("Paste new layer UI/context/history");
- document.undo();if(document.layer().id!=pasteOwner||document.timeline().state().layers.size()!=1)throw std::runtime_error("Paste new layer undo");document.redo();
- paletteFocused_=true;frameSelectionExplicit_=true;refresh();if(!menuItems_.at("pasteToCurrentCell")->available())throw std::runtime_error("Paste current cell menu disabled");menuItems_.at("pasteToCurrentCell")->Click();if(!document.floating()||document.layer().id!=pasteLayer||document.timeline().state().layers.size()!=2)throw std::runtime_error("Paste current cell routing");document.cancelFloatingPaste();
- paletteFocused_=false;frameSelectionExplicit_=false;document.selectTimelineLayer(pasteLayer);layerClipboardSnapshot_=document.copyLayerClipboard();pixelClipboard_.captureStructuredCopyBaseline();
- const auto structuredCount=document.timeline().state().layers.size();menuCommands_.invoke("pasteAsNewLayer");if(document.timeline().state().layers.size()!=structuredCount+1||document.layer().name.find(U"副本")==std::u32string::npos)throw std::runtime_error("Paste new layer internal precedence");
- auto newer=pasteImage;newer.pixels[0]=0xff998877;pixelClipboard_.exchangeSystemImageReaderForSmoke([newer]{return std::optional<SelectionClipboard>{newer};});menuCommands_.invoke("pasteAsNewLayer");if(document.layer().name!=U"粘贴图层")throw std::runtime_error("Paste new layer external precedence");layerClipboardSnapshot_.reset();
- runtimePreferences_.values["editing.pasteTarget.Select"]="1";const auto preferenceLayers=document.timeline().state().layers.size();pasteEditorClipboard();if(document.timeline().state().layers.size()!=preferenceLayers+1||document.layer().name!=U"粘贴图层")throw std::runtime_error("Paste target preference route");runtimePreferences_.values["editing.pasteTarget.Select"]="2";const auto beforeProjectPaste=projects_.size();newDocumentClipboardReaderForSmoke_=[newer]{return std::optional<SelectionClipboard>{newer};};pasteEditorClipboard();newDocumentClipboardReaderForSmoke_={};if(projects_.size()!=beforeProjectPaste+1||document.width()!=2||document.height()!=1||document.canUndo())throw std::runtime_error("Paste target new project route");runtimePreferences_.values["editing.pasteTarget.Select"]=pastePreference;
- pixelClipboard_.exchangeSystemImageReaderForSmoke(std::move(clipboardReader));paletteFocused_=false;frameSelectionExplicit_=false;refresh();
+ const auto pasteHistory=currentDocument().historySize();if(!menuItems_.at("pasteAsNewLayer")->available())throw std::runtime_error("Paste new layer menu disabled");menuItems_.at("pasteAsNewLayer")->Click();const auto pasteLayer=currentDocument().layer().id;
+ if(pasteLayer==pasteOwner||currentDocument().timeline().state().layers.size()!=2||currentDocument().historySize()!=pasteHistory+1||!currentTools().selectionTool||!currentDocument().selection()||currentDocument().selection()->x!=1||currentDocument().selection()->y!=2)throw std::runtime_error("Paste new layer UI/context/history");
+ currentDocument().undo();if(currentDocument().layer().id!=pasteOwner||currentDocument().timeline().state().layers.size()!=1)throw std::runtime_error("Paste new layer undo");currentDocument().redo();
+ paletteFocused_=true;currentView().frameSelection=true;refresh();if(!menuItems_.at("pasteToCurrentCell")->available())throw std::runtime_error("Paste current cell menu disabled");menuItems_.at("pasteToCurrentCell")->Click();if(!currentDocument().floating()||currentDocument().layer().id!=pasteLayer||currentDocument().timeline().state().layers.size()!=2)throw std::runtime_error("Paste current cell routing");currentDocument().cancelFloatingPaste();
+ paletteFocused_=false;currentView().frameSelection=false;currentDocument().selectTimelineLayer(pasteLayer);layerClipboardSnapshot_=currentDocument().copyLayerClipboard();pixelClipboard_.captureStructuredCopyBaseline();
+ const auto structuredCount=currentDocument().timeline().state().layers.size();menuCommands_.invoke("pasteAsNewLayer");if(currentDocument().timeline().state().layers.size()!=structuredCount+1||currentDocument().layer().name.find(U"副本")==std::u32string::npos)throw std::runtime_error("Paste new layer internal precedence");
+ auto newer=pasteImage;newer.pixels[0]=0xff998877;pixelClipboard_.exchangeSystemImageReaderForSmoke([newer]{return std::optional<SelectionClipboard>{newer};});menuCommands_.invoke("pasteAsNewLayer");if(currentDocument().layer().name!=U"粘贴图层")throw std::runtime_error("Paste new layer external precedence");layerClipboardSnapshot_.reset();
+ runtimePreferences_.values["editing.pasteTarget.Select"]="1";const auto preferenceLayers=currentDocument().timeline().state().layers.size();pasteEditorClipboard();if(currentDocument().timeline().state().layers.size()!=preferenceLayers+1||currentDocument().layer().name!=U"粘贴图层")throw std::runtime_error("Paste target preference route");runtimePreferences_.values["editing.pasteTarget.Select"]="2";const auto beforeProjectPaste=projects_.size();newDocumentClipboardReaderForSmoke_=[newer]{return std::optional<SelectionClipboard>{newer};};pasteEditorClipboard();newDocumentClipboardReaderForSmoke_={};if(projects_.size()!=beforeProjectPaste+1||currentDocument().width()!=2||currentDocument().height()!=1||currentDocument().canUndo())throw std::runtime_error("Paste target new project route");runtimePreferences_.values["editing.pasteTarget.Select"]=pastePreference;
+ pixelClipboard_.exchangeSystemImageReaderForSmoke(std::move(clipboardReader));paletteFocused_=false;currentView().frameSelection=false;refresh();
  preferenceSection_=1;showPreferences();quickBarsDraft_=quick::defaultBars();quickPreferenceCollapsed_.fill(true);quickPreferenceCollapsed_[0]=false;syncQuickPreferenceValues();syncPreferenceCatalog();layoutModal();
  auto row=[&](const std::string& id)->ui::Widget*{const auto key="quickCommands.bar0.command."+id;for(unsigned i=0;i<preferences::catalog().size();++i)if(key==preferences::catalog()[i].id)return preferenceRows_[i];return nullptr;};
  const auto first=quickBarsDraft_[0].commands[0].id,second=quickBarsDraft_[0].commands[1].id;auto a=row(first),b=row(second);if(!a||!b||a->bounds().y>=b->bounds().y)throw std::runtime_error("Quick preference display order");

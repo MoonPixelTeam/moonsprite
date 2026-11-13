@@ -1,5 +1,5 @@
 #include "editor.h"
-#include "editor_implementation.h"
+#include "selection_pattern_brush.h"
 #include "atomic_file.h"
 #include <winrt/Windows.Data.Json.h>
 
@@ -17,8 +17,8 @@ void Editor::initializeColorRoles(){
  }}catch(...){/* Legacy readStoredJson falls back without changing documents. */}
  if(!colorRolesReady_)colorRolesTimer_.Tick.connect([this]{colorRolesTimer_.stop();flushColorRoles();});
  colorRolesReady_=true;colorRolesDirty_=false;
- document.setPaletteRole(sharedPrimary_,false,true);document.setPaletteRole(sharedSecondary_,true,true);
- for(auto& slot:projects_)if(slot->stored){slot->stored->setPaletteRole(sharedPrimary_,false,true);slot->stored->setPaletteRole(sharedSecondary_,true,true);}
+ currentDocument().setPaletteRole(sharedPrimary_,false,true);currentDocument().setPaletteRole(sharedSecondary_,true,true);
+ for(auto& slot:projects_)if(slot->value&&slot->value!=activeDocument_){slot->value->setPaletteRole(sharedPrimary_,false,true);slot->value->setPaletteRole(sharedSecondary_,true,true);}
 }
 void Editor::flushColorRoles(){
  if(!colorRolesDirty_||!colorRolesReady_)return;colorRolesTimer_.stop();
@@ -28,21 +28,21 @@ void Editor::flushColorRoles(){
 }
 void Editor::setSharedColor(Pixel color,bool secondary){
  (secondary?sharedSecondary_:sharedPrimary_)=color;colorRolesReady_=true;
- if(documentOpen_)document.setPaletteRole(color,secondary,paletteLocked_);
- for(auto& slot:projects_)if(slot->stored)slot->stored->setPaletteRole(color,secondary,paletteLocked_);
- remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remapSelectionPatternBrush(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ if(documentOpen_)currentDocument().setPaletteRole(color,secondary,paletteLocked_);
+ for(auto& slot:projects_)if(slot->value&&slot->value!=activeDocument_)slot->value->setPaletteRole(color,secondary,paletteLocked_);
+ remapSelectionPatternBrush(currentTools().pencilImageBrush,currentDocument().palette().primary,currentDocument().palette().secondary);for(auto& slot:projects_)if(slot->value&&slot->value!=activeDocument_&&(slot->tools.temporaryBrushCapture||slot->tools.temporaryBrushActive))remapSelectionPatternBrush(slot->tools.pencilImageBrush,slot->value->palette().primary,slot->value->palette().secondary);
  colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
 }
 void Editor::rememberSelectedColor(bool secondary){
  if(!documentOpen_)return;
- if(secondary){sharedSecondary_=document.palette().secondary;colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();}
- else if(document.palette().primaryId)setSharedColor(document.palette().primary,false);
+ if(secondary){sharedSecondary_=currentDocument().palette().secondary;colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();}
+ else if(currentDocument().palette().primaryId)setSharedColor(currentDocument().palette().primary,false);
 }
 void Editor::swapSharedColors(){
  std::swap(sharedPrimary_,sharedSecondary_);
  auto apply=[&](Document& value){value.swapPaletteRoles(sharedPrimary_,sharedSecondary_);};
- if(documentOpen_)apply(document);for(auto& slot:projects_)if(slot->stored)apply(*slot->stored);
- remapSelectionPatternBrush(pencilImageBrush_,document.palette().primary,document.palette().secondary);for(auto& slot:projects_)if(slot->stored)remapSelectionPatternBrush(slot->temporaryBrush,slot->stored->palette().primary,slot->stored->palette().secondary);
+ if(documentOpen_)apply(currentDocument());for(auto& slot:projects_)if(slot->value&&slot->value!=activeDocument_)apply(*slot->value);
+ remapSelectionPatternBrush(currentTools().pencilImageBrush,currentDocument().palette().primary,currentDocument().palette().secondary);for(auto& slot:projects_)if(slot->value&&slot->value!=activeDocument_&&(slot->tools.temporaryBrushCapture||slot->tools.temporaryBrushActive))remapSelectionPatternBrush(slot->tools.pencilImageBrush,slot->value->palette().primary,slot->value->palette().secondary);
  colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();
 }
 }

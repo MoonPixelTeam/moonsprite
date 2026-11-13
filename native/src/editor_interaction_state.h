@@ -7,7 +7,6 @@
 
 namespace moon::editor {
 struct BrushFeedbackState {
-  BrushOptions brushProfiles_[2];
   bool brushPreviewBatch_=true;
   struct BrushOutlinePixel {int x,y;unsigned edges;};
   std::vector<BrushOutlinePixel> eraserOutline_;
@@ -29,7 +28,7 @@ struct CanvasNavigationState {
   bool panBlit_=true;
   unsigned canvasBlitMoves_=0;
   std::uint64_t canvasPanRepaintPixels_=0;
-  bool zoomTool_=false,zoomDragging_=false,zoomSmooth_=false;
+  bool zoomDragging_=false,zoomSmooth_=false;
   gfx::Point zoomStartPointer_;double zoomStartScale_=8;ui::MouseButton zoomButton_=ui::kButtonLeft;
 };
 }

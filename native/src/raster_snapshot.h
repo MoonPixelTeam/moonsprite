@@ -6,10 +6,12 @@ namespace moon {
 // Caller verifies document identity/revisions before each advance; only the
 // completed value may cross threads. No history or live pointers are retained.
 class RasterSnapshot {
+  friend class DocumentSnapshot;
   std::vector<std::size_t> sourcePixelOwners_;
   timeline::State state_;
   std::vector<std::size_t> sourcePixelCounts_;
   std::size_t cel_=0,offset_=0,copiedPixels_=0,mask_=0,tileset_=0;
+  bool advanceValidated(const timeline::State&,std::chrono::steady_clock::time_point,std::size_t,bool);
 public:
   static constexpr std::size_t chunkPixels=16384;
   static constexpr std::size_t tickPixels=262144; // 1 MiB per UI tick.

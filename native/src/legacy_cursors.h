@@ -3,6 +3,7 @@
 #include "os/os.h"
 #include <map>
 
+namespace os {class Window;}
 namespace moon {
 class LegacyCursors {
   std::map<std::string,os::CursorRef> cursors_;
@@ -11,6 +12,7 @@ public:
   const os::CursorRef& get(const std::string& id) const {return cursors_.at(id);}
   std::size_t size() const {return cursors_.size();}
 };
+void applyLegacyCursor(os::Window& window,const LegacyCursors& cursors,const char* id);
 inline const char* legacyPaintCursor(int r,int g,int b) {
   // legacy/core/canvas-visuals.ts: colorLuminance + canvasToolCursor.
   return r*0.2126+g*0.7152+b*0.0722<145?"pencil-white":"pencil-black";

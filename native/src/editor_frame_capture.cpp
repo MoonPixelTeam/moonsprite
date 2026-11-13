@@ -1,7 +1,10 @@
-#include "editor_implementation.h"
-#include "editor_support.h"
+#include "ui_frame_capture.h"
+#include "gfx/color.h"
+#include "os/surface.h"
+#include <fstream>
+#include <stdexcept>
 
-namespace moon::editor {
+namespace moon {
 void writeSmokeFrame(os::Surface* surface,const std::filesystem::path& path) {
 
   // Capture the physical framebuffer without an additional UI-scale expansion.

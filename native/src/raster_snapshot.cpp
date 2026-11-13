@@ -48,14 +48,26 @@ bool RasterSnapshot::matches(const timeline::State& source)const{if(state_.canva
   return true;
 }
 bool RasterSnapshot::advance(const timeline::State& source,std::chrono::steady_clock::time_point deadline,std::size_t maxPixels){
+  const bool allowProgress=std::chrono::steady_clock::now()<deadline;
   if(!matches(source))throw std::logic_error("Snapshot source metadata changed");
-  std::size_t copied=0;
+  return advanceValidated(source,deadline,maxPixels,allowProgress);
+}
+bool RasterSnapshot::advanceValidated(const timeline::State& source,std::chrono::steady_clock::time_point deadline,std::size_t maxPixels,bool allowProgress){
+  std::size_t copied=0,metadataProgress=allowProgress?256:0;
   while(cel_<state_.cels.size()){
+    // Empty and linked cels also consume UI time, even without pixel copies.
+    // A metadata validation overrun must not starve this snapshot forever.
+    // A call with time at entry may advance a small metadata batch or one
+    // payload chunk; advancing only one empty cel would create a huge backlog.
+    if(std::chrono::steady_clock::now()>=deadline&&!metadataProgress)return false;
+    if(metadataProgress)--metadataProgress;
+    allowProgress=false;
     auto& target=state_.cels[cel_];const auto& original=source.cels[cel_];
     if(target.id!=original.id || bool(target.surface)!=bool(original.surface))throw std::logic_error("Snapshot source changed");
     if(!target.surface){++cel_;continue;}
     if(sourcePixelOwners_[cel_]!=cel_){target.surface->pixels.share(state_.cels.at(sourcePixelOwners_[cel_]).surface->pixels);++cel_;continue;}
-    if(copied>=maxPixels || std::chrono::steady_clock::now()>=deadline)return false;
+    metadataProgress=0;
+    if(copied>=maxPixels)return false;
     const auto& pixels=original.surface->pixels;auto& dest=target.surface->pixels;
     if(offset_>pixels.size())throw std::logic_error("Snapshot source changed");
     if(!offset_)dest.reserve(pixels.size()); // One surface allocation at a time.
@@ -64,8 +76,8 @@ bool RasterSnapshot::advance(const timeline::State& source,std::chrono::steady_c
     offset_+=count;copied+=count;copiedPixels_+=count;
     if(offset_==pixels.size()){offset_=0;++cel_;}
   }
-  while(mask_<state_.masks.size()){if(copied>=maxPixels||std::chrono::steady_clock::now()>=deadline)return false;const auto& src=source.masks[mask_].mask.surface.pixels;auto& dest=state_.masks[mask_].mask.surface.pixels;if(!offset_)dest.reserve(src.size());const auto n=std::min({chunkPixels,src.size()-offset_,maxPixels-copied});dest.insert(dest.end(),src.begin()+offset_,src.begin()+offset_+n);offset_+=n;copied+=n;copiedPixels_+=n;if(offset_==src.size()){offset_=0;++mask_;}}
-  while(tileset_<state_.tilesets.size()){if(copied>=maxPixels||std::chrono::steady_clock::now()>=deadline)return false;const auto& src=source.tilesets[tileset_].pixels;auto& dest=state_.tilesets[tileset_].pixels;if(!offset_)dest.reserve(src.size());const auto n=std::min({chunkPixels,src.size()-offset_,maxPixels-copied});dest.insert(dest.end(),src.begin()+offset_,src.begin()+offset_+n);offset_+=n;copied+=n;copiedPixels_+=n;if(offset_==src.size()){offset_=0;++tileset_;}}
+  while(mask_<state_.masks.size()){if(copied>=maxPixels||(std::chrono::steady_clock::now()>=deadline&&!allowProgress))return false;allowProgress=false;const auto& src=source.masks[mask_].mask.surface.pixels;auto& dest=state_.masks[mask_].mask.surface.pixels;if(!offset_)dest.reserve(src.size());const auto n=std::min({chunkPixels,src.size()-offset_,maxPixels-copied});dest.insert(dest.end(),src.begin()+offset_,src.begin()+offset_+n);offset_+=n;copied+=n;copiedPixels_+=n;if(offset_==src.size()){offset_=0;++mask_;}}
+  while(tileset_<state_.tilesets.size()){if(copied>=maxPixels||(std::chrono::steady_clock::now()>=deadline&&!allowProgress))return false;allowProgress=false;const auto& src=source.tilesets[tileset_].pixels;auto& dest=state_.tilesets[tileset_].pixels;if(!offset_)dest.reserve(src.size());const auto n=std::min({chunkPixels,src.size()-offset_,maxPixels-copied});dest.insert(dest.end(),src.begin()+offset_,src.begin()+offset_+n);offset_+=n;copied+=n;copiedPixels_+=n;if(offset_==src.size()){offset_=0;++tileset_;}}
   return true;
 }
 timeline::State RasterSnapshot::take(){if(cel_!=state_.cels.size()||mask_!=state_.masks.size()||tileset_!=state_.tilesets.size())throw std::logic_error("Snapshot is incomplete");return std::move(state_);}

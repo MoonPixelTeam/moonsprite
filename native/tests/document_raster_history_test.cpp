@@ -1,4 +1,5 @@
 #include "document.h"
+#include "local_history_edit.h"
 #include "layer_compositor.h"
 #include "raster_geometry.h"
 #include "selection_pattern_brush.h"
@@ -6,25 +7,805 @@
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
+#include <limits>
 #define CHECK(x) do{if(!(x))throw std::runtime_error(std::string("line ")+std::to_string(__LINE__)+": "+#x);}while(false)
+#if defined(_MSC_VER)
+#define MOON_HISTORY_FIXTURE_NOINLINE __declspec(noinline)
+#else
+#define MOON_HISTORY_FIXTURE_NOINLINE
+#endif
 namespace moon {
 struct RasterHistoryFixture {
- static void lockParentGroup(Document& d){auto state=d.timeline_.state();timeline::Group parent;parent.id="paste-locked-parent";parent.name=U"Parent";parent.locked=true;timeline::Group inner;inner.id="paste-inner";inner.name=U"Inner";inner.parentGroupId=parent.id;state.groups={parent,inner};state.layers.front().groupId=inner.id;d.timeline_=timeline::Timeline(std::move(state));}
- static void fillStrokeBudget(Document& d){auto state=d.timeline_.state();state.frames.push_back({"budget-other-frame",100});auto& c=state.cels.front();c.frameId="budget-other-frame";c.surface->width=c.surface->height=8192;c.surface->pixels.resize(std::size_t(8192)*8192);d.timeline_=timeline::Timeline(std::move(state));}
- static void releaseStrokeBudgetRow(Document& d){auto* s=const_cast<timeline::Surface*>(d.timeline_.resolveSurface(d.timeline_.state().cels.front().id).surface);--s->height;s->pixels.resize(std::size_t(s->width)*s->height);}
- static bool lastDense(const Document& d){return !d.history_.empty()&&bool(d.history_.back().dense)&&d.history_.back().pixels.empty();}
- static void fillBackdrop(Document& d){auto state=d.timeline_.state();auto layer=state.layers.front();layer.id+="-backdrop";auto c=state.cels.front();c.id+="-backdrop";c.layerId=layer.id;for(int y=0;y<d.height_;++y)for(int x=0;x<d.width_;++x)c.surface->pixels[std::size_t(y)*d.width_+x]=x==d.width_/2?0xffeeeeee:0xff334455;state.layers.push_back(std::move(layer));state.cels.push_back(std::move(c));d.timeline_=timeline::Timeline(std::move(state));}
- static void removeFreeSources(Document& d){auto state=d.timeline_.state();for(auto& layer:state.layers)if(layer.id==d.layer().id){layer.freeTiles->sources.clear();layer.freeTiles->legacyTilesetId.clear();}d.timeline_=timeline::Timeline(std::move(state));}
- static void emptyOnlyActiveSlot(Document& d){auto state=d.timeline_.state();const auto layer=d.layer().id,frame=d.frame().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==layer&&c.frameId==frame;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}
- static void sparseSelection(Document& d){auto state=d.timeline_.state();state.frames.push_back({"sparse-middle",100});state.frames.push_back({"sparse-last",100});auto last=state.cels.front();last.id="sparse-last-cel";last.frameId="sparse-last";state.cels.push_back(last);d.timeline_=timeline::Timeline(std::move(state));}
- static void emptyActiveSlot(Document& d){auto state=d.timeline_.state();state.cels.clear();d.timeline_=timeline::Timeline(std::move(state));}
- static void install(Document& d,timeline::Surface s){auto state=d.timeline_.state();const auto id=d.timeline_.resolveSurface(d.cel().id).source->id;auto it=std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==id;});it->surface=std::move(s);d.timeline_=timeline::Timeline(std::move(state));}
- static void expand(Document& d,raster::Rect64 r){const auto& s=*d.timeline_.resolveSurface(d.cel().id).surface;auto candidate=raster::expanded(s,r);if(candidate)install(d,std::move(*candidate));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void groupPreparationAtomicity(){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;{auto scope=d.trackAnimationSelectionHistory();d.commitSelection({},SelectionMask{0,0,2,2,{}},false);}d.deselectPixels();CHECK(!d.dirty()&&d.historySize()==2);
+  const auto bytes=d.historyBytes(),revision=d.historyRevision(),position=d.historyPosition();
+  d.setAnimationSelectionAccess({[](const Document&)->std::optional<AnimationSessionSelection>{throw std::bad_alloc();},{}});
+  bool rejected=false;try{d.groupEdits(0,{});}catch(const std::bad_alloc&){rejected=true;}
+  CHECK(rejected&&d.historySize()==2&&d.historyPosition()==position&&d.historyBytes()==bytes&&d.historyRevision()==revision);
+  CHECK(d.history_.at(0).pixelSelectionHistory.afterPixelsSelection&&d.history_.at(1).pixelSelectionHistory.beforePixelsSelection);
+  d.setAnimationSelectionAccess({});d.groupEdits(0,{});
+  CHECK(d.historySize()==1&&d.history_.latest().children.size()==2&&!d.history_.latest().documentChanged&&!d.dirty());
+  const auto groupedBytes=d.historyBytes();d.undo();CHECK(!d.dirty()&&!d.selection());d.redo();CHECK(!d.dirty()&&!d.selection()&&d.historyBytes()==groupedBytes);
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void localTerminalPreparation(){
+  using History=local_history::PixelHistoryEdit;using Field=History::MetadataField;
+  for(bool forward:{false,true})for(int route=0;route<3;++route)for(int scenario=0;scenario<8;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto* surface=d.activeSurfaceIfPresent();d.pixelStorage()={0x00010203,0xff112233,0,0};
+   const auto pixels=d.canvasPixels();const auto storage=surface->pixels.identity();
+   auto payload=std::make_shared<History>();History::Patch good,bad;
+   good.owners={d.cel().id};good.before=std::make_shared<const std::vector<std::uint8_t>>(1,0x11);good.after=std::make_shared<const std::vector<std::uint8_t>>(1,0x22);
+   if(scenario<5){auto metadata=std::make_shared<History::MetadataPatch>();
+    switch(scenario){
+     case 0:metadata->fields={{Field::Dirty,{}}};metadata->before=metadata->after=1.;break;
+     case 1:metadata->fields={{Field::GridWidth,{}}};metadata->before=metadata->after=true;break;
+     case 2:metadata->fields={{Field::LayerDescription,d.layer().id}};metadata->before=metadata->after=false;break;
+     case 3:metadata->fields={{Field::CelZIndex,d.cel().id}};metadata->before=metadata->after=std::numeric_limits<double>::infinity();break;
+     case 4:metadata->fields={{Field::StrokeCount,{}}};metadata->before=metadata->after=18446744073709551616.;break;
+    }bad.metadata=std::move(metadata);
+   }else{bad=good;if(scenario==5)bad.before.reset();else if(scenario==6)bad.before=std::make_shared<const std::vector<std::uint8_t>>(2,0x33);else bad.offset=100;}
+   if(forward)payload->patches={good,bad};else payload->patches={bad,good};
+   Document::Edit edit{{},d.state_,d.nextState_};edit.terminalHistory=Document::LocalPixelsReplay{payload};
+   if(route==2){Document::Edit parent{{},d.state_,d.nextState_};parent.children.push_back(std::move(edit));d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){});}
+   const auto bytes=d.historyBytes(),position=d.historyPosition(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision();const bool dirty=d.dirty();const auto information=d.projectInformation_;const auto grid=d.customGrid_;
+   d.change_={1,1,1,1};bool rejected=false;
+   try{if(route==0)d.applyLocalHistoryPixels(*payload,forward);else if(route==1)d.applyEdit(edit,forward);else if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   if(!rejected||d.canvasPixels()!=pixels||d.timeline_.resolveSurface(d.cel().id).surface->pixels.identity()!=storage)
+    throw std::runtime_error("Terminal preparation forward="+std::to_string(forward)+" route="+std::to_string(route)+" scenario="+std::to_string(scenario)+" rejected="+std::to_string(rejected)+" pixels="+std::to_string(d.canvasPixels()==pixels)+" storage="+std::to_string(d.timeline_.resolveSurface(d.cel().id).surface->pixels.identity()==storage));
+   CHECK(d.historyBytes()==bytes&&d.historyPosition()==position&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.dirty()==dirty);
+   CHECK(d.projectInformation_.createdAt==information.createdAt&&d.customGrid_.x==grid.x&&d.customGrid_.width==grid.width&&d.layer().description.empty());
+   CHECK(d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+  }
+  // The projected opacity uses the last patch in replay order, including undo.
+  for(bool forward:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;History edit;edit.projectFrame=true;
+   for(double opacity:{.25,.75}){auto metadata=std::make_shared<History::MetadataPatch>();metadata->fields={{Field::CelOpacity,d.cel().id}};metadata->before=opacity/2;metadata->after=opacity;History::Patch patch;patch.metadata=std::move(metadata);edit.patches.push_back(std::move(patch));}
+   d.applyLocalHistoryPixels(edit,forward);CHECK(d.layer().opacity==(forward?.75:.125));CHECK(d.cel().opacity==d.layer().opacity);
+  }
+  for(bool forward:{false,true})for(int scenario=0;scenario<2;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;CHECK(d.fillSelectionOrCanvas(0xff123456));CHECK(d.createAttachedMask(d.layer().id,d.frame().id));d.exitAttachedMask();
+   const auto& mask=d.timeline_.state().masks.front().mask;const auto pixels=mask.surface.pixels;const auto identity=mask.surface.pixels.identity();
+   Document::MaskRasterHistory edit{mask.id,Document::MaskRasterGeometry::capture(mask.surface),Document::MaskRasterGeometry::capture(mask.surface),2,{{0,0,0xffffffff}}};
+   if(scenario==0)edit.canvasWidth=0;else (forward?edit.after:edit.before).width=0;
+   bool rejected=false;try{d.applyMaskRasterHistory(edit,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.timeline_.state().masks.front().mask.surface.pixels==pixels&&d.timeline_.state().masks.front().mask.surface.pixels.identity()==identity);
+  }
+  for(bool forward:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;Document::Edit edit{{},d.state_,d.nextState_};edit.terminalHistory=Document::TilemapPixelsReplay{std::make_shared<Document::TilemapPixelHistory>()};
+   bool rejected=false;try{d.applyTilemapPixelHistory(edit,forward);}catch(const std::logic_error&){rejected=true;}CHECK(rejected);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void leafRetainedCompensation(){
+  for(bool forward:{false,true})for(int scenario=0;scenario<5;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();
+   const auto owner=d.cel().id,layer=d.layer().id,frame=d.frame().id;
+   d.pixelStorage()={0x00010203,0x80445566,0xff778899,0x00112233};
+   CHECK(d.createAttachedMask(layer,frame));d.exitAttachedMask();
+   const auto* surface=d.activeSurfaceIfPresent();
+   const auto identity=surface->pixels.identity(),maskIdentity=d.timeline_.state().masks.front().mask.surface.pixels.identity();
+   const auto original=*d.timeline_.findCelById(owner);const auto pixels=d.canvasPixels();const auto name=d.layer().name;const auto duration=d.frame().duration;const auto primary=d.palette_.primary;
+   Document::Edit root{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   root.snapshotHistory.beforeDimensions=root.snapshotHistory.afterDimensions=std::pair<int,int>{2,2};
+   good.contentHistory.targetCelId=owner;good.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};
+   // Overlapping representations deliberately do not encode the actual entry
+   // state. A failed transaction must restore retained bytes, not infer them.
+   good.pixels={{0,0xffabcdef,0xff123456},{0,0xff000001,0xff000002}};
+   good.contentHistory.runs={{0,3,0xff998877,0xff665544},{1,2,0xff101010,0xff202020}};
+   good.contentHistory.dense=Document::DensePixels{1,0,1,2,{0xff010101,0xff020202},{0xff030303,0xff040404}};
+   if(scenario){
+    good.layerHistory.targetLayerId=layer;good.layerHistory.beforeName=good.layerHistory.afterName=U"temporary leaf name";
+    good.frameHistory.targetFrameId=frame;good.frameHistory.beforeDuration=good.frameHistory.afterDuration=321;
+    good.frameHistory.beforeDisabled=good.frameHistory.afterDisabled={{frame,true}};
+    good.paletteHistory.paletteKind=12;good.paletteHistory.beforePalette=good.paletteHistory.afterPalette=d.palette_;
+    good.paletteHistory.beforePalette->primary=good.paletteHistory.afterPalette->primary=0xffabcdef;
+    CelPropertiesPlan properties;properties.groups.push_back({owner,{owner},{.2,2}});properties.after={.3,3};good.contentHistory.celProperties=std::move(properties);
+    for(auto it=d.timeline_.state().layers.rbegin();it!=d.timeline_.state().layers.rend();++it)good.layerHistory.beforeOrder.push_back(it->id);good.layerHistory.afterOrder=good.layerHistory.beforeOrder;
+    auto replacement=*surface;replacement.offsetX=7;replacement.pixels={1,2,3,4};good.contentHistory.surfaceChanges.push_back({owner,replacement,replacement});
+   }
+   if(scenario>=2){auto replacement=original;replacement.opacity=.4;replacement.surface->pixels={11,12,13,14};if(scenario==3)replacement.linkedCelId="missing-after-leaf-content";good.contentHistory.beforeCels=good.contentHistory.afterCels={replacement};}
+   if(scenario==4){
+    good.beforeActive=good.afterActive=layer;good.beforeFrame=good.afterFrame=frame;
+    good.layerHistory.beforeLayerStructure=Document::LayerStructureSnapshot{d.timeline_.state().layers,d.timeline_.state().groups};
+    auto& target=*good.layerHistory.beforeLayerStructure;target.layers.erase(std::remove_if(target.layers.begin(),target.layers.end(),[&](const auto& item){return item.id!=layer;}),target.layers.end());target.masks=d.timeline_.state().masks;
+    good.layerHistory.afterLayerStructure=good.layerHistory.beforeLayerStructure;
+    good.layerHistory.beforeOrder=good.layerHistory.afterOrder={layer};
+   }
+   bad.contentHistory.targetCelId=owner;bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};bad.pixels={{4,0,1}};
+   if(scenario==3)root.children.push_back(std::move(good));
+   else{if(forward)root.children.push_back(std::move(good));root.children.push_back(std::move(bad));if(!forward)root.children.push_back(std::move(good));}
+   bool rejected=false;try{d.applyEdit(root,forward);}catch(const std::exception&){rejected=true;}
+   const auto* restored=d.timeline_.findCelById(owner);
+   CHECK(rejected&&restored&&restored->surface->pixels.identity()==identity&&d.canvasPixels()==pixels&&restored->opacity==original.opacity&&restored->zIndex==original.zIndex&&!restored->linkedCelId);
+   CHECK(d.timeline_.state().layers.size()==2&&d.layer().name==name&&d.frame().duration==duration&&!d.frame().disabled&&d.palette_.primary==primary&&d.timeline_.state().masks.size()==1&&d.timeline_.state().masks.front().mask.surface.pixels.identity()==maskIdentity);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void leafLinkedWriteOrdering(){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();
+  auto state=d.timeline_.state();for(auto& layer:state.layers)layer.linkedContentId="leaf-linked-owner-order";
+  d.timeline_=timeline::Timeline(std::move(state));
+  const auto owner=d.cel().id;const auto other=std::find_if(d.timeline_.state().cels.begin(),d.timeline_.state().cels.end(),[&](const auto& cel){return cel.id!=owner;});CHECK(other!=d.timeline_.state().cels.end());
+  auto replacement=*other;replacement.surface->pixels[0]=0xffabcdef;
+  Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=owner;edit.pixels={{0,0,0x00112233}};
+  edit.contentHistory.beforeCels={*other};edit.contentHistory.afterCels={replacement};edit.beforeActive=edit.afterActive=d.layer().id;edit.beforeFrame=edit.afterFrame=d.frame().id;
+  for(const auto& layer:d.timeline_.state().layers)edit.layerHistory.beforeOrder.push_back(layer.id);edit.layerHistory.afterOrder=edit.layerHistory.beforeOrder;
+  d.applyEdit(edit,true);const auto a=d.timeline_.resolveSurface(owner),b=d.timeline_.resolveSurface(replacement.id);
+  CHECK(a.surface&&b.surface&&a.surface->pixels[0]==0x00112233&&b.surface->pixels[0]==0x00112233&&a.surface->pixels.identity()==b.surface->pixels.identity());
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void leafRetainedReapply(){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;
+  const auto identity=d.cel().surface->pixels.identity();const auto before=d.canvasPixels();const auto name=d.layer().name;
+  Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=owner;edit.pixels={{0,0,0x00010203}};
+  edit.layerHistory.targetLayerId=d.layer().id;edit.layerHistory.beforeName=name;edit.layerHistory.afterName=U"retained publication";
+  Document::HistoryReplayPlan plan(edit,true);
+  d.applyValidatedEdit(edit,true,plan);CHECK(d.canvasPixels()[0]==0x00010203&&d.layer().name==U"retained publication");
+  d.applyValidatedEdit(edit,false,plan);CHECK(d.canvasPixels()==before&&d.layer().name==name&&d.cel().surface->pixels.identity()==identity);
+  d.applyValidatedEdit(edit,true,plan);CHECK(d.canvasPixels()[0]==0x00010203&&d.layer().name==U"retained publication");
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void palettePreparedOwnership(){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;
+  const auto baseline=d.palette_;const auto id=baseline.entries.front().id;const auto other=baseline.entries.back().color;
+  Document::Edit edit{{},d.state_,d.nextState_};edit.paletteHistory.beforePalette=edit.paletteHistory.afterPalette=baseline;
+  edit.paletteHistory.paletteKind=3;edit.paletteHistory.colorId=id;edit.paletteHistory.afterPalette->entries.front().color=0x00112233;
+  d.palette_.primary=baseline.entries.front().color;d.palette_.secondary=other;
+  auto prepared=d.preparePaletteEdit(edit,true);CHECK(prepared&&!prepared->full&&!prepared->entries&&prepared->patches.size()==1);
+  d.exchangePaletteEdit(*prepared);CHECK(d.palette_.entries.front().color==0x00112233&&d.palette_.primary==0x00112233&&d.palette_.secondary==other);
+  d.exchangePaletteEdit(*prepared);CHECK(d.palette_.entries.front().color==baseline.entries.front().color&&d.palette_.primary==baseline.entries.front().color&&d.palette_.secondary==other);
+  edit.paletteHistory.paletteKind=7;edit.paletteHistory.afterPalette->secondary=1;edit.paletteHistory.afterPalette->secondaryId=999;d.palette_.secondary=0xffabcdef;d.palette_.secondaryId=12;
+  prepared=d.preparePaletteEdit(edit,true);d.exchangePaletteEdit(*prepared);CHECK(d.palette_.secondary==0xffabcdef&&d.palette_.secondaryId==12);d.exchangePaletteEdit(*prepared);
+  edit.paletteHistory.paletteKind=11;auto duplicate=edit.paletteHistory.afterPalette->entries.front();duplicate.name=U"last duplicate name";edit.paletteHistory.afterPalette->entries.push_back(duplicate);
+  edit.paletteHistory.afterPalette->independentOrder.reset();d.palette_.independentOrder=std::vector<int>{id};
+  prepared=d.preparePaletteEdit(edit,true);d.exchangePaletteEdit(*prepared);CHECK(d.palette_.entries.size()==baseline.entries.size()&&d.palette_.entries.front().name==duplicate.name&&!d.palette_.independentOrder);d.exchangePaletteEdit(*prepared);CHECK(d.palette_.entries.front().name==baseline.entries.front().name&&d.palette_.independentOrder==std::optional<std::vector<int>>{std::vector<int>{id}});
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void rollbackLateFailure(){
+  for(bool forward:{false,true})for(bool sibling:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   CHECK(d.fillSelectionOrCanvas(0xff123456));
+   d.selection_=SelectionMask{0,0,1,1,{}};d.selectionRevision_=17;d.selectedFrames_={d.activeFrameId_};d.frameAnchor_=d.activeFrameId_;
+   d.timelapseSettings_.fps=12;std::vector<int> recordingRestores;d.recordingBinding_.restore=[&](const timelapse::Settings& settings){recordingRestores.push_back(settings.fps);};
+   auto target=std::make_shared<Document::RollbackPayload>(*d.captureRollbackPayload());
+   target->width=3;target->height=4;target->timelapse.fps=24;target->palette.primary=0xffabcdef;target->timeline.layers.front().name=U"rollback target";
+   target->timeline.cels.front().surface->pixels[0]=0xffabcdef;
+   const auto identity=d.cel().surface->pixels.identity();const auto brushRevision=d.projectBrushRevision_;const auto pixels=d.canvasPixels();const auto primary=d.palette_.primary;
+   const auto active=d.activeLayerId_,frame=d.activeFrameId_;const auto name=d.layer().name;const auto selection=d.selection_;
+   Document::Edit root{{},d.state_,d.nextState_},restored{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   restored.snapshotHistory.beforeRollback=restored.snapshotHistory.afterRollback=target;
+   bad.contentHistory.targetCelId=d.cel().id;bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};bad.pixels.push_back({4,0,1});
+   if(sibling){if(forward)root.children.push_back(std::move(restored));root.children.push_back(std::move(bad));if(!forward)root.children.push_back(std::move(restored));}
+   else{restored.children.push_back(std::move(bad));root=std::move(restored);}
+   bool rejected=false;try{d.applyEdit(root,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.width_==2&&d.height_==2&&d.layer().name==name&&d.activeLayerId_==active&&d.activeFrameId_==frame&&d.cel().surface->pixels.identity()==identity&&d.canvasPixels()==pixels);
+   CHECK(d.projectBrushRevision_==brushRevision&&d.palette_.primary==primary&&selectionEqual(d.selection_,selection)&&d.selectionRevision_==17&&d.timelapseSettings_.fps==12&&recordingRestores==std::vector<int>({24,12}));
+  }
+  {auto document=std::make_unique<Document>(2,2);auto& d=*document;auto target=std::make_shared<Document::RollbackPayload>(*d.captureRollbackPayload());target->timelapse.fps=24;target->width=7;
+   const auto identity=d.cel().surface->pixels.identity();std::vector<int> recordingRestores;
+   d.recordingBinding_.restore=[&](const timelapse::Settings& settings){recordingRestores.push_back(settings.fps);if(settings.fps==24)throw std::range_error("recording restore rejected");};
+   bool rejected=false;try{d.applyRollbackPayload(*target);}catch(const std::range_error&){rejected=true;}
+   CHECK(rejected&&d.width_==2&&d.cel().surface->pixels.identity()==identity&&d.timelapseSettings_.fps==12&&recordingRestores==std::vector<int>({24,12}));
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void replayFailureFocus(){
+  for(bool forward:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto initialFrame=d.activeFrameId_;d.addFrame();
+   const auto other=d.cel().id;d.selectFrame(initialFrame);
+   d.timelineSelection_.layers={d.activeLayerId_};d.timelineSelection_.layerAnchor=d.activeLayerId_;
+   d.selectedFrames_={initialFrame};d.frameAnchor_=initialFrame;
+   d.freeInstanceSelected_={"retained-instance"};d.freeInstancePrimary_=d.freeInstanceAnchor_="retained-instance";d.freeInstanceSelectionFrame_=initialFrame;d.freeInstanceViewLayer_=d.activeLayerId_;
+   const auto before=d.captureAnimationSelection();const auto geometry=d.displayedLayerGeometry_;
+   const auto content=d.contentRevision_,mutation=d.contentMutationRevision_,revision=d.revision_,selectionRevision=d.selectionRevision_;
+   const auto recording=d.recordingDirty_;const auto recordingFrom=d.recordingDirtyFrom_,recordingTo=d.recordingDirtyTo_;const bool recordingValid=d.recordingDirtyValid_;
+   Document::Edit parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.snapshotHistory.beforeDimensions=parent.snapshotHistory.afterDimensions=std::pair<int,int>{2,2};
+   good.contentHistory.targetCelId=other;bad.contentHistory.targetCelId=d.cel().id;
+   good.contentHistory.pixelAddress=bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};
+   good.pixels.push_back({0,forward?Pixel(0):Pixel(0xff123456),forward?Pixel(0xff123456):Pixel(0)});bad.pixels.push_back({4,0,0xffabcdef});
+   if(forward)parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));if(!forward)parent.children.push_back(std::move(good));
+   bool rejected=false;try{d.applyEdit(parent,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(d.timeline_.findCelById(other)->surface->pixels[0]==0);
+   const auto after=d.captureAnimationSelection();CHECK(rejected&&after.activeLayer==before.activeLayer&&after.activeFrame==before.activeFrame&&after.frames==before.frames&&after.frameAnchor==before.frameAnchor&&after.selection.layers==before.selection.layers&&after.selection.layerAnchor==before.selection.layerAnchor);
+   CHECK(d.freeInstanceSelected_==std::vector<std::string>{"retained-instance"}&&d.freeInstancePrimary_=="retained-instance"&&d.freeInstanceAnchor_=="retained-instance"&&d.freeInstanceSelectionFrame_==initialFrame&&d.freeInstanceViewLayer_==before.activeLayer);
+   CHECK(d.displayedLayerGeometry_==geometry&&d.contentRevision_==content&&d.contentMutationRevision_==mutation&&d.revision_==revision&&d.selectionRevision_==selectionRevision);
+   CHECK(d.recordingDirtyFrom_==recordingFrom&&d.recordingDirtyTo_==recordingTo&&d.recordingDirtyValid_==recordingValid&&d.recordingDirty_.x==recording.x&&d.recordingDirty_.y==recording.y&&d.recordingDirty_.w==recording.w&&d.recordingDirty_.h==recording.h);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void structuralSiblingFailure(){
+  for(bool forward:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();d.selectLayer(d.timeline_.state().layers.front().id);
+   const auto layers=d.timeline_.state().layers;const auto active=d.activeLayerId_,frame=d.activeFrameId_;
+   const auto identity=d.cel().surface->pixels.identity();d.selectionPivotHistory_={23,TransformPoint{.25,.75}};
+   d.animationLoop_=false;d.sliceState_.selected={"original-selection"};
+   Document::Edit root{{},d.state_,d.nextState_},structure{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   structure.beforeActive=structure.afterActive=active;structure.beforeFrame=structure.afterFrame=frame;
+   structure.layerHistory.beforeLayerStructure=Document::LayerStructureSnapshot{layers,d.timeline_.state().groups};
+   structure.layerHistory.beforeLayerStructure->layers.pop_back();structure.layerHistory.beforeLayerStructure->layers.front().name=U"successful structural child";
+   structure.layerHistory.afterLayerStructure=structure.layerHistory.beforeLayerStructure;
+   structure.sliceHistory.beforeSlices=structure.sliceHistory.afterSlices=SliceState{{},{"candidate-selection"}};
+   structure.pixelSelectionHistory.beforeTrimPivot.emplace(TransformPoint{7,8});structure.pixelSelectionHistory.afterTrimPivot.emplace(TransformPoint{9,10});
+   structure.frameHistory.beforeAnimationLoop=structure.frameHistory.afterAnimationLoop=true;
+   bad.contentHistory.targetCelId=d.cel().id;bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};bad.pixels.push_back({4,0,1});
+   if(forward)root.children.push_back(std::move(structure));root.children.push_back(std::move(bad));if(!forward)root.children.push_back(std::move(structure));
+   bool rejected=false;try{d.applyEdit(root,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.timeline_.state().layers.size()==layers.size()&&d.layer().name==layers.front().name&&d.activeLayerId_==active&&d.activeFrameId_==frame&&d.cel().surface->pixels.identity()==identity);
+   CHECK(d.selectionPivotHistory_.serial==23&&d.selectionPivotHistory_.pivot->x==.25&&!d.animationLoop_&&d.sliceState_.selected==std::vector<std::string>{"original-selection"});
+   CHECK(root.children[forward?0:1].layerHistory.structureCels.empty());
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void structuralLateFailure(){
+  for(bool forward:{false,true})for(bool nested:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();d.selectLayer(d.timeline_.state().layers.front().id);
+   const auto layer=d.activeLayerId_,frame=d.activeFrameId_;const auto originalLayers=d.timeline_.state().layers;
+   std::vector<const void*> identities;for(const auto& cel:d.timeline_.state().cels)identities.push_back(cel.surface->pixels.identity());
+   Document::Edit root{{},d.state_,d.nextState_},parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.beforeActive=parent.afterActive=layer;parent.beforeFrame=parent.afterFrame=frame;
+   parent.layerHistory.beforeLayerStructure=Document::LayerStructureSnapshot{originalLayers,d.timeline_.state().groups};
+   parent.layerHistory.beforeLayerStructure->layers.pop_back();parent.layerHistory.beforeLayerStructure->layers.front().name=U"temporary structural replay";
+   parent.layerHistory.afterLayerStructure=parent.layerHistory.beforeLayerStructure;
+   good.contentHistory.targetCelId=bad.contentHistory.targetCelId=d.cel().id;
+   good.contentHistory.pixelAddress=bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};
+   good.pixels.push_back({0,forward?Pixel(0):Pixel(0xff123456),forward?Pixel(0xff123456):Pixel(0)});bad.pixels.push_back({4,0,0xffabcdef});
+   if(forward)parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));if(!forward)parent.children.push_back(std::move(good));
+   if(nested)root.children.push_back(std::move(parent));else root=std::move(parent);
+   const auto pixels=d.canvasPixels();const auto history=d.historySize();const auto revision=d.revision(),content=d.contentRevision();
+   d.change_={1,1,1,1};bool rejected=false;try{d.applyEdit(root,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.timeline_.state().layers.size()==originalLayers.size()&&d.layer().name==originalLayers.front().name);
+   CHECK(d.activeLayerId_==layer&&d.activeFrameId_==frame&&d.canvasPixels()==pixels&&d.historySize()==history&&d.revision()==revision&&d.contentRevision()==content);
+   const auto& replayed=nested?root.children.front():root;CHECK(replayed.layerHistory.structureCels.empty());
+   for(std::size_t i=0;i<identities.size();++i)CHECK(d.timeline_.state().cels[i].surface->pixels.identity()==identities[i]);
+   CHECK(d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void scalarLateFailure(){
+  for(bool forward:{false,true})for(bool nested:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   d.sliceState_.items.push_back({"original",U"original",{0,0,1,1}});d.sliceState_.selected={"original"};
+   d.selectionPivotHistory_.serial=19;d.selectionPivotHistory_.pivot=TransformPoint{.25,.75};d.animationLoop_=false;
+   Document::Edit root{{},d.state_,d.nextState_},parent{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.sliceHistory.beforeSlices=SliceState{{{"candidate-before",U"before",{1,1,1,1}}},{"candidate-before"}};
+   parent.sliceHistory.afterSlices=SliceState{{{"candidate-after",U"after",{1,1,1,1}}},{"candidate-after"}};
+   parent.pixelSelectionHistory.beforeTrimPivot.emplace(TransformPoint{3,4});parent.pixelSelectionHistory.afterTrimPivot.emplace(TransformPoint{5,6});
+   parent.frameHistory.beforeAnimationLoop=true;parent.frameHistory.afterAnimationLoop=true;
+   // Exercise phase recovery rather than stable-target whole-tree rejection.
+   parent.snapshotHistory.beforeDimensions=parent.snapshotHistory.afterDimensions=std::pair<int,int>{2,2};
+   bad.contentHistory.targetCelId=d.cel().id;bad.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};bad.pixels.push_back({4,0,0xffabcdef});
+   parent.children.push_back(std::move(bad));if(nested)root.children.push_back(std::move(parent));else root=std::move(parent);
+   bool rejected=false;try{d.applyEdit(root,forward);}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.sliceState_.items.size()==1&&d.sliceState_.items.front().id=="original"&&d.sliceState_.selected==std::vector<std::string>{"original"});
+   CHECK(!d.animationLoop_&&d.selectionPivotHistory_.serial==19&&d.selectionPivotHistory_.pivot&&d.selectionPivotHistory_.pivot->x==.25&&d.selectionPivotHistory_.pivot->y==.75);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void snapshotLateFailure(){
+  for(bool forward:{false,true})for(bool contentBeforeFailure:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   Document::Edit parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.snapshotHistory.beforeTimeline=parent.snapshotHistory.afterTimeline=d.timeline_.state();
+   parent.snapshotHistory.beforeTimeline->layers.front().name=U"candidate-before";parent.snapshotHistory.afterTimeline->layers.front().name=U"candidate-after";
+   parent.snapshotHistory.beforeDimensions=std::pair<int,int>{7,9};parent.snapshotHistory.afterDimensions=std::pair<int,int>{11,13};
+   parent.beforeActive=parent.afterActive=d.activeLayerId_;parent.beforeFrame=parent.afterFrame=d.activeFrameId_;
+   good.contentHistory.targetCelId=bad.contentHistory.targetCelId=d.cel().id;good.pixels.push_back({0,0,0xff123456});bad.pixels.push_back({4,0,0xffabcdef});
+   if(contentBeforeFailure&&forward)parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));if(contentBeforeFailure&&!forward)parent.children.push_back(std::move(good));
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto identity=d.cel().surface->pixels.identity();const auto pixels=d.canvasPixels();const auto name=d.layer().name;
+   const auto layer=d.activeLayerId_,frame=d.activeFrameId_;const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision();d.change_={1,1,1,1};
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.width_==2&&d.height_==2&&d.layer().name==name&&d.activeLayerId_==layer&&d.activeFrameId_==frame);
+   CHECK(d.cel().surface->pixels.identity()==identity&&d.canvasPixels()==pixels&&d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content);
+   CHECK(d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void structuralSurfaceTransferFailure(){
+  for(bool forward:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();
+   auto& state=const_cast<timeline::State&>(d.timeline_.state());auto& first=*state.cels.front().surface;auto& second=*state.cels.back().surface;
+   second.offsetX=std::numeric_limits<int>::max();second.storageOriginX=std::numeric_limits<int>::min();first.storageOriginX=0;first.pixels[0]=0xff123456;
+   Document::Edit edit{{},d.state_,d.nextState_};edit.beforeActive=edit.afterActive=d.activeLayerId_;edit.beforeFrame=edit.afterFrame=d.activeFrameId_;
+   edit.layerHistory.beforeLayerStructure=Document::LayerStructureSnapshot{d.timeline_.state().layers,d.timeline_.state().groups};
+   edit.layerHistory.afterLayerStructure=edit.layerHistory.beforeLayerStructure;
+   for(auto* snapshot:{&*edit.layerHistory.beforeLayerStructure,&*edit.layerHistory.afterLayerStructure})for(auto& layer:snapshot->layers)layer.linkedContentId="shared-structural";
+   std::vector<const void*> identities;for(const auto& cel:d.timeline_.state().cels)identities.push_back(cel.surface->pixels.identity());
+   bool rejected=false;try{d.applyLayerStructure(edit,forward);}catch(const std::overflow_error&){rejected=true;}
+   CHECK(rejected&&edit.layerHistory.structureCels.empty());
+   for(std::size_t i=0;i<identities.size();++i)CHECK(d.timeline_.state().cels[i].surface&&d.timeline_.state().cels[i].surface->pixels.identity()==identities[i]);
+   CHECK(d.timeline_.state().layers.front().linkedContentId.empty()&&d.timeline_.state().cels.back().surface->offsetX==std::numeric_limits<int>::max());
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void animationSelectionSnapshot(){
+  auto document=std::make_unique<Document>(3,2);auto& d=*document;
+  CHECK(d.fillSelectionOrCanvas(0xff123456));const auto owner=d.layer().id,frame=d.frame().id,cel=d.cel().id;
+  CHECK(d.createAttachedMask(owner,frame));d.exitAttachedMask();d.selectTimelineLayer(owner);CHECK(d.createLayerGroup());const auto group=d.timeline().state().groups.back().id;
+  d.addFrame();const auto otherFrame=d.frame().id;d.selectFrame(frame);CHECK(d.selectAttachedMask(owner,frame,true));
+  d.timelineSelection_={{owner},{cel},owner,cel,{owner}};d.selectedFrames_={frame,otherFrame};d.frameAnchor_=otherFrame;d.selectedGroupIds_={group};d.selectedGroupId_.reset();
+  const auto snapshot=d.captureAnimationSelection();const auto position=d.historyPosition(),bytes=d.historyBytes();const auto pixels=d.canvasPixels();
+  auto equal=[](const auto& a,const auto& b){return a.identity==b.identity&&a.selection.layers==b.selection.layers&&a.selection.cels==b.selection.cels&&a.selection.layerAnchor==b.selection.layerAnchor&&a.selection.celAnchor==b.selection.celAnchor&&a.selection.maskRows==b.selection.maskRows&&a.frames==b.frames&&a.groups==b.groups&&a.groupFocus==b.groupFocus&&a.activeLayer==b.activeLayer&&a.activeFrame==b.activeFrame&&a.frameAnchor==b.frameAnchor&&a.activeMask==b.activeMask&&a.activeMaskSlot==b.activeMaskSlot&&a.maskIsolated==b.maskIsolated;};
+  d.exitAttachedMask();d.clearTimelineSelection();d.selectFrame(otherFrame);d.selectTimelineRow({LayerPanelKind::Group,group,0});
+  CHECK(d.restoreAnimationSelection(snapshot)&&equal(d.captureAnimationSelection(),snapshot));
+  CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.canvasPixels()==pixels);
+  auto invalid=snapshot;invalid.identity=0;CHECK(!d.restoreAnimationSelection(invalid)&&equal(d.captureAnimationSelection(),snapshot));
+  invalid=snapshot;invalid.activeFrame="missing-snapshot-frame";CHECK(!d.restoreAnimationSelection(invalid)&&equal(d.captureAnimationSelection(),snapshot));
+  // A stale slot must not activate a different mask installed at that key.
+  invalid=snapshot;invalid.activeMask="replaced-mask-id";CHECK(d.restoreAnimationSelection(invalid)&&d.activeMaskId().empty());
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void snapshotPreflightFailure(){
+  for(bool forward:{false,true})for(bool child:{false,true})for(int failure=0;failure<8;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto layer=d.layer().id,frame=d.frame().id,cel=d.cel().id;
+   CHECK(d.fillSelectionOrCanvas(0xff010203));CHECK(d.createAttachedMask(layer,frame));d.exitAttachedMask();d.markSaved();
+   Document::Edit parent{{},d.state_,d.nextState_};
+   parent.maskHistory.beforeMasks=parent.maskHistory.afterMasks=d.timeline_.state().masks;
+   parent.maskHistory.beforeMasks->front().mask.surface.pixels[0]=0xff123456;
+   parent.maskHistory.afterMasks->front().mask.surface.pixels[0]=0xff123456;
+   parent.maskHistory.beforeMaskSelection=parent.maskHistory.afterMaskSelection=std::vector<Document::MaskSlotKey>{{layer,frame}};
+   parent.snapshotHistory.beforeDimensions=std::pair<int,int>{7,9};parent.snapshotHistory.afterDimensions=std::pair<int,int>{11,13};
+   Document::Edit snapshot{{},d.state_,d.nextState_};snapshot.snapshotHistory.beforeTimeline=snapshot.snapshotHistory.afterTimeline=d.timeline_.state();
+   if(child){Document::Edit good{{},d.state_,d.nextState_};good.contentHistory.targetCelId=cel;good.pixels.push_back({0,0x00010203,0xff765432});if(forward){parent.children.push_back(std::move(good));parent.children.push_back(std::move(snapshot));}else{parent.children.push_back(std::move(snapshot));parent.children.push_back(std::move(good));}}
+   else{parent.snapshotHistory.beforeTimeline=std::move(snapshot.snapshotHistory.beforeTimeline);parent.snapshotHistory.afterTimeline=std::move(snapshot.snapshotHistory.afterTimeline);}
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   auto& stored=const_cast<Document::Edit&>(d.history_.at(d.history_.size()-1));auto& entry=child?stored.children[forward?1:0]:stored;
+   auto& state=*(forward?entry.snapshotHistory.afterTimeline:entry.snapshotHistory.beforeTimeline);
+   switch(failure){
+    case 0:state.layers.push_back(state.layers.front());break;
+    case 1:state.layers.front().opacity=-1;break;
+    case 2:state.frames.push_back(state.frames.front());break;
+    case 3:state.frames.front().duration=0;break;
+    case 4:state.cels.push_back(state.cels.front());break;
+    case 5:state.cels.front().layerId="missing";break;
+    case 6:state.cels.front().surface->width=0;break;
+    case 7:state.layers.front().groupId="missing-group";break;
+   }
+   const auto pixels=d.canvasPixels();const auto mask=d.timeline_.state().masks.front().mask.surface.pixels;
+   const auto maskIdentity=d.timeline_.state().masks.front().mask.surface.pixels.identity(),identity=d.cel().surface->pixels.identity();
+   const auto serial=d.maskSelectionHistory_.serial,position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision();
+   const auto savedState=d.state_;const auto oldSlots=d.maskSelectionHistory_.slots;const auto oldActiveMask=d.activeMaskId_;const bool dirty=d.dirty();
+   d.change_={1,1,1,1};int notifications=0,animations=0;d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animations;});
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::invalid_argument&){rejected=true;}
+   CHECK(rejected&&d.width_==2&&d.height_==2&&d.canvasPixels()==pixels&&d.cel().surface->pixels.identity()==identity);
+   CHECK(d.timeline_.state().masks.front().mask.surface.pixels==mask);
+   CHECK(d.timeline_.state().masks.front().mask.surface.pixels.identity()==maskIdentity&&d.maskSelectionHistory_.serial==serial&&d.maskSelectionHistory_.slots==oldSlots&&d.activeMaskId_==oldActiveMask);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==savedState&&d.dirty()==dirty);
+   CHECK(d.activeLayerId_==layer&&d.activeFrameId_==frame&&!notifications&&!animations&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void celMetadataFailure(){
+  for(bool forward:{false,true})for(int entry=0;entry<3;++entry)for(int failure=0;failure<10;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();CHECK(d.fillSelectionOrCanvas(0xff010203));const auto original=d.timeline_.state().cels;const auto first=*d.timeline_.findCelById(owner);auto good=d.cel(),bad=first;good.opacity=0.3;
+   switch(failure){
+    case 0:bad.opacity=-0.1;break;
+    case 1:bad.opacity=1.1;break;
+    case 2:bad.opacity=std::numeric_limits<double>::quiet_NaN();break;
+    case 3:bad.surface->width=0;break;
+    case 4:bad.surface->height=0;break;
+    case 5:bad.surface->pixels.pop_back();break;
+    case 6:bad.surface->width=bad.surface->height=std::numeric_limits<int>::max();break;
+    case 7:bad.layerId="missing-metadata-layer";break;
+    case 8:bad.frameId="missing-metadata-frame";break;
+    case 9:bad.layerId=good.layerId;bad.frameId=good.frameId;break;
+   }
+   Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.beforeCels=edit.contentHistory.afterCels={good,bad};edit.layerHistory.targetLayerId=first.layerId;edit.layerHistory.beforeVisible=edit.layerHistory.afterVisible=false;edit.frameHistory.beforeDisabled=edit.frameHistory.afterDisabled={{first.frameId,true}};edit.paletteHistory.paletteKind=12;edit.paletteHistory.beforePalette=d.palette_;edit.paletteHistory.afterPalette=d.palette_;edit.paletteHistory.beforePalette->primary=edit.paletteHistory.afterPalette->primary=0xff765432;
+   CelPropertiesPlan plan;plan.groups.push_back({owner,{owner,good.id},{0.4,2}});plan.after={0.6,3};edit.contentHistory.celProperties=std::move(plan);if(entry==2){edit.contentHistory.targetCelId=owner;edit.pixels.push_back({0,0x00010203,0xff123456});}
+   d.pushEdit(std::move(edit));if(forward)d.history_.undo([](const auto&){},[](const auto&){});const auto& stored=d.history_.at(d.history_.size()-1);
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision(),state=d.state_;const auto active=d.activeLayerId_,frame=d.activeFrameId_;const auto selection=d.selectedFrames_;const bool dirty=d.dirty(),visible=d.layer().visible,disabled=d.timeline_.state().frames.front().disabled;const auto primary=d.palette_.primary;const auto identity=d.timeline_.resolveSurface(owner).surface->pixels.identity();const auto stamp=d.timeline_.thumbnailStorage(owner);d.change_={1,1,1,1};int notifications=0,animations=0;d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animations;});
+   bool rejected=false;try{if(!entry)d.applyCelEdit(stored,forward);else if(forward)d.redo();else d.undo();}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
+   const auto& actual=d.timeline_.state().cels;CHECK(actual.size()==original.size());for(std::size_t i=0;i<actual.size();++i){const auto& a=actual[i];const auto& o=original[i];CHECK(a.id==o.id&&a.layerId==o.layerId&&a.frameId==o.frameId&&a.opacity==o.opacity&&a.zIndex==o.zIndex&&bool(a.surface)==bool(o.surface));if(a.surface)CHECK(a.surface->width==o.surface->width&&a.surface->height==o.surface->height&&a.surface->pixels==o.surface->pixels);}
+   CHECK(d.timeline_.findCelById(owner)&&d.timeline_.resolveSurface(owner).surface->pixels.identity()==identity&&d.layer().visible==visible&&d.timeline_.state().frames.front().disabled==disabled&&d.palette_.primary==primary);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty);
+   CHECK(d.activeLayerId_==active&&d.activeFrameId_==frame&&d.selectedFrames_==selection&&!notifications&&!animations&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);const auto afterStamp=d.timeline_.thumbnailStorage(owner);CHECK(afterStamp.owner==stamp.owner&&afterStamp.revision==stamp.revision);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void indexPreparationFailure(){
+  for(int failure=0;failure<6;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;CHECK(d.fillSelectionOrCanvas(0xff010203));const auto owner=d.cel().id;d.addFrame();auto& timeline=d.timeline_;auto& s=const_cast<timeline::State&>(timeline.state());const auto layer=s.layers.front().id,frame=s.frames.front().id;const auto* cel=timeline.findCelById(owner);CHECK(timeline.contentSelection(owner,2,2));const auto stats=timeline::celSelectionCacheStats();const auto stamp=timeline.thumbnailStorage(owner);const auto identity=timeline.resolveSurface(owner).surface->pixels.identity();
+   const auto opacity=s.layers.front().opacity;const auto duration=s.frames.front().duration;const auto celOpacity=s.cels.front().opacity;const auto id=s.cels.back().id,celLayer=s.cels.front().layerId;
+   switch(failure){case 0:s.layers.front().opacity=std::numeric_limits<double>::quiet_NaN();break;case 1:s.frames.front().duration=0;break;case 2:s.cels.front().opacity=2;break;case 3:s.cels.back().id=s.cels.front().id;break;case 4:s.cels.front().layerId="missing-index-layer";break;case 5:{timeline::Group group;group.id="cyclic-index-group";group.parentGroupId=group.id;s.groups.push_back(std::move(group));break;}}
+   Document::Edit edit{{},d.state_,d.nextState_};for(const auto& l:s.layers)edit.layerHistory.beforeOrder.push_back(l.id);edit.layerHistory.afterOrder=edit.layerHistory.beforeOrder;bool rejected=false;try{d.applyLayerEdit(edit,false);}catch(const std::invalid_argument&){rejected=true;}
+   // Restore only the deliberately corrupted input field. A rejected builder
+   // must not need another rebuild to recover its previous indices/caches.
+   switch(failure){case 0:s.layers.front().opacity=opacity;break;case 1:s.frames.front().duration=duration;break;case 2:s.cels.front().opacity=celOpacity;break;case 3:s.cels.back().id=id;break;case 4:s.cels.front().layerId=celLayer;break;case 5:s.groups.pop_back();break;}
+   CHECK(rejected&&timeline.hasLayer(layer)&&timeline.hasFrame(frame)&&timeline.findCelById(owner)==cel);CHECK(timeline.resolveSurface(owner).surface->pixels.identity()==identity);const auto after=timeline.thumbnailStorage(owner);CHECK(after.owner==stamp.owner&&after.revision==stamp.revision);CHECK(timeline.contentSelection(owner,2,2)&&timeline::celSelectionCacheStats().builds==stats.builds);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void celMetadataSuccess(){
+  for(int scenario=0;scenario<5;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();auto baseline=*d.timeline_.findCelById(owner);auto transient=baseline,last=baseline;
+   if(scenario==0){transient.opacity=2;last.opacity=0.4;}
+   if(scenario==1){transient.frameId=d.activeFrameId_;last.opacity=0.4;}
+   if(scenario==2){last.opacity.reset();last.surface->offsetX=-7;last.surface->pixels[0]=0x00112233;}
+   if(scenario==3){last.surface.reset();}
+   if(scenario==4){last.linkedCelId="missing-link-is-reported";}
+   Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.beforeCels={baseline};edit.contentHistory.afterCels=scenario<2?std::vector<DocumentCel>{transient,last}:std::vector<DocumentCel>{last};
+   d.applyCelEdit(edit,true);const auto* actual=d.timeline_.findCelById(owner);CHECK(actual&&actual->opacity==last.opacity&&actual->frameId==last.frameId&&bool(actual->surface)==bool(last.surface));if(scenario==2)CHECK(actual->surface->pixels[0]==0x00112233&&actual->surface->offsetX==-7);if(scenario==4)CHECK(d.timeline_.resolveSurface(owner).issue==timeline::LinkIssue::MissingTarget);
+   d.applyCelEdit(edit,false);CHECK(d.timeline_.findCelById(owner)->opacity==baseline.opacity&&d.timeline_.findCelById(owner)->surface);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void contentTargetFailure(){
+  for(bool forward:{false,true})for(int entry=0;entry<3;++entry)for(int failure=0;failure<13;++failure){
+   if(!entry&&failure>4)continue;
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();d.addLayer();
+   const auto originalCels=d.timeline_.state().cels;const auto originalFrames=d.timeline_.state().frames;const auto originalLayers=d.timeline_.state().layers;
+   const auto source=*d.timeline_.findCelById(owner);const auto firstFrame=source.frameId,secondFrame=d.activeFrameId_,firstLayer=source.layerId,secondLayer=d.activeLayerId_;
+   const auto firstLayerValue=*std::find_if(originalLayers.begin(),originalLayers.end(),[&](const auto& l){return l.id==firstLayer;});
+   const auto firstFrameValue=*std::find_if(originalFrames.begin(),originalFrames.end(),[&](const auto& f){return f.id==firstFrame;});
+   auto futureLayer=firstLayerValue;futureLayer.id="future-target-layer";auto futureFrame=firstFrameValue;futureFrame.id="future-target-frame";
+   auto future=source;future.id="future-target-cel";future.frameId=futureFrame.id;auto good=source;good.opacity=0.25;auto bad=source;bad.id="missing-replay-cel";
+   Document::Edit edit{{},d.state_,d.nextState_};edit.beforeActive=edit.afterActive=secondLayer;edit.beforeFrame=edit.afterFrame=secondFrame;edit.layerHistory.targetLayerId=secondLayer;edit.layerHistory.beforeVisible=edit.layerHistory.afterVisible=false;
+   edit.frameHistory.beforeDisabled=edit.frameHistory.afterDisabled={{firstFrame,true}};edit.paletteHistory.paletteKind=12;edit.paletteHistory.beforePalette=d.palette_;edit.paletteHistory.afterPalette=d.palette_;edit.paletteHistory.beforePalette->primary=edit.paletteHistory.afterPalette->primary=0xff765432;
+   if(entry==2){edit.contentHistory.targetCelId=owner;edit.pixels.push_back({0,0x00010203,0xff123456});}
+   auto replacements=[&](const std::vector<DocumentCel>& values){edit.contentHistory.beforeCels=edit.contentHistory.afterCels=values;};
+   auto frameOrder=[&](const std::vector<std::string>& order){edit.frameHistory.beforeFrames=edit.frameHistory.afterFrames=order;};
+   auto layerOrder=[&](const std::vector<std::string>& order){edit.layerHistory.beforeOrder=edit.layerHistory.afterOrder=order;};
+   switch(failure){
+    case 0:replacements({good,bad});break;
+    case 1:edit.layerHistory.targetLayerId="missing-replay-layer";break;
+    case 2:edit.layerHistory.detachedLayer=firstLayerValue;layerOrder({secondLayer});edit.layerHistory.targetLayerId=firstLayer;break;
+    case 3:edit.layerHistory.detachedLayer=futureLayer;layerOrder({firstLayer,secondLayer,futureLayer.id});edit.layerHistory.targetLayerId="missing-created-layer-target";break;
+    case 4:{CelPropertiesPlan plan;plan.groups.push_back({owner,{owner,"missing-frozen-member"},{0.4,2}});plan.after={0.6,3};edit.contentHistory.celProperties=std::move(plan);break;}
+    case 5:edit.frameHistory.detachedFrame=firstFrameValue;frameOrder({secondFrame});replacements({good});break;
+    case 6:edit.frameHistory.detachedFrames={firstFrameValue};frameOrder({secondFrame});replacements({good});break;
+    case 7:edit.layerHistory.detachedLayer=firstLayerValue;layerOrder({secondLayer});replacements({good});break;
+    case 8:edit.frameHistory.detachedFrame=futureFrame;frameOrder({firstFrame,secondFrame,futureFrame.id});edit.contentHistory.detachedCels={future};replacements({good,bad});break;
+    case 9:{edit.frameHistory.detachedFrame=futureFrame;frameOrder({firstFrame,secondFrame,futureFrame.id});edit.contentHistory.detachedCels={future};CelPropertiesPlan plan;plan.groups.push_back({future.id,{future.id},{0.4,2}});plan.after={0.6,3};edit.contentHistory.celProperties=std::move(plan);break;}
+    case 10:future.layerId=futureLayer.id;future.frameId=firstFrame;edit.layerHistory.detachedLayer=futureLayer;layerOrder({firstLayer,secondLayer,futureLayer.id});edit.contentHistory.detachedCels={future};edit.frameHistory.detachedFrames={firstFrameValue};frameOrder({secondFrame});replacements({future});break;
+    case 11:edit.frameHistory.detachedFrame=futureFrame;edit.frameHistory.detachedFrames={firstFrameValue,futureFrame};frameOrder({secondFrame,futureFrame.id});edit.contentHistory.detachedCels={future};replacements({future});break;
+    case 12:edit.frameHistory.detachedFrame=futureFrame;edit.frameHistory.detachedFrames={futureFrame};edit.contentHistory.detachedCels={future};replacements({future});break; // Empty order ignores detached payloads.
+   }
+   d.pushEdit(std::move(edit));if(forward)d.history_.undo([](const auto&){},[](const auto&){});const auto& stored=d.history_.at(d.history_.size()-1);
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision(),state=d.state_;const auto active=d.activeLayerId_,frame=d.activeFrameId_;const auto selection=d.selectedFrames_;const bool dirty=d.dirty();const auto primary=d.palette_.primary;const auto identity=d.timeline_.resolveSurface(owner).surface->pixels.identity();const auto stamp=d.timeline_.thumbnailStorage(owner);d.change_={1,1,1,1};int notifications=0,animations=0;
+   d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animations;});
+   bool rejected=false;try{if(!entry){if(failure==0)d.applyCelEdit(stored,forward);else if(failure==4)d.applyCelPropertiesEdit(stored,forward);else d.applyLayerEdit(stored,forward);}else if(forward)d.redo();else d.undo();}catch(const std::exception&){rejected=true;}
+   CHECK(rejected);const auto& actual=d.timeline_.state();CHECK(actual.cels.size()==originalCels.size()&&actual.frames.size()==originalFrames.size()&&actual.layers.size()==originalLayers.size());
+   for(std::size_t i=0;i<actual.cels.size();++i){const auto& a=actual.cels[i];const auto& o=originalCels[i];CHECK(a.id==o.id&&a.layerId==o.layerId&&a.frameId==o.frameId&&a.opacity==o.opacity&&a.zIndex==o.zIndex&&bool(a.surface)==bool(o.surface));if(a.surface)CHECK(a.surface->pixels==o.surface->pixels);}
+   for(std::size_t i=0;i<actual.frames.size();++i)CHECK(actual.frames[i].id==originalFrames[i].id&&actual.frames[i].duration==originalFrames[i].duration&&actual.frames[i].disabled==originalFrames[i].disabled);
+   for(std::size_t i=0;i<actual.layers.size();++i)CHECK(actual.layers[i].id==originalLayers[i].id&&actual.layers[i].name==originalLayers[i].name&&actual.layers[i].visible==originalLayers[i].visible&&actual.layers[i].opacity==originalLayers[i].opacity);
+   CHECK(d.timeline_.resolveSurface(owner).surface->pixels.identity()==identity&&d.palette_.primary==primary);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty);
+   CHECK(d.activeLayerId_==active&&d.activeFrameId_==frame&&d.selectedFrames_==selection&&!notifications&&!animations&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);const auto afterStamp=d.timeline_.thumbnailStorage(owner);CHECK(afterStamp.owner==stamp.owner&&afterStamp.revision==stamp.revision);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void contentTargetSuccess(){
+  for(int scenario=0;scenario<7;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();d.addLayer();const auto source=*d.timeline_.findCelById(owner);const auto firstFrame=source.frameId,secondFrame=d.activeFrameId_,firstLayer=source.layerId,secondLayer=d.activeLayerId_;
+   auto newLayer=d.timeline_.state().layers.front();newLayer.id="valid-created-layer";auto newFrame=d.timeline_.state().frames.front();newFrame.id="valid-created-frame";auto future=source;future.id="valid-created-cel";future.opacity=0.5;
+   Document::Edit edit{{},d.state_,d.nextState_};edit.beforeActive=edit.afterActive=secondLayer;edit.beforeFrame=edit.afterFrame=secondFrame;
+   if(scenario==0){future.layerId=newLayer.id;edit.layerHistory.detachedLayer=newLayer;edit.layerHistory.afterOrder={firstLayer,secondLayer,newLayer.id};edit.layerHistory.targetLayerId=newLayer.id;edit.layerHistory.afterName=U"created target";edit.contentHistory.detachedCels={future};edit.contentHistory.afterCels={future};}
+   if(scenario==1||scenario==2||scenario==4){future.frameId=newFrame.id;edit.frameHistory.afterFrames={firstFrame,secondFrame,newFrame.id};if(scenario==1)edit.frameHistory.detachedFrame=newFrame;else edit.frameHistory.detachedFrames={newFrame};edit.contentHistory.detachedCels={future};edit.contentHistory.afterCels={future};if(scenario==4){edit.contentHistory.detachedCels.push_back(future);auto last=future;last.opacity=0.7;edit.contentHistory.afterCels.push_back(last);}}
+   if(scenario==3){auto oldLayer=*std::find_if(d.timeline_.state().layers.begin(),d.timeline_.state().layers.end(),[&](const auto& l){return l.id==firstLayer;});future.id=owner;future.layerId=secondLayer;future.frameId=newFrame.id;edit.layerHistory.detachedLayer=oldLayer;edit.layerHistory.afterOrder={secondLayer};edit.frameHistory.detachedFrame=newFrame;edit.frameHistory.afterFrames={firstFrame,secondFrame,newFrame.id};edit.contentHistory.detachedCels={future};edit.contentHistory.afterCels={future};}
+   if(scenario==5){future.id=owner;edit.layerHistory.detachedLayer=newLayer;edit.frameHistory.detachedFrame=newFrame;edit.frameHistory.detachedFrames={newFrame};edit.contentHistory.detachedCels={future};auto last=future;last.opacity=0.7;edit.contentHistory.afterCels={future,last};} // Empty orders ignore detached structures; repeated replacements keep last-wins.
+   if(scenario==6){CelPropertiesPlan plan;plan.groups.push_back({"unused-source-id",{owner,owner},{1,0}});plan.after={0.6,3};edit.contentHistory.celProperties=std::move(plan);}
+   d.applyEdit(edit,true);const auto id=scenario==3||scenario>=5?owner:future.id;const auto* actual=d.timeline_.findCelById(id);CHECK(actual);CHECK(actual->opacity==std::optional<double>{scenario==4||scenario==5?0.7:scenario==6?0.6:0.5});
+   if(scenario==0){CHECK(d.timeline_.hasLayer(newLayer.id));const auto& layers=d.timeline_.state().layers;CHECK(std::find_if(layers.begin(),layers.end(),[&](const auto& l){return l.id==newLayer.id;})->name==U"created target");}
+   if(scenario==3)CHECK(actual->layerId==secondLayer&&actual->frameId==newFrame.id&&!d.timeline_.hasLayer(firstLayer));
+   if(scenario==5)CHECK(!d.timeline_.hasLayer(newLayer.id)&&!d.timeline_.hasFrame(newFrame.id));
+   if(scenario==6){CHECK(actual->zIndex==3);d.applyEdit(edit,false);CHECK(d.timeline_.findCelById(owner)->opacity==std::optional<double>{1}&&d.timeline_.findCelById(owner)->zIndex==0);}
+  }
+  // Preserve the original leaf order: final cel replacement overrides earlier
+  // pixel and cel-property writes, while palette/layer/frame values also roundtrip.
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;auto before=d.cel(),after=before;after.opacity=0.5;after.surface->pixels[0]=0xffaabbcc;
+  Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=owner;edit.pixels.push_back({0,0,0xff102030});edit.contentHistory.beforeCels={before};edit.contentHistory.afterCels={after};CelPropertiesPlan plan;plan.groups.push_back({owner,{owner},{1,0}});plan.after={0.6,3};edit.contentHistory.celProperties=std::move(plan);edit.layerHistory.targetLayerId=before.layerId;edit.layerHistory.beforeName=d.layer().name;edit.layerHistory.afterName=U"mixed target";edit.frameHistory.beforeDisabled={{before.frameId,false}};edit.frameHistory.afterDisabled={{before.frameId,true}};edit.paletteHistory.beforePalette=d.palette_;edit.paletteHistory.afterPalette=d.palette_;edit.paletteHistory.afterPalette->primary=0xff765432;edit.paletteHistory.paletteKind=12;const auto primary=d.palette_.primary;const auto name=d.layer().name;
+  d.applyEdit(edit,true);d.pushEdit(std::move(edit));auto verify=[&](bool forward){const auto* c=d.timeline_.findCelById(owner);CHECK(c->surface->pixels[0]==(forward?0xffaabbcc:0)&&c->opacity==std::optional<double>{forward?0.5:1.0}&&c->zIndex==0);CHECK(d.layer().name==(forward?U"mixed target":name)&&d.frame().disabled==forward&&d.palette_.primary==(forward?0xff765432:primary));};verify(true);d.undo();verify(false);d.redo();verify(true);
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void frameReplayFailure(){
+  // Direct domain calls and real stack navigation share the same preflight.
+  // A mixed entry must reject before its pixel, disabled flag or duration writes.
+  for(bool forward:{false,true})for(int entry=0;entry<3;++entry)for(int failure=0;failure<8;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();
+   const auto original=d.timeline_.state().frames;const auto first=original.front().id,second=original.back().id;
+   Document::Edit edit{{},d.state_,d.nextState_};edit.beforeFrame=edit.afterFrame=d.activeFrameId_;
+   edit.frameHistory.beforeDisabled={{first,true}};edit.frameHistory.afterDisabled={{first,true}};
+   if(entry==2){edit.contentHistory.targetCelId=owner;edit.pixels.push_back({0,0x00010203,0xff123456});}
+   auto durationPair=[&](){edit.frameHistory.beforeScriptDurations.emplace();edit.frameHistory.afterScriptDurations.emplace();for(const auto& f:original){edit.frameHistory.beforeScriptDurations->emplace_back(f.id,201);edit.frameHistory.afterScriptDurations->emplace_back(f.id,301);}};
+   auto target=[&](const std::string& id){edit.frameHistory.targetFrameId=id;edit.frameHistory.beforeDuration=211;edit.frameHistory.afterDuration=311;};
+   auto future=original.front();future.id="future-history-frame";
+   switch(failure){
+    case 0:durationPair();edit.frameHistory.beforeScriptDurations->pop_back();edit.frameHistory.afterScriptDurations->pop_back();break;
+    case 1:durationPair();edit.frameHistory.beforeScriptDurations->back().first="missing-duration-frame";edit.frameHistory.afterScriptDurations->back().first="missing-duration-frame";break;
+    case 2:target("missing-duration-target");break;
+    case 3:edit.frameHistory.detachedFrames={future};edit.frameHistory.beforeFrames=edit.frameHistory.afterFrames={first,future.id};break;
+    case 4:edit.frameHistory.detachedFrames={original.back()};edit.frameHistory.beforeFrames=edit.frameHistory.afterFrames={first};target(second);break;
+    case 5:edit.frameHistory.detachedFrame=future;edit.frameHistory.beforeFrames=edit.frameHistory.afterFrames={first,second,future.id};target("missing-created-frame-target");break;
+    case 6:edit.frameHistory.detachedFrame=original.front();edit.frameHistory.detachedFrames={future};edit.frameHistory.beforeFrames=edit.frameHistory.afterFrames={second,future.id};target(first);break;
+    case 7:durationPair();target("missing-final-duration-target");break;
+   }
+   d.pushEdit(std::move(edit));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto& stored=d.history_.at(d.history_.size()-1);const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision(),state=d.state_;
+   const auto active=d.activeLayerId_,frame=d.activeFrameId_;const auto selection=d.selectedFrames_;const bool dirty=d.dirty();const auto pixels=d.timeline_.resolveSurface(owner).surface->pixels;const auto identity=d.timeline_.resolveSurface(owner).surface->pixels.identity();const auto stamp=d.timeline_.thumbnailStorage(owner);d.change_={1,1,1,1};int notifications=0,animations=0;
+   d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animations;});
+   bool rejected=false;try{if(!entry)d.applyFrameEdit(stored,forward);else if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected);const auto& actual=d.timeline_.state().frames;CHECK(actual.size()==original.size());for(std::size_t i=0;i<actual.size();++i)CHECK(actual[i].id==original[i].id&&actual[i].duration==original[i].duration&&actual[i].disabled==original[i].disabled);
+   CHECK(d.timeline_.resolveSurface(owner).surface->pixels==pixels&&d.timeline_.resolveSurface(owner).surface->pixels.identity()==identity);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty);
+   CHECK(d.activeLayerId_==active&&d.activeFrameId_==frame&&d.selectedFrames_==selection&&!notifications&&!animations&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+   const auto afterStamp=d.timeline_.thumbnailStorage(owner);CHECK(afterStamp.owner==stamp.owner&&afterStamp.revision==stamp.revision);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void frameReplaySuccess(){
+  // A duration target may be created by this very frame edit. Validate the
+  // projected membership, not just the current timeline's lookup table.
+  for(int scenario=0;scenario<7;++scenario){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;if(scenario!=4)d.addFrame();
+   const auto first=d.timeline_.state().frames.front().id,second=d.timeline_.state().frames.back().id;
+   auto future=d.timeline_.state().frames.front();future.id="created-valid-history-frame";
+   Document::Edit edit{{},d.state_,d.nextState_};edit.beforeFrame=edit.afterFrame=first;
+   std::vector<std::string> expected;
+   if(scenario==0||scenario==1){edit.frameHistory.afterFrames={first,second,future.id};if(!scenario)edit.frameHistory.detachedFrame=future;else edit.frameHistory.detachedFrames={future};edit.frameHistory.targetFrameId=future.id;expected={first,second,future.id};}
+   if(scenario==2){edit.frameHistory.beforeScriptDurations.emplace();edit.frameHistory.afterScriptDurations.emplace();for(const auto& f:d.timeline_.state().frames){edit.frameHistory.beforeScriptDurations->emplace_back(f.id,100);edit.frameHistory.afterScriptDurations->emplace_back(f.id,250);}edit.frameHistory.afterFrames={second,first};edit.frameHistory.targetFrameId=first;expected={second,first};}
+   if(scenario==3){edit.frameHistory.detachedFrames={d.timeline_.state().frames.back()};edit.frameHistory.afterFrames={first};edit.frameHistory.targetFrameId=first;expected={first};}
+   if(scenario==4){edit.frameHistory.detachedFrames={future};edit.frameHistory.afterFrames={"extra-order-id"};expected={first};} // One frame: original sort has no comparator lookup.
+   if(scenario==5){edit.frameHistory.detachedFrames={future,future};edit.frameHistory.afterFrames={first,second,future.id,future.id,"extra-order-id"};expected={first,second,future.id};}
+   if(scenario==6){edit.frameHistory.detachedFrame=future;edit.frameHistory.afterFrames={second,future.id};edit.frameHistory.targetFrameId=first;expected={second,future.id,first};} // Single-frame sort retains permissive missing-order behavior.
+   if(!edit.frameHistory.targetFrameId.empty()){edit.frameHistory.beforeDuration=199;edit.frameHistory.afterDuration=299;}
+   edit.frameHistory.afterDisabled={{"missing-disabled-frame-is-ignored",true}};d.applyEdit(edit,true);
+   const auto& frames=d.timeline_.state().frames;CHECK(frames.size()==expected.size());for(std::size_t i=0;i<frames.size();++i){CHECK(frames[i].id==expected[i]);if(frames[i].id==edit.frameHistory.targetFrameId)CHECK(frames[i].duration==299);else if(scenario==2)CHECK(frames[i].duration==250);}
+  }
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto owner=d.cel().id;d.addFrame();
+  Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=owner;edit.pixels.push_back({0,0,0xff102030});edit.frameHistory.beforeScriptDurations.emplace();edit.frameHistory.afterScriptDurations.emplace();
+  for(const auto& f:d.timeline_.state().frames){edit.frameHistory.beforeScriptDurations->emplace_back(f.id,f.duration);edit.frameHistory.afterScriptDurations->emplace_back(f.id,250);}
+  edit.frameHistory.targetFrameId=d.timeline_.state().frames.front().id;edit.frameHistory.beforeDuration=100;edit.frameHistory.afterDuration=500;
+  d.applyEdit(edit,true);d.pushEdit(std::move(edit));
+  auto verify=[&](bool forward){CHECK(d.timeline_.resolveSurface(owner).surface->pixels[0]==(forward?0xff102030:0));const auto& frames=d.timeline_.state().frames;CHECK(frames.front().duration==(forward?500:100)&&frames.back().duration==(forward?250:100));};
+  verify(true);d.undo();verify(false);d.redo();verify(true);
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void historyShapeFailure(){
+  // Inject corrupt private payloads only after a valid entry has been costed.
+  // Both real stack directions must reject before the parent or a sibling writes.
+  for(bool forward:{false,true})for(int failure=0;failure<16;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   Document::Edit parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   good.contentHistory.targetCelId=d.cel().id;good.pixels.push_back({0,0x00010203,0xff123456});
+   if(forward){parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));}else{parent.children.push_back(std::move(bad));parent.children.push_back(std::move(good));}
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   auto& stored=const_cast<Document::Edit&>(d.history_.at(0));auto& invalid=stored.children[forward?1:0];
+   stored.snapshotHistory.beforeDimensions=std::pair<int,int>{7,9};stored.snapshotHistory.afterDimensions=std::pair<int,int>{11,13};
+   switch(failure){
+    case 0:invalid.snapshotHistory.beforeDimensions.emplace();break;
+    case 1:invalid.snapshotHistory.beforeRollback=d.captureRollbackPayload();break;
+    case 2:invalid.snapshotHistory.beforeTimeline.emplace();break;
+    case 3:invalid.snapshotHistory.beforeScriptGeometry=std::make_shared<const Document::SnapshotHistory::ScriptGeometry>();break;
+    case 4:invalid.tileHistory.beforeTilesetSlots.emplace();break;
+    case 5:invalid.tileHistory.beforeTileSelection.emplace();break;
+    case 6:invalid.tileHistory.beforeFreeTileSelection.emplace();break;
+    case 7:invalid.maskHistory.beforeMasks.emplace();break;
+    case 8:invalid.sliceHistory.beforeSlices.emplace();break;
+    case 9:invalid.layerHistory.beforeLayerStructure.emplace();break;
+    case 10:invalid.pixelSelectionHistory.beforeTrimPivot.emplace();break;
+    case 11:invalid.frameHistory.beforeAnimationLoop=false;break;
+    case 12:invalid.paletteHistory.beforePalette.emplace();break;
+    case 13:invalid.frameHistory.beforeScriptDurations.emplace();break;
+    case 14:invalid.frameHistory.targetFrameId=d.frame().id;invalid.frameHistory.beforeDuration=100;break;
+    case 15:invalid.beforeAnimationSelection=d.captureAnimationSelection();break;
+   }
+   const auto pixels=d.canvasPixels();const auto identity=d.cel().surface->pixels.identity();
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision();
+   const auto layer=d.activeLayerId_,frame=d.activeFrameId_;const auto state=d.state_;const bool dirty=d.dirty();d.change_={1,1,1,1};int notifications=0;
+   d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.width_==2&&d.height_==2&&d.canvasPixels()==pixels&&d.cel().surface->pixels.identity()==identity);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty);
+   CHECK(d.activeLayerId_==layer&&d.activeFrameId_==frame&&!notifications&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+  }
+  // Optional single-sided values retain skip/clear semantics, and a parent's
+  // leaf-only payload remains ignored when children supply its content.
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;
+  Document::Edit optional{{},d.state_,d.nextState_};optional.pixelSelectionHistory.beforeTrimPivot.emplace();optional.pixelSelectionHistory.afterTrimPivot.emplace();optional.maskHistory.beforeMaskSelection.emplace();optional.paletteHistory.afterPalette.emplace();
+  d.applyEdit(optional,true);d.applyEdit(optional,false);
+  Document::Edit parent{{},d.state_,d.nextState_};parent.children.push_back(Document::Edit{{},d.state_,d.nextState_});parent.paletteHistory.beforePalette.emplace();parent.frameHistory.beforeScriptDurations.emplace();parent.frameHistory.targetFrameId="ignored-parent-frame";d.applyEdit(parent,true);d.applyEdit(parent,false);
+  // Each cost reader validates exactly the fields its arithmetic dereferences.
+  for(int kind:{1,2,4,7,8,9,10,11,12})for(int missing=0;missing<2;++missing){
+   if(kind==8&&missing==1)continue;Document::PaletteHistory palette;palette.paletteKind=kind;palette.beforePalette.emplace();palette.afterPalette.emplace();
+   if(missing==0)palette.beforePalette.reset();else palette.afterPalette.reset();bool rejected=false;
+   try{if(kind==12)palette.metadataBytes();else palette.exclusiveBytes();}catch(const std::logic_error&){rejected=true;}CHECK(rejected);
+  }
+  Document::PaletteHistory rename;rename.paletteKind=4;rename.beforePalette.emplace();rename.afterPalette.emplace();rename.beforePalette->entries.clear();rename.afterPalette->entries.clear();bool rejected=false;try{rename.exclusiveBytes();}catch(const std::logic_error&){rejected=true;}CHECK(rejected);
+  Document::SliceHistory slices;slices.beforeSlices.emplace();rejected=false;try{slices.bytes();}catch(const std::logic_error&){rejected=true;}CHECK(rejected);
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void compoundReplayCompensation(){
+  // Force the non-stable-target route without changing canvas dimensions. A
+  // later child's pixel validation fails at replay time, after a valid sibling
+  // has completed; compensation must restore that sibling in either direction.
+  for(bool forward:{false,true})for(bool nested:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   const Pixel before=0x00010203,after=0xff123456;
+   timeline::Surface surface;surface.width=surface.height=2;surface.pixels={forward?before:after,0,0,0};install(d,std::move(surface));
+   Document::Edit parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.snapshotHistory.beforeDimensions=parent.snapshotHistory.afterDimensions=std::pair<int,int>{2,2};
+   good.contentHistory.targetCelId=d.cel().id;good.pixels.push_back({0,before,after});
+   bad.contentHistory.targetCelId=d.cel().id;bad.pixels.push_back({4,0,after});
+   if(nested){Document::Edit wrapper{{},d.state_,d.nextState_};wrapper.children.push_back(std::move(good));good=std::move(wrapper);}
+   if(forward){parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));}
+   else{parent.children.push_back(std::move(bad));parent.children.push_back(std::move(good));}
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto pixels=d.canvasPixels();const auto identity=d.cel().surface->pixels.identity();
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision();
+   int notifications=0;d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.canvasPixels()==pixels&&d.cel().surface->pixels.identity()==identity);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&!notifications);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void resourceReplayPreparation(){
+  for(bool forward:{false,true})for(bool child:{false,true}){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   CHECK(d.fillSelectionOrCanvas(0xff123456));const auto layer=d.layer().id,frame=d.frame().id;
+   CHECK(d.createAttachedMask(layer,frame));const auto mask=d.activeMaskId();
+   Document::Edit parent{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};
+   parent.snapshotHistory.beforeDimensions=parent.snapshotHistory.afterDimensions=std::pair<int,int>{2,2};
+   auto& resources=child?bad:parent;
+   resources.maskHistory.beforeMasks=resources.maskHistory.afterMasks=d.timeline_.state().masks;
+   resources.maskHistory.beforeMasks->front().mask.visible=false;resources.maskHistory.afterMasks->front().mask.visible=false;
+   resources.maskHistory.beforeMaskSelection=resources.maskHistory.afterMaskSelection=std::vector<Document::MaskSlotKey>{{"different-owner",frame}};
+   resources.maskHistory.maskToActivateOnRedo="missing-mask";resources.maskHistory.maskEditingOnUndo=std::make_pair("missing-mask",false);
+   resources.tileHistory.beforeTileSelection=resources.tileHistory.afterTileSelection=d.tileSelection_;
+   resources.tileHistory.beforeTileSelection->primary=resources.tileHistory.afterTileSelection->primary="changed";
+   bad.contentHistory.targetCelId=d.cel().id;bad.pixels.push_back({4,0,0xffabcdef});parent.children.push_back(std::move(bad));
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto slots=d.maskSelectionHistory_.slots;const auto selection=d.tileSelection_;const auto serial=d.maskSelectionHistory_.serial;
+   const auto pixels=d.canvasPixels();const auto identity=d.timeline_.state().masks.front().mask.surface.pixels.identity();
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision();
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.activeMaskId()==mask&&d.maskSelectionHistory_.slots==slots&&d.maskSelectionHistory_.serial==serial);
+   CHECK(d.tileSelection_.primary==selection.primary&&d.tileSelection_.tilesetId==selection.tilesetId&&d.timeline_.state().masks.front().mask.visible);
+   CHECK(d.timeline_.state().masks.front().mask.surface.pixels.identity()==identity&&d.canvasPixels()==pixels);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void pixelReplayFailure(){
+  // A rejected private pixel history must not activate its target cel first.
+  // Include both the contiguous and storage-coordinate mapping paths.
+  for(bool forward:{false,true})for(bool mapped:{false,true})for(int failure=0;failure<5;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;timeline::Surface surface;surface.width=surface.height=2;surface.pixels={0x00010203,0xff123456,0x80445566,0xffffffff};install(d,std::move(surface));const auto id=d.cel().id;
+   d.addLayer();d.addFrame();CHECK(d.fillSelectionOrCanvas(0xff010203));CHECK(d.createAttachedMask(d.layer().id,d.frame().id));
+   Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=id;const int width=mapped?3:2;edit.contentHistory.pixelAddress=Document::PixelAddressSpace{width,2,mapped?-1:0,0};const auto size=std::size_t(width)*2;
+   switch(failure){
+    case 0:edit.pixels.push_back({size,0,0xffabcdef});break;
+    case 1:edit.contentHistory.runs.push_back({size-1,2,0,0xffabcdef});break;
+    case 2:edit.contentHistory.dense=Document::DensePixels{0,0,width,2,std::vector<Pixel>(size-1),std::vector<Pixel>(size-1,0xffabcdef)};break;
+    case 3:edit.contentHistory.pixelAddress->width=0;edit.pixels.push_back({0,0,0xffabcdef});break;
+    case 4:edit.contentHistory.targetCelId="missing-pixel-replay-target";edit.pixels.push_back({0,0,0xffabcdef});break;
+   }
+   d.pushEdit(std::move(edit),U"拒绝无效像素历史");if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision(),state=d.state_;const auto active=d.activeLayerId_,frame=d.activeFrameId_,mask=d.activeMaskId_;const auto selected=d.selectedFrames_;const bool dirty=d.dirty(),isolated=d.maskIsolated_;
+   const auto identity=d.timeline_.resolveSurface(id).surface->pixels.identity();const auto original=*d.timeline_.resolveSurface(id).surface;const auto stamp=d.timeline_.thumbnailStorage(id);d.change_={1,1,1,1};int historyNotifications=0,animationNotifications=0;
+   d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++historyNotifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animationNotifications;});
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected);CHECK(d.activeLayerId_==active&&d.activeFrameId_==frame&&d.activeMaskId_==mask&&d.maskIsolated_==isolated&&d.selectedFrames_==selected);
+   const auto& actual=*d.timeline_.resolveSurface(id).surface;CHECK(actual.width==original.width&&actual.height==original.height&&actual.offsetX==original.offsetX&&actual.offsetY==original.offsetY&&actual.pixels==original.pixels&&actual.pixels.identity()==identity);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty);
+   CHECK(d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);const auto afterStamp=d.timeline_.thumbnailStorage(id);CHECK(afterStamp.owner==stamp.owner&&afterStamp.revision==stamp.revision);CHECK(!historyNotifications&&!animationNotifications);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void terminalHistoryContract(){
+  static_assert(std::variant_size_v<Document::TerminalHistory> == 6);
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;
+  Document::Edit edit{{},d.state_,d.nextState_};CHECK(std::holds_alternative<std::monostate>(edit.terminalHistory));const auto baseCost=edit.bytes();
+  auto mask=std::make_shared<Document::MaskRasterHistory>();mask->maskId="mask";mask->pixels.reserve(9);edit.terminalHistory=Document::MaskRasterReplay{mask};CHECK(edit.maskRaster()==mask.get()&&!edit.localPixels()&&!edit.localSnapshot()&&!edit.sourceProperties()&&!edit.tilemapPixels());CHECK(edit.bytes()==baseCost+sizeof(Document::MaskRasterHistory)+4+mask->pixels.capacity()*sizeof(Document::Delta));
+  auto pixels=std::make_shared<local_history::PixelHistoryEdit>();pixels->retainedBytes=73;edit.terminalHistory=Document::LocalPixelsReplay{pixels};CHECK(!edit.maskRaster()&&edit.localPixels()==pixels.get()&&edit.bytes()==73);
+  auto before=std::make_shared<Document::FreeTileSourceSnapshot>();auto after=std::make_shared<Document::FreeTileSourceSnapshot>();before->source.name="ab";before->source.description="d";before->source.preservedJson="{}";before->tilesetName=U"\U0001f600";after->source.name="xyz";
+  edit.terminalHistory=Document::SourcePropertiesHistory{before,after};CHECK(!edit.localPixels()&&edit.sourceProperties());CHECK(edit.bytes()==268);
+  auto copy=edit;CHECK(copy.sourceProperties()->before==before&&copy.sourceProperties()->after==after);edit.terminalHistory=std::monostate{};CHECK(copy.sourceProperties()&&!edit.sourceProperties()&&edit.bytes()==baseCost);
+  auto tilemap=std::make_shared<Document::TilemapPixelHistory>();edit.terminalHistory=Document::TilemapPixelsReplay{tilemap};CHECK(edit.tilemapPixels()==tilemap.get()&&!edit.sourceProperties());CHECK(edit.bytes()==baseCost+tilemap->bytes());
+  const auto beforePayload=d.captureRollbackPayload();d.name_=U"after local snapshot";d.modified_=true;const auto afterPayload=d.captureRollbackPayload();d.applyRollbackPayload(*beforePayload);
+  Document::LocalSnapshotHistory local;local.beforeRollback=beforePayload;local.afterRollback=afterPayload;local.rollbackBytes=0;local.beforeHistoryName=U"before local snapshot";local.afterHistoryName=U"after local snapshot";local.beforeHistoryDirty=false;local.afterHistoryDirty=true;
+  edit.terminalHistory=std::move(local);CHECK(edit.localSnapshot()&&!edit.tilemapPixels()&&edit.bytes()==0);d.applyEdit(edit,true);CHECK(d.name_==U"after local snapshot"&&d.modified_);d.applyEdit(edit,false);CHECK(d.name_==U"before local snapshot"&&!d.modified_);
+  for(bool forward:{false,true})for(int category=0;category<5;++category){
+   Document::Edit invalid{{},d.state_,d.nextState_};
+   switch(category){case 0:invalid.terminalHistory=Document::MaskRasterReplay{};break;case 1:invalid.terminalHistory=Document::LocalPixelsReplay{};break;case 2:invalid.terminalHistory=Document::TilemapPixelsReplay{};break;case 3:invalid.terminalHistory=Document::LocalSnapshotHistory{};break;case 4:invalid.terminalHistory=Document::SourcePropertiesHistory{before,{}};break;}
+   const auto name=d.name_;const auto current=d.canvasPixels();const auto revision=d.revision();d.change_={1,1,1,1};bool rejected=false;try{d.applyEdit(invalid,forward);}catch(const std::logic_error&){rejected=true;}CHECK(rejected&&d.name_==name&&d.canvasPixels()==current&&d.revision()==revision&&d.change_.x==1&&d.change_.y==1&&d.change_.w==1&&d.change_.h==1);
+   if(category==4){rejected=false;try{invalid.bytes();}catch(const std::logic_error&){rejected=true;}CHECK(rejected);}
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void historyDamageBoundary(){
+  for(bool forward:{false,true})for(bool nested:{false,true})for(int failure=0;failure<6;++failure){
+   auto document=std::make_unique<Document>(4,4);auto& d=*document;timeline::Surface live;live.width=live.height=4;live.pixels.resize(16);install(d,std::move(live));const auto id=d.cel().id;
+   Document::Edit parent{{},d.state_,d.nextState_},good{{},d.state_,d.nextState_},bad{{},d.state_,d.nextState_};good.contentHistory.targetCelId=id;good.pixels.push_back({0,0x00010203,0xff123456});switch(failure){
+    case 0:bad.contentHistory.ownerOffsets.push_back({"missing-damage-owner",0,0,1,1});break;
+    case 1:{timeline::Surface surface;surface.width=surface.height=1;surface.pixels.resize(1);bad.contentHistory.surfaceChanges.push_back({"missing-surface-owner",surface,surface});break;}
+    case 2:bad.contentHistory.targetCelId=id;bad.pixels.push_back({0,0,1});break;
+    case 3:{CelPropertiesPlan plan;plan.groups.push_back({id,{id,"missing-frozen-member"},{1,0}});plan.after={0.6,3};bad.contentHistory.celProperties=std::move(plan);break;}
+    case 4:bad.layerHistory.targetLayerId="missing-layer";bad.layerHistory.beforeVisible=true;bad.layerHistory.afterVisible=false;break;
+    case 5:bad.frameHistory.targetFrameId="missing-frame";bad.frameHistory.beforeDuration=100;bad.frameHistory.afterDuration=200;break;
+   }
+   if(forward){parent.children.push_back(std::move(good));parent.children.push_back(std::move(bad));}else{parent.children.push_back(std::move(bad));parent.children.push_back(std::move(good));}
+   if(nested){Document::Edit wrapper{{},d.state_,d.nextState_};wrapper.children.push_back(std::move(parent));parent=std::move(wrapper);}
+   d.pushEdit(std::move(parent));if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   if(failure==2){auto& stored=const_cast<Document::Edit&>(d.history_.at(d.history_.size()-1));auto& compound=nested?stored.children.front():stored;compound.children[forward?1:0].contentHistory.targetCelId="missing-pixel-owner";}
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.historyRevision(),content=d.contentRevision(),documentRevision=d.revision(),state=d.state_;
+   const auto active=d.activeLayerId_,frame=d.activeFrameId_;const bool dirty=d.dirty();const auto identity=d.timeline_.resolveSurface(id).surface->pixels.identity();
+   int notifications=0,animations=0;d.setHistoryChangeListener([&](const Document&,const HistoryStackChange&){++notifications;});d.setAnimationChangeListener([&](const Document&,const AnimationChange&){++animations;});d.change_={3,3,1,1};
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::logic_error&){rejected=true;}
+   CHECK(rejected&&d.historyPosition()==position&&d.historyBytes()==bytes&&d.historyRevision()==revision);
+   CHECK(d.timeline_.resolveSurface(id).surface->pixels[0]==0&&d.timeline_.resolveSurface(id).surface->pixels.identity()==identity);
+   CHECK(d.contentRevision()==content&&d.revision()==documentRevision&&d.state_==state&&d.dirty()==dirty&&d.activeLayerId_==active&&d.activeFrameId_==frame&&!notifications&&!animations);
+   CHECK(d.change_.x==3&&d.change_.y==3&&d.change_.w==1&&d.change_.h==1);
+  }
+  // Creating a cel in an earlier sibling is legal: initial membership is
+  // unsuitable for preflight, and undo must remove it only after pixel replay.
+  {
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto first=d.frame().id;
+   auto futureFrame=d.frame();futureFrame.id="compound-created-frame";
+   auto futureCel=d.cel();futureCel.id="compound-created-cel";futureCel.frameId=futureFrame.id;
+   Document::Edit parent{{},d.state_,d.nextState_},create{{},d.state_,d.nextState_},paint{{},d.state_,d.nextState_};
+   create.frameHistory.beforeFrames={first};create.frameHistory.afterFrames={first,futureFrame.id};create.frameHistory.detachedFrame=futureFrame;
+   create.beforeFrame=first;create.afterFrame=futureFrame.id;create.contentHistory.detachedCels={futureCel};
+   paint.contentHistory.targetCelId=futureCel.id;paint.pixels.push_back({0,0,0xff123456});
+   parent.children.push_back(std::move(create));parent.children.push_back(std::move(paint));
+   d.applyEdit(parent,true);d.pushEdit(std::move(parent));CHECK(d.timeline_.resolveSurface(futureCel.id).surface->pixels[0]==0xff123456);
+   d.undo();CHECK(!d.timeline_.findCelById(futureCel.id)&&!d.timeline_.hasFrame(futureFrame.id));
+   d.redo();CHECK(d.timeline_.resolveSurface(futureCel.id).surface->pixels[0]==0xff123456);
+  }
+  // Stable nested siblings retain repeated writes and ignored parent content.
+  {
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;const auto id=d.cel().id;
+   Document::Edit parent{{},d.state_,d.nextState_},nested{{},d.state_,d.nextState_},a{{},d.state_,d.nextState_},b{{},d.state_,d.nextState_};
+   parent.contentHistory.targetCelId="ignored-parent-owner";parent.contentHistory.pixelAddress=Document::PixelAddressSpace{2,2,0,0};parent.pixels.push_back({0,0,1});
+   a.contentHistory.targetCelId=b.contentHistory.targetCelId=id;a.pixels.push_back({0,0,0x00010203});b.pixels.push_back({0,0x00010203,0xff123456});
+   b.contentHistory.textChanges.push_back({"ignored-missing-text",{},TextCelData{}});
+   nested.children.push_back(std::move(a));nested.children.push_back(std::move(b));parent.children.push_back(std::move(nested));
+   d.applyEdit(parent,true);d.pushEdit(std::move(parent));CHECK(d.timeline_.resolveSurface(id).surface->pixels[0]==0xff123456);
+   d.undo();CHECK(d.timeline_.resolveSurface(id).surface->pixels[0]==0);d.redo();CHECK(d.timeline_.resolveSurface(id).surface->pixels[0]==0xff123456);
+  }
+  auto document=std::make_unique<Document>(4,4);auto& d=*document;timeline::Surface live;live.width=live.height=4;live.pixels.resize(16);install(d,std::move(live));
+  Document::Edit edit{{},d.state_,d.nextState_};edit.contentHistory.targetCelId=d.cel().id;edit.pixels.push_back({0,0x00010203,0xff123456});d.applyEdit(edit,true);d.pushEdit(std::move(edit));
+  for(bool forward:{false,true}){d.change_={3,3,1,1};if(forward)d.redo();else d.undo();CHECK(d.change_.x==0&&d.change_.y==0&&d.change_.w==1&&d.change_.h==1);}
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void surfaceReplaySuccess(){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLinkedFrame(true);
+  const auto alias=d.cel().id,id=d.timeline_.resolveSurface(alias).source->id;
+  TextCelData baseline;baseline.text=u"before";auto setup=d.timeline_.state();for(auto& cel:setup.cels)if(cel.id==id)cel.text=baseline;d.timeline_=timeline::Timeline(std::move(setup));
+  const auto original=*d.timeline_.resolveSurface(id).surface;
+  auto first=baseline,last=baseline;first.text=u"first";last.text=u"last";
+  auto replacement=original;replacement.width=replacement.height=2;replacement.offsetX=7;replacement.offsetY=-3;replacement.pixels={0x00010203,0x80445566,0xffffffff,0xff000000};
+  Document::Edit edit{{},d.state_,d.nextState_};
+  edit.contentHistory.targetCelId=alias;edit.pixels.push_back({0,original.pixels[0],0xffaabbcc});
+  edit.contentHistory.textChanges={{id,baseline,first},{"missing-text-is-ignored",{},last},{id,baseline,last}};
+  edit.contentHistory.ownerOffsets={{id,original.offsetX,original.offsetY,std::numeric_limits<int>::max(),12},{id,original.offsetX,original.offsetY,21,22}};
+  edit.contentHistory.surfaceChanges={{id,original,original},{id,original,replacement}};
+  const auto position=d.historyPosition();d.applyEdit(edit,true);d.pushEdit(std::move(edit),U"组合内容回放");
+  auto verify=[&](bool forward){const auto resolved=d.timeline_.resolveSurface(alias);CHECK(resolved.source&&resolved.source->id==id);const auto& live=*resolved.surface;CHECK(resolved.source->text&&resolved.source->text->text==(forward?last.text:baseline.text));const auto& expected=forward?replacement:original;CHECK(live.offsetX==expected.offsetX&&live.offsetY==expected.offsetY&&live.pixels==expected.pixels&&live.width==expected.width&&live.height==expected.height);};
+  verify(true);CHECK(d.historyPosition()==position+1);d.undo();verify(false);CHECK(d.historyPosition()==position);d.redo();verify(true);CHECK(d.historyPosition()==position+1);
+  // Existing text-only and offset-only entries do not acquire surface budget
+  // checks, and a missing text target retains the previous skip semantics.
+  Document::Edit textOnly{{},d.state_,d.nextState_};textOnly.contentHistory.textChanges={{id,last,first},{"absent",{},last}};d.applySurfaceEdit(textOnly,true);CHECK(d.timeline_.findCelById(id)->text->text==first.text);d.applySurfaceEdit(textOnly,false);CHECK(d.timeline_.findCelById(id)->text->text==last.text);
+  Document::Edit offsetOnly{{},d.state_,d.nextState_};offsetOnly.contentHistory.ownerOffsets={{id,7,-3,9,10}};d.applySurfaceEdit(offsetOnly,true);CHECK(d.timeline_.resolveSurface(alias).surface->offsetX==9);d.applySurfaceEdit(offsetOnly,false);CHECK(d.timeline_.resolveSurface(alias).surface->offsetX==7);
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void surfaceReplayFailure(){
+  // Malformed private histories exercise the real undo/redo boundary. The
+  // valid pixel, text and offset portions must not escape a later rejected surface.
+  for(bool forward:{false,true})for(int failure=0;failure<5;++failure){
+   auto document=std::make_unique<Document>(2,2);auto& d=*document;
+   if(failure==3){auto state=d.timeline_.state();auto& surface=*state.cels.front().surface;surface.width=surface.height=2048;surface.pixels.resize(std::size_t(2048)*2048);d.timeline_=timeline::Timeline(std::move(state));}
+   const auto id=d.cel().id;TextCelData baseline;baseline.text=u"unchanged";baseline.fontSize=17;auto setup=d.timeline_.state();setup.cels.front().text=baseline;d.timeline_=timeline::Timeline(std::move(setup));const auto& cel=d.timeline_.state().cels.front();
+   const auto original=*cel.surface;const auto pixelIdentity=cel.surface->pixels.identity();const auto stamp=d.timeline_.thumbnailStorage(id);
+   Document::Edit edit{{},d.state_,d.nextState_};auto changed=baseline;changed.text=u"partial write";changed.fontSize=23;
+   edit.contentHistory.targetCelId=id;edit.pixels.push_back({0,0x00010203,0xff123456});
+   edit.contentHistory.textChanges.push_back({id,changed,changed});
+   edit.contentHistory.ownerOffsets.push_back({failure==1?"missing-offset-owner":id,failure==4?std::numeric_limits<int>::max():11,12,failure==4?std::numeric_limits<int>::max():21,22});
+   auto desired=original;if(failure==0)++desired.width;
+   const int count=failure==3?16:1;
+   for(int i=0;i<count;++i)edit.contentHistory.surfaceChanges.push_back({failure==2?"missing-surface-owner":id,desired,desired});
+   d.pushEdit(std::move(edit),U"拒绝不完整回放");
+   if(forward)d.history_.undo([](const auto&){},[](const auto&){});
+   const auto position=d.historyPosition(),bytes=d.historyBytes(),revision=d.revision(),content=d.contentRevision(),history=d.historyRevision(),state=d.state_;
+   const auto active=d.activeLayerId_,frame=d.activeFrameId_;const bool dirty=d.dirty();
+   d.change_={1,1,1,1};const auto pendingDamage=d.change_;
+   bool rejected=false;try{if(forward)d.redo();else d.undo();}catch(const std::exception&){rejected=true;}
+   CHECK(rejected);const auto& live=d.timeline_.state().cels.front();
+   CHECK(live.text&&live.text->text==baseline.text&&live.text->fontSize==baseline.fontSize);
+   CHECK(live.surface->offsetX==original.offsetX&&live.surface->offsetY==original.offsetY&&live.surface->width==original.width&&live.surface->height==original.height&&live.surface->pixels==original.pixels&&live.surface->pixels.identity()==pixelIdentity);
+   CHECK(d.historyPosition()==position&&d.historyBytes()==bytes&&d.revision()==revision&&d.contentRevision()==content&&d.historyRevision()==history&&d.state_==state&&d.dirty()==dirty&&d.activeLayerId_==active&&d.activeFrameId_==frame);
+   CHECK(d.change_.x==pendingDamage.x&&d.change_.y==pendingDamage.y&&d.change_.w==pendingDamage.w&&d.change_.h==pendingDamage.h);
+   const auto afterStamp=d.timeline_.thumbnailStorage(id);CHECK(afterStamp.owner==stamp.owner&&afterStamp.revision==stamp.revision);
+  }
+ }
+ static MOON_HISTORY_FIXTURE_NOINLINE void lockParentGroup(Document& d){auto state=d.timeline_.state();timeline::Group parent;parent.id="paste-locked-parent";parent.name=U"Parent";parent.locked=true;timeline::Group inner;inner.id="paste-inner";inner.name=U"Inner";inner.parentGroupId=parent.id;state.groups={parent,inner};state.layers.front().groupId=inner.id;d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void fillStrokeBudget(Document& d){auto state=d.timeline_.state();state.frames.push_back({"budget-other-frame",100});auto& c=state.cels.front();c.frameId="budget-other-frame";c.surface->width=c.surface->height=8192;c.surface->pixels.resize(std::size_t(8192)*8192);d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void releaseStrokeBudgetRow(Document& d){auto* s=const_cast<timeline::Surface*>(d.timeline_.resolveSurface(d.timeline_.state().cels.front().id).surface);--s->height;s->pixels.resize(std::size_t(s->width)*s->height);}
+ static bool lastDense(const Document& d){return !d.history_.empty()&&bool(d.history_.latest().contentHistory.dense)&&d.history_.latest().pixels.empty();}
+ static MOON_HISTORY_FIXTURE_NOINLINE void fillBackdrop(Document& d){auto state=d.timeline_.state();auto layer=state.layers.front();layer.id+="-backdrop";auto c=state.cels.front();c.id+="-backdrop";c.layerId=layer.id;for(int y=0;y<d.height_;++y)for(int x=0;x<d.width_;++x)c.surface->pixels[std::size_t(y)*d.width_+x]=x==d.width_/2?0xffeeeeee:0xff334455;state.layers.push_back(std::move(layer));state.cels.push_back(std::move(c));d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void removeFreeSources(Document& d){auto state=d.timeline_.state();for(auto& layer:state.layers)if(layer.id==d.layer().id){layer.freeTiles->sources.clear();layer.freeTiles->legacyTilesetId.clear();}d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void emptyOnlyActiveSlot(Document& d){auto state=d.timeline_.state();const auto layer=d.layer().id,frame=d.frame().id;state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==layer&&c.frameId==frame;}),state.cels.end());d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void sparseSelection(Document& d){auto state=d.timeline_.state();state.frames.push_back({"sparse-middle",100});state.frames.push_back({"sparse-last",100});auto last=state.cels.front();last.id="sparse-last-cel";last.frameId="sparse-last";state.cels.push_back(last);d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void emptyActiveSlot(Document& d){auto state=d.timeline_.state();state.cels.clear();d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void install(Document& d,timeline::Surface s){auto state=d.timeline_.state();const auto id=d.timeline_.resolveSurface(d.cel().id).source->id;auto it=std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.id==id;});it->surface=std::move(s);d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void expand(Document& d,raster::Rect64 r){const auto& s=*d.timeline_.resolveSurface(d.cel().id).surface;auto candidate=raster::expanded(s,r);if(candidate)install(d,std::move(*candidate));}
  static std::vector<std::string> secondAdjustmentOwner(Document& d){auto state=d.timeline_.state();auto l=state.layers.front();l.id+="-adjustment-other";auto c=state.cels.front();c.id+="-adjustment-other";c.layerId=l.id;c.linkedCelId.reset();c.runtimeSharedCelId.reset();state.layers.push_back(l);state.cels.push_back(std::move(c));auto ids=std::vector<std::string>{state.layers.front().id,l.id};d.timeline_=timeline::Timeline(std::move(state));return ids;}
- static void invalidateLastAdjustmentPreview(Document& d){auto& p=*d.adjustment_;auto* s=const_cast<timeline::Surface*>(p.preview.resolveSurface(p.targets.back()).surface);++s->width;}
- static void changeMaskMetadata(Document& d){auto state=d.timeline_.state();for(auto& slot:state.masks){slot.mask.moveWithOwner=false;slot.mask.autoLinkAnimationCels=true;}d.timeline_=timeline::Timeline(std::move(state));}
- static void dense(Document& d,Pixel ink){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;Document::DensePixels dense{10,12,32,24,std::vector<Pixel>(32*24),std::vector<Pixel>(32*24,ink)};e.dense=std::move(dense);d.applyEdit(e,true);d.pushEdit(std::move(e));}
- static void run(Document& d,Pixel ink){Document::Edit e{{},d.state_,d.nextState_};e.targetCelId=d.cel().id;e.runs.push_back({60,70,0,ink});d.applyEdit(e,true);d.pushEdit(std::move(e));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void invalidateLastAdjustmentPreview(Document& d){auto& p=*d.adjustment_;auto* s=const_cast<timeline::Surface*>(p.preview.resolveSurface(p.targets.back()).surface);++s->width;}
+ static MOON_HISTORY_FIXTURE_NOINLINE void changeMaskMetadata(Document& d){auto state=d.timeline_.state();for(auto& slot:state.masks){slot.mask.moveWithOwner=false;slot.mask.autoLinkAnimationCels=true;}d.timeline_=timeline::Timeline(std::move(state));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void dense(Document& d,Pixel ink){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;Document::DensePixels dense{10,12,32,24,std::vector<Pixel>(32*24),std::vector<Pixel>(32*24,ink)};e.contentHistory.dense=std::move(dense);d.applyEdit(e,true);d.pushEdit(std::move(e));}
+ static MOON_HISTORY_FIXTURE_NOINLINE void run(Document& d,Pixel ink){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.runs.push_back({60,70,0,ink});d.applyEdit(e,true);d.pushEdit(std::move(e));}
 };
 }
 using namespace moon;
@@ -344,7 +1125,26 @@ __declspec(noinline) void verifyRepeatedClipboardRegions(){
   d.cancelFloatingPaste();oracle->cancelFloatingPaste();CHECK(d.canvasPixels()==before&&d.historyPosition()==history&&!d.dirty()&&selectionEqual(d.selection(),SelectionMask{2,3,1,1,{}}));begin();CHECK(d.floatingOverlayRegion({0,0,260,260})==preview);const bool changed=d.commitFloatingPaste(),oracleChanged=oracle->commitFloatingPaste();if(changed!=(preview!=before)||oracleChanged!=changed||d.canvasPixels()!=preview||d.canvasPixels()!=oracle->canvasPixels())throw std::runtime_error("Repeated clipboard commit mode="+std::to_string(int(mode))+" size="+std::to_string(size.x)+","+std::to_string(size.y)+" at="+std::to_string(at.x)+","+std::to_string(at.y)+" changed="+std::to_string(changed)+","+std::to_string(oracleChanged)+" preview="+std::to_string(d.canvasPixels()==preview)+" oracle="+std::to_string(d.canvasPixels()==oracle->canvasPixels()));d.undo();CHECK(d.canvasPixels()==before&&selectionEqual(d.selection(),SelectionMask{2,3,1,1,{}}));d.redo();CHECK(d.canvasPixels()==preview);
  }
 }
-int main(){try{verifyRepeatedClipboardRegions();verifyFreeTileBlankFrameFromAbsent();verifyAbsentGradientBudget();verifyLinkedAbsentTools();verifyLinkedAbsentBrush();verifyUnrelatedLinkedLayersAbsentTools();verifyPasteMissingAnchorDirect();verifySelectionPasteInactiveMissing();verifyCelPasteMissingDestination();verifyCompactFrameBudget();verifyLinkedFrameAbsentTarget();verifyBlankFrameGeometry();verifyFrameFromAbsentSlot();verifyConnectAcrossAbsentSlot();verifyAbsentGeometryRollback();verifyAbsentFrameGeometry();verifyAbsentDisconnect();verifyAbsentStrokeBudget();verifyAbsentSmooth();verifyAbsentFloatingCenter();verifyAbsentPaste();verifyAbsentHoverComposition();verifyAbsentSelectionBrush();verifySparseMigration();constexpr Pixel ink=0xfff07929;
+__declspec(noinline) void verifyAbsentBrushBindings(){
+ for(bool linked:{false,true})for(bool failObserver:{false,true}){
+  auto doc=std::make_unique<Document>(8,6);auto& d=*doc;const auto first=d.layer().id;
+  d.beginStroke({0,0},0xff556677);CHECK(d.commitStroke());RasterHistoryFixture::fillBackdrop(d);
+  if(linked){const auto peer=d.createLinkedLayer(first);CHECK(!peer.empty());d.selectLayer(first);}
+  RasterHistoryFixture::emptyOnlyActiveSlot(d);d.clearHistory();
+  const auto backdrop=d.timeline().state().cels.front().id;
+  // Only the linked component may replace a binding. The independent backdrop
+  // keeps its payload identity through materialization and history navigation.
+  const timeline::Surface* independent=nullptr;std::string independentId;
+  for(const auto& c:d.timeline().state().cels)if(c.layerId.find("backdrop")!=std::string::npos){independent=&*c.surface;independentId=c.id;break;}
+  CHECK(independent);const auto identity=independent->pixels.identity();
+  if(failObserver)d.setHistoryChangeListener([](const Document&,const HistoryStackChange&){throw std::runtime_error("observer failure");});
+  d.beginStroke({2,2},0xff123456);bool failed=false;try{CHECK(d.commitStroke());}catch(const std::runtime_error&){if(!failObserver)throw;failed=true;}
+  CHECK(failed==failObserver&&!d.active()&&d.historySize()==1);d.setHistoryChangeListener({});
+  auto unchanged=[&]{CHECK(d.timeline().resolveSurface(independentId).surface->pixels.identity()==identity);};
+  unchanged();CHECK(d.canvasPixels()[18]==0xff123456);d.undo();unchanged();CHECK(d.canvasPixels()[18]==0);d.redo();unchanged();CHECK(d.canvasPixels()[18]==0xff123456);
+ }
+}
+int main(){try{RasterHistoryFixture::groupPreparationAtomicity();RasterHistoryFixture::localTerminalPreparation();RasterHistoryFixture::leafRetainedCompensation();RasterHistoryFixture::leafRetainedReapply();RasterHistoryFixture::leafLinkedWriteOrdering();RasterHistoryFixture::palettePreparedOwnership();RasterHistoryFixture::rollbackLateFailure();RasterHistoryFixture::structuralSiblingFailure();RasterHistoryFixture::replayFailureFocus();RasterHistoryFixture::structuralLateFailure();RasterHistoryFixture::scalarLateFailure();RasterHistoryFixture::snapshotLateFailure();RasterHistoryFixture::structuralSurfaceTransferFailure();RasterHistoryFixture::animationSelectionSnapshot();RasterHistoryFixture::snapshotPreflightFailure();RasterHistoryFixture::celMetadataFailure();RasterHistoryFixture::indexPreparationFailure();RasterHistoryFixture::celMetadataSuccess();RasterHistoryFixture::contentTargetFailure();RasterHistoryFixture::contentTargetSuccess();RasterHistoryFixture::frameReplayFailure();RasterHistoryFixture::frameReplaySuccess();RasterHistoryFixture::historyShapeFailure();RasterHistoryFixture::compoundReplayCompensation();RasterHistoryFixture::resourceReplayPreparation();RasterHistoryFixture::pixelReplayFailure();RasterHistoryFixture::terminalHistoryContract();RasterHistoryFixture::historyDamageBoundary();RasterHistoryFixture::surfaceReplayFailure();RasterHistoryFixture::surfaceReplaySuccess();verifyAbsentBrushBindings();verifyRepeatedClipboardRegions();verifyFreeTileBlankFrameFromAbsent();verifyAbsentGradientBudget();verifyLinkedAbsentTools();verifyLinkedAbsentBrush();verifyUnrelatedLinkedLayersAbsentTools();verifyPasteMissingAnchorDirect();verifySelectionPasteInactiveMissing();verifyCelPasteMissingDestination();verifyCompactFrameBudget();verifyLinkedFrameAbsentTarget();verifyBlankFrameGeometry();verifyFrameFromAbsentSlot();verifyConnectAcrossAbsentSlot();verifyAbsentGeometryRollback();verifyAbsentFrameGeometry();verifyAbsentDisconnect();verifyAbsentStrokeBudget();verifyAbsentSmooth();verifyAbsentFloatingCenter();verifyAbsentPaste();verifyAbsentHoverComposition();verifyAbsentSelectionBrush();verifySparseMigration();constexpr Pixel ink=0xfff07929;
  // Original legacy history.test.ts dense RGBA expansion input and expected pixels.
  {Document d(64,64);RasterHistoryFixture::dense(d,ink);RasterHistoryFixture::expand(d,{-8,-6,64,64});d.undo();CHECK(raster::readWorld(surface(d),10,12)==0&&raster::readWorld(surface(d),41,35)==0);d.redo();CHECK(raster::readWorld(surface(d),10,12)==ink&&raster::readWorld(surface(d),41,35)==ink);CHECK(surface(d).width==72&&surface(d).offsetX==-8);}
  // Native runs can cross captured rows; splitting preserves both rows after a stride change.

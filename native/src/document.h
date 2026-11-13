@@ -1,5 +1,6 @@
 #include "timelapse.h"
 #include <functional>
+#include <atomic>
 #include "layer_metadata.h"
 #include "layer_panel_tree.h"
 #include "layer_panel_state.h"
@@ -7,6 +8,9 @@
 #include "outline_samples.h"
 #include "tile_repeat.h"
 #include "history_change.h"
+#include "animation_change.h"
+#include "history_store.h"
+#include "history_replay.h"
 #include <map>
 #include "project_information.h"
 #include "document_slices.h"
@@ -19,6 +23,7 @@
 #include "custom_grid.h"
 #include "selection_transform.h"
 #include "selection_model.h"
+#include "stroke_pixel_lookup.h"
 #include "selection_tools.h"
 #include "smooth_brush.h"
 #include "gradient_model.h"
@@ -40,6 +45,7 @@
 #include <vector>
 #include <unordered_map>
 #include <optional>
+#include <variant>
 #include <string>
 #include <memory>
 #include <filesystem>
@@ -102,7 +108,7 @@ public:
   void acknowledgeRecordingCapture(){recordingDirty_={};recordingDirtyFrom_=recordingDirtyTo_=contentRevision_;recordingDirtyValid_=true;}
   void markTimelapseModified(){modified_=true;++revision_;}
   std::shared_ptr<timelapse::Session> recordingSession()const{return recordingBinding_.session;}
-  void setRecordingSession(std::shared_ptr<timelapse::Session> session,std::function<void(Document&,bool)> observer){recordingBinding_.session=std::move(session);recordingBinding_.observer=std::move(observer);}
+  void setRecordingSession(std::shared_ptr<timelapse::Session> session,std::function<void(Document&,bool)> observer,std::function<void(const timelapse::Settings&)> restore={}){recordingBinding_.session=std::move(session);recordingBinding_.observer=std::move(observer);recordingBinding_.restore=std::move(restore);}
   bool hasTilemapContent()const;
   bool hasFreeTileContent()const {return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="free-tile";});}
   bool createFreeTileLayer(std::u32string name,const std::string& sharedSet={});
@@ -262,7 +268,7 @@ public:
   bool dirty() const { return modified_ || !pending_.empty() || !liquifyDeltas_.empty(); }
   std::uint64_t identity() const {return identity_;}
   HistoryPanelTimeline historyTimeline()const;
-  std::size_t historyPosition()const{return position_;}
+  std::size_t historyPosition()const{return history_.position();}
   std::uint64_t historyRevision()const{return historyRevision_;}
   void setHistoryChangeListener(HistoryChangeBinding::Observer observer){historyChangeBinding_.set(std::move(observer));}
   void clearHistory();
@@ -282,11 +288,11 @@ public:
   // while a frame view invalidation alone may arrive during journal I/O.
   std::uint64_t contentMutationRevision()const{return contentMutationRevision_;}
   PixelRegion lastContentChange() const {return change_;}
-  std::size_t historyBytes() const {return historyBytes_;}
+  std::size_t historyBytes() const {return history_.bytes();}
   std::uint64_t tilemapCacheCellWrites()const{return tilemapCacheCellWrites_;}
   bool active(bool includeFloating=true) const { return bool(freeSourceProperties_) || bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || (includeFloating&&floating_.has_value()) || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
-  bool canUndo() const { return position_ > 0; }
-  bool canRedo() const { return position_ < history_.size(); }
+  bool canUndo() const { return history_.canUndo(); }
+  bool canRedo() const { return history_.canRedo(); }
   std::size_t historySize() const { return history_.size(); }
   void setHistoryEntryLimit(std::size_t limit);
   const PaletteState& palette() const {return palette_;}
@@ -328,7 +334,8 @@ public:
   std::size_t activeLayerIndex() const;
   void selectLayer(const std::string& id);
   std::size_t activeFrameIndex() const;
-  void selectFrame(const std::string& id);
+  void selectFrame(const std::string& id,AnimationFrameOrigin origin=AnimationFrameOrigin::Manual);
+  void setAnimationChangeListener(AnimationChangeBinding::Observer observer){animationChangeBinding_.set(std::move(observer));}
   std::vector<Pixel> crossfadeTweenPreview(const std::string& startFrame,const std::string& layerId,const CrossfadeTweenOptions&,int step,const std::vector<std::string>& selectedLayers={}) const;
   bool generateTransformTween(const std::string& startFrame,const std::string& layerId,const TransformTweenOptions&,const std::vector<std::string>& selectedLayers={},std::optional<TransformPoint> selectionPivot={});
   bool generateCrossfadeTween(const std::string& startFrame,const std::string& layerId,const CrossfadeTweenOptions&,const std::vector<std::string>& selectedLayers={},std::optional<TransformPoint> pivot={});
@@ -384,7 +391,7 @@ public:
   void commitFrameDuration();
   bool animationLoop() const {return animationLoop_;}
   void setAnimationLoop(bool loop);
-  void setImportedLoop(bool loop) {animationLoop_=loop;}
+  void setImportedLoop(bool loop) {if(animationLoop_==loop)return;animationLoop_=loop;animationChangeBinding_.publish(*this,{AnimationChange::Kind::LoopChanged});}
   void addLayer();
   std::vector<std::string> layerStyleTargets()const;
   std::optional<timeline::ColorOverlayStyle> layerStyle(const std::string&)const;
@@ -415,6 +422,35 @@ public:
     std::string layerAnchor,celAnchor;
     std::vector<std::string> maskRows;
   };
+  struct AnimationSelectionSnapshot {
+    std::uint64_t identity=0;
+    TimelineSelection selection;
+    std::vector<std::string> frames,groups;
+    std::optional<std::string> groupFocus;
+    std::string activeLayer,activeFrame,frameAnchor,activeMask;
+    std::optional<MaskSlotKey> activeMaskSlot;
+    bool maskIsolated=false;
+    std::optional<AnimationSessionSelection> sessionSelection;
+  };
+  void setAnimationSelectionAccess(AnimationChangeBinding::SelectionAccess access){animationChangeBinding_.setSelectionAccess(std::move(access));}
+  AnimationSelectionSnapshot captureAnimationSelection()const;
+  bool restoreAnimationSelection(AnimationSelectionSnapshot snapshot);
+  void normalizeAnimationSelection();
+  class AnimationSelectionHistoryScope {
+   friend class Document;
+  public:
+   AnimationSelectionHistoryScope(Document&,bool normalize);
+   ~AnimationSelectionHistoryScope()noexcept(false);
+   AnimationSelectionHistoryScope(const AnimationSelectionHistoryScope&)=delete;
+   AnimationSelectionHistoryScope& operator=(const AnimationSelectionHistoryScope&)=delete;
+  private:
+   Document& document_;
+   AnimationSelectionSnapshot before_;
+   std::uint64_t state_,pushRevision_;
+   int exceptions_;
+   bool normalize_;
+  };
+  AnimationSelectionHistoryScope trackAnimationSelectionHistory(bool normalize=false){return AnimationSelectionHistoryScope(*this,normalize);}
   const TimelineSelection& timelineSelection() const {return timelineSelection_;}
   const std::string& frameSelectionAnchor() const {return frameAnchor_;}
   void restoreFrameSelectionAnchor(std::string value){frameAnchor_=std::move(value);}
@@ -473,7 +509,8 @@ public:
   void cancelLayerOpacity();
   const timeline::Timeline& timeline() const {timeline_.state_.canvasWidth=width_;timeline_.state_.canvasHeight=height_;return timeline_;}
   const std::optional<SelectionMask>& selection() const {return selection_;}
-  void previewSelection(std::optional<SelectionMask> value){selection_=std::move(value);}
+  std::uint64_t selectionRevision() const {return selectionRevision_;}
+  void previewSelection(std::optional<SelectionMask> value){setSelectionValue(std::move(value));animationChangeBinding_.publish(*this,{AnimationChange::Kind::SelectionPreviewChanged});}
   void commitSelection(std::optional<SelectionMask> before,std::optional<SelectionMask> after,bool resetFrames=false);
   void selectAllPixels();void deselectPixels();void invertPixels();
   std::optional<SelectionClipboard> copyPixels();
@@ -612,6 +649,7 @@ public:
   bool filterPreviewActive()const{return filterPreview_.has_value();}
   const timeline::Timeline& displayTimeline()const{const auto& value=filterPreview_&&filterPreview_->timeline?*filterPreview_->timeline:adjustment_?adjustment_->preview:(floating_&&floating_->tilemapPreview?*floating_->tilemapPreview->tilemapDisplay:(gradient_&&gradient_->tilemapDisplay?*gradient_->tilemapDisplay:timeline_));value.state_.canvasWidth=width_;value.state_.canvasHeight=height_;return value;}
   bool colorAdjustmentActive()const{return adjustment_.has_value();}
+  std::uint64_t colorAdjustmentSession()const{return adjustment_?adjustment_->session:0;}
   bool beginGradient(Point seed,WandOptions options={});
   bool updateGradient(const GradientSpec& spec,WandOptions options);
   bool commitGradient();void cancelGradient();
@@ -700,10 +738,37 @@ private:
  };
  std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;
  std::shared_ptr<const RollbackPayload> takeRollbackPayload()&&;
- void applyRollbackPayload(const RollbackPayload&,bool preserveRecording=false,const std::string* viewedFrame=nullptr);
+ struct RollbackReplay {
+  RollbackPayload payload;
+  timeline::Timeline timeline;
+  TimelineSelection selection;
+  std::vector<std::string> frames,groups;
+  std::optional<std::string> groupFocus;
+  std::string frameAnchor;
+  std::optional<SelectionMask> pixelsSelection;
+  SelectionPivotHistory pivot;
+  PixelRegion damage;
+  std::uint64_t brushRevision=0,selectionRevision=0;
+  bool preserveRecording=false,applied=false;
+  explicit RollbackReplay(const RollbackPayload& source):payload(source),timeline(std::move(payload.timeline)){}
+ };
+ void applyRollbackPayload(const RollbackPayload&,bool preserveRecording=false,const std::string* viewedFrame=nullptr,std::unique_ptr<RollbackReplay>* retained=nullptr);
+ void exchangeRollbackPayload(RollbackReplay&)noexcept;
+ void applyPreparedRollback(RollbackReplay&);
   std::optional<OutlineSettings> outlineSettings_;
   std::string activeMaskId_;bool maskIsolated_=false;
-  std::optional<std::vector<timeline::MaskSlot>> maskStrokeBefore_;
+  struct MaskRasterGeometry {
+    int width,height,offsetX,offsetY;std::optional<int> storageOriginX,storageOriginY;
+    static MaskRasterGeometry capture(const timeline::Surface& s){return {s.width,s.height,s.offsetX,s.offsetY,s.storageOriginX,s.storageOriginY};}
+    bool matches(const timeline::Surface& s)const{return width==s.width&&height==s.height&&offsetX==s.offsetX&&offsetY==s.offsetY&&storageOriginX==s.storageOriginX&&storageOriginY==s.storageOriginY;}
+  };
+  struct MaskStrokeBaseline {std::string maskId;MaskRasterGeometry geometry;std::optional<timeline::Surface> original;};
+  struct MaskRasterHistory {std::string maskId;MaskRasterGeometry before,after;int canvasWidth;std::vector<Delta> pixels;};
+  std::optional<MaskStrokeBaseline> maskStroke_;
+  void prepareMaskStroke(bool expand);
+  void rollbackMaskStroke();
+  bool commitMaskStroke();
+  void applyMaskRasterHistory(const MaskRasterHistory&,bool forward);
   std::vector<timeline::MaskSlot> maskClipboard_;
   std::uint32_t maskClipboardSequence_=0;
   MaskTransferResult transferAttachedMasks(const std::vector<timeline::MaskSlot>& sources,const std::vector<MaskSlotKey>& selection,const MaskSlotKey& anchor,const MaskSlotKey& target,bool move);
@@ -727,81 +792,165 @@ private:
     std::size_t bytes()const;
   };
   struct LayerTilesetHistory {struct Entry{std::size_t index;tiles::Tileset value;};std::vector<Entry> before,after;std::size_t bytes()const;};
-  struct Edit {
-    std::vector<Delta> pixels; std::uint64_t beforeState, afterState;
-    std::shared_ptr<const local_history::PixelHistoryEdit> localHistoryPixels;
-    // A restored structural entry also restores root name/dirty. Ordinary
-    // project backup rollback retains its existing root-field semantics.
-    bool localHistorySnapshot=false,beforeHistoryDirty=false,afterHistoryDirty=false;
-    std::u32string beforeHistoryName,afterHistoryName;
+  // Composable layer payload; focus, selection and shared cels stay on Edit.
+  struct LayerHistory {
+    std::shared_ptr<const LayerTilesetHistory> layerTilesets;
+    std::optional<LayerMetadataSnapshot> beforeLayerMetadata,afterLayerMetadata;std::optional<std::size_t> layerMetadataBytes;
+    std::vector<std::pair<std::string,double>> beforeLayerOpacityProjection,afterLayerOpacityProjection;
+    std::optional<bool> beforeVisible,afterVisible,beforeLocked,afterLocked,beforeAutoLink,afterAutoLink;
+    std::vector<std::string> beforeOrder,afterOrder;
+    std::optional<DocumentLayer> detachedLayer;
+    std::optional<double> beforeOpacity,afterOpacity;
+    std::optional<std::string> beforeBlendMode,afterBlendMode;
+    std::optional<std::u32string> beforeName,afterName;
+    mutable std::vector<DocumentCel> structureCels;
+    std::size_t structureCelBytes=0;
+    std::optional<LayerStructureSnapshot> beforeLayerStructure,afterLayerStructure;
+    std::optional<GroupUiSnapshot> beforeGroupUi,afterGroupUi;
+    std::string targetLayerId;
+    std::size_t tilesetBytes()const;
+    std::size_t nameBytes()const;
+    std::size_t propertyBytes()const;
+    std::size_t orderBytes()const;
+    std::size_t projectionBytes()const;
+    std::size_t snapshotBytes()const;
+  };
+  // Composable frame payload; shared cels, focus and selection stay on Edit.
+  struct FrameHistory {
+    std::optional<std::vector<timeline::LoopSection>> beforeLoops,afterLoops;
+    std::optional<bool> beforeAnimationLoop,afterAnimationLoop;
+    std::optional<DocumentFrame> detachedFrame;
+    std::vector<DocumentFrame> detachedFrames;
+    std::vector<std::string> beforeFrames,afterFrames;
+    std::vector<std::pair<std::string,bool>> beforeDisabled,afterDisabled;
+    std::optional<int> beforeDuration,afterDuration;
+    std::optional<std::vector<std::pair<std::string,int>>> beforeScriptDurations,afterScriptDurations;
+    std::string targetFrameId;
+    std::size_t durationBytes()const;
+    std::size_t loopBytes()const;
+    std::size_t frameBytes()const;
+  };
+  // Composable palette payload; pixel children and transaction state stay on Edit.
+  struct PaletteHistory {
+    std::optional<PaletteState> beforePalette,afterPalette;
+    std::optional<PaletteViewSelection> beforePaletteView,afterPaletteView;
+    int paletteKind=0, colorId=0; // 1 add, 2 remove slots, 3 color edit
+    std::optional<std::size_t> exclusiveBytes()const;
+    std::size_t metadataBytes()const;
+    std::size_t snapshotBytes()const;
+  };
+  // Composable domains; shared timeline, focus and children remain on Edit.
+  struct MaskHistory {
     std::optional<std::vector<timeline::MaskSlot>> beforeMasks,afterMasks;
     std::optional<std::string> maskToActivateOnRedo;
     std::optional<std::pair<std::string,bool>> maskEditingOnUndo;
     std::optional<std::vector<std::pair<std::string,std::string>>> beforeMaskSelection,afterMaskSelection;
     std::optional<std::optional<MaskSlotKey>> beforeMaskSelectionAnchor,afterMaskSelectionAnchor;
+    struct MaskContextHistory {std::string before,after;bool beforeIsolated=false,afterIsolated=false;};
+    std::shared_ptr<const MaskContextHistory> maskContext;
+    std::size_t resourceBytes(const MaskRasterHistory* maskRaster)const;
+    std::size_t contextBytes()const;
+  };
+  struct PixelSelectionHistory {
+    std::optional<std::optional<TransformPoint>> beforeTrimPivot,afterTrimPivot;
+    bool pixelSelectionEdit=false;
+    std::optional<SelectionMask> beforePixelsSelection,afterPixelsSelection;
+    std::size_t bytes()const;
+  };
+  // Domains compose inside one Edit; state, children and focus remain shared.
+  struct SnapshotHistory {
     std::shared_ptr<const RollbackPayload> beforeRollback,afterRollback;std::size_t rollbackBytes=0;
-  std::optional<SliceState> beforeSlices,afterSlices;
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
     std::optional<timeline::State> beforeTimeline,afterTimeline;
-    std::optional<std::unordered_map<std::string,std::array<int,4>>> beforeScriptGeometry,afterScriptGeometry;
+    // Immutable history geometry: pointer moves cannot allocate (MSVC map moves can).
+    using ScriptGeometry=std::unordered_map<std::string,std::array<int,4>>;
+    std::shared_ptr<const ScriptGeometry> beforeScriptGeometry,afterScriptGeometry;
+    std::optional<std::size_t> exclusiveBytes()const;
+    std::size_t timelineBytes()const;
+    std::size_t geometryBytes()const;
+  };
+  struct LocalSnapshotHistory {
+    std::shared_ptr<const RollbackPayload> beforeRollback,afterRollback;std::size_t rollbackBytes=0;
+    bool beforeHistoryDirty=false,afterHistoryDirty=false;
+    std::u32string beforeHistoryName,afterHistoryName;
+  };
+  struct SourcePropertiesHistory {
+    std::shared_ptr<const FreeTileSourceSnapshot> before,after;
+  };
+  struct TileResourceHistory {
     std::optional<TilemapSelection> beforeTileSelection,afterTileSelection;
-    std::shared_ptr<const FreeTileSourceSnapshot> beforeSourceProperties,afterSourceProperties;
     bool freeTileSourceAddition=false,freeTileSourceDeletion=false,freeTileSourceReorder=false;
-    std::shared_ptr<const TilemapPixelHistory> tilemapPixels;
-    std::shared_ptr<const LayerTilesetHistory> layerTilesets;
     std::string tilesetSlotsId;std::optional<std::vector<std::optional<std::string>>> beforeTilesetSlots,afterTilesetSlots;
+    std::optional<FreeTileSelectionSnapshot> beforeFreeTileSelection,afterFreeTileSelection;
+    std::optional<std::size_t> exclusiveBytes(const SourcePropertiesHistory* source)const;
+    std::size_t pixelBytes(const TilemapPixelHistory* tilemapPixels)const;
+    std::size_t slotBytes()const;
+  };
+  struct SliceHistory {
+  std::optional<SliceState> beforeSlices,afterSlices;
+    std::size_t bytes()const;
+  };
+  struct ContentHistory {
     std::vector<PixelRun> runs;
     std::optional<DensePixels> dense;
     std::optional<PixelAddressSpace> pixelAddress;
-    std::optional<LayerMetadataSnapshot> beforeLayerMetadata,afterLayerMetadata;std::optional<std::size_t> layerMetadataBytes;
     std::shared_ptr<const FloatingPaste> restoredClipboard;
     std::size_t restoredClipboardBytes=0;
-    bool documentChanged=true;
-    std::optional<std::optional<TransformPoint>> beforeTrimPivot,afterTrimPivot;
-    std::vector<std::pair<std::string,double>> beforeLayerOpacityProjection,afterLayerOpacityProjection;
-    bool pixelSelectionEdit=false;
-    std::optional<SelectionMask> beforePixelsSelection,afterPixelsSelection;
-    std::optional<PaletteState> beforePalette,afterPalette;
-    std::optional<PaletteViewSelection> beforePaletteView,afterPaletteView;
     std::string targetCelId; // Empty only for non-pixel palette edits.
-    std::optional<bool> beforeVisible,afterVisible,beforeLocked,afterLocked,beforeAutoLink,afterAutoLink;
-    std::string targetLayerId,beforeActive,afterActive;
-    std::vector<std::string> beforeOrder,afterOrder;
-    std::optional<DocumentLayer> detachedLayer;
     std::optional<DocumentCel> detachedCel;
     std::vector<DocumentCel> detachedCels;
     std::vector<DocumentCel> beforeCels,afterCels;
-    std::optional<std::vector<timeline::LoopSection>> beforeLoops,afterLoops;
-    std::optional<bool> beforeAnimationLoop,afterAnimationLoop;
-    std::optional<std::vector<std::string>> beforeSelection,afterSelection;
     std::optional<CelPropertiesPlan> celProperties;
-    std::vector<Edit> children;
-    std::optional<TimelineSelection> beforeTimelineSelection,afterTimelineSelection;
-    std::optional<std::string> beforeFrameAnchor,afterFrameAnchor;
-
-    std::optional<DocumentFrame> detachedFrame;
-    std::vector<DocumentFrame> detachedFrames;
-    std::vector<std::string> beforeFrames,afterFrames;
-    std::string beforeFrame,afterFrame,targetFrameId;
-    std::vector<std::pair<std::string,bool>> beforeDisabled,afterDisabled;
-    std::optional<int> beforeDuration,afterDuration;
-    std::optional<std::vector<std::pair<std::string,int>>> beforeScriptDurations,afterScriptDurations;
-    std::optional<double> beforeOpacity,afterOpacity;
-    std::optional<std::string> beforeBlendMode,afterBlendMode;
-    std::optional<std::u32string> beforeName,afterName;
-    int paletteKind=0, colorId=0; // 1 add, 2 remove slots, 3 color edit
-    struct MaskContextHistory {std::string before,after;bool beforeIsolated=false,afterIsolated=false;};
-    std::shared_ptr<const MaskContextHistory> maskContext;
     std::vector<SurfaceChange> surfaceChanges;
     struct OwnerOffsetChange{std::string ownerId;int beforeX,beforeY,afterX,afterY;};
     std::vector<OwnerOffsetChange> ownerOffsets;
     struct TextChange {std::string id;std::optional<TextCelData> before,after;};
     std::vector<TextChange> textChanges;
-    mutable std::vector<DocumentCel> structureCels;
-    std::size_t structureCelBytes=0;
-    std::optional<LayerStructureSnapshot> beforeLayerStructure,afterLayerStructure;
-    std::optional<GroupUiSnapshot> beforeGroupUi,afterGroupUi;
-    std::optional<FreeTileSelectionSnapshot> beforeFreeTileSelection,afterFreeTileSelection;
+    std::optional<std::size_t> exclusiveBytes()const;
+    std::size_t textBytes()const;
+    std::size_t addressBytes()const;
+    std::size_t pixelBytes(std::size_t deltaCount)const;
+    std::size_t denseBytes()const;
+    std::size_t celBytes()const;
+    std::size_t offsetBytes()const;
+    std::size_t surfaceBytes()const;
+  };
+  // Only the five terminal replay categories are mutually exclusive.
+  // Composite resources, selection, focus and children remain on their parent.
+  using MaskRasterReplay=std::shared_ptr<const MaskRasterHistory>;
+  using LocalPixelsReplay=std::shared_ptr<const local_history::PixelHistoryEdit>;
+  using TilemapPixelsReplay=std::shared_ptr<const TilemapPixelHistory>;
+  using TerminalHistory=std::variant<std::monostate,MaskRasterReplay,LocalSnapshotHistory,LocalPixelsReplay,SourcePropertiesHistory,TilemapPixelsReplay>;
+  struct Edit {
+    std::vector<Delta> pixels; std::uint64_t beforeState, afterState;
+    TerminalHistory terminalHistory;
+    const MaskRasterHistory* maskRaster()const{const auto* p=std::get_if<MaskRasterReplay>(&terminalHistory);return p?p->get():nullptr;}
+    const local_history::PixelHistoryEdit* localPixels()const{const auto* p=std::get_if<LocalPixelsReplay>(&terminalHistory);return p?p->get():nullptr;}
+    const TilemapPixelHistory* tilemapPixels()const{const auto* p=std::get_if<TilemapPixelsReplay>(&terminalHistory);return p?p->get():nullptr;}
+    const SourcePropertiesHistory* sourceProperties()const{return std::get_if<SourcePropertiesHistory>(&terminalHistory);}
+    const LocalSnapshotHistory* localSnapshot()const{return std::get_if<LocalSnapshotHistory>(&terminalHistory);}
+    LocalSnapshotHistory* localSnapshot(){return std::get_if<LocalSnapshotHistory>(&terminalHistory);}
+    // A restored structural entry also restores root name/dirty. Ordinary
+    // project backup rollback retains its existing root-field semantics.
+    SnapshotHistory snapshotHistory;
+    MaskHistory maskHistory;
+    SliceHistory sliceHistory;
+    TileResourceHistory tileHistory;
+    ContentHistory contentHistory;
+    bool documentChanged=true;
+    PixelSelectionHistory pixelSelectionHistory;
+    PaletteHistory paletteHistory;
+    std::string beforeActive,afterActive;
+    std::optional<std::vector<std::string>> beforeSelection,afterSelection;
+    LayerHistory layerHistory;
+    FrameHistory frameHistory;
+    std::vector<Edit> children;
+    std::optional<TimelineSelection> beforeTimelineSelection,afterTimelineSelection;
+    std::optional<std::string> beforeFrameAnchor,afterFrameAnchor;
+    std::string beforeFrame,afterFrame;
+    std::optional<AnimationSelectionSnapshot> beforeAnimationSelection,afterAnimationSelection;
+    bool normalizeAnimationSelection=false;
+    std::size_t animationSelectionBytes()const;
     std::u32string label=U"绘制";
     std::size_t bytes() const;
   };
@@ -822,7 +971,16 @@ private:
   void appendDetachLinkedLayer(Edit&,const std::string&);std::u32string linkedLayerCopyName(const std::string&,const std::u32string&,const std::vector<DocumentLayer>* namingLayers=nullptr)const;
   bool pasteTilemapCels(const CelClipboardSnapshot&);bool cutTilemapCels();void detachTilemapCelTargets(timeline::State&,const std::vector<std::string>&)const;
   bool pasteTilemapFrames(const FrameClipboardSnapshot&,bool duplicateSelection=false,std::optional<int> insertion=std::nullopt);bool cutTilemapFrames();
-  void applyLayerStructure(const Edit&,bool forward);
+  struct LayerStructureReplay {
+   std::optional<timeline::Timeline> timeline;
+   std::vector<DocumentCel> detached;
+   std::string layer,frame,mask;
+   TilemapSelection tileSelection;
+   PixelRegion damage;
+   bool isolated=false,applied=false;
+  };
+  void applyLayerStructure(const Edit&,bool forward,LayerStructureReplay* retained=nullptr);
+  void exchangeLayerStructure(const Edit&,LayerStructureReplay&)noexcept;
   void applyGroupUi(const Edit&,bool forward);
   bool commitGroupEdit(Edit,std::u32string label={});
   bool commitImmediateTransform(const std::vector<std::string>& targets,const std::optional<SelectionMask>& capture,const SelectionTransform& transform,bool wholeFlip,bool packedFlip,bool horizontal,std::optional<SelectionMask> afterSelection,bool selectionOnly);
@@ -847,12 +1005,38 @@ private:
   std::vector<std::pair<std::string,bool>> autoLinkGestureBefore_;
   bool fillSymmetryDispatch_=false;
   void reserveHistoryEntries(std::size_t additional=1);
+  void finishAnimationSelectionHistory(AnimationSelectionHistoryScope&);
   void pushEdit(Edit edit,std::u32string label=U"绘制");
-  void applySurfaceEdit(const Edit&,bool);
+  struct SurfaceReplay {
+   struct Text {std::string id;std::optional<TextCelData> value;std::optional<TextCelData>* target=nullptr;};
+   struct Offset {std::string id;int x,y;timeline::Surface* target=nullptr;};
+   struct Replacement {std::string id;timeline::Surface value;timeline::Surface* target=nullptr;};
+   std::vector<Text> text;
+   std::vector<Offset> offsets;
+   std::vector<Replacement> replacements;
+   std::string active,frame;
+  };
+  std::unique_ptr<SurfaceReplay> prepareSurfaceEdit(const Edit&,bool)const;
+  void applySurfaceEdit(const Edit&,bool,SurfaceReplay* prepared=nullptr);
   void capturePixelAddresses(Edit& edit);
-  void applyPixelEdit(const Edit& edit,bool forward);
+  void applyPixelEdit(const Edit& edit,bool forward,bool activateTarget=false,bool prepareOnly=false);
   PaletteState capturePaletteEdit(int kind,int id=0) const;
-  void applyPaletteEdit(const Edit& edit,bool redo);
+  struct PaletteReplay {
+   struct Patch {std::size_t index;std::optional<std::u32string> name;std::optional<Pixel> color;};
+   std::optional<PaletteState> full;
+   std::optional<std::vector<PaletteEntry>> entries;
+   std::optional<std::optional<std::vector<int>>> order;
+   std::optional<std::vector<int>> slots,selected;
+   std::optional<int> columns,nextId,primaryId;
+   std::optional<Pixel> primary,secondary;
+   std::vector<Patch> patches;
+   std::optional<std::optional<PaletteViewSelection>> view;
+   std::uint64_t viewSerial=0;
+   bool applied=false;
+  };
+  std::unique_ptr<PaletteReplay> preparePaletteEdit(const Edit& edit,bool redo)const;
+  void exchangePaletteEdit(PaletteReplay& prepared)noexcept;
+  void applyPaletteEdit(const Edit& edit,bool redo,PaletteReplay* prepared=nullptr);
   std::optional<PaletteViewSelection> paletteViewRestore_;
   std::uint64_t paletteViewRestoreSerial_=0;
   void selectPaletteIds(const std::vector<int>& ids,int primary);
@@ -915,6 +1099,75 @@ private:
   void normalizeFrameDeletionSelection();
   void applyFrameEdit(const Edit& edit,bool redo);
   void applyEdit(const Edit& edit,bool redo);
+  // Only applyEdit or its already-validated child traversal may enter here.
+  struct HistoryResourceReplay {
+   std::optional<std::vector<std::optional<std::string>>> tileSlots;
+   std::optional<TilemapSelection> tileSelection;
+   std::optional<std::vector<timeline::MaskSlot>> masks;
+   std::optional<MaskSelectionHistory> maskSelection;
+   std::string activeMask,activeLayer,activeFrame;
+   bool isolated=false,explicitMask=false,focus=false,maskSwapped=false,layerSwapped=false,frameSwapped=false,initialized=false,applied=false;
+   HistoryResourceReplay(const Edit& edit,bool forward);
+  };
+  struct HistoryReplayPlan {
+   PreparedHistoryReplay rollback;
+   HistoryResourceReplay resources;
+   struct Snapshot {
+    std::optional<timeline::Timeline> timeline;
+    std::string layer,frame;
+    int width=0,height=0;
+    PixelRegion damage;
+    bool dimensions=false,applied=false;
+   };
+   std::optional<Snapshot> snapshot;
+   std::optional<LayerStructureReplay> layers;
+   std::unique_ptr<RollbackReplay> rollbackPayload;
+   std::unique_ptr<PaletteReplay> palette;
+   struct Leaf {
+    struct Pixels {struct Span {std::size_t index;std::vector<Pixel> values;};timeline::LinkedPixelStorage storage;std::vector<Span> spans;};
+    std::unique_ptr<Pixels> pixels;
+    std::optional<timeline::Timeline> metadata;
+    std::string layer,frame;
+    std::vector<std::string> frames;
+    std::unordered_map<std::string,std::array<int,4>> geometry;
+    PixelRegion damage;
+    bool ready=false,published=false,applied=false;
+   };
+   std::unique_ptr<Leaf> leaf;
+   std::optional<SliceState> slices;
+   std::optional<SelectionPivotHistory> pivot;
+   std::optional<bool> loop;
+   bool slicesApplied=false,pivotPrepared=false,pivotApplied=false,loopApplied=false;
+   std::optional<std::optional<SelectionMask>> pixelsSelection;
+   bool pixelsSelectionApplied=false;
+   bool contentApplied=false;
+   std::vector<HistoryReplayPlan> children;
+   HistoryReplayPlan(const Edit& edit,bool forward);
+  };
+  void applyValidatedEdit(const Edit& edit,bool forward,HistoryReplayPlan& plan);
+  // Internal replay phases preserve the legacy-compatible ordered transaction.
+  void applyMaskHistoryResources(HistoryResourceReplay& prepared);
+  void applyMaskHistoryContext(const MaskHistory& mask,bool forward);
+  void applyTrimPivotHistory(HistoryReplayPlan& plan)noexcept;
+  void applyPixelSelectionHistory(HistoryReplayPlan& plan)noexcept;
+  bool applyTerminalHistory(const Edit& edit,bool forward);
+  void applyLocalSnapshotHistory(const LocalSnapshotHistory& snapshot,bool forward);
+  void applyRollbackHistory(const SnapshotHistory& snapshot,bool forward,HistoryReplayPlan& plan);
+  void applySnapshotStructure(const Edit& edit,bool forward,HistoryReplayPlan& plan);
+  void exchangeSnapshotStructure(HistoryReplayPlan::Snapshot& prepared)noexcept;
+  void applySliceHistory(HistoryReplayPlan& plan)noexcept;
+  void applyTileHistoryResources(const Edit& edit,HistoryResourceReplay& prepared);
+  void applyFreeTileSelectionHistory(const TileResourceHistory& tiles,bool forward);
+  void applyHistoryResources(const Edit& edit,HistoryResourceReplay& prepared);
+  void applyHistoryStructure(const Edit& edit,bool forward,HistoryReplayPlan& plan);
+  void applyHistoryContent(const Edit& edit,bool forward,HistoryReplayPlan& plan);
+  std::unique_ptr<HistoryReplayPlan::Leaf::Pixels> prepareHistoryPixelRestore(const Edit& edit)const;
+  void prepareHistoryLeafMetadata(const Edit& edit,bool forward,HistoryReplayPlan::Leaf& prepared);
+  void exchangeHistoryLeaf(HistoryReplayPlan& plan)noexcept;
+  void applyHistorySelection(const Edit& edit,bool forward,HistoryReplayPlan& plan);
+  void applyHistoryProjection(const Edit& edit,bool forward);
+  void finishHistorySources(const Edit& edit,bool forward,bool freePaintBefore,bool sourceEdit,const std::string& sourceEditLayer,const std::string& sourceEditFrame);
+
   void applyLocalHistoryPixels(const local_history::PixelHistoryEdit&,bool forward);
   void groupEdits(std::size_t start,const std::vector<std::string>& selection);
   void applyCelEdit(const Edit& edit,bool redo);
@@ -928,24 +1181,27 @@ private:
   std::vector<Delta> liquifyDeltas_;std::unordered_map<std::size_t,std::size_t> liquifyLookup_;
   liquify::Context liquifyContext();
   std::vector<Delta> pending_;
-  std::vector<int> pendingLookup_;
-  void clearPendingStroke(){strokeRepeat_=repeat::Mode::Off;imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;for(const auto& delta:pending_)pendingLookup_[delta.index]=-1;pending_.clear();}
+  StrokePixelLookup pendingLookup_;
+  void clearPendingStroke(){strokeRepeat_=repeat::Mode::Off;imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;pendingLookup_.clear();pending_.clear();}
   PixelRegion change_;
   PixelRegion recordingDirty_;std::uint64_t recordingDirtyFrom_=0,recordingDirtyTo_=0;bool recordingDirtyValid_=true;
   timelapse::Settings timelapseSettings_;
   struct RecordingBinding {
-    std::shared_ptr<timelapse::Session> session;std::function<void(Document&,bool)> observer;
+    std::shared_ptr<timelapse::Session> session;std::function<void(Document&,bool)> observer;std::function<void(const timelapse::Settings&)> restore;
     RecordingBinding()=default;
     RecordingBinding(const RecordingBinding&) {}
-    RecordingBinding& operator=(const RecordingBinding&){session.reset();observer={};return *this;}
+    RecordingBinding& operator=(const RecordingBinding&){session.reset();observer={};restore={};return *this;}
     RecordingBinding(RecordingBinding&&)=default;RecordingBinding& operator=(RecordingBinding&&)=default;
   } recordingBinding_;
   void notifyRecording(bool undoStep=false){if(recordingBinding_.observer)recordingBinding_.observer(*this,undoStep);}
   std::uint64_t identity_=0,contentRevision_=0,contentMutationRevision_=0,revision_=0;
-  std::size_t maxBytes_,maxEntries_,historyBytes_=0;
+  HistoryStore<Edit> history_;
   HistoryChangeBinding historyChangeBinding_;
+  AnimationChangeBinding animationChangeBinding_;
   void notifyHistoryChange(HistoryStackChange::Kind,const std::u32string& label={},std::size_t discardedUndo=0,std::size_t discardedRedo=0);
   std::uint64_t historyRevision_=0;
+  // Unlike historyRevision_, this changes only when a new entry is pushed.
+  std::uint64_t historyPushRevision_=0;
   std::u32string historyLabelOverride_;
   bool groupingHistory_=false;
   bool paletteColorSynchronization_=false; // UI preference, never project metadata.
@@ -962,8 +1218,7 @@ private:
       ++contentRevision_;if(!frameViewOnly)++contentMutationRevision_;recordingDirtyTo_=contentRevision_;
     }
   }
-  std::vector<Edit> history_;
-  std::size_t position_ = 0;
+
   std::uint64_t state_ = 0, nextState_ = 1;
   bool showPixelGrid_=false,showCustomGrid_=false;GridSettings customGrid_;
   bool modified_ = false; // Legacy touch: undo/redo are document changes too.
@@ -983,6 +1238,10 @@ private:
   std::optional<int> durationBefore_;
   std::vector<std::pair<std::string,int>> durationValuesBefore_;
   std::optional<SelectionMask> selection_;
+  std::uint64_t selectionRevision_=0;
+  bool commitFloatingPasteImpl();void cancelFloatingPasteImpl();
+  void setSelectionValue(std::optional<SelectionMask> value){selection_=std::move(value);++selectionRevision_;}
+  void swapSelectionValue(std::optional<SelectionMask>& value)noexcept{selection_.swap(value);++selectionRevision_;}
   struct FloatingTarget {SelectionClipboard source;std::string celId;std::unordered_map<std::size_t,Delta> preview;std::shared_ptr<SelectionRotSpriteSource> rotSprite;std::optional<SelectionClipboard> originalSource;std::string ownerId;std::optional<timeline::Surface> baseline;std::shared_ptr<const SymmetryRotationRaster> symmetryRotation;};
   struct PaintCellMove {std::string layerId,frameId,celId;SelectionMask expanded;std::optional<SelectionMask> beforeSelection;std::vector<TilemapPixelHistory::CellChange> sources;std::shared_ptr<Edit> preview;bool copy=false;int columns=0,rows=0;};
   std::optional<PaintCellMove> paintCellMove_;std::optional<SelectionMask> expandedPaintCellSelection(bool discreteFlip=false)const;
@@ -1032,7 +1291,8 @@ private:
   std::optional<FilterPreview> filterPreview_;std::uint64_t nextFilterGeneration_=0;
 
   bool commitSurfaceAdjustment(const std::u32string& label);
-  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;};
+  inline static std::atomic<std::uint64_t> adjustmentSessionClock_{0};
+  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;std::uint64_t session=++adjustmentSessionClock_;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};
   std::optional<PaletteReplacementPreview> paletteReplacement_;

@@ -7,6 +7,43 @@ using namespace moon;
 static void check(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 int main(){try{
  {
+  // Compare against the previous scan-based row semantics, including damaged
+  // duplicate IDs, group masks, missing owners and compact/collapsed views.
+  auto reference=[](const timeline::State& state,const std::vector<std::string>& collapsed,bool include){
+   std::vector<LayerPanelNode> result;
+   for(const auto& row:buildLayerPanelTree(state,collapsed)){
+    result.push_back(row);
+    if(include&&std::any_of(state.masks.begin(),state.masks.end(),[&](const auto& m){return m.ownerId==row.id;})){
+     auto mask=row;mask.id=editor::TimelineRows::maskRowId(row.id);++mask.depth;result.push_back(std::move(mask));
+    }
+   }
+   return result;
+  };
+  timeline::State state;
+  for(const auto& id:{"plain","masked","masked","@mask-row:masked"}){timeline::Layer layer;layer.id=id;state.layers.push_back(layer);}
+  timeline::Group group;group.id="group";state.groups.push_back(group);state.layers[1].groupId="group";
+  for(const auto& owner:{"masked","group","missing"})for(int frame=0;frame<3;++frame){timeline::MaskSlot mask;mask.ownerId=owner;mask.frameId=std::to_string(frame);state.masks.push_back(std::move(mask));}
+  for(bool include:{false,true})for(const auto& collapsed:std::vector<std::vector<std::string>>{{},{"group"}}){
+   editor::TimelineRows actual(state,collapsed,include);const auto expected=reference(state,collapsed,include);
+   check(actual.size()==int(expected.size()),"Mask topology row count changed");
+   for(int row=0;row<actual.size();++row){
+    const auto& node=expected[row];check(*actual.at(row)==node,"Mask topology order/depth changed");
+    const bool mask=std::any_of(state.masks.begin(),state.masks.end(),[&](const auto& m){return node.id==editor::TimelineRows::maskRowId(m.ownerId);});
+    check(actual.mask(row)==mask&&actual.owner(row)==(mask?node.id.substr(10):node.id),"Mask row identity changed");
+    const auto first=std::find_if(expected.begin(),expected.end(),[&](const auto& n){return n.id==node.id;});
+    check(actual.index(node.id)==int(first-expected.begin()),"Row lookup must retain first-match semantics");
+   }
+   check(!actual.mask(-1)&&!actual.mask(actual.size())&&actual.owner(-1).empty()&&actual.index("absent")==-1,"Invalid row lookup changed");
+  }
+  state={};for(int row=0;row<256;++row){timeline::Layer layer;layer.id="layer/"+std::to_string(row);state.layers.push_back(layer);for(int frame=0;frame<128;++frame){timeline::MaskSlot mask;mask.ownerId=layer.id;mask.frameId=std::to_string(frame);state.masks.push_back(std::move(mask));}}
+  const auto start=std::chrono::steady_clock::now();const auto expected=reference(state,{},true);std::size_t oldSum=0;
+  for(const auto& node:expected)oldSum+=std::any_of(state.masks.begin(),state.masks.end(),[&](const auto& m){return node.id==editor::TimelineRows::maskRowId(m.ownerId);});
+  const auto middle=std::chrono::steady_clock::now();editor::TimelineRows indexed(state,{});std::size_t sum=0;
+  for(int row=0;row<indexed.size();++row){check(*indexed.at(row)==expected[row],"Large mask topology mismatch");sum+=indexed.mask(row);check(indexed.index(indexed.at(row)->id)==row,"Large row index mismatch");}
+  const auto end=std::chrono::steady_clock::now();check(sum==oldSum&&sum==256,"Large mask owner count mismatch");
+  std::cout<<"masked timeline layers=256 frames=128 scan_ms="<<std::chrono::duration<double,std::milli>(middle-start).count()<<" indexed_ms="<<std::chrono::duration<double,std::milli>(end-middle).count()<<'\n';
+ }
+ {
   auto reference=[](const timeline::State& state){std::vector<LayerPanelLayerRef> refs;for(const auto& l:state.layers)refs.push_back({l.id,l.groupId});return buildLayerPanelTreeFromTopFirst(refs,{}, {"missing"});};
   for(int count:{0,1,2,256})for(bool duplicate:{false,true}){
    timeline::State state;for(int i=0;i<count;++i){timeline::Layer layer;layer.id=std::to_string(duplicate?i%3:i);if(i%2)layer.groupId="missing";state.layers.push_back(layer);}

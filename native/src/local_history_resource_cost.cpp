@@ -189,7 +189,9 @@ struct InitialHistoryDocumentMetadata::Impl {
  std::vector<std::string> selectedLayers,selectedGroups,collapsed;
  bool outline=false;
  Impl(std::shared_ptr<const project::ReadManifest> source,const Document& value):manifest(std::move(source)),document(&value),revision(value.revision()),frame(value.frame().id),active(value.layer().id){
-  if(!manifest||manifest->sourceArchive!=value.sourceArchive()||manifest->id!=value.projectId()||manifest->activeLayerId!=active||manifest->activeFrameId!=frame)throw std::invalid_argument("Inconsistent history metadata source");
+  // Native import restores the normalized panel focus. Legacy decode retains
+  // that focus separately from the document root's activeLayerId.
+  if(!manifest||manifest->sourceArchive!=value.sourceArchive()||manifest->id!=value.projectId()||manifest->layerPanelState.activeLayerId!=active||manifest->activeFrameId!=frame)throw std::invalid_argument("Inconsistent history metadata source");
   const auto status=RoInitialize(RO_INIT_MULTITHREADED);if(FAILED(status)&&status!=RPC_E_CHANGED_MODE)throw std::runtime_error("Cannot initialize history metadata parser");
   struct Apartment {HRESULT status;~Apartment(){if(status==S_OK)winrt::clear_factory_cache();if(SUCCEEDED(status))RoUninitialize();}} apartment{status};
   using namespace winrt::Windows::Data::Json;
@@ -215,7 +217,7 @@ InitialHistoryDocumentMetadata::~InitialHistoryDocumentMetadata()=default;
 HistoryDocumentMetadataRoots InitialHistoryDocumentMetadata::append(HistoryCostBuilder& b,const Document& document)const{
  const auto start=b.mark();try{
   const auto& plan=*impl_;if(&document!=plan.document||document.revision()!=plan.revision||document.frame().id!=plan.frame||document.layer().id!=plan.active||document.sourceArchive()!=plan.manifest->sourceArchive)throw std::invalid_argument("Stale initial history document metadata");
-  HistoryDocumentMetadataRoots out{};out.name=b.string(document.name());out.activeLayerId=b.string(document.layer().id);
+  HistoryDocumentMetadataRoots out{};out.name=b.string(document.name());out.activeLayerId=b.string(plan.manifest->activeLayerId);
   if(plan.outline){const auto root=b.object();b.add(root,scalars(b,4));b.add(root,scalars(b,4));b.add(root,b.node());b.add(root,b.string(plan.outlinePosition));b.add(root,b.string(plan.outlineKernel));b.add(root,scalars(b,8));for(int i=0;i<4;++i)b.add(root,b.node());out.outlineSettings=root;}
   out.displaySettings=b.object();b.add(out.displaySettings,b.node());b.add(out.displaySettings,b.node());b.add(out.displaySettings,scalars(b,4));if(plan.manifest->symmetryCenter)b.add(out.displaySettings,scalars(b,2));out.statistics=scalars(b,3);
   const auto& information=document.projectInformation();out.createdAt=b.string(information.createdAt);out.updatedAt=b.string(information.updatedAt);
