@@ -7097,3 +7097,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 对照 legacy activePaintLayer、previewLayerColorAt／previewColorAt、readMaskCoverage 及像素写入归一化顺序，接通活动蒙版底色、隔离灰度与轮廓、普通视图图层／组／剪贴／样式／调整合成的局部替换；原始 RGBA 先混合、结果才归一化。真实窗口检查额外发现笔刷鼠标入口漏放行蒙版，现接入已有 maskBrushAvailable，沿用锁定／显隐及真实笔画历史。没有性能优化或新 UI 设计。
 
 最终唯一正式 Release 与核心蒙版目标构建成功，attached-masks 全部检查退出 0，含新增八组／144 普通与288图像笔刷组合、偏移／链接／撤销重做和样式／剪贴／调整合成。mask-brush-preview 十六组实际进程退出 0；free-source-preview、free-placement-preview、shift-lines 三阶段退出 0；brush-preview CTest 通过0.91秒。旧版两文件13项与蒙版合成3项通过。人工查看本轮隔离组蒙版 Both 画布截图，九副本和悬停灰度正确；未验收全部桌面和缩放／旋转组合。来源覆盖929项及快照、Editor边界587文件、diff通过；全部迁移仍INCOMPLETE。详见 [蒙版笔刷迁移](mask-brush-preview-migration-20261114.md)。保留所有用户数据、缓存和日志，阶段提交推送dev。
+
+
+### 2026-11-14 蒙版 Shift 连线与绘制目标历史（阶段验收）
+
+对照 legacy session 端点、beginLineConnection 的 editableLayer／latestUndoEntry 校验及 inheritBrushPaintBaseline，补齐活动蒙版底色继承、自由瓦片蒙版连线入口、跨目标端点保留与底色／撤销隔离。半透明共享端点不重复叠色，普通图层与蒙版不会错误合并历史。
+
+attached-masks-tests 全部通过，含八组新增连接线检查；唯一正式 Release 构建成功，mask-shift-lines 四种平铺、五种蒙版归属／底层模式、绘制／擦除共40组与同版本切换目标真实输入全部退出0。mask-brush-preview、shift-lines、free-source-preview 三阶段退出0；brush-preview CTest通过0.91秒；旧版两文件13项通过4.44秒。来源覆盖929文件、Editor边界587源码、diff通过。无人工截图及完整桌面验收，非RGBA格式等剩余迁移继续保留。详见 [蒙版连线迁移](mask-shift-lines-migration-20261114.md)。仅功能迁移，整体INCOMPLETE；阶段保存推送dev，保留全部用户数据与日志。

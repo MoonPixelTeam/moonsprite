@@ -9,6 +9,7 @@
 #include <typeinfo>
 #include "ui/property.h"
 #include "relative_luminance.h"
+#include "raster_geometry.h"
 namespace moon::editor {
 std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
 void drawSelectionBrushCoverage(ui::Graphics&,const SelectionBrushStroke&,int,int,repeat::Mode,const gfx::Rect&,double);
@@ -89,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -97,6 +98,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"free-source-preview"){checkGeometry=checkTextDialogs=false;checkFreePreview=true;recognized=true;}
   else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
   else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
+  else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -111,6 +113,45 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkMaskShift){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("tools.shiftLinePreviewEnabled","true");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");
+  for(auto mode:{repeat::Mode::Off,repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(int kind=0;kind<5;++kind)for(bool erase:{false,true}){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));commands_[1]->Click();currentTools().eraser=erase;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[erase?1:0]={1,50,BrushShape::Square};currentView().isoViewEnabled=false;currentView().relativeLuminance=false;ink_=0x80000000;
+   require(currentDocument().fillSelectionOrCanvas(0xff123456),"Mask Shift raster fixture");
+   if(kind==1){require(currentDocument().convertLayerToTilemap(1,1,U"Mask Shift grid"),"Mask Shift grid fixture");currentDocument().setTilemapMode(tiles::Mode::Paint);}
+   if(kind==2||kind==3){require(currentDocument().createFreeTileLayer(U"Mask Shift free"),"Mask Shift free fixture");SelectionClipboard tile;tile.width=tile.height=1;tile.pixels={0xff112233};require(currentDocument().pasteFreeTilePixels(tile,{4,4}),"Mask Shift free source fixture");currentDocument().setFreeTilePaintMode(kind==3);}
+   std::string owner=currentDocument().layer().id;if(kind==4){require(currentDocument().createLayerGroup(),"Mask Shift group fixture");owner=*currentDocument().selectedGroupId();}
+   const auto frame=currentDocument().frame().id;require(currentDocument().createAttachedMask(owner,frame,kind==4),"Mask Shift attachment");require(currentDocument().fillSelectionOrCanvas(0xff808080),"Mask Shift initial coverage");require(currentDocument().selectAttachedMask(owner,frame,true),"Mask Shift isolated target");currentDocument().previewSelection({});currentDocument().clearHistory();
+   setTileRepeat(mode);currentView().zoom=8./uiScale;refresh();requestFocus();
+   auto pointer=[&](ui::MessageType type,Point p,bool shift){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier,canvasDocumentToDisplay({p.x+.25,p.y+.25}));m.setDisplay(display());onProcessMessage(&m);if(type==ui::kMouseDownMessage&&currentDocument().strokeActive())enableFlags(ui::HAS_CAPTURE);if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};
+   auto mask=[&]()->const timeline::Surface&{return currentDocument().activeMask()->surface;};
+   auto maskPixels=[&]{std::vector<Pixel> result;for(int y=0;y<6;++y)for(int x=0;x<8;++x)result.push_back(raster::readWorld(mask(),x,y));return result;};
+   const auto initial=maskPixels(),layerPixels=currentDocument().canvasPixels();const auto resources=currentDocument().timeline().state().tilesets;const auto grid=currentDocument().cel().tilemap;const auto instances=currentDocument().cel().freeTiles;
+   const Point first{repeat::includesX(mode)?7:1,repeat::includesY(mode)?5:2},last{repeat::includesX(mode)?1:4,repeat::includesY(mode)?1:2};
+   pointer(ui::kMouseDownMessage,first,false);pointer(ui::kMouseUpMessage,first,false);const auto anchorPixels=maskPixels();require(anchorPixels!=initial&&brushLineAnchor(),"Mask Shift actual pointer anchor");const auto h=currentDocument().historyPosition();
+   const auto nearest=repeat::nearestEquivalent({double(first.x),double(first.y)},{double(last.x),double(last.y)},8,6,mode);const auto line=resolveBrushLine({int(nearest.x),int(nearest.y)},last,false);const auto* baseline=brushLineBaseline(brushLineAnchor());require(baseline,"Mask Shift owns baseline on every layer kind");
+   const auto expected=currentDocument().brushPreview(line.first,line.second,erase?0:ink_,activeStrokeBrush(),nullptr,0,baseline,true,mode);const auto identity=mask().pixels.identity();const auto revision=currentDocument().revision();
+   paletteMousePosition_=canvasDocumentToDisplay({last.x+.25,last.y+.25});brushFeedback_.brushPreviewShift_=true;auto preview=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());preview->clear();{ui::Graphics g(preview);paintBrushPreview(g,currentView().canvas);}
+   for(auto [index,pixel]:expected){const auto at=canvasDocumentToDisplay({double(index%8)+.5,double(index/8)+.5});const auto gray=timeline::maskCoverage(pixel);require(preview->getPixel(at.x,at.y)==gfx::rgba(gray,gray,gray,255),"Mask Shift rendered preview coverage");}
+   require(maskPixels()==anchorPixels&&mask().pixels.identity()==identity&&currentDocument().historyPosition()==h&&currentDocument().revision()==revision,"Mask Shift preview remains read only");
+   pointer(ui::kMouseDownMessage,last,true);pointer(ui::kMouseUpMessage,last,true);const auto after=maskPixels();for(std::size_t i=0;i<after.size();++i){const auto found=expected.find(i);require(after[i]==(found==expected.end()?anchorPixels[i]:found->second),"Mask Shift commit equals preview including shared anchor");}
+   require(currentDocument().historyPosition()==h&&!currentDocument().active(),"Mask Shift merges anchor history");require(currentDocument().canvasPixels()==layerPixels,"Mask Shift preserves underlying pixels");const auto& actualGrid=currentDocument().cel().tilemap;require(bool(actualGrid)==bool(grid)&&(!grid||std::tie(actualGrid->tileWidth,actualGrid->tileHeight,actualGrid->columns,actualGrid->rows,actualGrid->cells)==std::tie(grid->tileWidth,grid->tileHeight,grid->columns,grid->rows,grid->cells))&&currentDocument().cel().freeTiles==instances,"Mask Shift preserves cells and instances");require(currentDocument().timeline().state().tilesets.size()==resources.size(),"Mask Shift preserves resource count");for(std::size_t i=0;i<resources.size();++i)require(currentDocument().timeline().state().tilesets[i].pixels==resources[i].pixels,"Mask Shift preserves resource pixels");
+   currentDocument().undo();require(maskPixels()==initial,"Mask Shift merged Undo");currentDocument().redo();require(maskPixels()==after,"Mask Shift Redo");
+   pointer(ui::kMouseDownMessage,{3,4},false);pointer(ui::kMouseMoveMessage,{5,4},false);ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);onProcessMessage(&escape);require(maskPixels()==after&&currentDocument().historyPosition()==h&&!currentDocument().active()&&!hasCapture(),"Mask Shift subsequent stroke cancellation");
+   // Endpoints survive a paint-target switch, while baseline and merge do not.
+   currentDocument().exitAttachedMask();const auto& storedAnchor=brushFeedback_.brushLineAnchors_[erase?1:0];require(storedAnchor&&storedAnchor->point.x==last.x&&storedAnchor->point.y==last.y&&!brushLineBaseline(&*storedAnchor),"Mask Shift target switch keeps endpoint without baseline");require((brushLineAnchor()!=nullptr)==(kind!=3),"Mask Shift respects underlying placement mode");require(currentDocument().selectAttachedMask(owner,frame,true),"Mask Shift restore editing target");
+   traceStage("mask-shift-lines",int(mode),kind*2+int(erase));brushFeedback_.brushPreviewShift_=false;paletteMousePosition_.reset();
+  }
+  // A real target switch does not create a document edit. Even at the same
+  // revision, the raster anchor's original pixel must not enter the mask.
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));commands_[1]->Click();currentTools().eraser=false;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[0]={1,50,BrushShape::Square};ink_=0x80000000;
+  require(currentDocument().fillSelectionOrCanvas(0xff123456),"Mask Shift switch raster fixture");const auto owner=currentDocument().layer().id,frame=currentDocument().frame().id;require(currentDocument().createAttachedMask(owner,frame),"Mask Shift switch attachment");require(currentDocument().fillSelectionOrCanvas(0xff808080),"Mask Shift switch initial coverage");const auto maskBefore=currentDocument().activeMask()->surface.pixels;currentDocument().exitAttachedMask();currentDocument().clearHistory();setTileRepeat(repeat::Mode::Off);currentView().zoom=8./uiScale;refresh();requestFocus();
+  auto pointer=[&](ui::MessageType type,Point p,bool shift){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier,canvasDocumentToDisplay({p.x+.25,p.y+.25}));m.setDisplay(display());onProcessMessage(&m);if(type==ui::kMouseDownMessage&&currentDocument().strokeActive())enableFlags(ui::HAS_CAPTURE);if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};
+  pointer(ui::kMouseDownMessage,{1,2},false);pointer(ui::kMouseUpMessage,{1,2},false);const auto rasterAfter=currentDocument().canvasPixels();const auto revision=currentDocument().revision(),history=currentDocument().historyPosition();require(brushLineBaseline(brushLineAnchor()),"Mask Shift switch valid raster baseline");require(currentDocument().selectAttachedMask(owner,frame,true)&&currentDocument().revision()==revision,"Mask Shift switch leaves latest history unchanged");require(brushLineAnchor()&&!brushLineBaseline(brushLineAnchor()),"Mask Shift switch rejects other target baseline at same revision");
+  pointer(ui::kMouseDownMessage,{4,2},true);pointer(ui::kMouseUpMessage,{4,2},true);const auto maskAfter=currentDocument().activeMask()->surface.pixels;const auto expected=timeline::normalizedMaskPixel(inkBrushComposite(0xff808080,ink_,50,InkMode::Simple));require(currentDocument().historyPosition()==history+1&&currentDocument().canvasPixels()==rasterAfter,"Mask Shift switch starts independent mask history");for(int x=1;x<=4;++x)require(raster::readWorld(currentDocument().activeMask()->surface,x,2)==expected,"Mask Shift switch uses mask baseline across entire connection");currentDocument().undo();require(currentDocument().activeMask()->surface.pixels==maskBefore&&currentDocument().canvasPixels()==rasterAfter,"Mask Shift switch Undo preserves raster anchor");currentDocument().redo();require(currentDocument().activeMask()->surface.pixels==maskAfter,"Mask Shift switch Redo");traceStage("mask-shift-target-switch");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));setTileRepeat(repeat::Mode::Off);refresh();return;
+ }
  if(checkMaskPreview){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");

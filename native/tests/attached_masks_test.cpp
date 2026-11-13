@@ -39,6 +39,15 @@ void maskBrushPreviewChecks(){
    for(int y=0;y<4;++y)for(int x=0;x<8;++x){const auto i=std::size_t(y)*8+x;const auto found=preview.find(i);CHECK(raster::readWorld(mask()->surface,x,y)==(found==preview.end()?raster::readWorld(baseline,x,y):found->second));}
    if(changed){CHECK(d->historyPosition()==h+1);d->undo();CHECK(mask()->surface.pixels==baseline.pixels);d->redo();for(auto [i,value]:preview)CHECK(raster::readWorld(mask()->surface,int(i%8),int(i/8))==value);d->undo();}else CHECK(d->historyPosition()==h&&d->revision()==revision);
   }
+  // Legacy inheritBrushPaintBaseline reuses the anchor's original mask pixel,
+  // so translucent Shift lines do not stamp their shared endpoint twice.
+  brush={1,100,BrushShape::Square};const Pixel translucent=0x80000000;
+  d->beginStroke({3,1},translucent,brush);const auto inherited=d->strokeBaseline();CHECK(d->commitStroke());
+  const auto anchorPixel=raster::readWorld(mask()->surface,3,1);const auto anchorHistory=d->historyPosition();
+  const auto connected=d->brushPreview({3,1},{5,1},translucent,brush,nullptr,0,&inherited);CHECK(connected.at(11)==anchorPixel);
+  d->beginStroke({3,1},translucent,brush,nullptr,0,&inherited);d->updateStroke({5,1});CHECK(d->commitStroke());
+  CHECK(raster::readWorld(mask()->surface,3,1)==anchorPixel);for(auto [i,value]:connected)CHECK(raster::readWorld(mask()->surface,int(i%8),int(i/8))==value);
+  d->undo();CHECK(d->historyPosition()==anchorHistory&&raster::readWorld(mask()->surface,3,1)==anchorPixel);d->redo();for(auto [i,value]:connected)CHECK(raster::readWorld(mask()->surface,int(i%8),int(i/8))==value);d->undo();d->undo();CHECK(mask()->surface.pixels==baseline.pixels);
   d->previewSelection(SelectionMask{2,1,3,1,{1,0,1}});brush={1,100,BrushShape::Square};
   const auto line=d->brushPreview({0,1},{7,1},0xff000000,brush);CHECK(line.size()==2&&line.count(10)&&line.count(12));
   const auto idle=d->brushPreview({3,1},{3,1},0xff000000,brush,nullptr,0,nullptr,false);CHECK(idle.size()==1&&idle.count(11));
