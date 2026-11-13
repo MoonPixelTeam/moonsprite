@@ -7083,3 +7083,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 对照旧版 renderCanvasFreeTileBrush，接入选中／手势捕获源的放置预览与变换实例矩形擦除轮廓，承接完整／轮廓四模式、绘制与选区门禁、透明源、相对亮度和邻接平铺。预览使用原始源像素覆盖当前层再合成，不修改资源／实例／链接／history／revision／dirty；实际放置与擦除事务未更改。修正原 Edit 预览内外重复平铺覆盖。
 
 旧版实际函数记录适配器检查 23 组通过；唯一正式 Release 和最终增量构建成功，free-placement-preview 四种平铺实际进程退出 0，含无选区绘制和透明源轮廓。free-source-preview 八组、shift-lines 十二组退出 0，brush-preview CTest 通过 0.81 秒。初次颜色失败定位为新帧底层为空的夹具问题，现明确建立并断言真实链接，保留精确颜色预期。人工查看 Both 画布截图，九个副本及透明底色正确；不扩展为完整桌面验收。其它颜色格式、隔离蒙版与分数／旋转轮廓逐像素等价、已有特殊合并撤销断言及整体迁移仍未完成。详见 [放置预览迁移](free-placement-preview-migration-20261114.md)。保留所有用户数据和日志，阶段提交推送 dev。
+
+
+### 2026-11-14 特殊图层合并历史与 session 选择（阶段验收）
+
+保留前阶段改动，定位合并撤销失败：结构／资源已经恢复，但自动完整选择历史错误重新进入已退出的蒙版。按 legacy commitLayerMerge 的图层 UI 历史契约，在所选／向下／组／可见合并排除完整选择快照，成功后显式 normalizeAnimationSelection；其它事务历史不变。新增 session 绑定检查移除的蒙版格／组格与锚点清理、存活槽保留、Undo/Redo 不恢复已清理槽；原 32 组合、隐藏特殊层、共享资源、全帧外观、保存／恢复重开断言保留。
+
+最终唯一正式 Release 及专项目标构建成功，special-merges 退出 0；旧版两个真实测试文件 5 项通过（8.15 秒）。来源覆盖 929 项及快照、Editor 边界 587 源文件、diff 检查通过。未重跑整个 free-tile-project、无新图像验收；前阶段失败记录保留，本次已定位修复。不含性能优化，整体迁移仍 INCOMPLETE。详见 [合并历史迁移](special-merge-history-migration-20261114.md)。阶段保存并推送 dev，保留全部用户数据和日志。
