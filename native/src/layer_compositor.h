@@ -1,7 +1,19 @@
 #pragma once
 #include "timeline_model.h"
+#include "raster_geometry.h"
 namespace moon {
 struct CompositeRegion {int x=0,y=0,width=0,height=0;};
+// Legacy readMaskCoverage replaces only the transient preview coordinates;
+// neighbouring style samples continue reading the original mask surface.
+inline unsigned compositeMaskCoverage(const timeline::AttachedMask& mask,int x,int y,const timeline::AttachedMask* maskPreview,const timeline::Surface* pixelsPreview){
+ if(maskPreview&&pixelsPreview&&mask.id==maskPreview->id)if(const auto i=raster::worldIndex(*pixelsPreview,x,y))return timeline::maskCoverage(pixelsPreview->pixels[*i]);
+ return timeline::maskCoverage(raster::readWorld(mask.surface,x,y));
+}
+inline void applyCompositeMask(const timeline::AttachedMask* mask,std::vector<timeline::Pixel>& pixels,int x,int y,int width,int height,const timeline::AttachedMask* maskPreview,const timeline::Surface* pixelsPreview){
+ if(!mask||!mask->visible)return;
+ if(!maskPreview||!pixelsPreview||mask->id!=maskPreview->id){timeline::applyAttachedMask(mask,pixels,x,y,width,height);return;}
+ for(int row=0;row<height;++row)for(int col=0;col<width;++col){auto& p=pixels[std::size_t(row)*width+col];const auto coverage=compositeMaskCoverage(*mask,x+col,y+row,maskPreview,pixelsPreview);p=(p&0xffffff)|(timeline::Pixel(std::floor((p>>24)*coverage/255.+.5))<<24);}
+}
 // Legacy layerStyleOutputBounds unions source, outer stroke and translated
 // shadow blur. This is output geometry; source readers still see raw content.
 inline CompositeRegion layerStyleOutputBounds(CompositeRegion b,const std::optional<timeline::ColorOverlayStyle>& style){if(b.width<=0||b.height<=0||!style||!style->enabled)return b;std::int64_t left=b.x,top=b.y,right=left+b.width,bottom=top+b.height;auto merge=[&](std::int64_t x,std::int64_t y,std::int64_t w,std::int64_t h){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x+w);bottom=std::max(bottom,y+h);};if(style->stroke.enabled&&style->stroke.position!=0){const int n=style->stroke.size;merge(std::int64_t(b.x)-n,std::int64_t(b.y)-n,std::int64_t(b.width)+2*n,std::int64_t(b.height)+2*n);}if(style->shadow.enabled){const auto& sh=style->shadow;merge(std::int64_t(b.x)+sh.offsetX-sh.blur,std::int64_t(b.y)+sh.offsetY-sh.blur,std::int64_t(b.width)+2*sh.blur,std::int64_t(b.height)+2*sh.blur);}if(left<std::numeric_limits<int>::min()||top<std::numeric_limits<int>::min()||right>std::numeric_limits<int>::max()||bottom>std::numeric_limits<int>::max()||right-left>std::numeric_limits<int>::max()||bottom-top>std::numeric_limits<int>::max())throw std::length_error("Layer style bounds overflow");return {int(left),int(top),int(right-left),int(bottom-top)};}
@@ -17,7 +29,7 @@ inline CompositeRegion groupStyleGeometry(const timeline::Timeline& timeline,con
 // Valid links resolve once per layer; stable storage origins do not affect world rendering.
 // An optional preview owner replaces every linked instance of a staged owner.
 std::vector<timeline::Pixel> compositeNormalRegion(const timeline::Timeline& timeline,
- const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,bool cacheContent=false,const std::string& targetLayerId={},const std::string& previewOwnerCelId={},const timeline::AttachedMask* maskPreview=nullptr);
+ const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,bool cacheContent=false,const std::string& targetLayerId={},const std::string& previewOwnerCelId={},const timeline::AttachedMask* maskPreview=nullptr,const timeline::Surface* maskPixelsPreview=nullptr);
 struct OnionSkinSettings {
  bool enabled=false,allLayers=false,showDuringPlayback=true;
  double previousFrames=1,nextFrames=1,previousOpacity=35,nextOpacity=35;

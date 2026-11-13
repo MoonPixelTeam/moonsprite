@@ -234,6 +234,7 @@ public:
   std::vector<Pixel> maskDisplayRegion(PixelRegion)const;
   bool deleteAttachedMasks(const std::vector<std::pair<std::string,std::string>>& slots);
   const std::string& activeMaskId()const{return activeMaskId_;}
+  const timeline::AttachedMask* activeMask()const;
   bool maskBrushAvailable()const;
   bool createAttachedMask(const std::string& owner,const std::string& frame,bool group=false);
   bool canCreateLayerMasksForLayer(const std::string& owner)const;

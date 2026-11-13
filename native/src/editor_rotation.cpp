@@ -89,13 +89,14 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
   else if(value==L"shift-lines"){checkGeometry=checkTextDialogs=false;checkShiftLines=true;recognized=true;}
   else if(value==L"free-source-preview"){checkGeometry=checkTextDialogs=false;checkFreePreview=true;recognized=true;}
   else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
+  else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -110,6 +111,30 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkMaskPreview){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");
+  for(auto repeatMode:{repeat::Mode::Off,repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool group:{false,true})for(bool isolated:{false,true}){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));commands_[1]->Click();currentTools().eraser=false;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[0]={1,100,BrushShape::Square};currentView().isoViewEnabled=false;currentView().relativeLuminance=false;brushFeedback_.brushPreviewShift_=false;ink_=0xff000000;
+   currentDocument().fillSelectionOrCanvas(0xff804020);currentDocument().addLayer();currentDocument().fillSelectionOrCanvas(0xff123456);const auto layer=currentDocument().layer().id;std::string owner=layer;
+   if(group){currentDocument().selectTimelineLayer(layer);require(currentDocument().createLayerGroup(),"Mask preview group fixture");owner=*currentDocument().selectedGroupId();}
+   const auto first=currentDocument().frame().id;require(currentDocument().createAttachedMask(owner,first,group),"Mask preview attachment");currentDocument().fillSelectionOrCanvas(0xff404040);currentDocument().exitAttachedMask();currentDocument().addFrame(true);const auto frame=currentDocument().frame().id;require(currentDocument().createAttachedMask(owner,frame,group)&&currentDocument().linkAttachedMasks({{owner,first},{owner,frame}}),"Mask preview linked fixture");require(currentDocument().selectAttachedMask(owner,frame,isolated),"Mask preview editing context");currentDocument().clearFrameSelection();currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});currentDocument().markSaved();
+   setTileRepeat(repeatMode);currentView().zoom=8./uiScale;{const auto viewport=canvasViewport();currentView().canvas={viewport.x+(viewport.w-64)/2,viewport.y+(viewport.h-48)/2,64,48};}refresh();requestFocus();
+   const auto before=currentDocument().canvasPixels();const auto mask=*currentDocument().activeMask();const auto maskIdentity=currentDocument().activeMask()->surface.pixels.identity();const auto history=currentDocument().historyPosition(),revision=currentDocument().revision();
+   auto render=[&]{auto frame=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());frame->clear();ui::Graphics g(frame);paintCanvas(g);return frame;};
+   paletteMousePosition_.reset();const auto base=render();const auto uploads=renderer_.uploads();const int ox=repeat::includesX(repeatMode)?8:0,oy=repeat::includesY(repeatMode)?-6:0;paletteMousePosition_=canvasDocumentToDisplay({ox+3.5,oy+2.5});const auto hover=render();
+   for(auto copy:repeat::offsets(repeatMode)){
+    const auto at=canvasDocumentToDisplay({copy.x*8+3.5,copy.y*6+2.5}),outside=canvasDocumentToDisplay({copy.x*8+4.5,copy.y*6+2.5});require(hover->getPixel(at.x,at.y)==(isolated?gfx::rgba(0,0,0,255):gfx::rgba(32,64,128,255)),"Mask preview uses mask coverage on every repeat copy");require(hover->getPixel(outside.x,outside.y)==base->getPixel(outside.x,outside.y),"Mask preview retains neighbours");
+   }
+   ink_=0x80000000;const auto half=render();const auto gray=timeline::maskCoverage(timeline::normalizedMaskPixel(brushComposite(0xff404040,ink_,100)));require(gray==32,"Mask preview alpha fixture");const auto at=canvasDocumentToDisplay({3.5,2.5});if(isolated)require(half->getPixel(at.x,at.y)==gfx::rgba(gray,gray,gray,255),"Mask preview normalized alpha gray");
+   if(isolated){runtimePreferences_.set("cursor.brushPreviewMode.Select","1");const auto edge=render();require(edge->getPixel(currentView().canvas.x+3*8,currentView().canvas.y+2*8)==gfx::rgba(255,255,255,255),"Mask preview outline samples isolated mask, not layer");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");}
+   require(currentDocument().canvasPixels()==before&&currentDocument().activeMask()->surface.pixels==mask.surface.pixels&&currentDocument().activeMask()->surface.pixels.identity()==maskIdentity&&currentDocument().historyPosition()==history&&currentDocument().revision()==revision&&!currentDocument().dirty()&&renderer_.uploads()==uploads,"Mask preview is read only for content, storage, history, revision and renderer cache");require(timeline::resolvedMask(currentDocument().timeline().state(),owner,first)==currentDocument().activeMask(),"Mask preview keeps linked identity");
+   if(repeatMode==repeat::Mode::Both&&group&&isolated)writeSmokeFrame(half.get(),assets_.parent_path()/"mask-brush-preview-smoke.bmp");
+   currentDocument().previewSelection({});ink_=0xff000000;send(ui::kMouseDownMessage,{ox+3.5,oy+2.5});send(ui::kMouseUpMessage,{ox+3.5,oy+2.5});require(currentDocument().historyPosition()==history+1&&currentDocument().activeMask()->surface.pixels[19]==0xff000000&&currentDocument().canvasPixels()==before,"Mask preview actual stroke changes only linked mask");currentDocument().undo();require(currentDocument().activeMask()->surface.pixels==mask.surface.pixels,"Mask preview actual stroke Undo");currentDocument().redo();require(currentDocument().activeMask()->surface.pixels[19]==0xff000000,"Mask preview actual stroke Redo");
+   traceStage("mask-brush-preview",int(repeatMode),int(group)*2+int(isolated));
+  }
+  paletteMousePosition_.reset();replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));setTileRepeat(repeat::Mode::Off);refresh();return;
+ }
  if(checkPlacementPreview){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   runtimePreferences_.set("cursor.brushEdgeThickness.Number","1");runtimePreferences_.set("cursor.drawingBrushPreviewEnabled","true");runtimePreferences_.set("tools.gridAlignmentEnabled","true");

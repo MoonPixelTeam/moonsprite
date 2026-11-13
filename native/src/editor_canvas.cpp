@@ -1064,6 +1064,8 @@ void Editor::paintSelectionAnts(ui::Graphics& g,gfx::Rect cv,gfx::Rect viewport,
 
 gfx::Color Editor::selectionPreviewColor(int x,int y,bool selection) const {
 
+    if(!selection&&currentDocument().maskIsolated())if(const auto* mask=currentDocument().activeMask()){const auto gray=timeline::maskCoverage(raster::readWorld(mask->surface,x,y));return gray>145?gfx::rgba(0,0,0,255):gfx::rgba(255,255,255,255);}
+
     if(selection && runtimePreferences_.index("cursor.selectionPreviewColorMode.Select")==1){Pixel c;if(parsePaletteHex(runtimePreferences_.get("cursor.selectionPreviewColor.Color"),c))return gfx::rgba(c&255,(c>>8)&255,(c>>16)&255,255);}
 
     Pixel pixel=0;if(selectionColorIdentity_!=currentDocument().identity() || selectionColorRevision_!=currentDocument().contentRevision() || selectionColorFrame_!=currentDocument().frame().id||selectionColorFloatingRevision_!=currentDocument().floatingOverlayRevision()){selectionColorFloatingRevision_=currentDocument().floatingOverlayRevision();selectionColorTiles_.clear();selectionColorIdentity_=currentDocument().identity();selectionColorRevision_=currentDocument().contentRevision();selectionColorFrame_=currentDocument().frame().id;}
@@ -1224,13 +1226,17 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     std::vector<Pixel> pixels(std::size_t(region.w)*region.h);
 
-    const auto* source=currentDocument().activeSurfaceIfPresent();if(source)raster::validate(*source);
+    const auto* mask=currentDocument().activeMask();const auto* source=mask?&mask->surface:currentDocument().activeSurfaceIfPresent();if(source)raster::validate(*source);
     const bool denseSource=source&&raster::fullCanvas(*source,currentDocument().width(),currentDocument().height());
     if(source)for(int y=0;y<region.h;++y){auto row=pixels.begin()+std::size_t(y)*region.w;if(denseSource)std::copy_n(source->pixels.begin()+std::size_t(region.y+y)*currentDocument().width()+region.x,region.w,row);else for(int x=0;x<region.w;++x)row[x]=raster::readWorld(*source,region.x+x,region.y+y);}
 
     for(auto [i,value]:replacements)pixels[(i/currentDocument().width()-region.y)*region.w+i%currentDocument().width()-region.x]=value;
 
-    auto composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},currentDocument().layer().id,&pixels,region.w,region.x,region.y);
+    std::vector<Pixel> composed;
+    if(mask){
+      if(currentDocument().maskIsolated()){composed.reserve(pixels.size());for(auto p:pixels){const auto gray=timeline::maskCoverage(p);composed.push_back(0xff000000u|gray|(gray<<8)|(gray<<16));}}
+      else{timeline::Surface patch;patch.width=region.w;patch.height=region.h;patch.offsetX=region.x;patch.offsetY=region.y;patch.pixels=std::move(pixels);composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},{},nullptr,0,0,0,false,{},{},mask,&patch);}
+    }else composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},currentDocument().layer().id,&pixels,region.w,region.x,region.y);
 
     // Port legacy solidCompositePreviewRects: group adjacent equal colors.
 
@@ -1240,7 +1246,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     if(brushFeedback_.brushPreviewBatch_ && !anchor && scale>=1 && scale==std::floor(scale) && std::uint64_t(region.w)*region.h<=256*256){
 
-      std::vector<std::uint8_t> occupied(pixels.size(),0);
+      std::vector<std::uint8_t> occupied(std::size_t(region.w)*region.h,0);
 
       for(auto [i,value]:replacements)occupied[(i/currentDocument().width()-region.y)*region.w+i%currentDocument().width()-region.x]=1;
 

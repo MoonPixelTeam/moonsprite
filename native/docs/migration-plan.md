@@ -7090,3 +7090,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 保留前阶段改动，定位合并撤销失败：结构／资源已经恢复，但自动完整选择历史错误重新进入已退出的蒙版。按 legacy commitLayerMerge 的图层 UI 历史契约，在所选／向下／组／可见合并排除完整选择快照，成功后显式 normalizeAnimationSelection；其它事务历史不变。新增 session 绑定检查移除的蒙版格／组格与锚点清理、存活槽保留、Undo/Redo 不恢复已清理槽；原 32 组合、隐藏特殊层、共享资源、全帧外观、保存／恢复重开断言保留。
 
 最终唯一正式 Release 及专项目标构建成功，special-merges 退出 0；旧版两个真实测试文件 5 项通过（8.15 秒）。来源覆盖 929 项及快照、Editor 边界 587 源文件、diff 检查通过。未重跑整个 free-tile-project、无新图像验收；前阶段失败记录保留，本次已定位修复。不含性能优化，整体迁移仍 INCOMPLETE。详见 [合并历史迁移](special-merge-history-migration-20261114.md)。阶段保存并推送 dev，保留全部用户数据和日志。
+
+
+### 2026-11-14 蒙版笔刷预览与真实输入入口（阶段验收）
+
+对照 legacy activePaintLayer、previewLayerColorAt／previewColorAt、readMaskCoverage 及像素写入归一化顺序，接通活动蒙版底色、隔离灰度与轮廓、普通视图图层／组／剪贴／样式／调整合成的局部替换；原始 RGBA 先混合、结果才归一化。真实窗口检查额外发现笔刷鼠标入口漏放行蒙版，现接入已有 maskBrushAvailable，沿用锁定／显隐及真实笔画历史。没有性能优化或新 UI 设计。
+
+最终唯一正式 Release 与核心蒙版目标构建成功，attached-masks 全部检查退出 0，含新增八组／144 普通与288图像笔刷组合、偏移／链接／撤销重做和样式／剪贴／调整合成。mask-brush-preview 十六组实际进程退出 0；free-source-preview、free-placement-preview、shift-lines 三阶段退出 0；brush-preview CTest 通过0.91秒。旧版两文件13项与蒙版合成3项通过。人工查看本轮隔离组蒙版 Both 画布截图，九副本和悬停灰度正确；未验收全部桌面和缩放／旋转组合。来源覆盖929项及快照、Editor边界587文件、diff通过；全部迁移仍INCOMPLETE。详见 [蒙版笔刷迁移](mask-brush-preview-migration-20261114.md)。保留所有用户数据、缓存和日志，阶段提交推送dev。
