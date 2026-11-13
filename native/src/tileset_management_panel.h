@@ -12,9 +12,36 @@
 #include "ui/entry.h"
 #include <map>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 namespace moon {
 class TilesetPanel final:public ui::Widget {
- const PixelFont& font_;const Skin& skin_;const Skin& icons_;Document* doc_;PixelDropdown* sets_;std::array<PixelButton*,4> modes_{};std::vector<std::string> setIds_;bool syncing_=false;int scroll_=0;std::uint64_t identity_=0,revision_=0;std::map<std::string,os::SurfaceRef> images_;
+ const PixelFont& font_;const Skin& skin_;const Skin& icons_;Document* doc_;PixelDropdown* sets_;std::array<PixelButton*,4> modes_{};std::vector<std::string> setIds_;bool syncing_=false;int scroll_=0;std::uint64_t identity_=0,revision_=0;
+ struct ResourceView {
+  std::size_t position=0;
+  std::vector<std::string> ids;
+  std::vector<std::optional<std::string>> sourceSlots,layout;
+  std::unordered_map<std::string,std::size_t> tileIndex;
+ };
+ mutable std::unordered_map<std::string,ResourceView> resources_;
+ mutable bool modelValid_=false;
+ mutable std::uint64_t modelIdentity_=0,modelRevision_=0,modelMutation_=0,modelGeneration_=0;
+ mutable std::string modelLayer_;
+ mutable std::vector<std::string> modelSetIds_;
+ mutable std::vector<std::u32string> modelSetNames_;
+ mutable std::uint64_t indexBuilds_=0,layoutBuilds_=0,sourceCatalogBuilds_=0;
+ using ImageKey=std::pair<std::string,std::string>;
+ struct CachedImage {
+  os::SurfaceRef surface;
+  std::vector<Pixel> pixels;
+  int width=0,height=0;
+  std::uint64_t generation=0,used=0;
+  std::size_t bytes=0;
+ };
+ std::map<ImageKey,CachedImage> images_;
+ std::size_t imageBytes_=0;
+ std::uint64_t imageClock_=0,imageUploads_=0;
+ static constexpr std::size_t imageBudget_=16u*1024*1024,imageLimit_=1024;
  std::array<int,2> swatchSizes_{2,2};
  int cellSize()const{return std::array<int,5>{22,30,40,52,64}[swatchSizes_[freeActive()?1:0]];}
  int pitch()const{return cellSize()+2;} // User-confirmed 2px inter-component spacing.
@@ -22,10 +49,93 @@ class TilesetPanel final:public ui::Widget {
  enum class Gesture{None,PendingRange,Range,Move,SourcePending,SourceMove};Gesture gesture_=Gesture::None;
  gfx::Point start_,last_;std::size_t rangeStart_=0;std::string moveAnchor_;std::vector<std::optional<std::string>> preview_;std::vector<std::string> rangeBefore_;
  std::string sourceDragId_,sourceTargetId_,sourceDragLayer_,sourceDragFrame_;
+ std::optional<std::size_t> rangeTarget_,moveTarget_;
+ std::uint64_t rangeBuilds_=0,rangeVisits_=0,moveBuilds_=0;
+ mutable std::vector<std::optional<std::string>> freeSlots_;
+ mutable std::unordered_map<std::string,std::size_t> slotIndex_;
+ mutable const void* slotLayout_=nullptr;
+ mutable std::uint64_t slotGeneration_=0,previewGeneration_=0;
+ mutable std::vector<std::string> borderSelection_;
+ mutable bool borderValid_=false;
+ mutable int borderColumns_=0;
+ mutable gfx::Rect borderCells_;
+ mutable std::uint64_t selectionBuilds_=0;
  struct FreeSourceView {std::string id,tilesetId,tileId;};
+ mutable std::vector<FreeSourceView> freeCatalog_;
+ void ensureModel()const {
+  const auto& d=boundDocument();
+  if(modelValid_&&modelIdentity_==d.identity()&&modelRevision_==d.revision()&&modelMutation_==d.contentMutationRevision()&&modelLayer_==d.layer().id)return;
+  modelValid_=false;
+  const auto& state=d.timeline().state();
+  if(modelIdentity_!=d.identity())resources_.clear();
+  std::unordered_set<std::string> present;
+  for(std::size_t i=0;i<state.tilesets.size();++i){
+   const auto& t=state.tilesets[i];present.insert(t.id);
+   auto [it,inserted]=resources_.try_emplace(t.id);auto& view=it->second;view.position=i;
+   const bool idsChanged=inserted||view.ids!=t.tileIds;
+   if(idsChanged){
+    std::unordered_map<std::string,std::size_t> index;index.reserve(t.tileIds.size());
+    for(std::size_t n=0;n<t.tileIds.size();++n)index.emplace(t.tileIds[n],n);
+    view.tileIndex=std::move(index);++indexBuilds_;
+   }
+   if(idsChanged||view.sourceSlots!=t.tileSlots){
+    auto layout=tiles::normalizedSlots(t);
+    view.ids=t.tileIds;view.sourceSlots=t.tileSlots;view.layout=std::move(layout);++layoutBuilds_;
+   }
+  }
+  for(auto it=resources_.begin();it!=resources_.end();)if(!present.count(it->first))it=resources_.erase(it);else ++it;
+  freeCatalog_.clear();freeSlots_.clear();
+  if(freeActive()){
+   const auto& data=*d.layer().freeTiles;
+   auto append=[&](const std::string& id,const std::string& set,const std::string& tile){freeCatalog_.push_back({id,set,tile});freeSlots_.emplace_back(id);};
+   if(!data.sources.empty()){
+    for(const auto& source:data.sources){auto found=resources_.find(source.tilesetId);if(found!=resources_.end()&&!found->second.ids.empty())append(source.id,source.tilesetId,found->second.ids.front());}
+   }else if(auto found=resources_.find(data.legacyTilesetId);found!=resources_.end())for(const auto& id:found->second.ids)append(id,found->first,id);
+   ++sourceCatalogBuilds_;
+  }
+  modelSetIds_.clear();modelSetNames_.clear();std::unordered_set<std::string> listed;
+  for(const auto& layer:state.layers)if(layer.kind=="tilemap"&&listed.insert(layer.tilemapTilesetId).second){
+   auto found=resources_.find(layer.tilemapTilesetId);
+   if(found!=resources_.end()){modelSetIds_.push_back(found->first);modelSetNames_.push_back(state.tilesets[found->second.position].name);}
+  }
+  modelIdentity_=d.identity();modelRevision_=d.revision();modelMutation_=d.contentMutationRevision();modelLayer_=d.layer().id;
+  ++modelGeneration_;slotLayout_=nullptr;borderValid_=false;modelValid_=true;
+ }
+ const tiles::Tileset* resource(const std::string& id)const {
+  ensureModel();auto found=resources_.find(id);
+  return found==resources_.end()?nullptr:&boundDocument().timeline().state().tilesets[found->second.position];
+ }
+ void clearImages(){images_.clear();imageBytes_=0;}
+ os::SurfaceRef tileImage(const tiles::Tileset& t,const std::string& id){
+  ensureModel();const auto view=resources_.find(t.id);if(view==resources_.end())return {};
+  const auto index=view->second.tileIndex.find(id);if(index==view->second.tileIndex.end())return {};
+  const ImageKey key{t.id,id};auto found=images_.find(key);
+  if(found!=images_.end()){
+   auto& cached=found->second;cached.used=++imageClock_;
+   if(cached.generation==modelGeneration_)return cached.surface;
+   bool equal=cached.width==t.tileWidth&&cached.height==t.tileHeight;
+   for(int y=0;equal&&y<t.tileHeight;++y){
+    const auto offset=(index->second/t.columns*t.tileHeight+y)*t.columns*t.tileWidth+index->second%t.columns*t.tileWidth;
+    equal=std::equal(cached.pixels.begin()+std::size_t(y)*t.tileWidth,cached.pixels.begin()+std::size_t(y+1)*t.tileWidth,t.pixels.begin()+offset);
+   }
+   if(equal){cached.generation=modelGeneration_;return cached.surface;}
+  }
+  auto pixels=tiles::readTile(t,index->second);auto surface=os::instance()->makeRgbaSurface(t.tileWidth,t.tileHeight);if(!surface)return {};
+  uploadRgbaRegion(*surface,pixels.data(),t.tileWidth,t.tileHeight,t.tileWidth);++imageUploads_;
+  if(found!=images_.end()){imageBytes_-=found->second.bytes;images_.erase(found);}
+  const auto bytes=(pixels.capacity()+std::size_t(t.tileWidth)*t.tileHeight)*sizeof(Pixel);
+  if(bytes<=imageBudget_){
+   while(!images_.empty()&&(imageBytes_+bytes>imageBudget_||images_.size()>=imageLimit_)){
+    auto oldest=std::min_element(images_.begin(),images_.end(),[](const auto& a,const auto& b){return a.second.used<b.second.used;});
+    imageBytes_-=oldest->second.bytes;images_.erase(oldest);
+   }
+   images_.emplace(key,CachedImage{surface,std::move(pixels),t.tileWidth,t.tileHeight,modelGeneration_,++imageClock_,bytes});imageBytes_+=bytes;
+  }
+  return surface;
+ }
  bool freeActive()const{return boundDocument().layer().kind=="free-tile"&&boundDocument().layer().freeTiles.has_value();}
- std::vector<FreeSourceView> freeSources()const{std::vector<FreeSourceView> result;if(!freeActive())return result;const auto& data=*boundDocument().layer().freeTiles;const auto& resources=boundDocument().timeline().state().tilesets;if(!data.sources.empty()){for(const auto& source:data.sources){auto set=std::find_if(resources.begin(),resources.end(),[&](const auto& t){return t.id==source.tilesetId;});if(set!=resources.end()&&!set->tileIds.empty())result.push_back({source.id,set->id,set->tileIds.front()});}}else{auto set=std::find_if(resources.begin(),resources.end(),[&](const auto& t){return t.id==data.legacyTilesetId;});if(set!=resources.end())for(const auto& id:set->tileIds)result.push_back({id,set->id,id});}return result;}
- const tiles::Tileset* current()const{if(freeActive()){const auto catalog=freeSources();if(catalog.empty())return nullptr;auto source=std::find_if(catalog.begin(),catalog.end(),[&](const auto& v){return v.tilesetId==boundDocument().tileSelection().tilesetId;});const auto& id=source==catalog.end()?catalog.front().tilesetId:source->tilesetId;const auto& all=boundDocument().timeline().state().tilesets;auto found=std::find_if(all.begin(),all.end(),[&](const auto& t){return t.id==id;});return found==all.end()?nullptr:&*found;}const auto& all=boundDocument().timeline().state().tilesets;const auto index=sets_->selectedIndex();if(index<0||std::size_t(index)>=setIds_.size())return nullptr;auto it=std::find_if(all.begin(),all.end(),[&](const auto& t){return t.id==setIds_[index];});return it==all.end()?nullptr:&*it;}
+ const std::vector<FreeSourceView>& freeSources()const{ensureModel();return freeCatalog_;}
+ const tiles::Tileset* current()const{ensureModel();if(freeActive()){const auto& catalog=freeSources();if(catalog.empty())return nullptr;auto source=std::find_if(catalog.begin(),catalog.end(),[&](const auto& v){return v.tilesetId==boundDocument().tileSelection().tilesetId;});return resource(source==catalog.end()?catalog.front().tilesetId:source->tilesetId);}const auto index=sets_->selectedIndex();return index<0||std::size_t(index)>=setIds_.size()?nullptr:resource(setIds_[index]);}
  struct Grid final:ui::Widget {
   TilesetPanel& p;ui::Timer hold{360,this};
   Grid(TilesetPanel& panel):ui::Widget(ui::kGenericWidget),p(panel){setTransparent(true);setFocusStop(true);hold.Tick.connect([this]{hold.stop();if(p.gesture_==Gesture::PendingRange&&hasCapture()){p.gesture_=Gesture::Range;p.updateRange(p.last_);}});}
@@ -34,29 +144,54 @@ class TilesetPanel final:public ui::Widget {
  };Grid* grid_;
  int columns()const{return std::max(1,(grid_->bounds().w/uiScale+2)/pitch());}
  int pageRows()const{return std::max(1,(grid_->bounds().h/uiScale+2)/pitch());}
- std::vector<std::optional<std::string>> slots()const{if(freeActive()){std::vector<std::optional<std::string>> result;for(const auto& source:freeSources())result.push_back(source.id);return result;}auto t=current();if(!t)return {};return gesture_==Gesture::Move&&!preview_.empty()?preview_:tiles::normalizedSlots(*t);}
- void clampScroll(){auto t=current();const auto count=freeActive()?slots().size():t?std::max(t->tileSlots.size(),preview_.size()):0;const int rows=int((count+columns()-1)/columns());scroll_=std::clamp(scroll_,0,std::max(0,rows-pageRows()));}
+ const std::vector<std::optional<std::string>>& slots()const{ensureModel();if(freeActive())return freeSlots_;auto t=current();if(!t){static const std::vector<std::optional<std::string>> empty;return empty;}return gesture_==Gesture::Move&&!preview_.empty()?preview_:resources_.at(t->id).layout;}
+ const std::unordered_map<std::string,std::size_t>& slotIndex()const {
+  const auto& layout=slots();const auto generation=gesture_==Gesture::Move?previewGeneration_:modelGeneration_;
+  if(slotLayout_!=&layout||slotGeneration_!=generation){
+   std::unordered_map<std::string,std::size_t> next;next.reserve(layout.size());
+   for(std::size_t i=0;i<layout.size();++i)if(layout[i])next.emplace(*layout[i],i);
+   slotIndex_=std::move(next);slotLayout_=&layout;slotGeneration_=generation;borderValid_=false;
+  }
+  return slotIndex_;
+ }
+ void clampScroll(){const auto count=slots().size();const int rows=int((count+columns()-1)/columns());scroll_=std::clamp(scroll_,0,std::max(0,rows-pageRows()));}
  std::optional<std::size_t> slotAt(gfx::Point p,bool clamp=false)const{const auto b=grid_->bounds();if(!clamp&&!b.contains(p))return {};int x=(p.x-b.x)/uiScale,y=(p.y-b.y)/uiScale;if(clamp){x=std::clamp(x,0,std::max(0,b.w/uiScale-1));y=std::clamp(y,0,std::max(0,b.h/uiScale-1));}if(x<0||y<0||x/pitch()>=columns())return {};const auto index=std::size_t(scroll_+y/pitch())*columns()+x/pitch();return index<tiles::MaxLayoutSlots?std::optional<std::size_t>(index):std::nullopt;}
  std::optional<std::string> sourceAt(gfx::Point point)const{const auto b=grid_->bounds();if(!b.contains(point)||(point.x-b.x)%(pitch()*uiScale)>=cellSize()*uiScale||(point.y-b.y)%(pitch()*uiScale)>=cellSize()*uiScale)return {};return idAt(point);}
- std::optional<std::string> idAt(gfx::Point point)const{const auto at=slotAt(point);const auto layout=slots();return at&&*at<layout.size()?layout[*at]:std::nullopt;}
+ std::optional<std::string> idAt(gfx::Point point)const{const auto at=slotAt(point);const auto& layout=slots();return at&&*at<layout.size()?layout[*at]:std::nullopt;}
  bool isSelected(const std::string& id)const{return std::find(selected_.begin(),selected_.end(),id)!=selected_.end();}
- gfx::Rect selectionBorder()const{const auto layout=slots();int minX=columns(),minY=std::numeric_limits<int>::max(),maxX=-1,maxY=-1;for(std::size_t i=0;i<layout.size();++i)if(layout[i]&&isSelected(*layout[i])){const int x=int(i%columns()),y=int(i/columns())-scroll_;minX=std::min(minX,x);maxX=std::max(maxX,x);minY=std::min(minY,y);maxY=std::max(maxY,y);}if(maxX<0)return {};return uiDisplayRect({minX*pitch(),minY*pitch(),(maxX-minX)*pitch()+cellSize(),(maxY-minY)*pitch()+cellSize()},grid_->bounds().origin());}
+ gfx::Rect selectionBorder()const {
+  const auto& indexes=slotIndex();const int cols=columns();
+  if(!borderValid_||borderColumns_!=cols||borderSelection_!=selected_){
+   int minX=cols,minY=std::numeric_limits<int>::max(),maxX=-1,maxY=-1;
+   for(const auto& id:selected_){auto found=indexes.find(id);if(found==indexes.end())continue;const int x=int(found->second%cols),y=int(found->second/cols);minX=std::min(minX,x);maxX=std::max(maxX,x);minY=std::min(minY,y);maxY=std::max(maxY,y);}
+   borderCells_=maxX<0?gfx::Rect():gfx::Rect(minX,minY,maxX-minX+1,maxY-minY+1);
+   borderColumns_=cols;borderSelection_=selected_;borderValid_=true;++selectionBuilds_;
+  }
+  if(borderCells_.isEmpty())return {};
+  return uiDisplayRect({borderCells_.x*pitch(),(borderCells_.y-scroll_)*pitch(),(borderCells_.w-1)*pitch()+cellSize(),(borderCells_.h-1)*pitch()+cellSize()},grid_->bounds().origin());
+ }
  bool borderHit(gfx::Point display)const{const auto border=selectionBorder();return !border.isEmpty()&&grid_->bounds().contains(display)&&skin_.selectionContains(skin_.selectionMaterialBounds(border),display);}
  void paintSelection(ui::Graphics& local){const auto border=selectionBorder();if(border.isEmpty())return;const auto clip=local.getClipBounds().offset(grid_->bounds().origin());ui::Graphics physical(local.display(),base::AddRef(local.getInternalSurface()),0,0);physical.saveClip();physical.clipRect(clip);physical.clipRect(grid_->bounds());{const auto material=skin_.selectionMaterialBounds(border);UiPaintScale scale(physical,{material.x%uiScale,material.y%uiScale});skin_.drawSelectionBorder(physical,border,false);}physical.restoreClip();}
- void cancelGesture(bool restoreRange=true){if(restoreRange&&gesture_==Gesture::Range)selected_=rangeBefore_;grid_->hold.stop();gesture_=Gesture::None;sourceDragId_.clear();sourceTargetId_.clear();sourceDragLayer_.clear();sourceDragFrame_.clear();preview_.clear();rangeBefore_.clear();if(grid_->hasCapture())grid_->releaseMouse();grid_->invalidate();}
- void selectRectangle(std::size_t a,std::size_t b){auto t=current();if(!t)return;const auto layout=tiles::normalizedSlots(*t);const auto cols=std::size_t(columns());const auto left=std::min(a%cols,b%cols),right=std::max(a%cols,b%cols),top=std::min(a/cols,b/cols),bottom=std::max(a/cols,b/cols);selected_.clear();for(std::size_t i=0;i<layout.size();++i)if(layout[i]&&i%cols>=left&&i%cols<=right&&i/cols>=top&&i/cols<=bottom)selected_.push_back(*layout[i]);grid_->invalidate();}
- void updateRange(gfx::Point point){if(auto at=slotAt(point,true))selectRectangle(rangeStart_,*at);}
- std::string nearestAnchor(gfx::Point point)const{const auto layout=slots();double nearest=std::numeric_limits<double>::max();std::string id;for(std::size_t i=0;i<layout.size();++i)if(layout[i]&&isSelected(*layout[i])){const auto center=uiDisplayRect({int(i%columns())*pitch(),(int(i/columns())-scroll_)*pitch(),cellSize(),cellSize()},grid_->bounds().origin()).center();const double dx=center.x-point.x,dy=center.y-point.y,d=dx*dx+dy*dy;if(d<nearest){nearest=d;id=*layout[i];}}return id;}
+ void cancelGesture(bool restoreRange=true){if(restoreRange&&gesture_==Gesture::Range)selected_=rangeBefore_;grid_->hold.stop();gesture_=Gesture::None;sourceDragId_.clear();sourceTargetId_.clear();sourceDragLayer_.clear();sourceDragFrame_.clear();preview_.clear();++previewGeneration_;rangeTarget_.reset();moveTarget_.reset();rangeBefore_.clear();if(grid_->hasCapture())grid_->releaseMouse();grid_->invalidate();}
+ void selectRectangle(std::size_t a,std::size_t b){
+  if(!current())return;const auto& layout=slots();const auto cols=std::size_t(columns());
+  const auto left=std::min(a%cols,b%cols),right=std::max(a%cols,b%cols),top=std::min(a/cols,b/cols),bottom=std::max(a/cols,b/cols);
+  selected_.clear();++rangeBuilds_;
+  if(!layout.empty())for(std::size_t row=top;row<=std::min(bottom,(layout.size()-1)/cols);++row)for(std::size_t col=left;col<=right;++col){const auto i=row*cols+col;++rangeVisits_;if(i<layout.size()&&layout[i])selected_.push_back(*layout[i]);}
+  grid_->invalidate();
+ }
+ void updateRange(gfx::Point point){if(auto at=slotAt(point,true);at&&at!=rangeTarget_){selectRectangle(rangeStart_,*at);rangeTarget_=at;}}
+ std::string nearestAnchor(gfx::Point point)const{const auto& indexes=slotIndex();double nearest=std::numeric_limits<double>::max();std::size_t nearestIndex=std::numeric_limits<std::size_t>::max();std::string id;for(const auto& selected:selected_){auto found=indexes.find(selected);if(found==indexes.end())continue;const auto i=found->second;const auto center=uiDisplayRect({int(i%columns())*pitch(),(int(i/columns())-scroll_)*pitch(),cellSize(),cellSize()},grid_->bounds().origin()).center();const double dx=center.x-point.x,dy=center.y-point.y,d=dx*dx+dy*dy;if(d<nearest||(d==nearest&&i<nearestIndex)){nearest=d;nearestIndex=i;id=selected;}}return id;}
  void buildSourceContext(PixelMenu& menu,const std::string& id){
   auto properties=new PixelMenuItem(font_,skin_,U"源瓦片属性");properties->iconSkin=&icons_;properties->icon="properties";properties->setEnabled(canAddSource());const auto propertyIdentity=boundDocument().identity();properties->Click.connect([this,id,propertyIdentity]{if(boundDocument().identity()==propertyIdentity)showSourceProperties(id);});menu.addChild(properties);menu.addChild(new PixelMenuSeparator(skin_));
   auto remove=new PixelMenuItem(font_,skin_,U"删除瓦片");remove->iconSkin=&icons_;remove->icon="delete";remove->setEnabled(canDelete());const auto identity=boundDocument().identity();remove->Click.connect([this,id,identity]{if(boundDocument().identity()==identity&&boundDocument().deleteFreeTileSource(id)){if(changed)changed();sync();}});menu.addChild(remove);
  }
- bool pointerDown(ui::MouseMessage& m){auto t=current();if(!t)return true;cancelGesture();if(freeActive()){const auto clicked=sourceAt(m.position());if(!clicked)return true;const auto catalog=freeSources();auto found=std::find_if(catalog.begin(),catalog.end(),[&](const auto& v){return v.id==*clicked;});if(found==catalog.end()||!(m.left()||m.right()))return true;const auto sourceId=found->id;if(m.right()&&t->id==found->tilesetId){gesture_=Gesture::SourcePending;sourceDragId_=sourceTargetId_=sourceId;sourceDragLayer_=boundDocument().layer().id;sourceDragFrame_=boundDocument().frame().id;start_=last_=m.position();grid_->captureMouse();return true;}boundDocument().setSelectedTile(found->tilesetId,found->tileId);if(m.left())boundDocument().setFreeTilePaintMode(true);selected_={sourceId};anchor_=sourceId;if(changed)changed();sync();if(m.right()){PixelMenu menu(skin_);buildSourceContext(menu,sourceId);menu.showPopup(m.position(),display());grid_->requestFocus();}return true;}selectionSet_=t->id;start_=last_=m.position();const bool modifier=m.shiftPressed()||m.ctrlPressed()||m.cmdPressed();const auto clicked=idAt(start_);const bool move=!modifier&&((m.left()&&borderHit(start_))||(m.right()&&clicked&&isSelected(*clicked)));
-  if(move){gesture_=Gesture::Move;moveAnchor_=nearestAnchor(start_);preview_=tiles::normalizedSlots(*t);grid_->captureMouse();return true;}
+ bool pointerDown(ui::MouseMessage& m){auto t=current();if(!t)return true;cancelGesture();if(freeActive()){const auto clicked=sourceAt(m.position());if(!clicked)return true;const auto& catalog=freeSources();auto found=std::find_if(catalog.begin(),catalog.end(),[&](const auto& v){return v.id==*clicked;});if(found==catalog.end()||!(m.left()||m.right()))return true;const auto sourceId=found->id;if(m.right()&&t->id==found->tilesetId){gesture_=Gesture::SourcePending;sourceDragId_=sourceTargetId_=sourceId;sourceDragLayer_=boundDocument().layer().id;sourceDragFrame_=boundDocument().frame().id;start_=last_=m.position();grid_->captureMouse();return true;}boundDocument().setSelectedTile(found->tilesetId,found->tileId);if(m.left())boundDocument().setFreeTilePaintMode(true);selected_={sourceId};anchor_=sourceId;if(changed)changed();sync();if(m.right()){PixelMenu menu(skin_);buildSourceContext(menu,sourceId);menu.showPopup(m.position(),display());grid_->requestFocus();}return true;}selectionSet_=t->id;start_=last_=m.position();const bool modifier=m.shiftPressed()||m.ctrlPressed()||m.cmdPressed();const auto clicked=idAt(start_);const bool move=!modifier&&((m.left()&&borderHit(start_))||(m.right()&&clicked&&isSelected(*clicked)));
+  if(move){gesture_=Gesture::Move;moveAnchor_=nearestAnchor(start_);preview_=resources_.at(t->id).layout;++previewGeneration_;moveTarget_.reset();grid_->captureMouse();return true;}
   if(m.right()){if(clicked){boundDocument().setSelectedTile(t->id,*clicked,true);boundDocument().setTilemapMode(tiles::Mode::Paint);if(changed)changed();sync();}return true;}
   if(!m.left())return true;
   if(clicked){boundDocument().setSelectedTile(t->id,*clicked);boundDocument().setTilemapMode(tiles::Mode::Paint);}
-  auto at=slotAt(start_);if(m.shiftPressed()&&clicked&&at){const auto layout=tiles::normalizedSlots(*t);const auto origin=std::find(layout.begin(),layout.end(),std::optional<std::string>(anchor_));selectRectangle(origin==layout.end()?*at:std::size_t(origin-layout.begin()),*at);anchor_=*clicked;}
+  auto at=slotAt(start_);if(m.shiftPressed()&&clicked&&at){const auto& layout=resources_.at(t->id).layout;const auto origin=std::find(layout.begin(),layout.end(),std::optional<std::string>(anchor_));selectRectangle(origin==layout.end()?*at:std::size_t(origin-layout.begin()),*at);anchor_=*clicked;}
   else if((m.ctrlPressed()||m.cmdPressed())&&clicked){if(isSelected(*clicked)){selected_.erase(std::remove(selected_.begin(),selected_.end(),*clicked),selected_.end());anchor_=selected_.empty()?std::string():selected_.back();}else{selected_.push_back(*clicked);anchor_=*clicked;}}
   else{selected_.clear();anchor_.clear();if(clicked){selected_.push_back(*clicked);anchor_=*clicked;}}
   if(!modifier&&at){rangeStart_=*at;rangeBefore_=selected_;gesture_=Gesture::PendingRange;grid_->captureMouse();grid_->hold.start();}
@@ -65,21 +200,22 @@ class TilesetPanel final:public ui::Widget {
  bool pointerMove(ui::MouseMessage& m){if(gesture_==Gesture::None)return false;if(!grid_->hasCapture()||!grid_->isVisible()||!grid_->isEnabled()){cancelGesture();return true;}last_=m.position();if(gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove){
    if(!freeActive()||boundDocument().active()||identity_!=boundDocument().identity()||revision_!=boundDocument().revision()||sourceDragLayer_!=boundDocument().layer().id||sourceDragFrame_!=boundDocument().frame().id){cancelGesture();return true;}
    const double dx=double(last_.x)-start_.x,dy=double(last_.y)-start_.y;if(m.type()==ui::kMouseMoveMessage&&dx*dx+dy*dy>=9.0*uiScale*uiScale){gesture_=Gesture::SourceMove;if(auto target=sourceAt(last_))sourceTargetId_=*target;grid_->invalidate();}return true;
-  }if(gesture_==Gesture::Range)updateRange(last_);else if(gesture_==Gesture::Move&&(std::abs(last_.x-start_.x)>=uiScale||std::abs(last_.y-start_.y)>=uiScale)){if(auto t=current())if(auto target=slotAt(last_,true))preview_=tiles::repositionSlots(tiles::normalizedSlots(*t),selected_,*target,moveAnchor_,columns());grid_->invalidate();}return true;}
+  }if(gesture_==Gesture::Range)updateRange(last_);else if(gesture_==Gesture::Move&&(std::abs(last_.x-start_.x)>=uiScale||std::abs(last_.y-start_.y)>=uiScale)){if(auto t=current())if(auto target=slotAt(last_,true);target&&target!=moveTarget_){auto next=tiles::repositionSlots(resources_.at(t->id).layout,selected_,*target,moveAnchor_,columns());moveTarget_=target;++moveBuilds_;if(next!=preview_){preview_=std::move(next);++previewGeneration_;grid_->invalidate();}}}return true;}
  bool pointerUp(ui::MouseMessage& m){if(gesture_==Gesture::None)return false;
   if(gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove){if(m.button()==ui::kButtonNone){cancelGesture();return true;}if(m.button()!=ui::kButtonRight)return true;pointerMove(m);if(gesture_==Gesture::None)return true;const bool moved=gesture_==Gesture::SourceMove;const auto id=sourceDragId_,target=sourceTargetId_;cancelGesture();if(moved){if(boundDocument().reorderFreeTileSource(id,target)){if(changed)changed();sync();}}else{PixelMenu menu(skin_);buildSourceContext(menu,id);menu.showPopup(m.position(),display());grid_->requestFocus();}return true;}
   pointerMove(m);if(gesture_==Gesture::None)return true;if(gesture_==Gesture::Range){auto lastId=idAt(last_);anchor_=lastId?*lastId:(selected_.empty()?std::string():selected_.back());}const bool move=gesture_==Gesture::Move;const auto next=preview_;const auto id=selectedTilesetId();cancelGesture(false);if(move&&!next.empty()&&boundDocument().setTilesetTileSlots(id,next)){if(changed)changed();sync();}return true;}
  void paintFreeGrid(ui::Graphics& g,gfx::Rect physical){
-  clampScroll();{UiPaintScale scale(g);const auto r=uiLogical(physical);g.fillRect(skin_["panel"],r);const auto catalog=freeSources();const auto& resources=boundDocument().timeline().state().tilesets;
-   for(int row=0;row<=pageRows();++row)for(int col=0;col<columns();++col){const auto i=std::size_t(row+scroll_)*columns()+col;if(i>=catalog.size())continue;const auto& source=catalog[i];auto set=std::find_if(resources.begin(),resources.end(),[&](const auto& t){return t.id==source.tilesetId;});if(set==resources.end())continue;gfx::Rect cell(r.x+col*pitch(),r.y+row*pitch(),cellSize(),cellSize());if((boundDocument().tileSelection().tilesetId==source.tilesetId&&boundDocument().tileSelection().primary==source.tileId)||(gesture_==Gesture::SourceMove&&sourceTargetId_==source.id))g.fillRect(skin_["accent"],cell);for(int y=2;y<cellSize()-2;y+=6)for(int x=2;x<cellSize()-2;x+=6)g.fillRect(skin_[((x/6+y/6)%2)?"checkerA":"checkerB"],{cell.x+x,cell.y+y,std::min(6,cellSize()-2-x),std::min(6,cellSize()-2-y)});auto& image=images_[source.tilesetId+"/"+source.tileId];if(!image){auto index=tiles::Index(*set).find(source.tileId);if(!index)continue;const auto pixels=tiles::readTile(*set,*index);image=os::instance()->makeRgbaSurface(set->tileWidth,set->tileHeight);if(!image)continue;uploadRgbaRegion(*image,pixels.data(),set->tileWidth,set->tileHeight,set->tileWidth);}const double zoom=std::min(double(cellSize()-4)/set->tileWidth,double(cellSize()-4)/set->tileHeight);const int w=std::max(1,int(set->tileWidth*zoom)),h=std::max(1,int(set->tileHeight*zoom));ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image.get(),{0,0,set->tileWidth,set->tileHeight},{cell.x+(cellSize()-w)/2,cell.y+(cellSize()-h)/2,w,h},os::Sampling(os::Sampling::Filter::Nearest),&paint);
+  clampScroll();{UiPaintScale scale(g);const auto r=uiLogical(physical);g.fillRect(skin_["panel"],r);const auto& catalog=freeSources();
+   for(int row=0;row<=pageRows();++row)for(int col=0;col<columns();++col){const auto i=std::size_t(row+scroll_)*columns()+col;if(i>=catalog.size())continue;const auto& source=catalog[i];auto set=resource(source.tilesetId);if(!set)continue;gfx::Rect cell(r.x+col*pitch(),r.y+row*pitch(),cellSize(),cellSize());if((boundDocument().tileSelection().tilesetId==source.tilesetId&&boundDocument().tileSelection().primary==source.tileId)||(gesture_==Gesture::SourceMove&&sourceTargetId_==source.id))g.fillRect(skin_["accent"],cell);for(int y=2;y<cellSize()-2;y+=6)for(int x=2;x<cellSize()-2;x+=6)g.fillRect(skin_[((x/6+y/6)%2)?"checkerA":"checkerB"],{cell.x+x,cell.y+y,std::min(6,cellSize()-2-x),std::min(6,cellSize()-2-y)});auto image=tileImage(*set,source.tileId);if(!image)continue;const double zoom=std::min(double(cellSize()-4)/set->tileWidth,double(cellSize()-4)/set->tileHeight);const int w=std::max(1,int(set->tileWidth*zoom)),h=std::max(1,int(set->tileHeight*zoom));ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image.get(),{0,0,set->tileWidth,set->tileHeight},{cell.x+(cellSize()-w)/2,cell.y+(cellSize()-h)/2,w,h},os::Sampling(os::Sampling::Filter::Nearest),&paint);
    }
   }paintSelection(g);
  }
  void syncFree(){
-  syncing_=true;if((gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove)&&(sourceDragLayer_!=boundDocument().layer().id||sourceDragFrame_!=boundDocument().frame().id))cancelGesture();if(identity_!=boundDocument().identity()||revision_!=boundDocument().revision()){cancelGesture();images_.clear();selected_.clear();anchor_.clear();identity_=boundDocument().identity();revision_=boundDocument().revision();}sets_->setOptions({boundDocument().layer().name});sets_->setSelectedIndex(0);sets_->setEnabled(false);for(int i=0;i<4;++i){modes_[i]->setVisible(i==0||i==3);modes_[i]->active=i==3?boundDocument().freeTilePaintMode():i==0&&!boundDocument().freeTilePaintMode();modes_[i]->setEnabled((i==3||(i==0&&!boundDocument().layer().freeTiles->sources.empty()))&&!boundDocument().active()&&!freeSources().empty());}modes_[3]->icon="freeTile";{const auto b=modes_[0]->bounds();modes_[3]->setBounds({b.x+14*uiScale,b.y,b.w,b.h});}grid_->setEnabled(!boundDocument().active());clampScroll();syncing_=false;invalidate();grid_->invalidate();
+  syncing_=true;if((gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove)&&(sourceDragLayer_!=boundDocument().layer().id||sourceDragFrame_!=boundDocument().frame().id))cancelGesture();if(identity_!=boundDocument().identity()||revision_!=boundDocument().revision()){cancelGesture();if(identity_!=boundDocument().identity())clearImages();selected_.clear();anchor_.clear();identity_=boundDocument().identity();revision_=boundDocument().revision();}sets_->setOptions({boundDocument().layer().name});sets_->setSelectedIndex(0);sets_->setEnabled(false);for(int i=0;i<4;++i){modes_[i]->setVisible(i==0||i==3);modes_[i]->active=i==3?boundDocument().freeTilePaintMode():i==0&&!boundDocument().freeTilePaintMode();modes_[i]->setEnabled((i==3||(i==0&&!boundDocument().layer().freeTiles->sources.empty()))&&!boundDocument().active()&&!freeSources().empty());}modes_[3]->icon="freeTile";{const auto b=modes_[0]->bounds();modes_[3]->setBounds({b.x+14*uiScale,b.y,b.w,b.h});}grid_->setEnabled(!boundDocument().active());clampScroll();syncing_=false;invalidate();grid_->invalidate();
  }
- void paintGrid(ui::Graphics& g,gfx::Rect physical){if(freeActive()){paintFreeGrid(g,physical);return;}clampScroll();{UiPaintScale scale(g);auto r=uiLogical(physical);g.fillRect(skin_["panel"],r);const auto t=current();if(!t)return;const auto layout=slots();const int cols=columns(),page=pageRows();const auto roles=boundDocument().tileSelection();for(int row=0;row<=page;++row)for(int col=0;col<cols;++col){auto i=std::size_t(row+scroll_)*cols+col;if(i>=layout.size()||!layout[i])continue;const auto& id=*layout[i];gfx::Rect cell(r.x+col*pitch(),r.y+row*pitch(),cellSize(),cellSize());if(roles.tilesetId==t->id&&roles.primary==id)g.fillRect(skin_["accent"],cell);else if(roles.tilesetId==t->id&&roles.secondary==id)g.fillRect(skin_["muted"],cell);for(int y=2;y<cellSize()-2;y+=6)for(int x=2;x<cellSize()-2;x+=6)g.fillRect(skin_[((x/6+y/6)%2)?"checkerA":"checkerB"],{cell.x+x,cell.y+y,std::min(6,cellSize()-2-x),std::min(6,cellSize()-2-y)});const auto key=t->id+"/"+id;auto& image=images_[key];if(!image){auto index=tiles::Index(*t).find(id);if(!index)continue;auto pixels=tiles::readTile(*t,*index);image=os::instance()->makeRgbaSurface(t->tileWidth,t->tileHeight);if(!image)continue;uploadRgbaRegion(*image,pixels.data(),t->tileWidth,t->tileHeight,t->tileWidth);}const double z=std::min(double(cellSize()-4)/t->tileWidth,double(cellSize()-4)/t->tileHeight);const int w=std::max(1,int(t->tileWidth*z)),h=std::max(1,int(t->tileHeight*z));ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image.get(),{0,0,t->tileWidth,t->tileHeight},{cell.x+(cellSize()-w)/2,cell.y+(cellSize()-h)/2,w,h},os::Sampling(os::Sampling::Filter::Nearest),&paint);}}paintSelection(g);}
+ void paintGrid(ui::Graphics& g,gfx::Rect physical){if(freeActive()){paintFreeGrid(g,physical);return;}clampScroll();{UiPaintScale scale(g);auto r=uiLogical(physical);g.fillRect(skin_["panel"],r);const auto t=current();if(!t)return;const auto& layout=slots();const int cols=columns(),page=pageRows();const auto roles=boundDocument().tileSelection();for(int row=0;row<=page;++row)for(int col=0;col<cols;++col){auto i=std::size_t(row+scroll_)*cols+col;if(i>=layout.size()||!layout[i])continue;const auto& id=*layout[i];gfx::Rect cell(r.x+col*pitch(),r.y+row*pitch(),cellSize(),cellSize());if(roles.tilesetId==t->id&&roles.primary==id)g.fillRect(skin_["accent"],cell);else if(roles.tilesetId==t->id&&roles.secondary==id)g.fillRect(skin_["muted"],cell);for(int y=2;y<cellSize()-2;y+=6)for(int x=2;x<cellSize()-2;x+=6)g.fillRect(skin_[((x/6+y/6)%2)?"checkerA":"checkerB"],{cell.x+x,cell.y+y,std::min(6,cellSize()-2-x),std::min(6,cellSize()-2-y)});auto image=tileImage(*t,id);if(!image)continue;const double z=std::min(double(cellSize()-4)/t->tileWidth,double(cellSize()-4)/t->tileHeight);const int w=std::max(1,int(t->tileWidth*z)),h=std::max(1,int(t->tileHeight*z));ui::Paint paint;paint.blendMode(os::BlendMode::SrcOver);g.drawSurface(image.get(),{0,0,t->tileWidth,t->tileHeight},{cell.x+(cellSize()-w)/2,cell.y+(cellSize()-h)/2,w,h},os::Sampling(os::Sampling::Filter::Nearest),&paint);}}paintSelection(g);}
 public:
+ void smokePerformance();
  void smokeSourceProperties(){
   auto require=[](bool ok,const char* text){if(!ok)throw std::runtime_error(text);};const auto before=boundDocument().layer().freeTiles->sources;const bool paint=boundDocument().freeTilePaintMode();const auto history=boundDocument().historyPosition();
   for(int close=0;close<4;++close){sourcePropertiesVerify=close;const auto savedStorage=sourceColorStorage;sourceColorStorage=std::filesystem::path("source-color-smoke-size.txt");
@@ -185,10 +321,10 @@ public:
  bool deleteSelection(){if(!canDelete())return false;if(freeActive()){const auto catalog=freeSources();const auto set=selectedTilesetId();auto at=std::find_if(catalog.begin(),catalog.end(),[&](const auto& s){return s.tilesetId==set;});if(at==catalog.end())return false;cancelGesture();const bool result=boundDocument().deleteFreeTileSource(at->id);if(result){if(changed)changed();sync();}return result;}const auto id=selectedTilesetId();auto selected=selected_;if(selected.empty())selected.push_back(boundDocument().tileSelection().primary);cancelGesture();const bool result=boundDocument().deleteTilesetTiles(id,selected);if(result){selected_.clear();anchor_.clear();if(changed)changed();sync();}return result;}
  bool clearUnused(){if(!canManage())return false;const auto id=selectedTilesetId();cancelGesture();const bool result=boundDocument().clearUnusedTilesetTiles(id);if(result){if(changed)changed();sync();}return result;}
  Document& boundDocument()const{return *doc_;}
- void bindDocument(Document& value){if(doc_==&value)return;cancelGesture();doc_=&value;identity_=0;images_.clear();selected_.clear();anchor_.clear();selectionSet_.clear();scroll_=0;}
+ void bindDocument(Document& value){if(doc_==&value)return;cancelGesture();doc_=&value;identity_=0;modelValid_=false;clearImages();selected_.clear();anchor_.clear();selectionSet_.clear();scroll_=0;}
  void cancelPending(){cancelGesture();}
  bool handleCommand(ui::Message* msg){if(msg->type()==ui::kFocusLeaveMessage){auto f=dynamic_cast<ui::FocusMessage*>(msg);if(!f||!owns(f->newFocus())){cancelGesture();selected_.clear();anchor_.clear();grid_->invalidate();}return false;}if(msg->type()!=ui::kKeyDownMessage)return false;auto key=static_cast<ui::KeyMessage*>(msg);if(key->scancode()==ui::kKeyEsc&&gesture_!=Gesture::None){cancelGesture();return true;}if(!owns(ui::Manager::getDefault()->getFocus())||dynamic_cast<ui::Entry*>(ui::Manager::getDefault()->getFocus()))return false;if(key->scancode()==ui::kKeyDel||key->scancode()==ui::kKeyBackspace){deleteSelection();return true;}return false;}
- void sync(){if((gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove)&&(sourceDragLayer_!=boundDocument().layer().id||sourceDragFrame_!=boundDocument().frame().id))cancelGesture();if(freeActive()){syncFree();return;}for(auto button:modes_)button->setVisible(true);modes_[3]->icon="tilemap";{const auto b=modes_[0]->bounds();modes_[3]->setBounds({b.x+45*uiScale,b.y,b.w,b.h});}syncing_=true;const bool identityChanged=identity_!=boundDocument().identity();if(identityChanged||revision_!=boundDocument().revision()){cancelGesture();identity_=boundDocument().identity();revision_=boundDocument().revision();images_.clear();if(identityChanged){selected_.clear();anchor_.clear();selectionSet_.clear();scroll_=0;}}std::vector<std::u32string> names;setIds_.clear();int selected=-1;for(const auto& layer:boundDocument().timeline().state().layers)if(layer.kind=="tilemap"&&std::find(setIds_.begin(),setIds_.end(),layer.tilemapTilesetId)==setIds_.end()){const auto& all=boundDocument().timeline().state().tilesets;auto t=std::find_if(all.begin(),all.end(),[&](const auto& t){return t.id==layer.tilemapTilesetId;});if(t==all.end())continue;if(t->id==boundDocument().tileSelection().tilesetId)selected=int(setIds_.size());setIds_.push_back(t->id);names.push_back(t->name);}sets_->setOptions(names);if(selected<0&&!setIds_.empty())selected=0;sets_->setSelectedIndex(selected);if(auto t=current()){if(selectionSet_!=t->id){cancelGesture();selected_.clear();anchor_.clear();selectionSet_=t->id;scroll_=0;}tiles::Index valid(*t);selected_.erase(std::remove_if(selected_.begin(),selected_.end(),[&](const auto& id){return !valid.find(id);}),selected_.end());if(!valid.find(anchor_))anchor_=selected_.empty()?std::string():selected_.back();}else{selected_.clear();anchor_.clear();}sets_->setEnabled(!boundDocument().active()&&!names.empty());const tiles::Mode modes[]{tiles::Mode::Edit,tiles::Mode::Create,tiles::Mode::Hybrid,tiles::Mode::Paint};for(int i=0;i<4;++i){modes_[i]->active=boundDocument().tilemapMode()==modes[i];modes_[i]->setEnabled(!boundDocument().active()&&selected>=0);}grid_->setEnabled(!boundDocument().active());if(!grid_->isEnabled())cancelGesture();syncing_=false;clampScroll();invalidate();grid_->invalidate();}
+ void sync(){if((gesture_==Gesture::SourcePending||gesture_==Gesture::SourceMove)&&(sourceDragLayer_!=boundDocument().layer().id||sourceDragFrame_!=boundDocument().frame().id))cancelGesture();if(freeActive()){syncFree();return;}for(auto button:modes_)button->setVisible(true);modes_[3]->icon="tilemap";{const auto b=modes_[0]->bounds();modes_[3]->setBounds({b.x+45*uiScale,b.y,b.w,b.h});}syncing_=true;const bool identityChanged=identity_!=boundDocument().identity();if(identityChanged||revision_!=boundDocument().revision()){cancelGesture();identity_=boundDocument().identity();revision_=boundDocument().revision();if(identityChanged)clearImages();if(identityChanged){selected_.clear();anchor_.clear();selectionSet_.clear();scroll_=0;}}ensureModel();const auto& names=modelSetNames_;if(setIds_!=modelSetIds_)setIds_=modelSetIds_;int selected=-1;for(std::size_t i=0;i<setIds_.size();++i)if(setIds_[i]==boundDocument().tileSelection().tilesetId){selected=int(i);break;}sets_->setOptions(names);if(selected<0&&!setIds_.empty())selected=0;sets_->setSelectedIndex(selected);if(auto t=current()){if(selectionSet_!=t->id){cancelGesture();selected_.clear();anchor_.clear();selectionSet_=t->id;scroll_=0;}const auto& valid=resources_.at(t->id).tileIndex;selected_.erase(std::remove_if(selected_.begin(),selected_.end(),[&](const auto& id){return !valid.count(id);}),selected_.end());if(!valid.count(anchor_))anchor_=selected_.empty()?std::string():selected_.back();}else{selected_.clear();anchor_.clear();}sets_->setEnabled(!boundDocument().active()&&!names.empty());const tiles::Mode modes[]{tiles::Mode::Edit,tiles::Mode::Create,tiles::Mode::Hybrid,tiles::Mode::Paint};for(int i=0;i<4;++i){modes_[i]->active=boundDocument().tilemapMode()==modes[i];modes_[i]->setEnabled(!boundDocument().active()&&selected>=0);}grid_->setEnabled(!boundDocument().active());if(!grid_->isEnabled())cancelGesture();syncing_=false;clampScroll();invalidate();grid_->invalidate();}
  void onResize(ui::ResizeEvent& ev)override{if(bounds()!=ev.bounds())cancelGesture();setBoundsQuietly(ev.bounds());const auto r=bounds();sets_->setBounds({r.x,r.y,r.w,textControlHeight*uiScale});const int top=(textControlHeight+2)*uiScale;for(int i=0;i<3;++i)modes_[i]->setBounds({r.x+i*14*uiScale,r.y+top,15*uiScale,15*uiScale});modes_[3]->setBounds({r.x+(freeActive()?14:45)*uiScale,r.y+top,15*uiScale,15*uiScale});const int y=top+17*uiScale;grid_->setBounds({r.x,r.y+y,r.w,std::max(1,r.h-y)});}
  bool onProcessMessage(ui::Message* msg)override{if(handleCommand(msg))return true;if(auto m=dynamic_cast<ui::MouseMessage*>(msg);m&&msg->type()==ui::kMouseDownMessage&&m->right()){if(context)context();return true;}return ui::Widget::onProcessMessage(msg);}
 };
