@@ -1124,9 +1124,14 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     const int configured=runtimePreferences_.index("cursor.brushPreviewMode.Select");const int previewMode=(outlinePass || currentDocument().active())?1:configured==3?2:configured;if(previewMode==0)return;
 
+    // Legacy renderCanvasBrush and renderCanvasConnectedLine include free-tile
+    // edit mode. Their preview replaces local layer pixels; source publication
+    // remains exclusively in the actual source-edit transaction.
+    const bool freeSourcePreview=currentDocument().activeMaskId().empty() && currentDocument().layer().kind=="free-tile" && !currentDocument().freeTilePaintMode() && !currentDocument().hasSelectedGroups() && !currentDocument().layerEffectivelyLocked(currentDocument().layer()) && currentDocument().layerEffectivelyVisible(currentDocument().layer());
+
     if(homeOpen_ || !documentOpen_ || pending_!=Pending::None || currentPlayback().playing || spaceHeld_ || navigation_.pan_.active ||
 
-       eyedropperHeld_ || eyedropperGesture_.active() || !(currentDocument().rasterToolsAvailable()||currentDocument().maskBrushAvailable()) || !paletteMousePosition_ ||
+       eyedropperHeld_ || eyedropperGesture_.active() || !(currentDocument().rasterToolsAvailable()||currentDocument().maskBrushAvailable()||freeSourcePreview) || !paletteMousePosition_ ||
 
        !(ordinaryBrushTool() || (currentTools().shapeTool && currentTools().shapeKind==ShapeKind::Line)) ||
 
@@ -1401,7 +1406,11 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     if(currentView().isoViewEnabled)paintIsometricGuides(g,cv);
     phase.next(5);
-    paintBrushPreview(g,cv);
+    if(currentDocument().activeMaskId().empty() && currentDocument().layer().kind=="free-tile" && !currentDocument().freeTilePaintMode()){
+      // The legacy preview placements render the same local replacement in
+      // every visible repeat copy without changing shared source resources.
+      for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);g.saveClip();g.clipRect(target);paintBrushPreview(g,target);g.restoreClip();}
+    }else paintBrushPreview(g,cv);
     phase.next(6);
 
     if(symmetryHas(currentDocument().symmetryAxes)){

@@ -7069,3 +7069,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 完整 free-tile-project 在新增用例之前的合并撤销结构／蒙版断言失败，尚未证明基线来源，保留未解决记录。自由瓦片预览仍缺失；不宣称所有平铺工具／笔刷组合或整体迁移已完成。本阶段仅功能迁移，无性能优化；详情及验收边界见 [平铺连线迁移](tile-repeat-line-migration-20261114.md)。保留全部未跟踪数据与日志，阶段保存推送 dev。
 
 补充验证：同一最终正式程序的 `geometry` 完整阶段实际进程退出 0，包含既有平铺绘制、选区、实例、采样、滤镜工具和文字像素矩阵检查。此检查未重复 text-0 至 text-11 的模态窗口阶段。
+
+
+### 2026-11-14 自由瓦片编辑模式笔刷与连接线预览（阶段验收）
+
+直接核对 legacy renderCanvasBrush／renderCanvasConnectedLine／createCanvasBrushPath、canRenderToolPreview 和 useCanvasTileTarget，恢复自由瓦片 Edit 的预览入口，复用局部替换合成及平铺 placements。空闲光标不裁像素选区、连接线裁当前选区；保持旧版局部预览，提交才更新实际共享源。未修改实际源事务或 rasterToolsAvailable。
+
+旧版两个真实定向测试文件共 14 项通过（8.80 秒）；最终唯一正式 Release 构建成功，新增 free-source-preview 实际进程八组检查退出 0，包含四种模式／四种平铺／橡皮擦／链接源／同源 sibling／选区／平移采样与锁定／离开清理和只读状态。shift-lines 十二组实际进程退出 0，补齐自由源预览 alpha；原 brush-preview CTest 通过 1.33 秒。来源覆盖 928 项及快照、Editor 边界 587 源文件、diff 通过。无新人工截图或全笔刷组合验收，不宣称 Paint 放置预览或整体迁移完成。详细证据见 [自由源笔刷预览迁移](free-source-brush-preview-migration-20261114.md)。本阶段仅功能迁移，保存推送 dev，保留全部用户数据与日志。

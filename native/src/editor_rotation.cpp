@@ -88,11 +88,12 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
   else if(value==L"shift-lines"){checkGeometry=checkTextDialogs=false;checkShiftLines=true;recognized=true;}
+  else if(value==L"free-source-preview"){checkGeometry=checkTextDialogs=false;checkFreePreview=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -107,6 +108,30 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkFreePreview){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("tools.shiftLinePreviewEnabled","true");
+  for(auto mode:{repeat::Mode::Off,repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool erase:{false,true}){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(16,12)));commands_[1]->Click();currentTools().eraser=erase;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[erase?1:0]={3,50,BrushShape::Square};currentView().isoViewEnabled=false;ink_=0xff123456;
+   require(currentDocument().createFreeTileLayer(U"Source preview"),"Free preview layer");SelectionClipboard tile;tile.width=tile.height=1;tile.pixels={0xff112233};require(currentDocument().pasteFreeTilePixels(tile,{4,4}),"Free preview source");currentDocument().setFreeTilePaintMode(true);require(currentDocument().beginFreeTilePlacement({10,4})&&currentDocument().commitFreeTilePlacement(),"Free preview sibling");currentDocument().setFreeTilePaintMode(false);currentDocument().addLinkedFrame();currentDocument().previewSelection(SelectionMask{4,4,1,1,{}});currentDocument().markSaved();
+   setTileRepeat(mode);currentView().zoom=4./uiScale;{const auto viewport=canvasViewport();currentView().canvas={viewport.x+(viewport.w-64)/2,viewport.y+(viewport.h-48)/2,64,48};}refresh();requestFocus();
+   const auto before=currentDocument().canvasPixels(),resource=currentDocument().timeline().state().tilesets.front().pixels;const auto history=currentDocument().historyPosition(),revision=currentDocument().revision();const auto link=currentDocument().cel().linkedCelId;const auto instances=currentDocument().freeTileCel().freeTiles->instances;
+   auto render=[&]{auto frame=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());frame->clear();{ui::Graphics g(frame);paintCanvas(g);}return frame;};
+   auto same=[](const os::SurfaceRef& first,const os::SurfaceRef& second){for(int y=0;y<first->height();++y)for(int x=0;x<first->width();++x)if(first->getPixel(x,y)!=second->getPixel(x,y))return false;return true;};
+   paletteMousePosition_.reset();const auto base=render();const auto uploads=renderer_.uploads();
+   const int ox=repeat::includesX(mode)?16:0,oy=repeat::includesY(mode)?-12:0;paletteMousePosition_=canvasDocumentToDisplay({ox+4.5,oy+4.5});
+   for(int previewMode=0;previewMode<4;++previewMode){runtimePreferences_.set("cursor.brushPreviewMode.Select",std::to_string(previewMode));const auto hover=render();require(same(base,hover)==(previewMode==0),"Free source preview modes");if(previewMode==2&&!erase){for(auto copy:repeat::offsets(mode)){const auto at=canvasDocumentToDisplay({copy.x*16+3.5,copy.y*12+3.5});require(hover->getPixel(at.x,at.y)!=base->getPixel(at.x,at.y),"Free source hover ignores pixel mask on every copy");const auto sibling=canvasDocumentToDisplay({copy.x*16+10.5,copy.y*12+4.5});require(hover->getPixel(sibling.x,sibling.y)==base->getPixel(sibling.x,sibling.y),"Free source hover remains local, not shared-resource preview");}}
+   }
+   runtimePreferences_.set("cursor.brushPreviewMode.Select","2");brushFeedback_.brushPreviewShift_=true;brushFeedback_.brushLineAnchors_[erase?1:0]=BrushLineAnchor{{2,4},currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},false};const auto connected=render();
+   for(auto copy:repeat::offsets(mode)){const auto inside=canvasDocumentToDisplay({copy.x*16+4.5,copy.y*12+4.5}),outside=canvasDocumentToDisplay({copy.x*16+3.5,copy.y*12+4.5});require(connected->getPixel(inside.x,inside.y)!=base->getPixel(inside.x,inside.y)&&connected->getPixel(outside.x,outside.y)==base->getPixel(outside.x,outside.y),"Free connected preview clips current pixel selection on every copy");}
+   brushFeedback_.brushPreviewShift_=false;brushFeedback_.brushLineAnchors_[erase?1:0].reset();spaceHeld_=true;require(same(base,render()),"Free preview pan suppression");spaceHeld_=false;eyedropperHeld_=true;require(same(base,render()),"Free preview sampling suppression");eyedropperHeld_=false;
+   require(currentDocument().canvasPixels()==before&&currentDocument().timeline().state().tilesets.front().pixels==resource&&currentDocument().freeTileCel().freeTiles->instances==instances&&currentDocument().cel().linkedCelId==link&&currentDocument().historyPosition()==history&&currentDocument().revision()==revision&&!currentDocument().dirty()&&renderer_.uploads()==uploads,"Free preview is read only for pixels, resources, instances, links, history and cache");
+   currentDocument().setLayerLocked(true);require(same(base,render()),"Free preview locked layer suppression");currentDocument().setLayerLocked(false);currentDocument().markSaved();const auto afterFlags=currentDocument().revision();paletteMousePosition_.reset();require(same(base,render()),"Free preview pointer exit clears overlay");
+   require(currentDocument().canvasPixels()==before&&currentDocument().timeline().state().tilesets.front().pixels==resource&&currentDocument().freeTileCel().freeTiles->instances==instances&&currentDocument().cel().linkedCelId==link&&!currentDocument().dirty()&&currentDocument().revision()==afterFlags&&currentDocument().historyPosition()==history+2&&revision<afterFlags,"Free preview retains pixels, resources, links and history except explicit lock toggles");
+   traceStage("free-source-preview",int(mode),erase?1:0);
+  }
+  paletteMousePosition_.reset();replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));setTileRepeat(repeat::Mode::Off);refresh();return;
+ }
  if(checkShiftLines){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("tools.shiftLinePreviewEnabled","true");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");
@@ -117,7 +142,7 @@ void Editor::smokeTileRepeat(){
    Point first{repeat::includesX(mode)?7:2,repeat::includesY(mode)?5:2},last{repeat::includesX(mode)?0:2,repeat::includesY(mode)?0:2};if(reverse)std::swap(first,last);
    auto pointer=[&](ui::MessageType type,Point p,bool shift){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier,canvasDocumentToDisplay({p.x+.25,p.y+.25}));m.setDisplay(display());onProcessMessage(&m);if(type==ui::kMouseDownMessage&&currentDocument().strokeActive())enableFlags(ui::HAS_CAPTURE);if(type==ui::kMouseUpMessage)disableFlags(ui::HAS_CAPTURE);};
    pointer(ui::kMouseDownMessage,first,false);pointer(ui::kMouseUpMessage,first,false);const auto before=currentDocument().canvasPixels();const auto h=currentDocument().historyPosition();require(brushLineAnchor()!=nullptr,"Shift pointer anchor");
-   if(!free){paletteMousePosition_=canvasDocumentToDisplay({last.x+.25,last.y+.25});brushFeedback_.brushPreviewShift_=true;auto overlay=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());overlay->clear();{ui::Graphics g(overlay);paintBrushPreview(g,currentView().canvas);}
+   {paletteMousePosition_=canvasDocumentToDisplay({last.x+.25,last.y+.25});brushFeedback_.brushPreviewShift_=true;auto overlay=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());overlay->clear();{ui::Graphics g(overlay);paintBrushPreview(g,currentView().canvas);}
     const auto sample=canvasDocumentToDisplay({last.x+.5,last.y+.5}),middle=canvasDocumentToDisplay({repeat::includesX(mode)?4.5:2.5,repeat::includesY(mode)?3.5:2.5});require(gfx::geta(overlay->getPixel(sample.x,sample.y))>0&&gfx::geta(overlay->getPixel(middle.x,middle.y))==0,"Actual nearest Shift preview");
    }
    pointer(ui::kMouseDownMessage,last,true);pointer(ui::kMouseUpMessage,last,true);const auto after=currentDocument().canvasPixels();require(after[std::size_t(last.y)*8+last.x]==ink_&&after[(repeat::includesY(mode)?3:2)*8+(repeat::includesX(mode)?4:2)]==0&&!currentDocument().active(),"Actual nearest Shift pixels");require(currentDocument().historyPosition()==h+(free?1:0),"Shift source transaction or raster anchor merge");
