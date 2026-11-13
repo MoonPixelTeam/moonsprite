@@ -121,6 +121,8 @@ public:
   bool updateFreeTilePlacement(Point);
   bool commitFreeTilePlacement();void cancelFreeTilePlacement();
   bool freeTilePlacementActive()const{return freeTilePlacement_.has_value();}
+  bool freeTileDrawingActive()const{return freeTilePlacement_&&!freeTilePlacement_->moving&&freeTilePlacement_->flagControl<0;}
+  std::string freeTileDrawingSourceId()const{return freeTileDrawingActive()?freeTilePlacement_->sourceId:std::string{};}
   bool freeTileInstanceView()const;
   bool setFreeTileInstanceView(bool);
   std::vector<std::string> selectedFreeTileInstances()const;
@@ -689,7 +691,7 @@ private:
   MaskSelectionHistory maskSelectionHistory_;
   bool cropCanvasRegion(PixelRegion bounds,std::optional<TransformPoint> pivot);
   TilemapSelection tileSelection_;std::uint64_t nextTileId_=0;
-  struct FreeTilePlacement {DocumentCel before;Point last;bool erase=false,sampled=false,moving=false;std::vector<std::string> movingIds;int flagControl=-1;std::string initiatingInstance;};
+  struct FreeTilePlacement {DocumentCel before;Point last;bool erase=false,sampled=false,moving=false;std::vector<std::string> movingIds;int flagControl=-1;std::string initiatingInstance,sourceId;};
   std::optional<FreeTilePlacement> freeTilePlacement_;
   struct FreeTileSourceSnapshot {free_tiles::Source source;std::u32string tilesetName;};
   std::shared_ptr<const FreeTileSourceSnapshot> freeSourceProperties_;

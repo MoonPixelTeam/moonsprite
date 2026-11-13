@@ -598,6 +598,10 @@ gfx::Rect Editor::brushPreviewDamage(std::optional<gfx::Point> position) {
 
        !canvasViewport().contains(*position))return {};
 
+    // Paint previews cover a whole source or a transformed instance, independent
+    // of the brush size. Include both old/new footprints when the pointer moves.
+    if(currentDocument().layer().kind=="free-tile"&&currentDocument().freeTilePaintMode())return canvasViewport();
+
     // Connected lines and symmetry can cover disjoint parts of the document.
 
     // Keep their existing conservative redraw until all copies are bounded.
@@ -1406,10 +1410,11 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     if(currentView().isoViewEnabled)paintIsometricGuides(g,cv);
     phase.next(5);
-    if(currentDocument().activeMaskId().empty() && currentDocument().layer().kind=="free-tile" && !currentDocument().freeTilePaintMode()){
+    if(currentDocument().activeMaskId().empty() && currentDocument().layer().kind=="free-tile"){
       // The legacy preview placements render the same local replacement in
       // every visible repeat copy without changing shared source resources.
-      for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);g.saveClip();g.clipRect(target);paintBrushPreview(g,target);g.restoreClip();}
+      // cv is already the current repeat copy in the enclosing overlay loop.
+      g.saveClip();g.clipRect(cv);if(currentDocument().freeTilePaintMode())paintFreeTilePlacementPreview(g,cv);else paintBrushPreview(g,cv);g.restoreClip();
     }else paintBrushPreview(g,cv);
     phase.next(6);
 

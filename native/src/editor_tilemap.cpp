@@ -2,8 +2,68 @@
 #include "free_tile_selection_target.h"
 #include "preview_panel.h"
 #include "free_tile_instances_panel.h"
+#include "raster_geometry.h"
+#include "relative_luminance.h"
+#include "layer_compositor.h"
 #include <set>
 namespace moon::editor {
+// Legacy renderCanvasFreeTileBrush: a local placement overlay, independent of
+// source opacity/blend/visibility and of the shared-resource edit preview.
+void Editor::paintFreeTilePlacementPreview(ui::Graphics& g,const gfx::Rect& cv){
+ const int mode=runtimePreferences_.index("cursor.brushPreviewMode.Select");
+ const auto& doc=currentDocument();const bool drawing=doc.freeTileDrawingActive();
+ if(!mode||homeOpen_||!documentOpen_||pending_!=Pending::None||currentPlayback().playing||spaceHeld_||navigation_.pan_.active||navigation_.zoomDragging_||rotationDragging_||moveDragging_||canvasResizePreview_||eyedropperHeld_||eyedropperGesture_.active()||!ordinaryBrushTool()||!paletteMousePosition_||!canvasViewport().contains(*paletteMousePosition_)||!canvasOwnsPointer(*paletteMousePosition_)||!doc.activeMaskId().empty()||doc.layer().kind!="free-tile"||!doc.freeTilePaintMode()||!doc.layer().freeTiles||doc.hasSelectedGroups()||doc.layerEffectivelyLocked(doc.layer())||!doc.layerEffectivelyVisible(doc.layer())||(doc.active()&&!drawing)||(drawing&&!runtimePreferences_.flag("cursor.drawingBrushPreviewEnabled")))return;
+ const auto pointer=canvasDocumentPoint(*paletteMousePosition_);const auto mapped=repeat::map({pointer.x,pointer.y},doc.width(),doc.height(),tileRepeatIdentity_==doc.identity()?currentView().tileRepeat:repeat::Mode::Off);
+ // Outside the adjacent copies, legacy falls back to the continuous pointer;
+ // it must not turn arbitrarily distant positions into another local stamp.
+ const Point point{int(std::floor(mapped?mapped->local.x:pointer.x)),int(std::floor(mapped?mapped->local.y:pointer.y))};
+ if(drawing&&doc.selection()&&!selectionContains(doc.selection(),point.x,point.y))return;
+ const auto resolved=doc.timeline().resolveSurface(doc.cel().id);const auto* cel=resolved.source;
+ if(!cel||resolved.issue!=timeline::LinkIssue::None||!cel->surface||!cel->freeTiles)return;
+ const auto& sources=doc.layer().freeTiles->sources;const auto& sets=doc.timeline().state().tilesets;
+ auto sourceFor=[&](const std::string& id)->const free_tiles::Source*{if(id.empty())return nullptr;const auto it=std::find_if(sources.begin(),sources.end(),[&](const auto& s){return s.id==id||s.tilesetId==id;});return it==sources.end()?nullptr:&*it;};
+ auto setFor=[&](const free_tiles::Source* s)->const tiles::Tileset*{if(!s)return nullptr;const auto it=std::find_if(sets.begin(),sets.end(),[&](const auto& t){return t.id==s->tilesetId;});return it==sets.end()||it->tileIds.empty()?nullptr:&*it;};
+ PixelRegion area;const free_tiles::Source* source=nullptr;const tiles::Tileset* set=nullptr;
+ if(currentTools().eraser){
+  // Reverse paint order, rectangular hit, including transparent/locked sources
+  // and instances. Hidden instances alone do not participate in the hit.
+  for(auto it=cel->freeTiles->instances.rbegin();it!=cel->freeTiles->instances.rend();++it){if(!it->visible)continue;const auto* candidate=sourceFor(it->sourceId.empty()?it->tileId:it->sourceId);if(!setFor(candidate))continue;const auto b=doc.freeTileInstanceBounds(it->id);if(b&&point.x>=b->x&&point.y>=b->y&&point.x<b->x+b->w&&point.y<b->y+b->h){area=*b;source=candidate;break;}}
+  if(!source)return;
+ }else{
+  source=sourceFor(drawing?doc.freeTileDrawingSourceId():doc.tileSelection().tilesetId);set=setFor(source);if(!set)return;
+  // Surface/source offsets cancel in the legacy centered stamp bounds.
+  area={point.x-set->tileWidth/2,point.y-set->tileHeight/2,set->tileWidth,set->tileHeight};
+ }
+ const auto pixels=set?tiles::readTile(*set,0):std::vector<Pixel>{};
+ const bool visible=std::any_of(pixels.begin(),pixels.end(),[](Pixel p){return (p>>24)!=0;});
+ const bool full=!drawing&&set&&(mode==2||mode==3),outline=currentTools().eraser||!visible||mode==1||mode==3;
+ const double scale=canvasScale();auto edge=[](double n){return int(std::clamp(std::floor(n+.5),-10000000.,10000000.));};
+ // Legacy deviceAlignedCoordinate assigns exact half-device ties to the lower
+ // pixel, including the small tolerance after translated repeat copies.
+ auto pixelEdge=[](double n){const double shifted=n-.5,nearest=std::floor(shifted+.5),tolerance=std::max(1e-9,std::abs(shifted)*std::numeric_limits<double>::epsilon()*4);return int(std::clamp(std::ceil(std::abs(shifted-nearest)<=tolerance?nearest:shifted),-10000000.,10000000.));};
+ auto box=[&](int x,int y){const int l=pixelEdge(cv.x+x*scale),t=pixelEdge(cv.y+y*scale);return gfx::Rect(l,t,std::max(1,pixelEdge(cv.x+(x+1)*scale)-l),std::max(1,pixelEdge(cv.y+(y+1)*scale)-t));};
+ const auto clip=canvasPaintViewport(g.getClipBounds()).createIntersection(cv);
+ if(full){
+  const int l=std::max({0,area.x,int(std::floor((clip.x-cv.x)/scale))}),t=std::max({0,area.y,int(std::floor((clip.y-cv.y)/scale))}),r=std::min({doc.width(),area.x+area.w,int(std::ceil((clip.x2()-cv.x)/scale))}),b=std::min({doc.height(),area.y+area.h,int(std::ceil((clip.y2()-cv.y)/scale))});
+  if(r>l&&b>t){
+   std::vector<Pixel> replacement(std::size_t(r-l)*(b-t));const auto* surface=doc.activeSurfaceIfPresent();
+   for(int y=t;y<b;++y)for(int x=l;x<r;++x){const auto base=surface?raster::readWorld(*surface,x,y):0,ink=pixels[std::size_t(y-area.y)*area.w+x-area.x];replacement[std::size_t(y-t)*(r-l)+x-l]=(ink>>24)?brushComposite(base,ink,100):base;}
+   // Native currently admits RGBA32 documents. Other legacy color modes remain
+   // a registered migration gap; preview must not mutate palette or resources.
+   const auto composed=compositeNormalRegion(doc.displayTimeline(),doc.frame().id,{l,t,r-l,b-t},doc.layer().id,&replacement,r-l,l,t);
+   for(int y=t;y<b;++y)for(int x=l;x<r;++x){if(!(pixels[std::size_t(y-area.y)*area.w+x-area.x]>>24))continue;auto color=composed[std::size_t(y-t)*(r-l)+x-l];if(currentView().relativeLuminance)color=relativeLuminancePixel(color);const auto rect=box(x,y);g.fillRect(checkerboard_.size*scale<2?checkerboard_.light:checkerboard_.at(x,y),rect);g.fillRect(gfx::rgba(color&255,(color>>8)&255,(color>>16)&255,color>>24),rect);}
+  }
+ }
+ if(outline&&!clip.isEmpty()){
+  const int l=edge(cv.x+area.x*scale),t=edge(cv.y+area.y*scale),r=edge(cv.x+(area.x+area.w)*scale),b=edge(cv.y+(area.y+area.h)*scale),thickness=std::max(1,runtimePreferences_.index("cursor.brushEdgeThickness.Number")),before=thickness/2;
+  std::map<std::pair<int,int>,gfx::Color> marks;
+  auto mark=[&](gfx::Rect rect){rect&=clip;for(int y=rect.y;y<rect.y2();++y)for(int x=rect.x;x<rect.x2();++x){const auto physical=currentView().rotation.forward({x+bounds().x+.5,y+bounds().y+.5},canvasRotationPivot());const int px=int(std::floor(physical.x))-bounds().x,py=int(std::floor(physical.y))-bounds().y;const auto color=px>=0&&py>=0&&px<g.width()&&py<g.height()?g.getPixel(px,py):gfx::rgba(0,0,0,255);marks.emplace(std::make_pair(x,y),gfx::getr(color)*.2126+gfx::getg(color)*.7152+gfx::getb(color)*.0722>145?gfx::rgba(0,0,0,255):gfx::rgba(255,255,255,255));}};
+  // Center the stroke on the legacy aligned pixel-edge rectangle; take every
+  // backdrop sample before painting so corners never sample another mark.
+  mark({l-before,t-before,std::max(1,r-l)+thickness,thickness});mark({l-before,b-before,std::max(1,r-l)+thickness,thickness});mark({l-before,t-before,thickness,std::max(1,b-t)+thickness});mark({r-before,t-before,thickness,std::max(1,b-t)+thickness});
+  for(const auto& [at,color]:marks)g.fillRect(color,{at.first,at.second,1,1});
+ }
+}
 // Legacy useCanvasLayerFeedback + canvas-render-content: transient source-over
 // contrast pixels, not a document edit, an outline, or an opacity/blend preview.
 void Editor::showFreeTileInstanceFeedback(const std::string& id){

@@ -132,6 +132,8 @@ bool Document::beginFreeTilePlacement(Point point,bool erase,bool secondary){
   if(set!=timeline_.state().tilesets.end())resource=&*set;
  }
  if(!resource||resource->tileIds.empty())return false;
+ // Legacy free-tile-draw captures the source for the lifetime of the gesture.
+ draft.sourceId=source?source->id:resource->id;
  tile=secondary?tileSelection_.secondary:tileSelection_.primary;
  if(source||!tiles::Index(*resource).find(tile))tile=resource->tileIds.front();
  auto after=*slot;

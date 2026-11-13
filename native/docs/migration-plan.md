@@ -7076,3 +7076,10 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 直接核对 legacy renderCanvasBrush／renderCanvasConnectedLine／createCanvasBrushPath、canRenderToolPreview 和 useCanvasTileTarget，恢复自由瓦片 Edit 的预览入口，复用局部替换合成及平铺 placements。空闲光标不裁像素选区、连接线裁当前选区；保持旧版局部预览，提交才更新实际共享源。未修改实际源事务或 rasterToolsAvailable。
 
 旧版两个真实定向测试文件共 14 项通过（8.80 秒）；最终唯一正式 Release 构建成功，新增 free-source-preview 实际进程八组检查退出 0，包含四种模式／四种平铺／橡皮擦／链接源／同源 sibling／选区／平移采样与锁定／离开清理和只读状态。shift-lines 十二组实际进程退出 0，补齐自由源预览 alpha；原 brush-preview CTest 通过 1.33 秒。来源覆盖 928 项及快照、Editor 边界 587 源文件、diff 通过。无新人工截图或全笔刷组合验收，不宣称 Paint 放置预览或整体迁移完成。详细证据见 [自由源笔刷预览迁移](free-source-brush-preview-migration-20261114.md)。本阶段仅功能迁移，保存推送 dev，保留全部用户数据与日志。
+
+
+### 2026-11-14 自由瓦片 Paint 放置预览（阶段验收）
+
+对照旧版 renderCanvasFreeTileBrush，接入选中／手势捕获源的放置预览与变换实例矩形擦除轮廓，承接完整／轮廓四模式、绘制与选区门禁、透明源、相对亮度和邻接平铺。预览使用原始源像素覆盖当前层再合成，不修改资源／实例／链接／history／revision／dirty；实际放置与擦除事务未更改。修正原 Edit 预览内外重复平铺覆盖。
+
+旧版实际函数记录适配器检查 23 组通过；唯一正式 Release 和最终增量构建成功，free-placement-preview 四种平铺实际进程退出 0，含无选区绘制和透明源轮廓。free-source-preview 八组、shift-lines 十二组退出 0，brush-preview CTest 通过 0.81 秒。初次颜色失败定位为新帧底层为空的夹具问题，现明确建立并断言真实链接，保留精确颜色预期。人工查看 Both 画布截图，九个副本及透明底色正确；不扩展为完整桌面验收。其它颜色格式、隔离蒙版与分数／旋转轮廓逐像素等价、已有特殊合并撤销断言及整体迁移仍未完成。详见 [放置预览迁移](free-placement-preview-migration-20261114.md)。保留所有用户数据和日志，阶段提交推送 dev。

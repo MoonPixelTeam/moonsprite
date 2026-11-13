@@ -2999,6 +2999,7 @@ public:
   PixelRegion freeTileFlashBounds_;
   void showFreeTileInstanceFeedback(const std::string&);
   void paintFreeTileInstanceFeedback(ui::Graphics&,const gfx::Rect&);
+    void paintFreeTilePlacementPreview(ui::Graphics&,const gfx::Rect&);
   std::set<std::string> moveHeldKeys_;
   bool moveModifierHeld(const std::string&,const ui::Message&)const;
   bool textCreating_=false,textTransforming_=false,textTransformMoved_=false;std::string textTransformId_,textHandle_;TextCelData textTransformData_;SelectionTransform textTransformStart_,textTransformPreview_;Point textStart_;gfx::Point textPointer_;std::unique_ptr<TextFontService> textFonts_;

@@ -8,6 +8,7 @@
 #include <thread>
 #include <typeinfo>
 #include "ui/property.h"
+#include "relative_luminance.h"
 namespace moon::editor {
 std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
 void drawSelectionBrushCoverage(ui::Graphics&,const SelectionBrushStroke&,int,int,repeat::Mode,const gfx::Rect&,double);
@@ -88,12 +89,13 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
   else if(value==L"shift-lines"){checkGeometry=checkTextDialogs=false;checkShiftLines=true;recognized=true;}
   else if(value==L"free-source-preview"){checkGeometry=checkTextDialogs=false;checkFreePreview=true;recognized=true;}
+  else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -108,6 +110,48 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkPlacementPreview){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  runtimePreferences_.set("cursor.brushEdgeThickness.Number","1");runtimePreferences_.set("cursor.drawingBrushPreviewEnabled","true");runtimePreferences_.set("tools.gridAlignmentEnabled","true");
+  for(auto repeatMode:{repeat::Mode::Off,repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both}){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(16,12)));commands_[1]->Click();currentTools().eraser=false;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[0]={1,100,BrushShape::Square};currentView().isoViewEnabled=false;currentView().relativeLuminance=false;
+   currentDocument().fillSelectionOrCanvas(0xff804020);require(currentDocument().createFreeTileLayer(U"Placement preview"),"Placement preview layer");
+   Document::FreeTileInstanceClipboardSnapshot clip;auto set=tiles::blankTileset("preview-set",U"Preview",3,2,"preview-tile",1);tiles::writeTile(set,set.tileIds.front(),{0xff0000ff,0x800000ff,0,0xff00ff00,0,0xffff0000});clip.tilesets={set};free_tiles::Source source;source.id="preview-source";source.tilesetId=set.id;source.name="Preview";source.visible=false;source.locked=true;source.opacity=.25;source.blendMode="multiply";source.offsetX=2;source.offsetY=-1;clip.sources={source};free_tiles::Instance instance;instance.id="preview-instance";instance.sourceId=source.id;instance.x=2;instance.y=4;instance.rotation=1;instance.flipHorizontal=true;instance.locked=true;clip.instances={instance};require(currentDocument().pasteFreeTileInstances(clip),"Placement preview source import");
+   const auto selectedSource=currentDocument().layer().freeTiles->sources.back().id,selectedSet=currentDocument().layer().freeTiles->sources.back().tilesetId;Document::FreeTileSourceChanges visibility;visibility.visible=true;require(currentDocument().setFreeTileSourceProperties(selectedSource,visibility),"Placement fixture visible source for linking");currentDocument().setSelectedTileset(selectedSet);currentDocument().setFreeTilePaintMode(true);currentDocument().addLinkedFrame(true);require(currentDocument().cel().linkedCelId.has_value(),"Placement fixture linked source");visibility.visible=false;require(currentDocument().setFreeTileSourceProperties(selectedSource,visibility),"Placement fixture hidden source after linking");currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});currentDocument().markSaved();
+   setTileRepeat(repeatMode);currentView().zoom=8./uiScale;{const auto viewport=canvasViewport();currentView().canvas={viewport.x+(viewport.w-128)/2,viewport.y+(viewport.h-96)/2,128,96};}refresh();requestFocus();
+   auto render=[&]{auto frame=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());frame->clear();{ui::Graphics g(frame);paintCanvas(g);}return frame;};
+   auto same=[](const os::SurfaceRef& a,const os::SurfaceRef& b){for(int y=0;y<a->height();++y)for(int x=0;x<a->width();++x)if(a->getPixel(x,y)!=b->getPixel(x,y))return false;return true;};
+   auto overlay=[&]{auto frame=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());frame->clear();ui::Graphics g(frame);g.save();g.concat(canvasRotationMatrix());for(auto copy:repeat::offsets(repeatMode)){auto cv=currentView().canvas;cv.offset(copy.x*cv.w,copy.y*cv.h);g.saveClip();g.clipRect(cv);paintFreeTilePlacementPreview(g,cv);g.restoreClip();}g.restore();return frame;};
+   const auto before=currentDocument().canvasPixels();const auto resources=currentDocument().timeline().state().tilesets;const auto instances=currentDocument().freeTileCel().freeTiles->instances;const auto link=currentDocument().cel().linkedCelId;const auto history=currentDocument().historyPosition(),revision=currentDocument().revision();
+   paletteMousePosition_.reset();const auto base=render();const auto uploads=renderer_.uploads();
+   const int ox=repeat::includesX(repeatMode)?16:0,oy=repeat::includesY(repeatMode)?-12:0;paletteMousePosition_=canvasDocumentToDisplay({ox+9.5,oy+7.5});
+   for(int previewMode=0;previewMode<4;++previewMode){runtimePreferences_.set("cursor.brushPreviewMode.Select",std::to_string(previewMode));require(same(base,render())==(previewMode==0),"Placement preview four display modes");}
+   runtimePreferences_.set("cursor.brushPreviewMode.Select","2");const auto hover=render();
+   for(auto copy:repeat::offsets(repeatMode)){
+    const auto opaque=canvasDocumentToDisplay({copy.x*16+8.5,copy.y*12+6.5}),half=canvasDocumentToDisplay({copy.x*16+9.5,copy.y*12+6.5}),clear=canvasDocumentToDisplay({copy.x*16+10.5,copy.y*12+6.5});
+    require(hover->getPixel(opaque.x,opaque.y)==gfx::rgba(255,0,0,255),"Placement raw opaque source ignores source visibility/lock/opacity/blend and grid snap");
+    require(hover->getPixel(half.x,half.y)==gfx::rgba(144,32,64,255),"Placement alpha composites once on every repeat copy");require(hover->getPixel(clear.x,clear.y)==base->getPixel(clear.x,clear.y),"Placement skips transparent source pixels");
+   }
+   currentView().relativeLuminance=true;{const auto gray=render();const auto at=canvasDocumentToDisplay({9.5,6.5});const auto pixel=relativeLuminancePixel(0xff402090);require(gray->getPixel(at.x,at.y)==gfx::rgba(pixel&255,(pixel>>8)&255,(pixel>>16)&255,255),"Placement relative luminance");}currentView().relativeLuminance=false;
+   if(repeatMode==repeat::Mode::Both)writeSmokeFrame(hover.get(),assets_.parent_path()/"free-placement-preview-smoke.bmp");
+   require(brushPreviewDamage(paletteMousePosition_)==canvasViewport(),"Placement damage includes complete source bounds");
+   spaceHeld_=true;require(same(base,render()),"Placement pan suppression");spaceHeld_=false;eyedropperHeld_=true;require(same(base,render()),"Placement sample suppression");eyedropperHeld_=false;navigation_.zoomDragging_=true;require(same(base,render()),"Placement zoom gesture suppression");navigation_.zoomDragging_=false;
+   paletteMousePosition_.reset();require(same(base,render()),"Placement pointer exit clears preview");
+   require(currentDocument().canvasPixels()==before&&currentDocument().freeTileCel().freeTiles->instances==instances&&currentDocument().cel().linkedCelId==link&&currentDocument().historyPosition()==history&&currentDocument().revision()==revision&&!currentDocument().dirty()&&renderer_.uploads()==uploads,"Placement hover leaves pixels/instances/links/history/cache unchanged");
+   require(currentDocument().timeline().state().tilesets.size()==resources.size(),"Placement resource count unchanged");for(std::size_t n=0;n<resources.size();++n)require(currentDocument().timeline().state().tilesets[n].pixels==resources[n].pixels,"Placement resource pixels unchanged");
+   // Eraser hits the transformed top rectangle, including transparent source
+   // pixels, a source hidden/locked flag, and an instance lock.
+   currentTools().eraser=true;const auto id=instances.back().id;const auto instanceBounds=currentDocument().freeTileInstanceBounds(id);require(instanceBounds.has_value(),"Placement eraser bounds");paletteMousePosition_=canvasDocumentToDisplay({instanceBounds->x+.5,instanceBounds->y+.5});const auto erased=overlay();const auto edgePoint=canvasDocumentToDisplay({double(instanceBounds->x),double(instanceBounds->y)});require(gfx::geta(erased->getPixel(edgePoint.x,edgePoint.y))>0,"Placement eraser transformed locked hidden-source hit");
+   paletteMousePosition_=canvasDocumentToDisplay({14.5,10.5});const auto empty=overlay();require(same(empty,([&]{auto f=os::instance()->makeRgbaSurface(bounds().x2(),bounds().y2());f->clear();return f;})()),"Placement eraser empty hit has no selected-source fallback");
+   currentTools().eraser=false;currentDocument().deselectPixels();currentDocument().previewSelection(SelectionMask{7,5,5,4,{}});require(currentDocument().beginFreeTilePlacement({9,7}),"Placement drawing draft");require(currentDocument().freeTileDrawingActive()&&!currentDocument().freeTileDrawingSourceId().empty(),"Placement drawing captures source identity");
+   const auto draftPixels=currentDocument().canvasPixels();const auto draftRevision=currentDocument().revision(),draftHistory=currentDocument().historyPosition();paletteMousePosition_=canvasDocumentToDisplay({9.5,7.5});runtimePreferences_.set("cursor.brushPreviewMode.Select","2");const auto noDrawingFill=overlay();runtimePreferences_.set("cursor.brushPreviewMode.Select","0");require(same(noDrawingFill,overlay()),"Placement drawing full mode suppresses fill and outline for visible source");runtimePreferences_.set("cursor.brushPreviewMode.Select","1");require(!same(noDrawingFill,overlay()),"Placement drawing edge mode retains outline");runtimePreferences_.set("cursor.drawingBrushPreviewEnabled","false");require(same(noDrawingFill,overlay()),"Placement drawing preview preference");runtimePreferences_.set("cursor.drawingBrushPreviewEnabled","true");paletteMousePosition_=canvasDocumentToDisplay({13.5,10.5});require(same(noDrawingFill,overlay()),"Placement drawing pointer selection gate");require(currentDocument().canvasPixels()==draftPixels&&currentDocument().revision()==draftRevision&&currentDocument().historyPosition()==draftHistory,"Placement drawing overlay is read only");currentDocument().cancelFreeTilePlacement();require(!currentDocument().freeTileDrawingActive()&&currentDocument().freeTileDrawingSourceId().empty(),"Placement cancel clears captured source");
+   currentDocument().deselectPixels();paletteMousePosition_=canvasDocumentToDisplay({9.5,7.5});require(currentDocument().beginFreeTilePlacement({9,7}),"Placement drawing without selection");runtimePreferences_.set("cursor.brushPreviewMode.Select","0");const auto noSelectionEmpty=overlay();runtimePreferences_.set("cursor.brushPreviewMode.Select","1");require(!same(noSelectionEmpty,overlay()),"Placement no selection admits drawing outline");currentDocument().cancelFreeTilePlacement();
+   currentDocument().setLayerLocked(true);paletteMousePosition_=canvasDocumentToDisplay({9.5,7.5});const auto locked=overlay();runtimePreferences_.set("cursor.brushPreviewMode.Select","0");require(same(locked,overlay()),"Placement layer lock suppression");currentDocument().setLayerLocked(false);
+   Document::FreeTileInstanceClipboardSnapshot transparent;auto clearSet=tiles::blankTileset("clear-preview-set",U"Clear preview",2,3,"clear-preview-tile",1);transparent.tilesets={clearSet};free_tiles::Source clearSource;clearSource.id="clear-preview-source";clearSource.tilesetId=clearSet.id;transparent.sources={clearSource};free_tiles::Instance clearInstance;clearInstance.id="clear-preview-instance";clearInstance.sourceId=clearSource.id;clearInstance.x=12;clearInstance.y=8;transparent.instances={clearInstance};require(currentDocument().pasteFreeTileInstances(transparent),"Placement transparent source import");currentDocument().setSelectedTileset(currentDocument().layer().freeTiles->sources.back().tilesetId);currentDocument().setFreeTilePaintMode(true);paletteMousePosition_=canvasDocumentToDisplay({9.5,7.5});runtimePreferences_.set("cursor.brushPreviewMode.Select","0");const auto transparentEmpty=overlay();runtimePreferences_.set("cursor.brushPreviewMode.Select","2");require(!same(transparentEmpty,overlay()),"Placement transparent source full mode keeps outline");require(currentDocument().beginFreeTilePlacement({9,7}),"Placement transparent drawing draft");require(!same(transparentEmpty,overlay()),"Placement transparent drawing full mode keeps outline");currentDocument().cancelFreeTilePlacement();
+   traceStage("free-placement-preview",int(repeatMode));
+  }
+  paletteMousePosition_.reset();replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));setTileRepeat(repeat::Mode::Off);refresh();return;
+ }
  if(checkFreePreview){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("tools.shiftLinePreviewEnabled","true");
