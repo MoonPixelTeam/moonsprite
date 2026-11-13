@@ -16,6 +16,15 @@ struct Offset{int x=0,y=0;};
 struct Mapped{Point local;Offset offset;};
 inline double modulo(double n,double size){return std::fmod(std::fmod(n,size)+size,size);}
 inline Point wrap(Point p,int w,int h,Mode m){if(includesX(m)&&w>0)p.x=modulo(p.x,w);if(includesY(m)&&h>0)p.y=modulo(p.y,h);return p;}
+// Math.round in legacy chooses the positive side at both half-period ties.
+inline Point nearestEquivalent(Point p,Point reference,int w,int h,Mode m){if(includesX(m)&&w>0)p.x+=std::floor((reference.x-p.x)/w+.5)*w;if(includesY(m)&&h>0)p.y+=std::floor((reference.y-p.y)/h+.5)*h;return p;}
+struct LineSegment{Point from,to;double fromProgress=1,toProgress=1;};
+// Split the actual raster/balanced path at wrapped discontinuities before
+// drawing into a free source raster; each segment is an independent paintLine.
+template<class T> inline std::vector<LineSegment> lineSegments(const std::vector<T>& points,int w,int h,Mode m){
+ std::vector<LineSegment> result;if(points.empty())return result;auto wrapped=[&](std::size_t i){return wrap({double(points[i].x),double(points[i].y)},w,h,m);};auto progress=[&](std::size_t i){return points.size()<=1?1.:double(i)/(points.size()-1);};std::size_t start=0;auto append=[&](std::size_t end){result.push_back({wrapped(start),wrapped(end),progress(start),progress(end)});};auto previous=wrapped(0);
+ for(std::size_t i=1;i<points.size();++i){const auto current=wrapped(i);if(std::abs(current.x-previous.x)>1||std::abs(current.y-previous.y)>1){append(i-1);start=i;}previous=current;}append(points.size()-1);return result;
+}
 inline std::vector<Offset> offsets(Mode m){std::vector<Offset> result;for(int y=includesY(m)?-1:0;y<=(includesY(m)?1:0);++y)for(int x=includesX(m)?-1:0;x<=(includesX(m)?1:0);++x)result.push_back({x,y});return result;}
 inline std::optional<Mapped> map(Point p,int w,int h,Mode m,bool outside=false){
  if(m==Mode::Off)return Mapped{p,{0,0}};if(w<=0||h<=0)return {};

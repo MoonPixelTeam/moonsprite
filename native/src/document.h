@@ -660,7 +660,7 @@ public:
   bool shapeActive()const{return gradient_ && gradient_->shape;}
   bool beginShapePreview(std::optional<Point> sourceSeed={});bool updateShapePreview(const ShapeSpec& spec,Pixel color);
   bool paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,std::optional<Point> sourceSeed={});
-  bool paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,std::optional<BrushPathPoint> dynamics={},Pixel gradientStart=0,int gradientDither=0,bool balanced=true);
+  bool paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush={},const PatternBrush* image=nullptr,double angle=0,std::optional<BrushPathPoint> dynamics={},Pixel gradientStart=0,int gradientDither=0,bool balanced=true,repeat::Mode repeatMode=repeat::Mode::Off);
   bool updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0);
   bool commitShapePreview(){return commitGradient();}void cancelShapePreview(){cancelGradient();}
   std::uint64_t gradientRevision()const{return gradientRevision_;}

@@ -6,6 +6,15 @@ namespace moon {struct RasterHistoryFixture {static void removeActive(Document& 
 #define CHECK(x) do{if(!(x))throw std::runtime_error(std::string(#x)+" line "+std::to_string(__LINE__));}while(false)
 static void begin(Document& d,Point p,Pixel color,BrushOptions b,repeat::Mode mode,const PatternBrush* image=nullptr){d.beginStroke(p,color,b,image,0,nullptr,true,false,false,mode);}
 static void freeSourceRepeat(){
+ // The oracle includes re-rasterization of every wrapped segment, including
+ // diagonal ties and reverse paths, rather than just wrapping a long line.
+ for(const auto& c:repeatLineCases){
+  auto d=std::make_unique<Document>(c.w,c.h);CHECK(d->createFreeTileLayer(U"Legacy split line"));const auto before=d->canvasPixels();const auto history=d->historyPosition();
+  BrushOptions brush;brush.opacity=50;const Point from{int(c.from.x),int(c.from.y)},to{int(c.to.x),int(c.to.y)};
+  CHECK(d->paintFreeTileSourceLine(from,to,0xff123456,brush,nullptr,0,{},0,0,c.balanced,repeat::Mode(c.mode)));CHECK(!d->active()&&d->historyPosition()==history+1);
+  auto expected=before;for(const auto& p:c.paint)if(p.x>=0&&p.y>=0&&p.x<c.w&&p.y<c.h)expected[std::size_t(p.y)*c.w+int(p.x)]=0x80123456;
+  CHECK(d->canvasPixels()==expected);const auto after=d->timeline().state().tilesets.front().pixels;d->undo();CHECK(d->canvasPixels()==before);d->redo();CHECK(d->canvasPixels()==expected&&d->timeline().state().tilesets.front().pixels==after);
+ }
  for(auto mode:{repeat::Mode::X,repeat::Mode::Y,repeat::Mode::Both})for(bool dynamic:{false,true})for(bool perfect:{false,true}){
   auto local=std::make_unique<Document>(8,6),copy=std::make_unique<Document>(8,6);
   SelectionClipboard tile;tile.width=3;tile.height=2;tile.pixels.assign(6,0xff112233);

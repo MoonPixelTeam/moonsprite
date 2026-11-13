@@ -897,14 +897,16 @@ bool Editor::onProcessMessage(ui::Message* msg) {
         currentPlayback().playing=false;const auto anchor=mouse->left() && mouse->shiftPressed() && ordinaryBrushTool()?brushLineAnchor():nullptr;
 
         Point target=isoSnapBrush(mouse->position()),lineStart=target;
-        if(anchor){const auto line=resolveBrushLine(anchor->point,p,mouse->ctrlPressed()||mouse->cmdPressed());lineStart=line.first;target=line.second;}
+        const auto lineRepeat=tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off;
+        if(anchor){const auto nearest=repeat::nearestEquivalent({double(anchor->point.x),double(anchor->point.y)},{double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),lineRepeat);const auto line=resolveBrushLine({int(nearest.x),int(nearest.y)},p,mouse->ctrlPressed()||mouse->cmdPressed());lineStart=line.first;target=line.second;}
+        const auto wrappedTarget=repeat::wrap({double(target.x),double(target.y)},currentDocument().width(),currentDocument().height(),lineRepeat);const Point anchorTarget{int(wrappedTarget.x),int(wrappedTarget.y)};
 
         if(anchor&&currentDocument().layer().kind=="free-tile"){
           const auto b=activeStrokeBrush();const auto v=resolveDynamics(true);const auto started=usage::now();
           try{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦连线":U"笔刷连线");
-            const bool changed=currentDocument().paintFreeTileSourceLine(lineStart,target,currentTools().eraser?0:ink_,b,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle,BrushPathPoint{target.x,target.y,v.size,dynamics::rounded(b.opacity*v.opacity),dynamics::wrapAngle(currentTools().pencilImageBrushAngle+v.angle),currentTools().eraser?std::nullopt:v.gradient},currentDocument().palette().secondary,currentTools().brushDynamics.gradientDither,runtimePreferences_.flag("tools.balancedShiftLineEnabled")||isoLineAlignmentActive());
+            const bool changed=currentDocument().paintFreeTileSourceLine(lineStart,target,currentTools().eraser?0:ink_,b,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle,BrushPathPoint{target.x,target.y,v.size,dynamics::rounded(b.opacity*v.opacity),dynamics::wrapAngle(currentTools().pencilImageBrushAngle+v.angle),currentTools().eraser?std::nullopt:v.gradient},currentDocument().palette().secondary,currentTools().brushDynamics.gradientDither,runtimePreferences_.flag("tools.balancedShiftLineEnabled")||isoLineAlignmentActive(),lineRepeat);
             if(changed)usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-started));
-            brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{target,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},false};
+            brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{anchorTarget,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},false};
           }catch(...){if(hasCapture())releaseMouse();throw;}
           if(hasCapture())releaseMouse();usageStrokeStarted_=0;syncTilesetPanel();refresh();return true;
         }
@@ -916,7 +918,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
           if(isoBrushStroke_){auto from=isoBrushLast_,to=from;from.x=lineStart.x;from.y=lineStart.y;to.x=target.x;to.y=target.y;currentDocument().paintAlignedStrokePath({from,to},true);}else updateDynamicBrush(mouse,target);auto baseline=currentDocument().strokeBaseline();const bool merge=anchor->mergeWithNext && anchor->revision==currentDocument().revision();
 
-          if(([&]{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦":U"绘制");return currentDocument().commitStroke();})()){usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));if(merge)currentDocument().mergeLastStrokeEdits();brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{target,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,std::move(baseline),false};}
+          if(([&]{Document::HistoryLabelScope historyLabel(currentDocument(),currentTools().eraser?U"橡皮擦":U"绘制");return currentDocument().commitStroke();})()){usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));if(merge)currentDocument().mergeLastStrokeEdits();brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{anchorTarget,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,std::move(baseline),false};}
 
           usageStrokeStarted_=usage::now();beginDynamicBrush(mouse,target,nullptr,false);
 
@@ -938,7 +940,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         if(changed)usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));usageStrokeStarted_=0;
 
-        if(ordinaryBrushTool() && (changed || !brushLineAnchor()))brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{brushFeedback_.brushStrokeLast_,currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},true,std::move(baseline)};
+        if(ordinaryBrushTool() && (changed || !brushLineAnchor())){const auto last=brushFeedback_.brushStrokeLast_;const auto local=repeat::wrap({double(last.x),double(last.y)},currentDocument().width(),currentDocument().height(),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off);brushFeedback_.brushLineAnchors_[currentTools().eraser?1:0]=BrushLineAnchor{{int(local.x),int(local.y)},currentDocument().identity(),currentDocument().revision(),currentDocument().layer().id,currentDocument().frame().id,{},true,std::move(baseline)};}
 
         releaseMouse();layoutCanvasScrollBars();
 

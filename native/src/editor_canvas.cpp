@@ -1140,7 +1140,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     const auto anchor=runtimePreferences_.flag("tools.shiftLinePreviewEnabled") && brushFeedback_.brushPreviewShift_ && !currentDocument().active() && ordinaryBrushTool()?brushLineAnchor():nullptr;
 
-    Point target=p,lineStart=target;if(anchor){const auto line=resolveBrushLine(anchor->point,canvasPoint(*paletteMousePosition_),brushFeedback_.modifierCtrl_);lineStart=line.first;target=line.second;}
+    Point target=p,lineStart=target;if(anchor){const auto pointer=canvasPoint(*paletteMousePosition_);const auto nearest=repeat::nearestEquivalent({double(anchor->point.x),double(anchor->point.y)},{double(pointer.x),double(pointer.y)},currentDocument().width(),currentDocument().height(),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off);const auto line=resolveBrushLine({int(nearest.x),int(nearest.y)},pointer,brushFeedback_.modifierCtrl_);lineStart=line.first;target=line.second;}
 
     const double scale=canvasScale();
 

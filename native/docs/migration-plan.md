@@ -7060,3 +7060,12 @@ Aseprite 源码对照：src/app/extensions.cpp installCompressedExtension 的逐
 新增实际窗口回归覆盖排队/窗口内重复请求、栏目入口合并、关闭后无幽灵重开、停用保留/重启用、移除关闭、跨扩展独立值、适配器析构和前一作用域回调恢复、未支持HTML入口失败后有效设置恢复。正式Release构建与测试进行中；无视觉布局变更，生产JS/HTML及整体迁移仍INCOMPLETE。保留用户editor_support.h与全部未跟踪数据。
 
 阶段最终验收：唯一正式Release构建成功；extension-menus-ui通过2.08秒，新增settings-lifecycle-passed.txt与runtime-menus-passed.txt本轮00:26:31。extension-workspace-ui、extension-settings-ui、extension-session-host、extension-request-host四项全部通过5.26秒；正式--script-entry-check实际进程exit0。来源覆盖835项及证据快照、diff检查通过。无视觉布局改动，本阶段不新增截图或全软件FPS声明；生产Editor仍无JS会话创建者，HTML设置与整体迁移继续INCOMPLETE。保存并推送dev，保留用户editor_support.h与全部未跟踪数据。
+
+
+### 2026-11-14 平铺 Shift 最近锚点与自由瓦片跨缝连线（阶段验收）
+
+对照 legacy tilemap nearestTileRepeatEquivalent／tileRepeatLineSegments、canvas-input-line-connection 和 canvas-render-shape-preview，补齐最近副本选择、wrapped anchor、自由源路径跨缝分段后重新栅格化并一次提交。直接执行旧源码新增 608 最近锚点和 256 路径／分段／重栅格化 oracle。几何及笔画两项 CTest 通过；独立 source-lines 通过共享资源／链接／实例／保存重开／撤销重做与颜色替换。最终唯一正式 Release 构建成功，shift-lines 实际进程退出 0，12 组真实输入及 raster 预览通过。大型 smoke 的 Document 临时夹具改为堆分配，保持生产栈配置。
+
+完整 free-tile-project 在新增用例之前的合并撤销结构／蒙版断言失败，尚未证明基线来源，保留未解决记录。自由瓦片预览仍缺失；不宣称所有平铺工具／笔刷组合或整体迁移已完成。本阶段仅功能迁移，无性能优化；详情及验收边界见 [平铺连线迁移](tile-repeat-line-migration-20261114.md)。保留全部未跟踪数据与日志，阶段保存推送 dev。
+
+补充验证：同一最终正式程序的 `geometry` 完整阶段实际进程退出 0，包含既有平铺绘制、选区、实例、采样、滤镜工具和文字像素矩阵检查。此检查未重复 text-0 至 text-11 的模态窗口阶段。

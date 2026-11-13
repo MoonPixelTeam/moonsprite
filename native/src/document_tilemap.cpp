@@ -974,21 +974,27 @@ bool Document::fillFreeTileSourcePixels(Point point,Pixel color,WandOptions opti
   publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
  }catch(...){cancelFreeTileSourceStroke();throw;}
 }
-bool Document::paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<BrushPathPoint> dynamics,Pixel gradientStart,int gradientDither,bool balanced){
+bool Document::paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<BrushPathPoint> dynamics,Pixel gradientStart,int gradientDither,bool balanced,repeat::Mode repeatMode){
  if(active()||!activeMaskId_.empty()||layer().kind!="free-tile"||freeTilePaintMode())return false;
  // Legacy beginLineConnection prepares the source at the clicked endpoint,
  // starts a fresh source edit (no inherited anchor baseline), then commits once.
  brush.perfectPixels=false;
  try{
-  if(!beginFreeTileSourceStroke(to,color,brush,image,angle,nullptr,false))return false;
+  if(!beginFreeTileSourceStroke(to,color,brush,image,angle,nullptr,false,false,repeatMode))return false;
   auto& d=*freeSourceStroke_;auto& edit=*d.raster;
   if(dynamics)d.baseSize=std::max(d.baseSize,dynamics->size);
-  Point start=d.local(from);edit.last_=start;const Point end=d.local(to);start=edit.last_;if(edit.imagePattern_&&image)edit.imagePattern_.emplace(*image,brush.imagePaintMode,start.x,start.y);
   const int size=dynamics?dynamics->size:brush.size;const double rotation=dynamics?dynamics->angle:angle;const bool bridge=brush.shape==BrushShape::Line&&size>1&&std::abs(std::fmod(rotation,180))>=.0001;
+  const auto stamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,size,rotation)}:std::nullopt;const auto footprint=selectionBrushFootprint(brush,dynamics::rounded(rotation));const int reach=stamp?std::max(stamp->width,stamp->height):std::max(footprint.width,footprint.height),spacing=brush.shape==BrushShape::Line?1:std::max(1,reach/16);
+  if(dynamics)edit.configureStrokeDynamics(brush,image,gradientStart,color,gradientDither);
+  for(const auto& segment:repeat::lineSegments(freeSourceLinePoints(from,to,balanced),width_,height_,repeatMode)){
+   // Growing may shift the temporary origin. Resolve both endpoints before
+   // deriving the path, and preserve the unwrapped pattern anchor from legacy.
+   edit.last_=d.local({int(segment.from.x),int(segment.from.y)});const Point end=d.local({int(segment.to.x),int(segment.to.y)}),start=edit.last_;
+   if(edit.imagePattern_&&image)edit.imagePattern_.emplace(*image,brush.imagePaintMode,from.x-d.origin.x,from.y-d.origin.y);
    auto points=freeSourceLinePoints(start,end,balanced);if(bridge){const auto continuous=selectionContinuousLine({start.x,start.y},{end.x,end.y},true);points.clear();for(auto p:continuous)points.push_back({p.x,p.y});}
-  const auto stamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,size,rotation)}:std::nullopt;const auto footprint=selectionBrushFootprint(brush,dynamics::rounded(rotation));const int reach=stamp?std::max(stamp->width,stamp->height):std::max(footprint.width,footprint.height),spacing=brush.shape==BrushShape::Line?1:std::max(1,reach/16);int since=0;
-  if(dynamics){edit.configureStrokeDynamics(brush,image,gradientStart,color,gradientDither);for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;auto sample=*dynamics;sample.x=points[i].x;sample.y=points[i].y;edit.dynamicStamp(sample);since=0;}edit.dynamicLast_=*dynamics;edit.dynamicLast_.x=end.x;edit.dynamicLast_.y=end.y;edit.last_=end;}
-  else {for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;edit.stamp(points[i].x,points[i].y);since=0;}edit.last_=end;}
+   int since=0;edit.hasPreviousStamp_=false;for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;if(dynamics){auto sample=*dynamics;sample.x=points[i].x;sample.y=points[i].y;edit.dynamicStamp(sample);}else edit.stamp(points[i].x,points[i].y);since=0;}
+   if(dynamics){edit.dynamicLast_=*dynamics;edit.dynamicLast_.x=end.x;edit.dynamicLast_.y=end.y;}edit.last_=end;
+  }
   publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
  }catch(...){cancelFreeTileSourceStroke();throw;}
 }
