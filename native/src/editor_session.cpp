@@ -57,7 +57,7 @@ void Editor::bindProjectDocument(std::shared_ptr<Document> value){
  // Bind display policy before a gesture can start, independently of refresh/paint.
  auto& view=currentView();
  if(view.displayIdentity!=currentDocument().identity()){
-  view.relativeLuminance=false;view.showSelectionOutline=true;view.displayIdentity=currentDocument().identity();
+  view.relativeLuminance=false;view.showSelectionOutline=true;view.isoViewEnabled=false;view.displayIdentity=currentDocument().identity();
  }
  auto& playback=currentPlayback();
  if(playback.modeIdentity!=currentDocument().identity()){

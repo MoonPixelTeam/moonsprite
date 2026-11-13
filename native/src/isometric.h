@@ -156,10 +156,10 @@ inline StrokeAdvance advanceIsoAlignedStrokeSegment(const StrokeState& state,Poi
 }
 template<class Sample> void updateIsoAlignedStrokePath(std::vector<Sample>& path,const StrokeAdvance& advanced,const Sample& target){
  if(path.empty())return;const auto start=path.front(),end=path.back(),anchor=path.size()>1?path[path.size()-2]:start;auto at=[](Sample sample,Point p){sample.x=p.x;sample.y=p.y;return sample;};
- const auto locked=advanced.lockedEndpoints.value_or(advanced.lockedEndpoint?std::vector<Point>{*advanced.lockedEndpoint}:std::vector<Point>{});const bool changed=advanced.anchor!=Point{anchor.x,anchor.y};
- if(!locked.empty()){if(path.size()==1){path[0]=at(start,advanced.initialAnchor.value_or(Point{start.x,start.y}));path.push_back(at(end,locked[0]));}else path.back()=at(end,locked[0]);for(std::size_t i=1;i<locked.size();++i)path.push_back(at(end,locked[i]));path.push_back(target);return;}
+ const auto locked=advanced.lockedEndpoints.value_or(advanced.lockedEndpoint?std::vector<Point>{*advanced.lockedEndpoint}:std::vector<Point>{});const bool changed=advanced.anchor!=Point{double(anchor.x),double(anchor.y)};
+ if(!locked.empty()){if(path.size()==1){path[0]=at(start,advanced.initialAnchor.value_or(Point{double(start.x),double(start.y)}));path.push_back(at(end,locked[0]));}else path.back()=at(end,locked[0]);for(std::size_t i=1;i<locked.size();++i)path.push_back(at(end,locked[i]));path.push_back(target);return;}
  if(path.size()==1){path[0]=at(start,advanced.anchor);path.push_back(target);return;}
- if(changed&&path.size()>2&&Point{anchor.x,anchor.y}==Point{end.x,end.y}){path.back()=at(end,advanced.anchor);path.push_back(target);return;}
+ if(changed&&path.size()>2&&Point{double(anchor.x),double(anchor.y)}==Point{double(end.x),double(end.y)}){path.back()=at(end,advanced.anchor);path.push_back(target);return;}
  if(changed)path[path.size()-2]=at(anchor,advanced.anchor);path.back()=target;
 }
 }

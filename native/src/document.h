@@ -569,11 +569,13 @@ public:
   void updateStroke(Point point);
   void configureStrokeDynamics(BrushOptions base,const PatternBrush* image,Pixel gradientStart,Pixel gradientEnd,int dither);
   void updateDynamicStroke(Point point,BrushPathPoint sample,bool initial=false);
+  // Legacy ISO: redraw a mutable aligned path or append an independent grid edge.
+  void paintAlignedStrokePath(const std::vector<BrushPathPoint>& path,bool reset);
   void sprayStroke(const std::vector<SelectionPoint>& particles,BrushOptions brush,int angle);
   std::unordered_map<std::size_t,Pixel> strokeBaseline() const;
   std::vector<std::pair<std::size_t,Pixel>> strokeBaselinePoints() const;
   // Transient replacement pixels only; never opens a transaction or changes history.
-  std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true,repeat::Mode repeatMode=repeat::Mode::Off) const;
+  std::unordered_map<std::size_t,Pixel> brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image=nullptr,double angle=0,const std::unordered_map<std::size_t,Pixel>* baseline=nullptr,bool clipSelection=true,repeat::Mode repeatMode=repeat::Mode::Off,bool balanced=false) const;
   void mergeLastStrokeEdits();
   bool commitStroke();
   void cancelStroke();

@@ -1337,7 +1337,7 @@ void Document::stamp(int x,int y) {
 void Document::line(Point a, Point b) {
   visitBrushLine(a.x,a.y,b.x,b.y,imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,bool(imageStamp_),brush_.shape==BrushShape::Line,width_,height_,[&](int x,int y){stamp(x,y);},strokeRepeat_!=repeat::Mode::Off);
 }
-std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool clipSelection,repeat::Mode repeatMode) const {
+std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool clipSelection,repeat::Mode repeatMode,bool balanced) const {
   std::unordered_map<std::size_t,Pixel> result;std::unordered_map<std::size_t,int> eraseCoverage;std::unordered_map<std::uint64_t,int> inkCoverage;
   brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);
   const auto spans=brushSpans(brush);const auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
@@ -1356,7 +1356,8 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
     if(imageStamp){const auto& active=imagePattern?imagePattern->at(x,y,brush.size,angle):*imageStamp;for(const auto& sample:active.samples)for(auto p:symmetryPoints({x-active.width/2+sample.x,y-active.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(p.x,p.y,sample.coverage,sample.color);}
     else for(auto row:spans){const int sy=y-brush.size/2+row.y;if(!repeat::includesY(repeatMode)&&(sy<0||sy>=height_))continue;for(int sx=x-brush.size/2+row.left;sx<=x-brush.size/2+row.right;++sx){if((!repeat::includesX(repeatMode)&&(sx<0||sx>=width_))||!brushDitherContains(brush,int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).x),int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).y)))continue;for(auto q:symmetryPoints({sx,sy},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(q.x,q.y,255,{});}}
   };
-  visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off);
+  if(balanced){const auto points=selectionLine({from.x,from.y},{to.x,to.y},true);const int reach=imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,spacing=brush.shape==BrushShape::Line?1:std::max(1,reach/16);for(std::size_t i=0;i<points.size();++i)if(!i||i+1==points.size()||i%spacing==0)stamp(points[i].x,points[i].y);}
+  else visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off);
   return result;
 }
 bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle){

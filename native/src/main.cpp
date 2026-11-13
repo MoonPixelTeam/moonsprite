@@ -591,6 +591,7 @@ int app_main(int argc,char* argv[]) {
     // checks below retain their timers and command-line contracts.
     struct EditorCheck {const char* argument;void (Editor::*run)();const char* errorFile;};
     static const EditorCheck editorChecks[]{
+      {"--isometric-check", &Editor::smokeIsometric, "native-isometric-error.txt"},
       {"--outline-check", &Editor::smokeOutline, "native-outline-error.txt"},
       {"--tile-repeat-check", &Editor::smokeTileRepeat, "native-tile-repeat-error.txt"},
       {"--quick-command-check", &Editor::smokeQuickCommands, "native-quick-command-error.txt"},

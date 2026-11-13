@@ -69,7 +69,7 @@ void Editor::wandTick(){
 
 void Editor::requestWand(Point p){if(wand_.request({p.x,p.y}))wandTick();}
 
-bool Editor::gridSnapActive()const{return currentDocument().showCustomGrid()&&runtimePreferences_.flag("tools.gridAlignmentEnabled");}
+bool Editor::gridSnapActive()const{return !currentView().isoViewEnabled&&currentDocument().showCustomGrid()&&runtimePreferences_.flag("tools.gridAlignmentEnabled");}
 
 Point Editor::gridSnapPoint(Point p,int ax,int ay)const{if(!gridSnapActive())return p;const auto q=snapPointToGrid({double(p.x-ax),double(p.y-ay)},currentDocument().customGrid());if(!std::isfinite(q.x)||!std::isfinite(q.y)||std::abs(q.x)>1000000||std::abs(q.y)>1000000)return p;return {int(q.x)+ax,int(q.y)+ay};}
 
@@ -175,7 +175,7 @@ void Editor::finishCurveShape(){
  shapeDragging_=shapeRequest_=false;curveControls_.clear();if(hasCapture())releaseMouse();refresh();
 }
 void Editor::shapeTick(){if(shapeDragging_&&shapeDrawingAnchor_)shapeSpec_.bounds=centerDrawingBounds(shapeSpec_.bounds,*shapeDrawingAnchor_);if(shapeDragging_&&currentTools().shapeKind==ShapeKind::Curve){try{shapeRequest_=false;curveTick();}catch(const std::exception& e){currentDocument().cancelShapePreview();shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();status_=U"曲线失败："+unicodeText(e.what());refresh();}return;}if(!shapeDragging_)return;if(currentDocument().identity()!=shapeIdentity_ || !currentDocument().shapeActive()){shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();refresh();return;}if(shapeRequest_){shapeRequest_=false;shapeSpec_.brush=currentTools().brushProfiles[0];shapeSpec_.brush.ink=(currentTools().shapeKind==ShapeKind::Polygon||currentTools().shapeKind==ShapeKind::Freeform)?InkMode::Simple:currentInkMode();shapeSpec_.strokeWidth=currentTools().brushProfiles[0].size;shapeSpec_.cornerRadius=currentTools().shapeRounded?currentTools().shapeRadius:0;try{if(currentTools().shapeKind==ShapeKind::Line&&currentDocument().layer().kind=="free-tile"&&currentDocument().activeMaskId().empty()){
- auto points=selectionLine({int(shapeSpec_.start.x),int(shapeSpec_.start.y)},{int(shapeSpec_.end.x),int(shapeSpec_.end.y)},runtimePreferences_.flag("tools.balancedShiftLineEnabled"));
+ auto points=selectionLine({int(shapeSpec_.start.x),int(shapeSpec_.start.y)},{int(shapeSpec_.end.x),int(shapeSpec_.end.y)},runtimePreferences_.flag("tools.balancedShiftLineEnabled")||isoLineAlignmentActive());
  if(shapeSpec_.brush.perfectPixels){std::vector<BrushPathPoint> perfect;for(const auto& point:points)appendPerfectPixelSegment(perfect,{point.x,point.y});points.clear();for(const auto& point:perfect)points.push_back({point.x,point.y});}
  currentDocument().updateGeometricBrushPreview(points,shapeColor_,shapeSpec_.brush,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle);
 }else {shapeSpec_.kind=currentTools().shapeKind;currentDocument().updateShapePreview(shapeSpec_,shapeColor_);}invalidateRect(canvasViewport());}catch(const std::exception& e){currentDocument().cancelShapePreview();shapeDragging_=shapeRequest_=false;if(hasCapture())releaseMouse();status_=U"形状失败："+unicodeText(e.what());refresh();}}}
@@ -604,7 +604,7 @@ gfx::Rect Editor::brushPreviewDamage(std::optional<gfx::Point> position) {
 
     if(currentView().rotation.active() || brushFeedback_.brushPreviewShift_ || symmetryHas(currentDocument().symmetryAxes))return canvasViewport();
 
-    const auto p=gridSnapBrush(canvasPoint(*position));const auto brush=currentTools().brushProfiles[currentTools().eraser?1:0];
+    const auto p=isoSnapBrush(*position);const auto brush=currentTools().brushProfiles[currentTools().eraser?1:0];
 
     int width=brush.size,height=brush.size;
 
@@ -1136,13 +1136,11 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     if(currentDocument().active() && !runtimePreferences_.flag("cursor.drawingBrushPreviewEnabled"))return;
 
-    const auto brush=activeStrokeBrush();const auto p=gridSnapBrush(canvasPoint(*paletteMousePosition_));
+    const auto brush=activeStrokeBrush();const auto p=isoSnapBrush(*paletteMousePosition_);
 
     const auto anchor=runtimePreferences_.flag("tools.shiftLinePreviewEnabled") && brushFeedback_.brushPreviewShift_ && !currentDocument().active() && ordinaryBrushTool()?brushLineAnchor():nullptr;
 
-    Point target=p;if(anchor && brushFeedback_.modifierCtrl_){auto end=constrainShapeLine({double(anchor->point.x),double(anchor->point.y)},{double(p.x),double(p.y)},runtimePreferences_.index("tools.lineDirectionStep.Number"));target={int(end.x),int(end.y)};}
-
-    target=anchor?gridSnapPoint(target):gridSnapBrush(target);
+    Point target=p,lineStart=target;if(anchor){const auto line=resolveBrushLine(anchor->point,canvasPoint(*paletteMousePosition_),brushFeedback_.modifierCtrl_);lineStart=line.first;target=line.second;}
 
     const double scale=canvasScale();
 
@@ -1209,7 +1207,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     }
 
-    const auto replacements=currentDocument().brushPreview(anchor?anchor->point:p,target,currentTools().eraser?0:ink_,brush,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle,brushLineBaseline(anchor),bool(anchor),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off);
+    const auto replacements=currentDocument().brushPreview(lineStart,target,currentTools().eraser?0:ink_,brush,currentTools().pencilImageBrush?&*currentTools().pencilImageBrush:nullptr,currentTools().pencilImageBrushAngle,brushLineBaseline(anchor),bool(anchor),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off,bool(anchor)&&isoLineAlignmentActive());
 
     if(replacements.empty())return;
 
@@ -1401,6 +1399,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     }
 
+    if(currentView().isoViewEnabled)paintIsometricGuides(g,cv);
     phase.next(5);
     paintBrushPreview(g,cv);
     phase.next(6);

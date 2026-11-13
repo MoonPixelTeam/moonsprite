@@ -2,6 +2,40 @@
 #include "brush_dynamics.h"
 #include "selection_tools.h"
 namespace moon {
+void Document::paintAlignedStrokePath(const std::vector<BrushPathPoint>& path,bool reset){
+ if(auto edit=freeTileSourceStrokeDocument()){
+  try{
+   // Grow first: a later point can move the temporary raster origin.
+   for(const auto& p:path)freeTileSourceStrokePoint({p.x,p.y},false);
+   auto local=path;for(auto& p:local){const auto q=freeTileSourceStrokePoint({p.x,p.y},false);p.x=q.x;p.y=q.y;}
+   edit->paintAlignedStrokePath(local,reset);publishFreeTileSourceStroke();
+  }catch(...){cancelFreeTileSourceStroke();throw;}return;
+ }
+ if(!active_||((tileStrokeIncremental_||tileStrokeBefore_)&&tileSelection_.mode==tiles::Mode::Paint))return;
+ change_={};
+ try{
+  if(reset){
+   for(const auto& delta:pending_){strokePixel(delta.index)=delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}
+   // Keep the transaction, inherited baseline, image origin and source target.
+   pending_.clear();pendingLookup_.clear();imageEraseCoverage_.clear();inkStampCoverage_.clear();perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=perfectPendingStart_=0;capturingPerfectTail_=false;hasPreviousStamp_=false;
+  }
+  auto paint=[&](BrushPathPoint p){if(dynamicStroke_)dynamicStamp(p);else stamp(p.x,p.y);};
+  if(path.size()==1)paint(path.front());
+  for(std::size_t segment=1;segment<path.size();++segment){
+   const auto from=path[segment-1],to=path[segment];const auto& base=dynamicStroke_?dynamicBase_:brush_;
+   const bool bridge=base.shape==BrushShape::Line&&std::max(from.size,to.size)>1&&(std::abs(std::fmod(from.angle,180))>=.0001||std::abs(std::fmod(to.angle,180))>=.0001);
+   const auto points=bridge?selectionContinuousLine({from.x,from.y},{to.x,to.y},true):selectionLine({from.x,from.y},{to.x,to.y},true);
+   int since=0,previousSize=-1;hasPreviousStamp_=false;
+   for(std::size_t i=0;i<points.size();++i){const double t=points.size()<=1?1:double(i)/(points.size()-1);
+    BrushPathPoint p{points[i].x,points[i].y,dynamics::rounded(from.size+(to.size-from.size)*t),dynamics::rounded(from.opacity+(to.opacity-from.opacity)*t),dynamics::interpolateAngle(from.angle,to.angle,t),from.gradient&&to.gradient?std::optional<double>{*from.gradient+(*to.gradient-*from.gradient)*t}:to.gradient};
+    int reach=p.size;if(dynamicStroke_){if(dynamicImage_){const auto stamp=prepareImageBrushStamp(*dynamicImage_,p.size,p.angle);reach=std::max(stamp.width,stamp.height);}else{auto brush=base;brush.size=p.size;const auto footprint=selectionBrushFootprint(brush,dynamics::rounded(p.angle));reach=std::max(footprint.width,footprint.height);}}else if(imageStamp_)reach=std::max(imageStamp_->width,imageStamp_->height);
+    const int spacing=base.shape==BrushShape::Line?1:std::max(1,reach/16);if(i)++since;
+    if(!i||i+1==points.size()||p.size!=previousSize||since>=spacing){paint(p);since=0;previousSize=p.size;}
+   }
+  }
+  if(!path.empty()){dynamicLast_=path.back();last_={path.back().x,path.back().y};}publishChange();
+ }catch(...){cancelStroke();throw;}
+}
 void Document::configureStrokeDynamics(BrushOptions base,const PatternBrush* image,Pixel start,Pixel end,int dither){if(auto edit=freeTileSourceStrokeDocument()){edit->configureStrokeDynamics(base,image,start,end,dither);return;}if(!active_)return;dynamicStroke_=true;dynamicBase_=base;dynamicImage_=image?std::optional<PatternBrush>{*image}:std::nullopt;dynamicGradientStart_=start;dynamicGradientEnd_=end;dynamicDither_=dither;perfectPath_.clear();hasPreviousStamp_=false;}
 void Document::dynamicStamp(BrushPathPoint sample){
  if(strokeRepeat_!=repeat::Mode::Off){const auto local=repeat::wrap({double(sample.x),double(sample.y)},width_,height_,strokeRepeat_);sample.x=int(local.x);sample.y=int(local.y);}

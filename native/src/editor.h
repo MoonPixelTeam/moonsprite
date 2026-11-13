@@ -1,5 +1,6 @@
 #pragma once
 #include "tile_repeat.h"
+#include "isometric_settings.h"
 #include "project_backup.h"
 #include "quick_command_bar.h"
 #include "document.h"
@@ -190,7 +191,7 @@ private:
     int layers=0,frames=0,layerRemainder=0,frameRemainder=0,paletteScroll=0,paletteScrollX=0;
 
     bool frameSelection=false,guides=true,selectionPivotVisible=true;
-    bool relativeLuminance=false,showSelectionOutline=true;
+    bool relativeLuminance=false,showSelectionOutline=true,isoViewEnabled=false;
     std::uint64_t displayIdentity=0;
 
     RecentColors recent;
@@ -531,6 +532,7 @@ private:
 public:
   void smokeQuickCommands();
   void smokeOutline();
+  void smokeIsometric();
 private:
 
   bool runtimePreferencesReadable_=true;
@@ -1986,6 +1988,28 @@ private:
   std::uint64_t tileRepeatIdentity_=0;
   void bindTileRepeat(repeat::Mode);
   void setTileRepeat(repeat::Mode);
+  iso::Settings isoSettings_;
+  bool isoSettingsOpen_=false;
+  os::SurfaceRef isoGuideTile_;
+  double isoGuideTileStep_=0,isoGuideTileSpacing_=0;
+  Pixel isoGuideTileColor_=0;
+  void initializeIsometric();void showIsometricSettings(int verify=0);void saveIsometricSettings(iso::Settings);
+  void paintIsometricGuides(ui::Graphics&,const gfx::Rect&);
+  Point isoSnapPoint(Point)const;
+  iso::Point isoPointerAt(gfx::Point,bool continuous)const;
+  Point isoSnapBrush(gfx::Point)const;
+  std::pair<Point,Point> resolveBrushLine(Point,Point,bool)const;
+  Point isoShapeVertex_{};
+  bool isoBrushStroke_=false,isoBrushGrid_=false;
+  iso::StrokeState isoBrushState_;
+  iso::Point isoBrushPointer_;
+  std::optional<std::string> isoHoveredEdge_;
+  std::vector<BrushPathPoint> isoBrushPath_;
+  BrushPathPoint isoBrushLast_;
+  void beginIsometricBrush(ui::MouseMessage*,Point,bool);
+  void updateIsometricBrush(ui::MouseMessage*,Point);
+  bool isoGridSnapActive()const{return currentView().isoViewEnabled&&isoSettings_.snapToGrid;}
+  bool isoLineAlignmentActive()const{return currentView().isoViewEnabled&&(isoSettings_.forceLineAlignment||isoSettings_.snapToGrid);}
   bool rotationDragging_=false;double rotationStart_=0,rotationAngle_=0;gfx::Rect rotationCanvas_;view::Point rotationPivot_;
   gfx::Rect canvasPaintViewport(gfx::Rect)const;gfx::Rect canvasDisplayBounds()const;void panCanvasDisplay(double,double);void paintViewRotationIndicator(ui::Graphics&);
   view::Point canvasRotationPivot()const;gfx::Matrix canvasRotationMatrix()const;gfx::Point canvasUnrotatedDisplay(gfx::Point)const;gfx::Point textBoxDisplayPoint(gfx::Point)const;TransformPoint canvasDocumentPoint(gfx::Point)const;gfx::Point canvasDocumentToDisplay(TransformPoint)const;bool canvasDocumentContains(gfx::Point)const;void setViewRotation(double);void initializeViewRotation();bool processViewRotation(ui::Message*);void saveDocumentView();void loadDocumentView();

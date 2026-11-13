@@ -71,6 +71,7 @@ void Editor::setTileRepeat(repeat::Mode mode){
  layoutCanvasScrollBars();invalidateRect(canvasViewport());refresh();
 }
 void Editor::initializeViewRotation(){
+ initializeIsometric();
  // Durable view observation has its own lifecycle; painting cannot start IO.
  panelStateTimer_.Tick.connect([this]{saveLayerPanelState();});panelStateTimer_.start();
  auto available=[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy();};
