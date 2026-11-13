@@ -28,6 +28,7 @@ inline Pixel quantizePixelColor(Pixel color,PixelFormat format){
  return result;
 }
 inline Pixel normalizeDocumentColor(Mode mode,PixelFormat format,Pixel color){return mode==Mode::Grayscale?relativeLuminancePixel(color):mode==Mode::Rgba?quantizePixelColor(color,format):color;}
+inline Pixel normalizeRgbaPackedValue(PixelFormat format,Pixel value){return value>>24?quantizePixelColor(value,format):value;}
 
 // Accept existing palette entry containers directly; their stable IDs and
 // independent visible order are authoritative, rather than slot positions.

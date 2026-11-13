@@ -303,6 +303,7 @@ struct InitialHistoryDocumentCost::Impl {
   for(const auto& section:document.timeline().state().loopSections){std::size_t units=0;for(const auto c:section.name)units+=c>0xffff?2:1;if(section.name.empty()||whitespace(section.name.front())||whitespace(section.name.back())||units>64)throw std::invalid_argument("Unnormalized decoded loop name");}
   if(sourceDocument.HasKey(L"createdAt")){const auto type=sourceDocument.GetNamedValue(L"createdAt").ValueType();if(type!=JsonValueType::String&&project::textjson::truthy(sourceDocument,L"createdAt"))throw std::invalid_argument("Nonstring createdAt requires decode adaptation");}
   if(sourceDocument.HasKey(L"pixelFormat")&&sourceDocument.GetNamedValue(L"pixelFormat").ValueType()==JsonValueType::String){const auto candidate=winrt::to_string(sourceDocument.GetNamedString(L"pixelFormat"));const char* formats[]{"rgba32","rgb24","rgb565","rgb555","rgb332","rgba4444","rgba5551","argb1555"};for(const auto* format:formats)if(candidate==format){pixelFormat=candidate;break;}}
+  if(color_mode::preferencePixelFormat(pixelFormat)!=document.pixelFormat())throw std::invalid_argument("History pixel format changed");
   if(sourceDocument.HasKey(L"canvasReferences")){const auto references=sourceDocument.GetNamedValue(L"canvasReferences");if(references.ValueType()==JsonValueType::Array&&references.GetArray().Size())throw std::invalid_argument("Canvas-reference history cost requires adapter");}
  }
 };

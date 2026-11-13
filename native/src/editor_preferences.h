@@ -21,7 +21,7 @@ inline bool runtimeSetting(const std::string& key) {
     "tools.eyedropperSwitchToPencil", "cursor.selectionSizeVisible",
     "cursor.selectionPreviewColorMode.Select", "cursor.selectionPreviewColor.Color",
     "cursor.brushPreviewMode.Select", "cursor.drawingBrushPreviewEnabled",
-    "cursor.brushEdgeThickness.Number", "colorLayers.recentColorsVisible",
+    "cursor.brushEdgeThickness.Number", "colorLayers.recentColorsVisible", "colorLayers.pixelFormat.Select",
     "files.projectBackupEnabled", "files.projectBackupVersions.Number", "files.projectBackupRetentionDays.Number", "files.projectBackupDirectory.Text",
     "files.saveLocationMode.Select", "files.saveDirectory.Text", "files.saveOriginalFormat", "files.saveFormat.Select",
     "files.exportLocationMode.Select", "files.exportDirectory.Text", "files.exportFormat.Select", "files.exportSoundEnabled", "files.exportProtection.Select",

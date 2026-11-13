@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -99,6 +99,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
   else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
   else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
+  else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -113,6 +114,25 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkPixelFormats){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));ensureProjects();
+  addProject(Document(8,6));
+  for(int i=0;i<8;++i){
+   runtimePreferences_.set("colorLayers.pixelFormat.Select",std::to_string((i+1)%8));
+   const auto format=color_mode::PixelFormat(i);const auto h=currentDocument().historyPosition();
+   preferenceSection_=9;showPreferences();require(pending_==Pending::Preferences,"Pixel format preferences entry");
+   PixelDropdown* choice=nullptr;for(std::size_t index=0;index<preferences::catalog().size();++index)if(std::string(preferences::catalog()[index].id)=="colorLayers.pixelFormat.Select")choice=dynamic_cast<PixelDropdown*>(preferenceRows_[index]);
+   require(choice&&choice->isEnabled(),"Pixel format dropdown enabled");choice->setSelectedIndex(i,true);
+   require(applyPreferences(),"Apply pixel format preferences");for(const auto& slot:projects_)require(slot->value->pixelFormat()==format,"Pixel format applies to all sessions");require(currentDocument().historyPosition()==h,"Pixel format creates no Undo entry");resolve(false);
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));currentDocument().setImportedPixelFormat(format);commands_[1]->Click();currentTools().eraser=false;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[0]={1,100,BrushShape::Square};currentView().isoViewEnabled=false;setTileRepeat(repeat::Mode::Off);currentView().zoom=8./uiScale;ink_=0x9729537b;refresh();requestFocus();
+   const auto before=currentDocument().canvasPixels();const auto preview=currentDocument().brushPreview({3,2},{3,2},ink_,currentTools().brushProfiles[0]);
+   send(ui::kMouseDownMessage,{3.25,2.25});if(currentDocument().strokeActive())enableFlags(ui::HAS_CAPTURE);send(ui::kMouseUpMessage,{3.25,2.25});disableFlags(ui::HAS_CAPTURE);
+   require(currentDocument().pixels()[19]==preview.at(19)&&currentDocument().historyPosition()==1&&!currentDocument().active(),"Pixel format pointer preview/commit");currentDocument().undo();require(currentDocument().canvasPixels()==before,"Pixel format pointer Undo");currentDocument().redo();require(currentDocument().pixels()[19]==preview.at(19),"Pixel format pointer Redo");traceStage("pixel-formats",i);
+  }
+  runtimePreferences_.set("colorLayers.pixelFormat.Select","4");runScriptWorkspace("document.create",R"({"width":8,"height":6,"name":"Pixel format new"})");require(currentDocument().pixelFormat()==color_mode::PixelFormat::Rgb332&&currentDocument().historyPosition()==0,"Workspace new inherits preferred pixel format");
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkMaskShift){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   runtimePreferences_.set("tools.gridAlignmentEnabled","false");runtimePreferences_.set("tools.shiftLinePreviewEnabled","true");runtimePreferences_.set("cursor.brushPreviewMode.Select","2");

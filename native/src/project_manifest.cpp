@@ -8,6 +8,7 @@
 #include "layer_metadata.h"
 #include "javascript_text.h"
 #include "project_manifest.h"
+#include "document_color_mode.h"
 #include "outline_settings_json.h"
 #include "layer_panel_state_json.h"
 #include "timelapse_project_json.h"
@@ -153,7 +154,9 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     if(auto v=value(doc,"statistics");v&&v.ValueType()==JsonValueType::Object){const auto statistics=v.GetObject();auto counter=[&](const char* name){const auto n=value(statistics,name);return n&&n.ValueType()==JsonValueType::Number?projectCounter(n.GetNumber()):std::uint64_t(0);};out.information.strokeCount=counter("strokeCount");out.information.operationCount=counter("operationCount");out.information.drawingTimeMs=counter("drawingTimeMs");}
 
     if(out.colorMode!="rgba") out.unsupported.emplace_back("colorMode="+out.colorMode);
-    if(present(doc,"pixelFormat") && str(doc,"pixelFormat")!="rgba32") out.unsupported.emplace_back("pixelFormat="+str(doc,"pixelFormat"));
+    // project-format-decode.ts: invalid, absent and non-string formats fall back.
+    if(auto v=value(doc,"pixelFormat");v&&v.ValueType()==JsonValueType::String)
+      out.pixelFormat=std::string(color_mode::name(color_mode::preferencePixelFormat(winrt::to_string(v.GetString()))));
     fields(root,{"app","schemaVersion","document","sourceSchemaVersion"},"manifest",out);
     fields(doc,{"schemaVersion","id","name","width","height","colorMode","pixelFormat","layers","groups","activeLayerId","palette","paletteOrder","paletteSlots","paletteColumns","nextColorId","customBrushes","referenceImages","canvasReferences","tilesets","animation","outlineSettings","displaySettings","layerPanelState","statistics","timelapse","slices","createdAt","updatedAt"},"document",out);
     if(present(doc,"displaySettings")){const auto display=object(doc,"displaySettings");auto pixelGrid=value(display,"showPixelGrid");out.showPixelGrid=pixelGrid&&pixelGrid.ValueType()==JsonValueType::Boolean&&pixelGrid.GetBoolean();auto custom=value(display,"showGrid");out.showCustomGrid=custom&&custom.ValueType()==JsonValueType::Boolean&&custom.GetBoolean();auto grid=value(display,"grid");if(grid&&grid.ValueType()==JsonValueType::Object){auto obj=grid.GetObject();auto n=[&](const char* name,double fallback){auto v=value(obj,name);return v&&v.ValueType()==JsonValueType::Number?v.GetNumber():fallback;};out.customGrid=normalizeGridSettings({n("x",0),n("y",0),n("width",16),n("height",16)});}if(present(display,"symmetryCenter")){const auto center=object(display,"symmetryCenter");out.symmetryCenter=std::make_pair(center.GetNamedNumber(L"x"),center.GetNamedNumber(L"y"));}}

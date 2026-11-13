@@ -11,7 +11,7 @@ struct ScriptDocumentBuilder {
  static bool structure(const Document& source,timeline::Timeline& timeline,std::unordered_map<std::string,std::array<int,4>>& geometry,script::LayerStructureUi& context,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){
   // A small detached shell runs the established structural algorithms without
   // copying live history, recording callbacks or allocating a canvas bitmap.
-  Document draft(1,1);draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);draft.layerDisplayColors_=source.layerDisplayColors_;
+  Document draft(1,1);draft.pixelFormat_=source.pixelFormat_;draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);draft.layerDisplayColors_=source.layerDisplayColors_;
   bool changed=false;
   if(operation=="freeTiles.createLayer"){
    changed=draft.createFreeTileLayer(name.value_or(U"自由瓦片图层"),id);
@@ -184,7 +184,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){auto se
  if(paletteChanged){edit.paletteHistory.paletteKind=12;edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=*batch.palette;}
  if(slicesChanged){edit.sliceHistory.beforeSlices=sliceState_;edit.sliceHistory.afterSlices=*batch.slices;}
  if(selectionChanged){edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.pixelSelectionHistory.afterPixelsSelection=*batch.selection;}
- if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=c.after;}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged&&!animationChanged&&batch.styles.empty()&&batch.synchronizedOwners.empty())return false;}
+ if(!batch.after){std::unordered_set<std::size_t> seen;for(const auto& c:batch.changes){if(c.index>=expected.pixels->size()||!seen.insert(c.index).second||(*expected.pixels)[c.index]!=c.before)throw std::invalid_argument("Invalid Lua pixel change");changed+=c.before!=normalizeCanvasPacked(c.after);}if(!changed&&!slicesChanged&&!selectionChanged&&!paletteChanged&&!animationChanged&&batch.styles.empty()&&batch.synchronizedOwners.empty())return false;}
  // Slice-only batches reuse the same history entry without materializing an
  // absent raster Cel or copying the document's pixel storage.
  if(!batch.after&&!changed){for(const auto& o:batch.synchronizedOwners){auto* target=timeline_.mutableOwnedSurface(o.ownerId);if(!target)throw std::logic_error("Missing Lua secondary owner");synchronizedTargets.push_back(target);}edit.documentChanged=!batch.styles.empty()||slicesChanged||paletteChanged||animationChanged||!batch.synchronizedOwners.empty();edit.afterState=edit.documentChanged?nextState_:state_;reserveHistoryEntries();auto replacement=slicesChanged?*batch.slices:SliceState{};auto paletteReplacement=paletteChanged?*batch.palette:PaletteState{};auto selectionReplacement=selectionChanged?*batch.selection:std::optional<SelectionMask>{};if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)swapSelectionValue(selectionReplacement);swapAnimation();swapStyles();for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);const auto beforeRevision=revision_;try{pushEdit(std::move(edit),batch.label);}catch(...){if(revision_==beforeRevision){for(std::size_t i=0;i<synchronizedTargets.size();++i)std::swap(*synchronizedTargets[i],synchronizedReplacements[i]);swapAnimation();swapStyles();if(slicesChanged)std::swap(sliceState_,replacement);if(paletteChanged)std::swap(palette_,paletteReplacement);if(selectionChanged)swapSelectionValue(selectionReplacement);}throw;}change_={0,0,width_,height_};publishChange();return true;}
@@ -195,7 +195,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){auto se
  for(const auto& c:timeline_.state().cels)if(c.surface&&seen.insert(timeline_.linkedStorageKey(c.id)).second)admit(c.surface->pixels.size()*sizeof(Pixel));
  for(const auto& m:timeline_.state().masks)admit(m.mask.surface.pixels.size()*sizeof(Pixel));
  admit(changed*sizeof(Delta));
- if(changed){edit.pixels.reserve(changed);for(const auto& c:batch.changes)if(c.before!=c.after)edit.pixels.push_back({c.index,c.before,c.after});}
+ if(changed){edit.pixels.reserve(changed);for(const auto& c:batch.changes){const auto after=normalizeCanvasPacked(c.after);if(c.before!=after)edit.pixels.push_back({c.index,c.before,after});}}
  auto makeSurface=[](const script::SurfaceSnapshot& s){timeline::Surface out;out.width=s.width;out.height=s.height;out.offsetX=s.x;out.offsetY=s.y;out.storageOriginX=out.storageOriginY=0;out.pixels=*s.pixels;return out;};
  if(batch.after){admit((batch.historyBefore?batch.historyBefore->pixels->size():expected.pixels->size())*sizeof(Pixel));admit(batch.after->pixels->size()*sizeof(Pixel)*2);}
  std::optional<timeline::Timeline> prepared;

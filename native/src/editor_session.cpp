@@ -944,7 +944,7 @@ void Editor::runScriptWorkspace(const std::string& path,const std::string& optio
   try{
    auto size=[&](const wchar_t* key){const auto v=spec.GetNamedValue(key,JsonValue::CreateNullValue());const auto n=v.ValueType()==JsonValueType::Number&&std::isfinite(v.GetNumber())?std::max(1.,std::trunc(v.GetNumber())):64.;if(n>32768)throw std::length_error("Canvas dimension exceeds native limit");return int(n);};
    auto mode=text(L"colorMode","rgba");if(mode=="indexed"||mode=="grayscale")throw std::logic_error("Native non-RGBA document creation is not yet migrated");
-   auto name=text(L"name","Sprite");auto created=std::make_unique<Document>(Document::withBuiltinPalette(size(L"width"),size(L"height"),unicodeText(name)));addProject(std::move(*created));usageStatistics_.recordEvent("newProject");refresh();
+   auto name=text(L"name","Sprite");auto created=std::make_unique<Document>(Document::withBuiltinPalette(size(L"width"),size(L"height"),unicodeText(name)));created->setImportedPixelFormat(color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select")));addProject(std::move(*created));usageStatistics_.recordEvent("newProject");refresh();
   }catch(const std::exception& e){status_=U"创建工程失败："+unicodeText(e.what());invalidate();}
  }else{
   const auto value=spec.GetNamedValue(L"path",JsonValue::CreateNullValue());const auto filename=value.ValueType()==JsonValueType::Null?text(L"value"):text(L"path");
@@ -1003,13 +1003,13 @@ void Editor::showNewDocument(bool verify) {
 
     NewDocumentDialog popup(font_,skin_,toolIcons_,verify?assets_.parent_path()/"new-document-test-owned"/"presets-v1.txt":palettePreferencePath().parent_path()/"new-document-presets-v1.txt",[this](std::u32string name,int width,int height){
 
-      try{auto created=Document::withBuiltinPalette(width,height,std::move(name));addProject(std::move(created));usageStatistics_.recordEvent("newProject");return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
+      try{auto created=Document::withBuiltinPalette(width,height,std::move(name));created.setImportedPixelFormat(color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select")));addProject(std::move(created));usageStatistics_.recordEvent("newProject");return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
 
     });
 
     popup.setRecordingDefault(verify?false:runtimePreferences_.flag("general.timelapseRecordingEnabled"));
     popup.createWithRecording=[this](std::u32string name,int width,int height,bool record){
-      try{auto created=Document::withBuiltinPalette(width,height,std::move(name));created.mutableTimelapseSettings().enabled=record;addProject(std::move(created));usageStatistics_.recordEvent("newProject");return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
+      try{auto created=Document::withBuiltinPalette(width,height,std::move(name));created.setImportedPixelFormat(color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select")));created.mutableTimelapseSettings().enabled=record;addProject(std::move(created));usageStatistics_.recordEvent("newProject");return true;}catch(const std::exception& e){status_=unicodeText(e.what());return false;}
     };
     popup.setDisplay(display(),false);const auto area=bounds();popup.setBounds({area.center().x-160*uiScale,area.center().y-125*uiScale,320*uiScale,popup.preferredHeight(320)*uiScale});
     popup.probeClipboard(verify?new_document::SizeReader([]{return std::optional<new_document::Size>{{23,17}};}):smoke_?new_document::SizeReader([]{return std::optional<new_document::Size>{};}):pixelClipboard_.newDocumentSizeReader(layerClipboardSnapshot_.has_value()));

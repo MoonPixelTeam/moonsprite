@@ -60,6 +60,7 @@ struct ReadManifest {
   LayerPanelState layerPanelState;
   int schemaVersion=0,width=0,height=0,paletteColumns=0,nextColorId=0;
   std::string id,name,activeLayerId,activeFrameId,colorMode;
+  std::string pixelFormat="rgba32";
  ProjectInformation information=ProjectInformation::fresh();timelapse::Settings timelapse;
   bool loop=false,showPixelGrid=false,showCustomGrid=false;GridSettings customGrid;
   std::optional<std::pair<double,double>> symmetryCenter;

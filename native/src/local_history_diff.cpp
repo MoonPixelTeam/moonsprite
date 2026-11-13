@@ -303,9 +303,9 @@ std::size_t appendDecodedHistoryMetadataValues(HistoryCompareDocument& graph,con
   // clock during capture. Truthy nonstring createdAt has a distinct JS shape.
   if(project::textjson::truthy(source,L"createdAt")&&!text(source,L"createdAt"))throw std::invalid_argument("Nonstring createdAt requires decode adaptation");
   if(information.createdAt.empty()||information.updatedAt.empty())throw std::invalid_argument("Missing resolved decode timestamps");
-  const auto format=text(source,L"pixelFormat");if(format&&*format!="rgba32")throw std::invalid_argument("History pixel format not admitted");
+  const auto format=text(source,L"pixelFormat");if(color_mode::preferencePixelFormat(format.value_or("rgba32"))!=document.pixelFormat())throw std::invalid_argument("History pixel format changed");
   CompareAppend b(graph,limits);using K=HistoryCompareValue::Kind;const auto root=b.container(K::Object);
-  b.add(root,"schemaVersion",b.number(21));b.add(root,"id",b.string(decodedDocumentId));b.add(root,"name",b.wide(document.name()));b.add(root,"width",b.number(document.width()));b.add(root,"height",b.number(document.height()));b.add(root,"colorMode",b.string("rgba"));b.add(root,"pixelFormat",b.string("rgba32"));b.add(root,"activeLayerId",b.string(document.layer().id));b.add(root,"canvasReferences",b.container(K::Array));
+  b.add(root,"schemaVersion",b.number(21));b.add(root,"id",b.string(decodedDocumentId));b.add(root,"name",b.wide(document.name()));b.add(root,"width",b.number(document.width()));b.add(root,"height",b.number(document.height()));b.add(root,"colorMode",b.string("rgba"));b.add(root,"pixelFormat",b.string(std::string(color_mode::name(document.pixelFormat()))));b.add(root,"activeLayerId",b.string(document.layer().id));b.add(root,"canvasReferences",b.container(K::Array));
   const auto outlineValue=field(source,L"outlineSettings");
   if(outlineValue.ValueType()==JsonValueType::Object||outlineValue.ValueType()==JsonValueType::Array){
    const auto outline=object(source,L"outlineSettings");const auto settings=b.container(K::Object);

@@ -1032,7 +1032,9 @@ bool Editor::applyPreferences(){
 
       }
 
-      runtimePreferences_=std::move(next);quickBarsConfig_=quickBarsDraft_;applyWorkspacePreferences();runtimePreferenceDraft_=runtimePreferences_;currentTools().gradientConfirm=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
+      const bool pixelFormatChanged=runtimePreferences_.index("colorLayers.pixelFormat.Select")!=next.index("colorLayers.pixelFormat.Select");
+      runtimePreferences_=std::move(next);if(pixelFormatChanged){const auto format=color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select"));currentDocument().setPixelFormat(format);for(auto& project:projects_)if(project->value&&project->value!=activeDocument_)project->value->setPixelFormat(format);}
+      quickBarsConfig_=quickBarsDraft_;applyWorkspacePreferences();runtimePreferenceDraft_=runtimePreferences_;currentTools().gradientConfirm=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
 
       for(auto& slot:projects_){slot->recovery.queue.setIntervalMinutes(d.recovery.minutes);slot->recovery.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(d.recovery.minutes*60000));}
 

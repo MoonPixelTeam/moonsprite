@@ -140,6 +140,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       boolean(animation,L"loop",true);for(const auto key:{L"layerMasks",L"groupMasks"})animation.Insert(key,JsonArray());
       text(layer,L"blendMode","normal");layer.Insert(L"groupId",JsonValue::CreateNullValue());
     }
+    text(doc,L"pixelFormat",std::string(color_mode::name(d.pixelFormat())));
     const auto id=d.projectId().empty()?newId(d.identity()):d.projectId();text(doc,L"id",id);text(doc,L"name",utf8(d.name()));number(doc,L"width",d.width());number(doc,L"height",d.height());text(doc,L"createdAt",d.projectInformation().createdAt);text(doc,L"updatedAt",d.projectInformation().updatedAt);text(doc,L"activeLayerId",l.id);text(animation,L"activeFrameId",f.id);
       JsonArray sections;for(const auto& section:d.timeline().state().loopSections){JsonObject o;text(o,L"id",section.id);text(o,L"name",utf8(section.name));text(o,L"startFrameId",section.startFrameId);text(o,L"endFrameId",section.endFrameId);text(o,L"direction",section.direction);o.Insert(L"repeatCount",section.repeatCount?JsonValue::CreateNumberValue(*section.repeatCount):JsonValue::CreateNullValue());sections.Append(o);}animation.Insert(L"loopSections",sections);
     {const auto& information=d.projectInformation();JsonObject statistics;number(statistics,L"strokeCount",double(information.strokeCount));number(statistics,L"operationCount",double(information.operationCount));number(statistics,L"drawingTimeMs",double(information.drawingTimeMs));doc.Insert(L"statistics",statistics);}

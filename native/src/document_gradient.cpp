@@ -44,7 +44,7 @@ bool Document::updateSparseGradient(const GradientSpec& spec,WandOptions options
  }
  used=baseUsed;account(region?std::size_t(region->width):0);GradientSampler sample(spec);std::vector<Pixel> row(region?std::size_t(region->width):0);
  if(g.region){const auto& r=*g.region;for(int y=r.y;y<r.y+r.height;++y)std::copy_n(baseline.begin()+std::size_t(y)*width_+r.x,r.width,g.preview.begin()+std::size_t(y)*width_+r.x);}
- if(region){const auto& r=*region;for(int y=r.y;y<r.y+r.height;++y){sample.row(y,r.x,r.x+r.width,row.data());for(int x=r.x;x<r.x+r.width;++x){const auto i=std::size_t(y)*width_+x;const auto current=baseline[i],source=row[x-r.x];g.preview[i]=selectionContains(region,x,y)&&(!g.selection||selectionContains(g.selection,x,y))&&(source>>24)?brushComposite(current,source,100):current;}}}
+ if(region){const auto& r=*region;for(int y=r.y;y<r.y+r.height;++y){sample.row(y,r.x,r.x+r.width,row.data());for(int x=r.x;x<r.x+r.width;++x){const auto i=std::size_t(y)*width_+x;const auto current=baseline[i],source=row[x-r.x];g.preview[i]=selectionContains(region,x,y)&&(!g.selection||selectionContains(g.selection,x,y))&&(source>>24)?normalizeCanvasPacked(brushComposite(current,source,100)):current;}}}
  g.region=std::move(region);g.options=options;++gradientRevision_;return true;
 }
 bool Document::commitSparseGradient(){

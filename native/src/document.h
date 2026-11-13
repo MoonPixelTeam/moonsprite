@@ -40,6 +40,7 @@
 #include "brush.h"
 #include "liquify.h"
 #include "timeline_model.h"
+#include "document_color_mode.h"
 #include "history_panel_model.h"
 #include "cel_properties.h"
 #include <vector>
@@ -189,6 +190,13 @@ public:
   bool createTilemapLayer(int,int,std::u32string,const std::string& shared={});
   bool convertLayerToTilemap(int,int,std::u32string);
   explicit Document(int width = 32, int height = 32, std::size_t maxBytes=256*1024*1024, std::size_t maxEntries=10000);
+  color_mode::PixelFormat pixelFormat()const{return pixelFormat_;}
+  void setImportedPixelFormat(color_mode::PixelFormat value){pixelFormat_=value;}
+  bool setPixelFormat(color_mode::PixelFormat);
+  // Legacy packed writes preserve zero-alpha coverage; direct color writes
+  // quantize every channel, including alpha in RGB formats. Masks override both.
+  Pixel normalizeCanvasPacked(Pixel value,bool mask=false)const{return mask?timeline::normalizedMaskPixel(value):color_mode::normalizeRgbaPackedValue(pixelFormat_,value);}
+  Pixel normalizeCanvasColor(Pixel value,bool mask=false)const{return mask?timeline::normalizedMaskPixel(value):color_mode::quantizePixelColor(value,pixelFormat_);}
   static Document withBuiltinPalette(int width=32,int height=32,std::u32string name=U"未命名");
   static Document fromClipboardRaster(const SelectionClipboard& source);
   static Document fromSpriteSheetRaster(int width,int height,std::vector<Pixel> pixels,std::u32string name);
@@ -605,6 +613,7 @@ public:
     int width=0,height=0;std::uint64_t identity=0,revision=0,previewRevision=0;
     std::string layerId,frameId;std::optional<SelectionMask> selection;
     std::size_t documentBytes=0;std::vector<Target> targets;bool completed=false;
+    color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;
   };
   std::optional<GradientMapTask> captureGradientMapTask() const;
   static bool runGradientMapTask(GradientMapTask&,const GradientMapSettings&,const std::function<bool()>& cancelled);
@@ -621,7 +630,7 @@ public:
   bool publishConvolutionSurfaceTask(ConvolutionSurfaceTask&&);
   bool restoreConvolutionBaseline();
   bool commitConvolutionAdjustment();
-  struct ConvolutionTask {int width,height;std::uint64_t identity,revision;std::string layerId,frameId;std::optional<SelectionMask> selection;std::vector<std::pair<std::string,std::vector<Pixel>>> targets;};
+  struct ConvolutionTask {int width,height;std::uint64_t identity,revision;std::string layerId,frameId;std::optional<SelectionMask> selection;std::vector<std::pair<std::string,std::vector<Pixel>>> targets;color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;};
   struct AntiAliasSurfaceTask {
     ConvolutionSurfaceTask surfaces;timeline::Timeline simulation;
     std::vector<std::string> frames;std::vector<Pixel> palette;AntiAliasOptions options;
@@ -739,7 +748,7 @@ private:
   struct GroupUiSnapshot {std::vector<std::string> selected,collapsed;std::optional<std::string> focus;};
   struct FreeTileSelectionSnapshot {std::vector<std::string> selected;std::string primary,anchor,frame,viewLayer;};
   struct RollbackPayload {
- std::optional<OutlineSettings> outline;int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
+ color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;std::optional<OutlineSettings> outline;int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
  };
  std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;
  std::shared_ptr<const RollbackPayload> takeRollbackPayload()&&;
@@ -1001,6 +1010,7 @@ private:
   std::filesystem::path sourceFilePath_;
   std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive_;
   PaletteState palette_;
+  color_mode::PixelFormat pixelFormat_=color_mode::PixelFormat::Rgba32;
   std::vector<ProjectBrushResource> projectBrushes_;
   std::uint64_t projectBrushRevision_=0;
   ReferenceLibrary referenceImages_;

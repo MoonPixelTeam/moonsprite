@@ -7110,3 +7110,10 @@ attached-masks-tests 全部通过，含八组新增连接线检查；唯一正�
 直接迁移 legacy pixel-format.ts 与 document-model.ts 的八种通道量化、灰度、可见色板匹配、图层颜色与 packed 写入归一化，复用已有灰度和蒙版函数。保留透明覆盖、可见顺序／稳定 ID、alpha 距离权重与蒙版优先语义。新增 Node 实际旧版函数生成器和原生差异检查，524,104 条记录全部一致；Release 专项目标构建成功，两项 CTest 通过3.85秒。
 
 旧版 pixel-format／tools-pixel-edit 两文件26项通过3.70秒；来源覆盖932文件与快照、Editor边界588源码、diff检查通过。这是共用算法阶段，尚未接入工程打开／保存、实际编辑、模式转换及撤销、合成与 UI，原生仍只开放 RGBA32 工程；不得宣称索引色或灰度工程可用。没有性能优化、正式程序新能力或图像验收。详见 [颜色模式算法迁移](color-mode-algorithms-migration-20261114.md)。整体INCOMPLETE，阶段保存推送dev，保留全部用户数据与日志。
+
+
+### 2026-11-14 RGBA 八种像素格式生产接入（阶段验收）
+
+承接前阶段算法，按 legacy workspace-commands-color、document-model、history、project codec 和 selection-transform 的实际写入边界，接入 Document、偏好全部工程转换、新建、保存/恢复/本地历史、快照/回滚、绘制/调整/变换及源编辑草稿。保留 packed 零透明覆盖与 direct-color 的区别、共享身份、蒙版独立规则、不新增转换 Undo、普通 deferred 平移 raw 提交和 Lua 整图 raw 替换。整层翻转只量化实际交换的像素，奇数中轴保留 raw；未写区域不强行全量归一化。
+
+唯一正式 Release 与最终增量构建成功。document-pixel-format CTest通过0.50秒，八种格式执行转换/工具/预览/取消/Undo/Redo/脚本/三个保存入口/重开/快照/回滚/关联图层/独立资源/本地历史格式检查；真实 pixel-formats 八组偏好与鼠标输入检查进程退出0。共用算法524,104条实际旧版oracle、document-snapshot、color-adjustment、document-raster-history通过。额外document-transactions第76行新建帧撤销选择断言失败，尚未修复，不声称完整事务套件通过；继续作为下一项迁移核对。初次UI夹具未切目标页导致控件未启用，修正夹具后通过。来源覆盖934文件、Editor边界589源文件、diff通过，strict继续因剩余缺口失败。无性能优化或新增人工图像验收，灰度/索引色及整体迁移仍INCOMPLETE。详见[RGBA八格式迁移](rgba-pixel-formats-migration-20261114.md)。保留全部用户数据、缓存及日志，阶段保存推送dev。
