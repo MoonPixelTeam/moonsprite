@@ -50,13 +50,32 @@ int wmain(int argc,wchar_t** argv){
    check(m.cels[0].surface->format==RasterFormat::Rgba&&m.cels[1].surface->format==RasterFormat::Indexed,"Inactive/fallback format lost");
    rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);
   }
+  {const auto bytes=load(dir/"remap-indexed-1-0-0.moonsprite");const auto original=*bytes;Limits limited;limited.expandedBytes=5u*130*66*4-1;
+   bool rejected=false;try{readProjectManifest(bytes,limited);}catch(const Error& e){check(e.kind==ErrorKind::Limit&&std::string(e.what())=="Indexed remap exceeds decoded pixel budget","Remap budget failed outside pixel allocation");rejected=true;}
+   check(rejected&&*bytes==original,"Remap budget admitted extra copy or mutated archive");
+   check(readProjectManifest(bytes).cels.size()==4,"Budget failure poisoned later indexed read");}
+  const auto remapJson=load(dir/"remap-oracle.json");const auto remapRows=JsonArray::Parse(winrt::to_hstring(std::string(remapJson->begin(),remapJson->end())));
+  check(remapRows.Size()==48,"Hidden-ID legacy matrix missing");
+  for(const auto& item:remapRows){
+   const auto row=item.GetObject();const auto bytes=load(dir/(winrt::to_string(row.GetNamedString(L"name"))+".moonsprite"));const auto original=*bytes;const auto m=readProjectManifest(bytes);
+   const auto words=[](const JsonArray& values){std::vector<std::uint32_t> result;for(const auto& value:values)result.push_back(std::uint32_t(value.GetNumber()));return result;};
+   check(m.layers[0].surface->pixels==words(row.GetNamedArray(L"layer")),"Hidden-ID displayed layer differs from legacy");
+   const auto expected=row.GetNamedArray(L"cels");check(expected.Size()==m.cels.size(),"Hidden-ID Cel count changed");
+   for(unsigned i=0;i<expected.Size();++i){const auto cel=expected.GetObjectAt(i);check(m.cels[i].id==winrt::to_string(cel.GetNamedString(L"id"))&&m.cels[i].surface->pixels==words(cel.GetNamedArray(L"pixels")),"Hidden-ID Cel or linked fallback differs from legacy");check((m.cels[i].surface->format==RasterFormat::Indexed)==(cel.GetNamedString(L"format")==L"indexed"),"Remap changed raster format");}
+   check(m.layers[0].surface==m.cels[0].surface&&m.cels[0].surface==m.cels[1].surface,"Remap detached shared resource");
+   check(m.cels[0].surface!=m.cels[2].surface,"Remap merged independent equal resources");
+   std::vector<int> order;for(const auto& id:row.GetNamedArray(L"order"))order.push_back(int(id.GetNumber()));
+   std::vector<std::optional<int>> slots;for(const auto& id:row.GetNamedArray(L"slots"))slots.push_back(id.ValueType()==JsonValueType::Null?std::nullopt:std::optional<int>(int(id.GetNumber())));
+   check(m.paletteOrder==order&&m.paletteSlots==slots&&*bytes==original&&m.sourceArchive==bytes,"Remap changed palette or source archive");
+   rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);
+  }
   for(const auto* failure:{"tag","truncated","missing"})rejects([&]{readProjectManifest(load(dir/(std::string("reject-")+failure+".moonsprite")));},ErrorKind::Corrupt);
   Bytes raw{0,0,0,0,255,255,255,255,0,0,0,128,255,255,255,127};
   check(decodeRaster(raw,"raw",RasterFormat::Indexed,2,2,16)==std::vector<std::uint32_t>({0,0xffffffff,0x80000000,0x7fffffff}),"32-bit IDs reinterpreted as channels");
   rejects([&]{decodeRaster(raw,"raw",RasterFormat::Indexed,2,2,15);},ErrorKind::Limit);
   raw.pop_back();rejects([&]{decodeRaster(raw,"raw",RasterFormat::Indexed,2,2,16);},ErrorKind::Corrupt);
   rejects([&]{decodeRaster({},"raw",RasterFormat(3),1,1,4);},ErrorKind::Unsupported);
-  std::cout<<"60 legacy indexed storage/layout, 4 format-cache, 3 corrupt archive and raw ID boundary checks passed\n";
+  std::cout<<"60 legacy indexed storage/layout, 48 hidden-ID remap, 4 format-cache, 3 corrupt archive and raw ID/budget boundary checks passed\n";
   return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

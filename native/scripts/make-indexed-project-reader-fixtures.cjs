@@ -84,6 +84,33 @@ registerHooks({
   const bytes=zipSync(r);let rejected=false;try{decodeProject(bytes);}catch{rejected=true;}if(!rejected)throw Error('Legacy accepted '+failure);
   fs.writeFileSync(path.join(out,'reject-'+failure+'.moonsprite'),bytes);
  }
+ // Decode files whose hidden/missing IDs require the actual legacy remapper.
+ // Equal bytes in separate resources must not acquire shared identity.
+ const remapRows=[];
+ for(const mode of ['indexed','rgba'])for(const sparse of [false,true])for(const level of [0,6])for(let sample=0;sample<6;++sample){
+  const width=sparse?130:4,height=sparse?66:2,d=createDocument('hidden IDs',width,height,mode);
+  const resources=unzipSync(encodeProject(d,{includePreview:false})),m=JSON.parse(strFromU8(resources['manifest.json'])),doc=m.document,a=doc.animation,first=a.cels[0];
+  const color=(r,g,b,alpha=255)=>({r,g,b,a:alpha});
+  doc.palette=[{id:0,name:'zero',color:sample===5?color(2,3,4):color(0,0,0,0)},{id:7,name:'left',color:color(0,0,0)},{id:19,name:'right',color:color(2,0,0)},{id:31,name:'hidden',color:sample===3?color(0,0,0,128):sample===4?color(20,30,40,0):color(1,0,0)}];
+  if(sample===3)doc.palette[2].color=color(0,0,0,127);
+  doc.paletteOrder=sample===0?[19,7,19]:sample===1?[999,7,19]:sample===2?[]:[7,19];doc.paletteColumns=3;doc.paletteSlots=[null,7,null,19,null,null];doc.nextColorId=32;
+  const ids=new Uint32Array(width*height),fallback=new Uint32Array(width*height);
+  ids.set([31,999,0xffffffff,0x80000000,0x7fffffff,0,7,19]);fallback.set([19,31,7,999,0,31,0xffffffff,0]);
+  const format=mode==='indexed'?'indexed':'rgba';
+  const encode=(pixels,f)=>sparse?encodeSparseRasterData(pixels,f,width,height):{data:new Uint8Array(pixels.buffer),encoding:'raw'};
+  const encoded=encode(ids,format),stale=encode(fallback,'indexed');
+  if(sparse&&(encoded.encoding!=='sparse-tiles-v1'||stale.encoding!=='sparse-tiles-v1'))throw Error('Expected remap sparse sample');
+  for(const key of Object.keys(resources))if(key!=='manifest.json')delete resources[key];
+  for(const meta of [doc.layers[0],first])Object.assign(meta,{width,height,dataFile:'shared.words',dataEncoding:encoded.encoding});
+  const shared={...first,id:'shared-cel',frameId:'shared-frame'},separate={...first,id:'separate-cel',frameId:'separate-frame',dataFile:'separate.words'},alias={...first,id:'alias-cel',frameId:'alias-frame',linkedCelId:first.id,format:'indexed',dataFile:'fallback.words',dataEncoding:stale.encoding};
+  a.frames.push(...['shared-frame','separate-frame','alias-frame'].map(id=>({id,duration:100})));a.cels.push(shared,separate,alias);
+  resources['shared.words']=encoded.data;resources['separate.words']=encoded.data.slice();resources['fallback.words']=stale.data;resources['manifest.json']=strToU8(JSON.stringify(m));
+  const bytes=zipSync(resources,{level}),decoded=decodeProject(bytes),name=`remap-${mode}-${sparse?1:0}-${level}-${sample}`;
+  fs.writeFileSync(path.join(out,name+'.moonsprite'),bytes);
+  remapRows.push({name,mode,layer:packed(decoded.layers[0]),cels:decoded.animation.cels.map(c=>({id:c.id,format:c.surface.format,pixels:packed(c.surface)})),order:decoded.paletteOrder,slots:decoded.paletteSlots});
+ }
+ fs.writeFileSync(path.join(out,'remap-oracle.json'),JSON.stringify(remapRows));
  fs.writeFileSync(path.join(out,'oracle.json'),JSON.stringify(rows));
  console.log(`Actual legacy indexed boundary: ${rows.length} storage/layout cases, 4 mixed-format cases and 3 corrupt cases`);
+ console.log(`Actual legacy hidden-ID remap: ${remapRows.length} mode/storage/ZIP/palette cases with shared, independent and linked-fallback surfaces`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

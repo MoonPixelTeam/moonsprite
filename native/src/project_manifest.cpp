@@ -381,6 +381,33 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // fabricate max(existing ID)+1; collision remains an editable gate.
     const auto rawNext=value(doc,"nextColorId");const auto converted=!rawNext||rawNext.ValueType()==JsonValueType::Null?1.:legacyjson::number(rawNext);
     const auto next=converted<1?1.:converted;if(!std::isfinite(next)||std::floor(next)!=next||next>std::numeric_limits<int>::max())throw Error(ErrorKind::Unsupported,"Palette allocation cursor is outside native integer representation");out.nextColorId=int(next);
+    // document-model.ts::remapIndexedDocumentToVisiblePalette. A visible
+    // identity survives even when its entry is missing; hidden identities use
+    // getPaletteEntry's transparent fallback and the visible nearest color.
+    // Keep the source archive immutable and replace each shared DTO once.
+    if(out.colorMode=="indexed"){
+      const std::set<int> visible(out.paletteOrder.begin(),out.paletteOrder.end());
+      std::map<const ManifestRaster*,std::shared_ptr<const ManifestRaster>> remapped;
+      auto remap=[&](std::shared_ptr<const ManifestRaster>& surface){
+        if(!surface||surface->format!=RasterFormat::Indexed)return;
+        if(const auto found=remapped.find(surface.get());found!=remapped.end()){surface=found->second;return;}
+        const auto before=surface;std::shared_ptr<ManifestRaster> after;
+        for(std::size_t i=0;i<before->pixels.size();++i){const auto id=before->pixels[i];
+          if(id==0||(id<=std::uint32_t(std::numeric_limits<int>::max())&&visible.count(int(id))))continue;
+          if(!after){
+            const auto bytes=before->pixels.size()*sizeof(std::uint32_t);
+            if(bytes>limits.expandedBytes-decodedBytes)throw Error(ErrorKind::Limit,"Indexed remap exceeds decoded pixel budget");
+            after=std::make_shared<ManifestRaster>(*before);decodedBytes+=bytes;
+          }
+          const auto color=id<=std::uint32_t(std::numeric_limits<int>::max())?color_mode::paletteColor(out.palette,int(id)):0;
+          after->pixels[i]=std::uint32_t(color_mode::paletteColorIdForCanvas(out.palette,out.paletteOrder,color));
+        }
+        const auto result=after?std::shared_ptr<const ManifestRaster>(std::move(after)):before;
+        remapped.emplace(before.get(),result);surface=result;
+      };
+      for(auto& layer:out.layers)remap(layer.surface);
+      for(auto& cel:out.cels)remap(cel.surface);
+    }
     // Legacy storedTimelapseEntryViews accounts for every recording PNG,
     // including payloads whose declared snapshot metadata was unusable.
     for(const auto& entry:archive.entries())if(entry.first.rfind("timelapse/",0)==0&&entry.first.size()>14&&entry.first.substr(entry.first.size()-4)==".png")consumedFiles.insert(entry.first);

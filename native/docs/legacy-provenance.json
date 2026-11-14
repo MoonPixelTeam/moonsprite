@@ -9823,9 +9823,14 @@
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
       },
       "indexedReader20261114": {
-        "scope": "Decode raw and sparse-tiles-v1 indexed uint32 IDs without RGBA reinterpretation; sparse format tag 2, per-Cel independent raster format and format-aware resource identity. Manifest palette ID zero and null slots remain distinct via optional<int>; native editable palette still uses zero holes and explicitly rejects zero-ID/slot until production indexed migration. Existing editable RGBA/grayscale transfer checks remain explicit. Indexed mode, indexed inactive/fallback rasters and unsupported history layouts remain gated.",
+        "scope": "Decode raw and sparse-tiles-v1 indexed uint32 IDs without RGBA reinterpretation; sparse format tag 2, per-Cel independent raster format and format-aware resource identity. Manifest palette ID zero and null slots remain distinct via optional<int>; the subsequent paletteZeroMigration20261114 stage supports editable zero/null for RGBA/grayscale palettes only. Existing editable RGBA/grayscale transfer checks remain explicit. Indexed mode, indexed inactive/fallback rasters and unsupported history layouts remain gated.",
         "evidence": "Actual unmodified legacy createDocument/encodeProject/decodeProject/encodeSparseRasterData/normalizePaletteSlots through Node loader: 60 mode/layout/ZIP matrices, 4 mixed format/cache cases, 3 corrupt archives, plus raw uint32 extrema and native byte budgets. Existing RGBA/gray codec suites retain expectations; no UI capability or indexed editing completion claim.",
         "adaptation": "Native dense uint32 word storage and std::optional<int> decoded palette slots; legacy null vs zero observable distinction retained. Native signed palette entry range/duplicate gates remain registered gaps. No performance optimization."
+      },
+      "indexedPaletteRemap20261114": {
+        "scope": "Read-boundary port of remapIndexedDocumentToVisiblePalette: indexed surfaces only in indexed documents, zero and visible IDs retained, hidden/missing IDs mapped through actual legacy transparent fallback and visible nearest-color order with alpha distance weight two. Source archive stays immutable; shared ManifestRaster DTOs retain identity and equal independent resources stay independent. Indexed editing remains gated.",
+        "evidence": "48 actual unmodified legacy encodeProject/decodeProject mode/raw-sparse/ZIP/palette matrices with four Cels each, including linked independent fallback, empty order, dangling visible ID, ties, hidden transparent/nontransparent zero and uint32 extrema. Five targeted CTest passed in 145.57 seconds; explicit copy-budget rejection followed by successful clean read. See docs/indexed-palette-remap-migration-20261114.md.",
+        "adaptation": "Existing native dense uint32 manifest DTO uses immutable replacement with decoded-byte accounting before allocation. Signed palette range remains a registered boundary; large uint32 pixel IDs are looked up as missing rather than truncated. This does not claim different-offset backing-store identity, special tile regeneration, active-frame projection or indexed tool/history/save equivalence. No performance optimization."
       }
     },
     {
@@ -37804,13 +37809,19 @@
         "legacy/src/renderer/src/core/document-model.ts",
         "legacy/src/renderer/src/core/project-format-encode.ts",
         "legacy/src/renderer/src/core/runtime-raster.ts",
-        "legacy/src/renderer/src/core/tools-fill.ts"
+        "legacy/src/renderer/src/core/tools-fill.ts",
+        "legacy/src/renderer/src/core/animation.ts"
       ],
       "scope": "Indexed raw/sparse project reader and transparent palette slot differential evidence; necessary C++ DTO/Windows JSON adaptation. Production indexed tools, compositor, history, save and UI remain incomplete.",
       "indexedReader20261114": {
-        "scope": "Decode raw and sparse-tiles-v1 indexed uint32 IDs without RGBA reinterpretation; sparse format tag 2, per-Cel independent raster format and format-aware resource identity. Manifest palette ID zero and null slots remain distinct via optional<int>; native editable palette still uses zero holes and explicitly rejects zero-ID/slot until production indexed migration. Existing editable RGBA/grayscale transfer checks remain explicit. Indexed mode, indexed inactive/fallback rasters and unsupported history layouts remain gated.",
+        "scope": "Decode raw and sparse-tiles-v1 indexed uint32 IDs without RGBA reinterpretation; sparse format tag 2, per-Cel independent raster format and format-aware resource identity. Manifest palette ID zero and null slots remain distinct via optional<int>; the subsequent paletteZeroMigration20261114 stage supports editable zero/null for RGBA/grayscale palettes only. Existing editable RGBA/grayscale transfer checks remain explicit. Indexed mode, indexed inactive/fallback rasters and unsupported history layouts remain gated.",
         "evidence": "Actual unmodified legacy createDocument/encodeProject/decodeProject/encodeSparseRasterData/normalizePaletteSlots through Node loader: 60 mode/layout/ZIP matrices, 4 mixed format/cache cases, 3 corrupt archives, plus raw uint32 extrema and native byte budgets. Existing RGBA/gray codec suites retain expectations; no UI capability or indexed editing completion claim.",
         "adaptation": "Native dense uint32 word storage and std::optional<int> decoded palette slots; legacy null vs zero observable distinction retained. Native signed palette entry range/duplicate gates remain registered gaps. No performance optimization."
+      },
+      "indexedPaletteRemap20261114": {
+        "scope": "Read-boundary port of remapIndexedDocumentToVisiblePalette: indexed surfaces only in indexed documents, zero and visible IDs retained, hidden/missing IDs mapped through actual legacy transparent fallback and visible nearest-color order with alpha distance weight two. Source archive stays immutable; shared ManifestRaster DTOs retain identity and equal independent resources stay independent. Indexed editing remains gated.",
+        "evidence": "48 actual unmodified legacy encodeProject/decodeProject mode/raw-sparse/ZIP/palette matrices with four Cels each, including linked independent fallback, empty order, dangling visible ID, ties, hidden transparent/nontransparent zero and uint32 extrema. Five targeted CTest passed in 145.57 seconds; explicit copy-budget rejection followed by successful clean read. See docs/indexed-palette-remap-migration-20261114.md.",
+        "adaptation": "Existing native dense uint32 manifest DTO uses immutable replacement with decoded-byte accounting before allocation. Signed palette range remains a registered boundary; large uint32 pixel IDs are looked up as missing rather than truncated. This does not claim different-offset backing-store identity, special tile regeneration, active-frame projection or indexed tool/history/save equivalence. No performance optimization."
       }
     },
     {
@@ -37826,7 +37837,8 @@
         "legacy/src/renderer/src/core/runtime-raster.ts",
         "legacy/src/renderer/src/core/tools-fill.ts",
         "legacy/src/renderer/src/store/workspace-palette.ts",
-        "legacy/src/renderer/src/components/panels/PalettePanel.tsx"
+        "legacy/src/renderer/src/components/panels/PalettePanel.tsx",
+        "legacy/src/renderer/src/core/animation.ts"
       ],
       "scope": "Indexed raw/sparse project reader and transparent palette slot differential evidence; necessary C++ DTO/Windows JSON adaptation. Production indexed tools, compositor, history, save and UI remain incomplete.",
       "indexedReader20261114": {
@@ -37838,6 +37850,11 @@
         "scope": "Editable RGBA/grayscale palette ID zero distinct from null slots and no role selection. Selection, layout/movement, append/overwrite, add/delete/rename, gradients/sort/apply, palette UI and Lua adapters retain actual legacy behavior; import padding, project/recovery/history serialization preserve null vs numeric zero. Indexed drawing/storage/compositing remain gated and overall migration incomplete.",
         "evidence": "palette-layout.ts normalizePaletteSlots/fitPaletteSlotsToGrid/repositionPaletteSlots/paletteRangeIdsBySlots; workspace-palette.ts selectPaletteColors, addPaletteColor, pastePaletteColors, deletePaletteColors, movePaletteColor, applyPalette and callback Undo/Redo; PalettePanel.tsx role markers, copy closure and empty-slot interactions. Actual unmodified legacy oracle extended with 108 zero/null state matrices; final verification recorded in docs/palette-zero-migration-20261114.md.",
         "adaptation": "Map legacy null to INT_MIN in existing four-byte native slots/role IDs; real ID zero remains numeric zero, negative preview IDs remain distinct. File and script JSON map sentinel to null. Existing native validation, history byte accounting, sole Release artifact and UI materials retained; no performance optimization."
+      },
+      "indexedPaletteRemap20261114": {
+        "scope": "Read-boundary port of remapIndexedDocumentToVisiblePalette: indexed surfaces only in indexed documents, zero and visible IDs retained, hidden/missing IDs mapped through actual legacy transparent fallback and visible nearest-color order with alpha distance weight two. Source archive stays immutable; shared ManifestRaster DTOs retain identity and equal independent resources stay independent. Indexed editing remains gated.",
+        "evidence": "48 actual unmodified legacy encodeProject/decodeProject mode/raw-sparse/ZIP/palette matrices with four Cels each, including linked independent fallback, empty order, dangling visible ID, ties, hidden transparent/nontransparent zero and uint32 extrema. Five targeted CTest passed in 145.57 seconds; explicit copy-budget rejection followed by successful clean read. See docs/indexed-palette-remap-migration-20261114.md.",
+        "adaptation": "Existing native dense uint32 manifest DTO uses immutable replacement with decoded-byte accounting before allocation. Signed palette range remains a registered boundary; large uint32 pixel IDs are looked up as missing rather than truncated. This does not claim different-offset backing-store identity, special tile regeneration, active-frame projection or indexed tool/history/save equivalence. No performance optimization."
       }
     }
   ],
