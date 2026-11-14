@@ -40,7 +40,7 @@ void actualLegacy(const std::filesystem::path& root){
  std::ifstream latest(root/"compiled-latest.txt");std::string run;latest>>run;CHECK(run.rfind("run-",0)==0&&run.find_first_not_of("0123456789",4)==std::string::npos);
  for(const auto& value:array(root/run/"compiled-full-document-cost"/"free-rejected.json")){const auto spec=value.GetObject();bool refused=false;try{const auto manifest=moon::project::readProjectManifest(read(root/run/"compiled-full-document-cost"/winrt::to_string(spec.GetNamedString(L"file"))));moon::project::prepareEditableImport(manifest);}catch(const std::exception&){refused=true;}if(!refused)throw std::runtime_error("Legacy corrupt free tile archive admitted: "+winrt::to_string(spec.GetNamedString(L"name")));}
  std::ifstream f(root/run/"compiled-cost"/"graphs.json",std::ios::binary);CHECK(bool(f));const std::string json{std::istreambuf_iterator<char>(f),std::istreambuf_iterator<char>()};
- const auto cases=JsonArray::Parse(winrt::to_hstring(json));CHECK(cases.Size()>=113);std::size_t storageCases=0,metadataCases=0,groupCases=0,rasterObjectCases=0,maskObjectCases=0,rootMetadataCases=0,fullDocumentCases=0,fullDocumentGated=0;
+ const auto cases=JsonArray::Parse(winrt::to_hstring(json));CHECK(cases.Size()>=113);std::size_t storageCases=0,metadataCases=0,groupCases=0,rasterObjectCases=0,maskObjectCases=0,rootMetadataCases=0,fullDocumentCases=0,fullDocumentPixelFormats=0;
  for(const auto& item:cases){
   const auto row=item.GetObject();HistoryCostGraph graph;
   for(const auto& value:row.GetNamedArray(L"nodes")){
@@ -219,10 +219,8 @@ void actualLegacy(const std::filesystem::path& root){
    ++fullDocumentCases;const auto directory=root/run/"compiled-full-document-cost";bool found=false;
    for(const auto& value:array(directory/"cases.json")){const auto spec=value.GetObject();if(spec.GetNamedString(L"graphName")!=row.GetNamedString(L"name"))continue;found=true;
     const auto manifest=std::make_shared<const moon::project::ReadManifest>(moon::project::readProjectManifest(read(directory/winrt::to_string(spec.GetNamedString(L"file")))));
-    if(!manifest->unsupported.empty()){
-     CHECK(name.rfind("full-document-pixel-format-",0)==0&&name!="full-document-pixel-format-rgba32");bool rejected=false;try{moon::project::prepareEditableImport(*manifest);}catch(const moon::project::Error& error){rejected=error.kind==moon::project::ErrorKind::Unsupported;}CHECK(rejected);++fullDocumentGated;std::cout<<name<<": actual legacy graph verified; native import remains unsupported\n";continue;
-    }
     auto document=moon::project::createEditableDocument(moon::project::prepareEditableImport(*manifest));
+    if(name.rfind("full-document-pixel-format-",0)==0){const auto format=name.substr(std::string("full-document-pixel-format-").size());CHECK(manifest->unsupported.empty());CHECK(moon::color_mode::name(document.pixelFormat())==(format=="invalid-layout"?"rgba32":format));++fullDocumentPixelFormats;}
     if(spec.HasKey(L"freeRuntime")){
      const auto verify=[&](const moon::Document& target,const JsonObject& reference){for(const auto& layer:target.timeline().state().layers)if(layer.freeTiles){JsonObject encoded;moon::project::freejson::encodeLayer(encoded,*layer.freeTiles);sameJson(encoded.GetNamedArray(L"freeTileSources"),reference.GetNamedArray(L"sources"));}
       for(const auto& row:reference.GetNamedArray(L"cels")){const auto expected=row.GetObject();const auto* cel=target.timeline().findCelById(winrt::to_string(expected.GetNamedString(L"id")));CHECK(cel&&cel->freeTiles&&cel->surface);const auto& surface=*cel->surface;CHECK(surface.width==expected.GetNamedNumber(L"width")&&surface.height==expected.GetNamedNumber(L"height")&&surface.offsetX==expected.GetNamedNumber(L"offsetX")&&surface.offsetY==expected.GetNamedNumber(L"offsetY"));const auto pixels=expected.GetNamedArray(L"pixels");CHECK(surface.pixels.size()==pixels.Size());for(unsigned i=0;i<pixels.Size();++i)CHECK(surface.pixels[i]==std::uint32_t(pixels.GetAt(i).GetNumber()));
@@ -274,7 +272,7 @@ void actualLegacy(const std::filesystem::path& root){
  CHECK(maskObjectCases==7);
  CHECK(rootMetadataCases==9);
  CHECK(fullDocumentCases==193);
- CHECK(fullDocumentGated==8);
+ CHECK(fullDocumentPixelFormats==9);
 }
 void edgeCases(){
  {

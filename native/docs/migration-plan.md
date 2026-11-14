@@ -7173,3 +7173,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy document-model、tools-pixel-edit 和选区变换模块迁移读写、行写入、笔刷原始／当前底色和选区混合，保留工具查色重复 ID 首项与合成器末项的不同契约。Document 24 处 RGBA 选区 source-over 接入同一旧版算法，涵盖即时、普通／稀疏／延迟浮动预览及提交；历史和 dirty 继续由 Document 负责。
 
 288 上下文的真实旧版 oracle 覆盖5760组写入、73728组笔刷底色、31104组选区及全部65536对alpha，逐值一致。唯一正式Release构建成功；九项定向CTest通过7.99秒，旧版真实工具像素测试三项通过5.74秒。来源覆盖942文件、Editor边界591源码、架构591源码／247targets、diff通过，strict因既有缺口退出1。无UI或人工图像验收；索引色生产工具事务、历史／保存／恢复／导入仍未接通，新建／转换／编辑入口保持关闭，整体INCOMPLETE。详见[工具像素迁移](indexed-pixel-edit-migration-20261114.md)。阶段提交推送dev，保留全部用户数据、缓存和日志。
+
+### 2026-11-14 索引色栅格编码、历史存储与保存预览（阶段验收）
+
+按 legacy project-format-raster／encode／decode、local-history-delta 和 manifest 迁移完整uint32栅格编码、格式标签／idx32路径、缺失活动Cel空runtime、历史typed view／共享backing与成本、历史比较格式守卫及色板解析后的PNG预览。沿用原压缩、资源与身份，不开放生产indexed编辑准入。
+
+140组真实旧版编码、74组存储／类型／别名／成本、12次生产编码、六次比较格式校验及两种实际PNG预览通过，最终进程退出0。七项定向CTest均通过；修复历史成本测试残留的八格式拒绝计数，改为逐项检查八格式及非法回退，保留全部原成本／身份期望。唯一正式Release构建成功；来源946文件、Editor593源码、架构593源码／248targets、diff通过，strict因其它缺口退出1。无UI、性能优化、人工图像或完整桌面验收。索引色工具事务、历史回放、模式转换／新建／导入及sourceArchive准入继续迁移，整体INCOMPLETE。详见[索引色编码迁移](indexed-raster-codec-migration-20261114.md)。阶段提交推送dev，保留用户数据、缓存和日志。

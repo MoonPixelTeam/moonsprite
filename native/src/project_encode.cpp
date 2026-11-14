@@ -3,6 +3,7 @@
 #include "tilemap_project_json.h"
 #include "free_tile_project_json.h"
 #include "project_encode.h"
+#include "project_raster_encode.h"
 #include "layer_panel_state_json.h"
 #include "cel_properties.h"
 #include "project_zip_writer.h"
@@ -52,24 +53,6 @@ std::string now(){SYSTEMTIME t;GetSystemTime(&t);char s[32];snprintf(s,sizeof(s)
 std::string newId(std::uint64_t identity){static const std::string process=[] {GUID guid;const auto hr=CoCreateGuid(&guid);if(FAILED(hr))throw std::runtime_error("Cannot create project ID");wchar_t s[40];StringFromGUID2(guid,s,40);return winrt::to_string(s);}();return "doc-native-"+process+"-"+std::to_string(identity);}
 void put16(Bytes& b,std::uint32_t n){b.push_back(n&255);b.push_back((n>>8)&255);}
 void put32(Bytes& b,std::uint32_t n){put16(b,n);put16(b,n>>16);}
-struct EncodedRaster {Bytes data;std::string encoding;};
-EncodedRaster raster(const timeline::Surface& surface){
-  const auto w=surface.width,h=surface.height;
-  const auto& pixels=surface.pixels;
-  struct Tile{int x,y,w,h;};std::vector<Tile> tiles;std::size_t payload=0;
-  for(int y=0;y<h;y+=64)for(int x=0;x<w;x+=64){const int tw=std::min(64,w-x),th=std::min(64,h-y);bool content=false;
-    for(int row=0;row<th&&!content;++row)for(int col=0;col<tw;++col)if(pixels[std::size_t(y+row)*w+x+col]!=0){content=true;break;}
-    if(content){tiles.push_back({x,y,tw,th});payload+=std::size_t(tw)*th*4;}
-  }
-  const auto sparseSize=24+tiles.size()*16+payload;
-  if(sparseSize>=pixels.size()*4){EncodedRaster out{{},"raw"};out.data.reserve(pixels.size()*4);for(auto p:pixels)put32(out.data,p);return out;}
-  EncodedRaster out{{},"sparse-tiles-v1"};auto& b=out.data;b.reserve(sparseSize);
-  put32(b,0x3154534d);put16(b,64);b.push_back(1);b.push_back(0);put32(b,w);put32(b,h);put32(b,std::uint32_t(tiles.size()));put32(b,std::uint32_t(payload));
-  std::size_t offset=24+tiles.size()*16;
-  for(const auto& t:tiles){put32(b,t.x);put32(b,t.y);put16(b,t.w);put16(b,t.h);put32(b,std::uint32_t(offset));offset+=std::size_t(t.w)*t.h*4;}
-  for(const auto& t:tiles)for(int row=0;row<t.h;++row)for(int col=0;col<t.w;++col)put32(b,pixels[std::size_t(t.y+row)*w+t.x+col]);
-  return out;
-}
 Bytes zipStored(const std::map<std::string,Bytes>& files,Limits limits,int compression,const std::map<std::string,int>& fileCompression={}){
   if(files.size()>limits.maxEntries || files.size()>=65535)throw Error(ErrorKind::Limit,"Too many saved project resources");
   std::uint64_t size=22,total=0;
@@ -105,7 +88,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
   if(d.active())throw Error(ErrorKind::Unsupported,"Commit or cancel the active stroke before saving");
   if(d.width()<1||d.height()<1||d.width()>32768||d.height()>32768||std::uint64_t(d.width())*d.height()>64ull*1024*1024)
     throw Error(ErrorKind::Unsupported,"Unsupported document canvas dimensions");
-  // Format encoding accepts independent RGBA owners. This does not admit
+  // Format encoding retains independent RGBA/indexed owners. This does not admit
   // sparse external editing. Formal save separately validates reopen admission.
   std::uint64_t rasterBytes=0;
   for(const auto& item:d.timeline().state().cels){
@@ -145,7 +128,7 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
       JsonArray sections;for(const auto& section:d.timeline().state().loopSections){JsonObject o;text(o,L"id",section.id);text(o,L"name",utf8(section.name));text(o,L"startFrameId",section.startFrameId);text(o,L"endFrameId",section.endFrameId);text(o,L"direction",section.direction);o.Insert(L"repeatCount",section.repeatCount?JsonValue::CreateNumberValue(*section.repeatCount):JsonValue::CreateNullValue());sections.Append(o);}animation.Insert(L"loopSections",sections);
     {const auto& information=d.projectInformation();JsonObject statistics;number(statistics,L"strokeCount",double(information.strokeCount));number(statistics,L"operationCount",double(information.operationCount));number(statistics,L"drawingTimeMs",double(information.drawingTimeMs));doc.Insert(L"statistics",statistics);}
     doc.Insert(L"layerPanelState",paneljson::encode(d.layerPanelState()));
-    std::map<const void*,std::string> linkedFiles;
+    std::map<std::pair<const void*,timeline::RasterFormat>,std::string> linkedFiles;
     JsonArray savedLayers,savedCels,savedFrames,savedGroups;
     // Legacy encodeProject ensures the animation document, normalizing linked
     // display colors in decoded layer order. Apply to output without editing d.
@@ -169,9 +152,10 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
         JsonObject outCel;if(source)for(const auto& old:animation.GetNamedArray(L"cels")){if(old.ValueType()!=JsonValueType::Object)continue;const auto o=old.GetObject();if(textjson::str(o,L"id")==slot->id){outCel=o;break;}}
         if(owned->freeTiles&&!slot->linkedCelId)outCel.Insert(L"freeTiles",freejson::encodeCel(*owned->freeTiles));else outCel.Remove(L"freeTiles");
         outCel.Remove(L"mask"); // Canonical independent slots supersede inline metadata.
-        if(owned->tilemap&&!slot->linkedCelId)outCel.Insert(L"tilemap",tilejson::encode(*owned->tilemap));else outCel.Remove(L"tilemap");if(owned->text)outCel.Insert(L"text",encodeTextCel(*owned->text));else outCel.Remove(L"text");text(outCel,L"id",slot->id);text(outCel,L"layerId",item.id);text(outCel,L"frameId",current.id);text(outCel,L"format","rgba");number(outCel,L"opacity",owned->opacity.value_or(item.opacity));if(owned->zIndex)number(outCel,L"zIndex",normalizeCelZIndex(owned->zIndex));else outCel.Remove(L"zIndex");
+        if(owned->tilemap&&!slot->linkedCelId)outCel.Insert(L"tilemap",tilejson::encode(*owned->tilemap));else outCel.Remove(L"tilemap");if(owned->text)outCel.Insert(L"text",encodeTextCel(*owned->text));else outCel.Remove(L"text");text(outCel,L"id",slot->id);text(outCel,L"layerId",item.id);text(outCel,L"frameId",current.id);text(outCel,L"format",surface.format==timeline::RasterFormat::Indexed?"indexed":"rgba");number(outCel,L"opacity",owned->opacity.value_or(item.opacity));if(owned->zIndex)number(outCel,L"zIndex",normalizeCelZIndex(owned->zIndex));else outCel.Remove(L"zIndex");
         if(slot->linkedCelId)text(outCel,L"linkedCelId",*slot->linkedCelId);else outCel.Remove(L"linkedCelId");
-        const auto encoded=raster(surface);auto file="cels/"+slot->id+".rgba"+(encoded.encoding=="raw"?"":".tiles");if(!item.linkedContentId.empty()){auto hit=linkedFiles.emplace(surface.pixels.identity(),file);file=hit.first->second;}
+        const auto format=surface.format==timeline::RasterFormat::Indexed?RasterFormat::Indexed:RasterFormat::Rgba;
+        const auto encoded=encodeRaster(surface.pixels.data(),surface.pixels.size(),format,surface.width,surface.height,limits.expandedBytes);auto file="cels/"+slot->id+(format==RasterFormat::Indexed?".idx32":".rgba")+(encoded.encoding=="raw"?"":".tiles");if(!item.linkedContentId.empty()){auto hit=linkedFiles.emplace(std::make_pair(surface.pixels.identity(),surface.format),file);file=hit.first->second;}
         number(outCel,L"width",surface.width);number(outCel,L"height",surface.height);number(outCel,L"offsetX",surface.offsetX);number(outCel,L"offsetY",surface.offsetY);text(outCel,L"dataFile",file);text(outCel,L"dataEncoding",encoded.encoding);files[file]=encoded.data;savedCels.Append(outCel);
         if(current.id==f.id)for(const auto key:{L"width",L"height",L"offsetX",L"offsetY",L"dataFile",L"dataEncoding"})outLayer.Insert(key,outCel.GetNamedValue(key));
       }
@@ -184,9 +168,10 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
         rasterBytes+=count*sizeof(Pixel);
         // Missing slots use legacy runtime sparse storage even when raw would
         // be smaller (encodeRuntimeRasterData has no raw-size fallback).
-        Bytes data;put32(data,0x3154534d);put16(data,64);data.push_back(1);data.push_back(0);put32(data,g[0]);put32(data,g[1]);put32(data,0);put32(data,0);
-        const auto file="layers/"+item.id+".rgba.tiles";
-        number(outLayer,L"width",g[0]);number(outLayer,L"height",g[1]);number(outLayer,L"offsetX",g[2]);number(outLayer,L"offsetY",g[3]);text(outLayer,L"dataFile",file);text(outLayer,L"dataEncoding","sparse-tiles-v1");files[file]=std::move(data);
+        const auto format=d.colorMode()==color_mode::Mode::Indexed?RasterFormat::Indexed:RasterFormat::Rgba;
+        auto encoded=encodeEmptyRuntimeRaster(format,g[0],g[1]);
+        const auto file="layers/"+item.id+(format==RasterFormat::Indexed?".idx32.tiles":".rgba.tiles");
+        number(outLayer,L"width",g[0]);number(outLayer,L"height",g[1]);number(outLayer,L"offsetX",g[2]);number(outLayer,L"offsetY",g[3]);text(outLayer,L"dataFile",file);text(outLayer,L"dataEncoding","sparse-tiles-v1");files[file]=std::move(encoded.data);
       }
       const auto savedDisplayColor=item.linkedContentId.empty()?item.displayColor:linkedColors.at(item.linkedContentId);if(savedDisplayColor){auto c=*savedDisplayColor;JsonObject color;number(color,L"r",c&255);number(color,L"g",(c>>8)&255);number(color,L"b",(c>>16)&255);number(color,L"a",c>>24);outLayer.Insert(L"displayColor",color);}else if(outLayer.HasKey(L"displayColor"))outLayer.Remove(L"displayColor");if(!item.description.empty())text(outLayer,L"description",utf8(item.description));else if(outLayer.HasKey(L"description"))outLayer.Remove(L"description");
       savedLayers.Append(outLayer);

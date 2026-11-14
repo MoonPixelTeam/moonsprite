@@ -7,7 +7,7 @@ namespace moon::project {struct ReadManifest;struct ManifestRaster;}
 namespace moon::local_history {
 struct HistoryCompareDocument;
 struct HistoryRasterStorageRoots {std::size_t pixels;std::optional<std::size_t> runtimeRaster;};
-// Layout of the actual legacy RGBA decode/transfer storage, prepared from an
+// Layout of the actual legacy RGBA/indexed decode/transfer storage, prepared from an
 // already validated ReadManifest. Does not describe later live raster edits,
 // mask normalization or special-layer rendering. No native lazy-raster claim.
 // Keep this plan alive while its identity tokens are used by a shared builder.

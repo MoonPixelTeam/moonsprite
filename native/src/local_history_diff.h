@@ -57,7 +57,7 @@ struct HistoryCompareMaskRoots {std::size_t layerMasks,groupMasks;};
 // owns a fresh normalized RGBA view, including linked/resource-shared masks.
 HistoryCompareMaskRoots appendDecodedHistoryMaskValues(HistoryCompareDocument&,const Document&,const std::u32string& layerMaskName,const std::u32string& groupMaskName,project::Limits limits={});
 struct HistoryCompareRasterRoots {std::size_t layers,cels;};
-// Initial decoded ordinary RGBA layers/cels, including active-frame projection,
+// Initial decoded RGBA/indexed layers/cels, including active-frame projection,
 // exact transfer storage aliases and layer invalidation geometry. Rejects stale
 // native values and special/rendered or linked-layer storage not yet adapted.
 // Appends transactionally, including layers/activeFrameId comparison metadata.

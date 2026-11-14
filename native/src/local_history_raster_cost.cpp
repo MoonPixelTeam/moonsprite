@@ -8,31 +8,37 @@
 #include <algorithm>
 namespace moon::local_history {
 namespace {
-using Key=std::tuple<std::string,std::string,int,int>;
-struct KeyHash {std::size_t operator()(const Key& k)const{std::size_t h=0;auto mix=[&](std::size_t value){h^=value+0x9e3779b9u+(h<<6)+(h>>2);};mix(std::hash<std::string>{}(std::get<0>(k)));mix(std::hash<std::string>{}(std::get<1>(k)));mix(std::hash<int>{}(std::get<2>(k)));mix(std::hash<int>{}(std::get<3>(k)));return h;}};
-Key key(const project::ManifestRaster& r){return {r.dataFile,r.dataEncoding,r.width,r.height};}
+using Key=std::tuple<std::string,std::string,int,int,int>;
+struct KeyHash {std::size_t operator()(const Key& k)const{std::size_t h=0;auto mix=[&](std::size_t value){h^=value+0x9e3779b9u+(h<<6)+(h>>2);};mix(std::hash<std::string>{}(std::get<0>(k)));mix(std::hash<std::string>{}(std::get<1>(k)));mix(std::hash<int>{}(std::get<2>(k)));mix(std::hash<int>{}(std::get<3>(k)));mix(std::hash<int>{}(std::get<4>(k)));return h;}};
+Key key(const project::ManifestRaster& r){return {r.dataFile,r.dataEncoding,int(r.format),r.width,r.height};}
 [[noreturn]]void invalid(){throw std::invalid_argument("Invalid decoded history raster layout");}
 std::uint32_t read(const project::Bytes& bytes,std::size_t at,int count){if(at>bytes.size()||std::size_t(count)>bytes.size()-at)invalid();std::uint32_t n=0;for(int i=0;i<count;++i)n|=std::uint32_t(bytes[at+i])<<(8*i);return n;}
 }
 struct DecodedHistoryRasterStorage::Impl {
- struct Layout {project::Bytes data,offsets;int width=0,height=0,left=0,top=0,right=-1,bottom=-1;bool sparse=false,visible=false;std::size_t backingBytes=0,payloadBytes=0,offsetBytes=0;const void* backing=nullptr;};
+ struct Layout {project::RasterFormat format=project::RasterFormat::Rgba;project::Bytes data,offsets;int width=0,height=0,left=0,top=0,right=-1,bottom=-1;bool sparse=false,visible=false;std::size_t backingBytes=0,payloadBytes=0,offsetBytes=0;const void* backing=nullptr;};
  std::shared_ptr<const project::Bytes> archive;bool comparison=false;
  std::unordered_map<Key,Layout,KeyHash> layouts;
  std::unordered_map<std::string,std::size_t> files;
  explicit Impl(const project::ReadManifest& source,bool retain):archive(source.sourceArchive),comparison(retain){
-  if(!archive||!color_mode::rgbaStorageMode(source.colorMode))invalid();project::Archive zip(archive);
+  if(!archive||(!color_mode::rgbaStorageMode(source.colorMode)&&source.colorMode!="indexed"))invalid();project::Archive zip(archive);
   auto prepare=[&](const std::shared_ptr<const project::ManifestRaster>& raster){
-   if(!raster)return;const auto& r=*raster;if(r.format!=project::RasterFormat::Rgba)invalid();if(layouts.count(key(r)))return;
+   if(!raster)return;const auto& r=*raster;if(r.format!=project::RasterFormat::Rgba&&r.format!=project::RasterFormat::Indexed)invalid();if(layouts.count(key(r)))return;
    if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>project::Limits{}.expandedBytes/4)invalid();
-   const auto found=zip.entries().find(r.dataFile);if(found==zip.entries().end())invalid();auto& out=layouts[key(r)];out.width=r.width;out.height=r.height;out.left=r.width;out.top=r.height;
+   const auto found=zip.entries().find(r.dataFile);if(found==zip.entries().end())invalid();auto& out=layouts[key(r)];out.format=r.format;out.width=r.width;out.height=r.height;out.left=r.width;out.top=r.height;
    if(r.dataEncoding=="raw"){
     if(found->second.size!=std::uint64_t(r.width)*r.height*4)invalid();
     const auto file=files.emplace(r.dataFile,found->second.size).first;
-    out.backing=found->second.method==0?static_cast<const void*>(archive.get()):static_cast<const void*>(&file->second);
-    out.backingBytes=found->second.method==0?archive->size():found->second.size;if(comparison)out.data=zip.read(r.dataFile,project::Limits{}.expandedBytes);return;
+    // legacy decodePixels copies an unaligned stored Uint32Array, but RGBA
+    // byte views retain the full archive and inflated entries retain their file.
+    const auto& entry=found->second;
+    const bool stored=entry.method==0;
+    const auto start=stored?std::size_t(entry.offset)+30+read(*archive,std::size_t(entry.offset)+26,2)+read(*archive,std::size_t(entry.offset)+28,2):0;
+    const bool copy=stored&&r.format==project::RasterFormat::Indexed&&start%4;
+    out.backing=copy?static_cast<const void*>(&out):stored?static_cast<const void*>(archive.get()):static_cast<const void*>(&file->second);
+    out.backingBytes=stored&&!copy?archive->size():entry.size;if(comparison)out.data=zip.read(r.dataFile,project::Limits{}.expandedBytes);return;
    }
    if(r.dataEncoding!="sparse-tiles-v1")invalid();out.sparse=true;const auto data=zip.read(r.dataFile,project::Limits{}.expandedBytes);
-   if(read(data,0,4)!=0x3154534d||read(data,4,2)!=64||read(data,6,1)!=1||read(data,8,4)!=std::uint32_t(r.width)||read(data,12,4)!=std::uint32_t(r.height))invalid();
+   if(read(data,0,4)!=0x3154534d||read(data,4,2)!=64||read(data,6,1)!=std::uint32_t(r.format)||read(data,8,4)!=std::uint32_t(r.width)||read(data,12,4)!=std::uint32_t(r.height))invalid();
    const std::uint64_t count=read(data,16,4),end=24+count*16,columns=(std::uint64_t(r.width)+63)/64,rows=(std::uint64_t(r.height)+63)/64;
    if(end>data.size()||count>columns*rows||read(data,20,4)!=data.size()-end)invalid();
    if(comparison)out.offsets.resize(std::size_t(columns*rows)*4);std::size_t offset=std::size_t(end);std::unordered_set<std::uint64_t> slots;
@@ -55,12 +61,12 @@ std::vector<HistoryRasterStorageRoots> DecodedHistoryRasterStorage::appendCompar
   const auto object=[&]{V v;v.kind=K::Object;return node(std::move(v));};const auto number=[&](double n){V v;v.kind=K::Number;v.number=n;return node(std::move(v));};const auto text=[&](std::u16string text){if(text.size()>limits.manifestBytes/2-stringUnits)throw project::Error(project::ErrorKind::Limit,"Raster comparison string budget exceeded");stringUnits+=text.size();V v;v.kind=K::String;v.text=std::move(text);return node(std::move(v));};
   const auto view=[&](const project::Bytes& bytes,const char* type){if(bytes.size()>limits.expandedBytes-byteCount)throw project::Error(project::ErrorKind::Limit,"Raster comparison byte budget exceeded");byteCount+=bytes.size();V v;v.kind=K::View;v.view={std::make_shared<const project::Bytes>(bytes),0,bytes.size(),type};return node(std::move(v));};const auto add=[&](std::size_t owner,const char* key,std::size_t child){graph.values[owner].properties.emplace_back(key,child);};
   std::unordered_map<const Impl::Layout*,HistoryRasterStorageRoots> shared;std::vector<HistoryRasterStorageRoots> result;
-  for(const auto* raster:rasters){if(!raster)invalid();const auto found=impl_->layouts.find(key(*raster));if(found==impl_->layouts.end())invalid();const auto& layout=found->second;const auto previous=shared.find(&layout);
-   if(!layout.sparse){if(previous!=shared.end()){result.push_back(previous->second);continue;}const HistoryRasterStorageRoots roots{view(layout.data,"Uint8ClampedArray"),{}};shared.emplace(&layout,roots);result.push_back(roots);continue;}
+  for(const auto* raster:rasters){if(!raster)invalid();const auto found=impl_->layouts.find(key(*raster));if(found==impl_->layouts.end())invalid();const auto& layout=found->second;const auto previous=shared.find(&layout);const auto* viewType=layout.format==project::RasterFormat::Indexed?"Uint32Array":"Uint8ClampedArray";
+   if(!layout.sparse){if(previous!=shared.end()){result.push_back(previous->second);continue;}const HistoryRasterStorageRoots roots{view(layout.data,viewType),{}};shared.emplace(&layout,roots);result.push_back(roots);continue;}
    // historyDocumentTransferView allocates one tiny pixels view per surface,
    // while decodePixels caches the sparse runtime object for each resource key.
-   const auto pixels=view(project::Bytes(4),"Uint8ClampedArray");if(previous!=shared.end()){result.push_back({pixels,previous->second.runtimeRaster});continue;}
-   const auto runtime=object();add(runtime,"kind",text(u"sparse-tiles-v1"));add(runtime,"format",text(u"rgba"));add(runtime,"width",number(layout.width));add(runtime,"height",number(layout.height));add(runtime,"tileSize",number(64));add(runtime,"data",view(layout.data,"Uint8Array"));add(runtime,"tileOffsets",view(layout.offsets,"Int32Array"));
+   const auto pixels=view(project::Bytes(4),viewType);if(previous!=shared.end()){result.push_back({pixels,previous->second.runtimeRaster});continue;}
+   const auto runtime=object();add(runtime,"kind",text(u"sparse-tiles-v1"));add(runtime,"format",text(layout.format==project::RasterFormat::Indexed?u"indexed":u"rgba"));add(runtime,"width",number(layout.width));add(runtime,"height",number(layout.height));add(runtime,"tileSize",number(64));add(runtime,"data",view(layout.data,"Uint8Array"));add(runtime,"tileOffsets",view(layout.offsets,"Int32Array"));
    if(layout.visible){const auto bounds=object();add(bounds,"x",number(layout.left));add(bounds,"y",number(layout.top));add(bounds,"width",number(layout.right-layout.left+1));add(bounds,"height",number(layout.bottom-layout.top+1));add(runtime,"visibleBounds",bounds);}else{V v;v.kind=K::Null;add(runtime,"visibleBounds",node(std::move(v)));}
    const HistoryRasterStorageRoots roots{pixels,runtime};shared.emplace(&layout,roots);result.push_back(roots);
   }return result;
@@ -73,7 +79,7 @@ HistoryRasterStorageRoots DecodedHistoryRasterStorage::append(HistoryCostBuilder
   // Transfer allocates one tiny pixels buffer per surface even when its compact
   // runtime object is shared with another projected layer/cel surface.
   const auto pixels=b.ownedView(4);const auto [runtime,created]=b.object(&layout);
-  if(created){b.add(runtime,b.string(std::string("sparse-tiles-v1")));b.add(runtime,b.string(std::string("rgba")));for(int i=0;i<3;++i)b.add(runtime,b.node());
+  if(created){b.add(runtime,b.string(std::string("sparse-tiles-v1")));b.add(runtime,b.string(std::string(layout.format==project::RasterFormat::Indexed?"indexed":"rgba")));for(int i=0;i<3;++i)b.add(runtime,b.node());
    b.add(runtime,b.view(&layout.payloadBytes,layout.payloadBytes));b.add(runtime,b.view(&layout.offsetBytes,layout.offsetBytes));
    if(layout.visible){const auto bounds=b.object();for(int i=0;i<4;++i)b.add(bounds,b.node());b.add(runtime,bounds);}else b.add(runtime,b.node());
   }
