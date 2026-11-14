@@ -887,8 +887,19 @@ private:
     std::size_t bytes()const;
   };
   // Domains compose inside one Edit; state, children and focus remain shared.
+  // Legacy captureDocumentImageResizeSnapshot's free resources, also retained
+  // by color-mode history. Only these fields belong to that snapshot.
+  struct ColorModeResources {
+    struct Cel {std::string id;std::size_t index=0;std::vector<free_tiles::Instance> instances;};
+    struct Set {std::string id;std::size_t index=0;int tileWidth=0,tileHeight=0,columns=0,rows=0;std::vector<Pixel> pixels;};
+    struct Source {std::string layerId,id;std::size_t layerIndex=0,sourceIndex=0;int x=0,y=0;};
+    std::vector<Cel> cels;std::vector<Set> sets;std::vector<Source> sources;
+  };
   struct SnapshotHistory {
     std::optional<color_mode::Mode> beforeColorMode,afterColorMode;
+    // Conversion leaves these resources unchanged, so both directions share
+    // one immutable capture. Replay prepares its own mutable exchange values.
+    std::shared_ptr<const ColorModeResources> colorModeResources;
     std::shared_ptr<const RollbackPayload> beforeRollback,afterRollback;std::size_t rollbackBytes=0;
     std::optional<std::pair<int,int>> beforeDimensions,afterDimensions;
     std::optional<timeline::State> beforeTimeline,afterTimeline;
@@ -1147,6 +1158,7 @@ private:
    HistoryResourceReplay resources;
    struct Snapshot {
     std::optional<color_mode::Mode> colorMode;
+    std::optional<ColorModeResources> colorModeResources;
     std::optional<timeline::Timeline> timeline;
     std::string layer,frame;
     int width=0,height=0;

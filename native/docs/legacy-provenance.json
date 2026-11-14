@@ -1328,13 +1328,19 @@
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
         "legacy/src/renderer/src/store/workspace-commands-color.ts",
         "legacy/src/renderer/src/store/workspace.test.ts",
-        "legacy/LICENSE"
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/shared/types-tiles.ts"
       ],
       "scope": "Four composable SnapshotHistory/TileResourceHistory/SliceHistory/ContentHistory payloads retain existing replay priority, cross-domain children and focus, existing validation and cost formulas. Shared cel storage stays single-owned inside the parent content payload; first three Edit aggregate fields remain compatible. Canonical native working-storage budget extracted once and reused. Exact inverse proof retained; runtime acceptance tracked in history-edit-contract.md.",
       "adaptation": "Private C++ aggregate and compilation boundary extraction of existing native code, without new operations, variant exclusivity, budget policy or persisted format change.",
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "colorModeFreeResources20261114": {
+        "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
+        "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
       }
     },
     {
@@ -1867,7 +1873,9 @@
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
         "legacy/src/renderer/src/store/workspace-commands-color.ts",
         "legacy/src/renderer/src/store/workspace.test.ts",
-        "legacy/LICENSE"
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/shared/types-tiles.ts"
       ],
       "scope": "Native history replay adaptation; independent terminal branches then ordered resources, structure, content, selection/focus, projection and source settlement. All original phase statements concatenate to original applyEdit body; nested replay suppression remains at root. Typed payload migration remains incomplete.",
       "adaptation": "Reuse original Document algorithms and legacy compound redo forward/undo reverse; keep all writes private to Document. No new history owner or public mutation service.",
@@ -1948,6 +1956,10 @@
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "colorModeFreeResources20261114": {
+        "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
+        "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
       }
     },
     {
@@ -4366,6 +4378,10 @@
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "colorModeFreeResources20261114": {
+        "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
+        "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
       }
     },
     {
@@ -37460,13 +37476,19 @@
         "legacy/src/renderer/src/core/raster.ts",
         "legacy/src/renderer/src/store/workspace-document-history.ts",
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
-        "legacy/src/renderer/src/store/workspace.test.ts"
+        "legacy/src/renderer/src/store/workspace.test.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/shared/types-tiles.ts"
       ],
       "scope": "Migrate setPixelFormat to native RGBA sessions: quantize all cel backing stores once by shared identity, including zero-alpha values, preserve links and masks/independent source resources; no new Undo entry. Native cel storage replaces duplicated displayed layer buffers.",
       "adaptation": "C++17 native Document/Win32 adapter; legacy Source-Available License1.0 reviewed. No third-party code relicensing; see rgba-pixel-formats-migration-20261114.md for verified scope and remaining gaps.",
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "colorModeFreeResources20261114": {
+        "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
+        "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
       }
     },
     {
@@ -37500,13 +37522,19 @@
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
         "legacy/src/renderer/src/store/workspace.test.ts",
         "legacy/src/renderer/src/core/tilemap.ts",
-        "legacy/src/renderer/src/core/free-tile.ts"
+        "legacy/src/renderer/src/core/free-tile.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/shared/types-tiles.ts"
       ],
       "scope": "Exercise all eight formats through production Document conversion, dense/cropped/link storage, masks, independent resources, brush/image/dynamic drawing, gradient/fill/shape/adjustment/convolution/AA, floating and immediate transforms, cancellation and Undo/Redo, Lua points versus raw whole-surface replacement, snapshot/rollback, project/recovery/history codecs and invalid manifest fallback. Quantization algorithms have separate actual legacy oracle tests; this integration test does not claim grayscale/indexed completion or every tool combination. Local history decoded comparison and transfer-cost graph retain each of eight formats and reject mismatched source metadata; actual native adapters are executed.",
       "adaptation": "C++17 native Document/Win32 adapter; legacy Source-Available License1.0 reviewed. No third-party code relicensing; see rgba-pixel-formats-migration-20261114.md for verified scope and remaining gaps.",
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "colorModeFreeResources20261114": {
+        "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
+        "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
       }
     }
   ],

@@ -2,6 +2,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include "document_history_storage.h"
+#include "sheet_import_storage.h"
 
 namespace moon {
 bool Document::convertColorMode(color_mode::Mode target){
@@ -9,9 +10,20 @@ bool Document::convertColorMode(color_mode::Mode target){
  if(target==colorMode_||active())return false;
  // Legacy visits displayed layers and cels, excluding masks and independent
  // tileset resources. Native displayed layers use the owning cel storage.
- (void)history_storage::adjustmentStorageBudget(timeline_,3);
+ const auto rasterBytes=history_storage::adjustmentStorageBudget(timeline_,3);
+ std::size_t remaining=history_storage::adjustmentByteLimit-rasterBytes*3;
+ auto reserve=[&](std::uint64_t bytes){if(bytes>remaining)throw std::length_error("Color mode resource snapshots exceed pixel budget");remaining-=std::size_t(bytes);};
+ reserve(2*sheetImportFreeMetadataBytes(timeline_.state()));
+ std::unordered_set<std::string> freeSets;
+ for(const auto& layer:timeline_.state().layers)if(layer.kind=="free-tile"&&layer.freeTiles){const auto& data=*layer.freeTiles;if(!data.legacyTilesetId.empty())freeSets.insert(data.legacyTilesetId);for(const auto& source:data.sources)freeSets.insert(source.tilesetId);}
+ for(const auto& set:timeline_.state().tilesets)if(freeSets.count(set.id))reserve(2ull*set.pixels.size()*sizeof(Pixel));
+ auto resources=std::make_shared<ColorModeResources>();
+ for(const auto& cel:timeline_.state().cels)if(cel.freeTiles&&timeline_.resolveSurface(cel.id).source->id==cel.id)resources->cels.push_back({cel.id,0,cel.freeTiles->instances});
+ for(const auto& set:timeline_.state().tilesets)if(freeSets.count(set.id))resources->sets.push_back({set.id,0,set.tileWidth,set.tileHeight,set.columns,set.rows,set.pixels});
+ for(const auto& layer:timeline_.state().layers)if(layer.kind=="free-tile"&&layer.freeTiles)for(const auto& source:layer.freeTiles->sources)resources->sources.push_back({layer.id,source.id,0,0,source.offsetX,source.offsetY});
  Edit edit{{},state_,nextState_};
  edit.snapshotHistory.beforeColorMode=colorMode_;edit.snapshotHistory.afterColorMode=target;
+ edit.snapshotHistory.colorModeResources=std::move(resources);
  edit.paletteHistory.paletteKind=13;
  edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=palette_;
  edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=timeline_.state().masks;
