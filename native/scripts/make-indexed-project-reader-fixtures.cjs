@@ -110,7 +110,61 @@ registerHooks({
   remapRows.push({name,mode,layer:packed(decoded.layers[0]),cels:decoded.animation.cels.map(c=>({id:c.id,format:c.surface.format,pixels:packed(c.surface)})),order:decoded.paletteOrder,slots:decoded.paletteSlots});
  }
  fs.writeFileSync(path.join(out,'remap-oracle.json'),JSON.stringify(remapRows));
+ // Actual decoder order: resource reconstruction, active Cel projection, then
+ // hidden palette remap. Persist deliberately stale caches after real encode.
+ const tile=await imp('tilemap.ts'),free=await imp('free-tile.ts');
+ const projectionRows=[];
+ const describe=s=>s?{format:s.format,width:s.width,height:s.height,x:s.offsetX,y:s.offsetY,pixels:packed(s)}:null;
+ const scenarios=['root','linked','chain','missing','self','cycle','tail-cycle','empty-slot','no-surface','tail-missing','opacity-absent','opacity-zero','budget'];
+ for(const kind of ['raster','tilemap','free-tile'])for(const level of [0,6])for(const scenario of scenarios){
+  const d=createDocument('indexed projection',8,7,'indexed'),l=d.layers[0],c=d.animation.cels[0];
+  d.palette=[{id:0,name:'zero',color:{r:4,g:5,b:6,a:255}},{id:7,name:'red',color:{r:255,g:0,b:0,a:255}},{id:19,name:'blue',color:{r:0,g:0,b:255,a:255}},{id:23,name:'half purple',color:{r:128,g:0,b:128,a:192}},{id:31,name:'hidden',color:{r:255,g:1,b:0,a:255}}];
+  d.paletteOrder=[19,7,23,0];d.paletteSlots=[0,7,19,23];d.nextColorId=32;
+  if(kind!=='raster'){
+   l.kind=kind;const sheet=tile.createSolidTileset('projection-sheet','Source',2,2,{r:255,g:0,b:0,a:255},'projection-tile');
+   sheet.pixels.set([1,2,3,0,0,0,255,128,255,0,0,255,0,0,255,255]);d.tilesets=[sheet];
+   if(kind==='tilemap'){l.tilemapTilesetId=sheet.id;c.tilemap=tile.createTilemapCelData(6,4,2,2);for(let i=0;i<c.tilemap.cells.length;++i)if(i!==2)c.tilemap.cells[i]={tilesetId:sheet.id,tileId:sheet.tileIds[0],rotation:i%4,flipHorizontal:!!(i&1),flipVertical:!!(i&2)};c.surface=tile.renderTilemapSurface(c.tilemap,d.tilesets,'indexed');}
+   else{l.freeTileSetId='projection-set';l.freeTileSources=[{id:'projection-source',name:'Source',tilesetId:sheet.id,visible:true,locked:false,opacity:.75,blendMode:'normal',offsetX:-1,offsetY:0}];c.freeTiles={instances:[{id:'one',sourceId:'projection-source',x:2,y:1},{id:'two',sourceId:'projection-source',x:2,y:1,opacity:.5,blendMode:'multiply',rotation:1,flipHorizontal:true},{id:'three',sourceId:'projection-source',x:3,y:2,rotation:3,flipVertical:true},{id:'hidden',sourceId:'projection-source',x:0,y:0,visible:false}]};c.surface=free.renderFreeTileSurface(c.freeTiles,free.freeTileSourceRefs(l.freeTileSources,d.tilesets),'indexed',6,5);}
+  }
+  const r=unzipSync(encodeProject(d,{includePreview:false})),m=JSON.parse(strFromU8(r['manifest.json'])),doc=m.document,a=doc.animation,rootCel=a.cels[0],layer=doc.layers[0];
+  const install=(meta,file,width,height,x,y,values)=>{Object.assign(meta,{width,height,offsetX:x,offsetY:y,dataFile:file,dataEncoding:'raw'});const ids=new Uint32Array(width*height);ids.set(values);r[file]=new Uint8Array(ids.buffer);};
+  install(layer,'projection-layer.words',8,7,9,-7,[19,31,7]);layer.opacity=.6;
+  install(rootCel,'projection-root.words',4,3,-3,4,[31,7,19,0,23]);rootCel.opacity=.25;
+  const alias={...structuredClone(rootCel),id:'projection-alias',frameId:'projection-alias-frame',linkedCelId:rootCel.id,opacity:.9};
+  install(alias,'projection-alias.words',6,5,2,-5,[19,31,0,7]);
+  const tail={...structuredClone(alias),id:'projection-tail',frameId:'projection-tail-frame',linkedCelId:alias.id,opacity:.8};
+  install(tail,'projection-tail.words',3,2,-8,2,[23,31,7,19]);
+  a.frames.push({id:alias.frameId,duration:170},{id:tail.frameId,duration:210},{id:'projection-empty',duration:100});a.cels.push(alias,tail);a.activeFrameId=rootCel.frameId;
+  if(scenario==='linked')a.activeFrameId=alias.frameId;
+  if(scenario==='chain')a.activeFrameId=tail.frameId;
+  if(scenario==='missing'){alias.linkedCelId='absent';a.activeFrameId=alias.frameId;}
+  if(scenario==='self'){alias.linkedCelId=alias.id;a.activeFrameId=alias.frameId;}
+  if(scenario==='cycle'||scenario==='tail-cycle'){rootCel.linkedCelId=alias.id;a.activeFrameId=scenario==='cycle'?alias.frameId:tail.frameId;}
+  if(scenario==='empty-slot')a.activeFrameId='projection-empty';
+  if(scenario==='no-surface'){delete alias.dataFile;delete alias.tilemap;delete alias.freeTiles;alias.linkedCelId='absent';a.activeFrameId=alias.frameId;}
+  if(scenario==='tail-missing'){alias.linkedCelId='absent';a.activeFrameId=tail.frameId;}
+  if(scenario==='opacity-absent'){delete rootCel.opacity;a.activeFrameId=tail.frameId;}
+  if(scenario==='opacity-zero'){rootCel.opacity=0;a.activeFrameId=tail.frameId;}
+  if(scenario==='budget'){
+   // Small archive, large decoded surfaces: isolate each native allocation
+   // boundary from ZIP expansion without allocating giant fixture files.
+   const ids=new Uint32Array(130*66);ids[0]=7;
+   const encoded=encodeSparseRasterData(ids,'indexed',130,66);
+   for(const [meta,file] of [[layer,'budget-layer.words'],[rootCel,'budget-root.words'],[alias,'budget-alias.words'],[tail,'budget-tail.words']]){
+    Object.assign(meta,{width:130,height:66,offsetX:0,offsetY:0,dataFile:file,dataEncoding:encoded.encoding});r[file]=encoded.data;
+    if(meta.tilemap)meta.tilemap={tileWidth:2,tileHeight:2,columns:65,rows:33,cells:[{index:0,tilesetId:'projection-sheet',tileId:'projection-tile'}]};
+   }
+   if(kind==='raster')a.activeFrameId='projection-empty';
+  }
+  const keep=new Set([layer.dataFile,...a.cels.map(c=>c.dataFile),...doc.tilesets.map(s=>s.dataFile)]);
+  for(const key of Object.keys(r))if(key!=='manifest.json'&&!keep.has(key))delete r[key];
+  r['manifest.json']=strToU8(JSON.stringify(m));const bytes=zipSync(r,{level}),decoded=decodeProject(bytes),name=`projection-${kind}-${level}-${scenario}`;
+  fs.writeFileSync(path.join(out,name+'.moonsprite'),bytes);
+  projectionRows.push({name,layer:describe(decoded.layers[0]),opacity:decoded.layers[0].opacity,cels:decoded.animation.cels.map(c=>({id:c.id,link:c.linkedCelId??'',surface:describe(c.surface)})),tilesets:decoded.tilesets.map(s=>Array.from(s.pixels))});
+ }
+ fs.writeFileSync(path.join(out,'projection-oracle.json'),JSON.stringify(projectionRows));
  fs.writeFileSync(path.join(out,'oracle.json'),JSON.stringify(rows));
  console.log(`Actual legacy indexed boundary: ${rows.length} storage/layout cases, 4 mixed-format cases and 3 corrupt cases`);
  console.log(`Actual legacy hidden-ID remap: ${remapRows.length} mode/storage/ZIP/palette cases with shared, independent and linked-fallback surfaces`);
+ console.log(`Actual legacy indexed active-frame and tile reconstruction: ${projectionRows.length} cases`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

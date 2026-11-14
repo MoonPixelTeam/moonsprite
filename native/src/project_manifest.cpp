@@ -386,6 +386,53 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     // getPaletteEntry's transparent fallback and the visible nearest color.
     // Keep the source archive immutable and replace each shared DTO once.
     if(out.colorMode=="indexed"){
+      // decodeProject rebuilds special Cel caches from authoritative resources
+      // before projecting the active frame and remapping hidden identities.
+      for(auto& cel:out.cels){
+        if(!cel.surface||(!cel.tilemap&&!cel.freeTiles))continue;
+        int width=cel.surface->width,height=cel.surface->height;
+        if(cel.tilemap){width=cel.tilemap->columns*cel.tilemap->tileWidth;height=cel.tilemap->rows*cel.tilemap->tileHeight;}
+        const auto count=std::size_t(width)*height;
+        if(count>(limits.expandedBytes-decodedBytes)/4)throw Error(ErrorKind::Limit,"Indexed tile reconstruction exceeds decoded pixel budget");
+        auto rebuilt=std::make_shared<ManifestRaster>();rebuilt->width=width;rebuilt->height=height;
+        rebuilt->offsetX=cel.surface->offsetX;rebuilt->offsetY=cel.surface->offsetY;rebuilt->format=RasterFormat::Indexed;
+        if(cel.tilemap)rebuilt->pixels=tiles::render(*cel.tilemap,out.tilesets);
+        else {
+          const auto& owner=*celOwners.at(cel.layerId);auto instances=*cel.freeTiles;
+          if(!owner.freeTiles)bad("free tile reconstruction owner");
+          if(!owner.freeTiles->sources.empty())for(auto& instance:instances.instances)instance.sourceId=freeAliases.at(owner.id).at(instance.sourceId);
+          rebuilt->pixels=free_tiles::render(*owner.freeTiles,instances,out.tilesets,width,height);
+        }
+        for(auto& pixel:rebuilt->pixels)pixel=std::uint32_t(color_mode::paletteColorIdForCanvas(out.palette,out.paletteOrder,pixel));
+        decodedBytes+=count*4;cel.surface=std::move(rebuilt);
+      }
+      // animation.ts::applyFrameSurfaces and animation-cel-resolver-cache.ts:
+      // invalid/cyclic chains display the original candidate's own fallback;
+      // valid chains use root geometry, storage and opacity without changing
+      // serialized Cel links or discarding independent fallback storage.
+      const auto none=std::numeric_limits<std::size_t>::max();
+      std::map<std::string,std::size_t> ids,active;
+      for(std::size_t i=0;i<out.cels.size();++i){ids.emplace(out.cels[i].id,i);if(out.cels[i].frameId==out.activeFrameId)active.emplace(out.cels[i].layerId,i);}
+      std::vector<std::vector<std::size_t>> incoming(out.cels.size());std::vector<std::size_t> roots(out.cels.size(),none),queue;
+      for(std::size_t i=0;i<out.cels.size();++i){const auto& cel=out.cels[i];
+        if(cel.linkedCelId.empty()){roots[i]=i;queue.push_back(i);}
+        else if(const auto found=ids.find(cel.linkedCelId);found!=ids.end()&&out.cels[found->second].layerId==cel.layerId)incoming[found->second].push_back(i);
+      }
+      for(std::size_t head=0;head<queue.size();++head){const auto root=queue[head];for(auto child:incoming[root])if(roots[child]==none){roots[child]=roots[root];queue.push_back(child);}}
+      for(auto& layer:out.layers){
+        const ManifestCel* source=nullptr;
+        if(const auto found=active.find(layer.id);found!=active.end()){const auto index=found->second;source=&out.cels[roots[index]==none?index:roots[index]];}
+        if(source&&source->surface){
+          if(source->surface->format!=RasterFormat::Indexed)bad("active Cel raster format differs from indexed layer");
+          layer.surface=source->surface;if(source->opacity)layer.opacity=*source->opacity;
+        }else if(layer.surface&&std::any_of(layer.surface->pixels.begin(),layer.surface->pixels.end(),[](auto id){return id!=0;})){
+          const auto bytes=layer.surface->pixels.size()*4;
+          if(bytes>limits.expandedBytes-decodedBytes)throw Error(ErrorKind::Limit,"Indexed empty frame exceeds decoded pixel budget");
+          auto blank=std::make_shared<ManifestRaster>();blank->width=layer.surface->width;blank->height=layer.surface->height;
+          blank->offsetX=layer.surface->offsetX;blank->offsetY=layer.surface->offsetY;blank->format=RasterFormat::Indexed;
+          blank->pixels.assign(layer.surface->pixels.size(),0);decodedBytes+=bytes;layer.surface=std::move(blank);
+        }
+      }
       const std::set<int> visible(out.paletteOrder.begin(),out.paletteOrder.end());
       std::map<const ManifestRaster*,std::shared_ptr<const ManifestRaster>> remapped;
       auto remap=[&](std::shared_ptr<const ManifestRaster>& surface){
