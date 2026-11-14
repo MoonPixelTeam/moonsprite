@@ -78,7 +78,7 @@ struct RasterHistoryFixture {
   for(bool forward:{false,true})for(int scenario=0;scenario<5;++scenario){
    auto document=std::make_unique<Document>(2,2);auto& d=*document;d.addLayer();
    const auto owner=d.cel().id,layer=d.layer().id,frame=d.frame().id;
-   d.pixelStorage()={0x00010203,0x80445566,0xff778899,0x00112233};
+   timeline::Surface fixture;fixture.width=fixture.height=2;fixture.pixels={0x00010203,0x80445566,0xff778899,0x00112233};install(d,std::move(fixture));
    CHECK(d.createAttachedMask(layer,frame));d.exitAttachedMask();
    const auto* surface=d.activeSurfaceIfPresent();
    const auto identity=surface->pixels.identity(),maskIdentity=d.timeline_.state().masks.front().mask.surface.pixels.identity();

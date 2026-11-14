@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -101,6 +101,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
   else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
+  else if(value==L"layer-creation"){checkGeometry=checkTextDialogs=false;checkLayerCreation=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -115,6 +116,33 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkLayerCreation){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
+  for(int path=0;path<3;++path)for(int mode=0;mode<6;++mode){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(2,2)));auto& d=currentDocument();
+   d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addFrame();const auto second=d.frame().id;d.selectFrame(first);
+   std::string group;if(path==1){d.selectTimelineLayer(original);require(d.createLayerGroup(),"Layer UI parent fixture");group=*d.selectedGroupId();d.selectTimelineLayer(original);}
+   require(d.createAttachedMask(original,first),"Layer UI mask fixture");d.exitAttachedMask();refresh();
+   if(mode==0)d.selectTimelineLayer(original);
+   if(mode==1){d.selectFrameHeader(first);markFrameSelection();}
+   if(mode==2)d.selectTimelineCel(d.cel().id);
+   if(mode==3)require(selectMaskSlot(original,first,0,nullptr,true),"Layer UI mask slot fixture");
+   if(mode==4){TimelineRows rows(d.timeline(),d.collapsedGroupIds(),true);require(selectMaskPanelRow(rows.index(TimelineRows::maskRowId(original)),0),"Layer UI mask row fixture");}
+   if(mode==5&&!group.empty()){d.selectTimelineRow({LayerPanelKind::Group,group,0});currentView().virtualSlots={{group,first}};currentView().virtualAnchor=currentView().virtualSlots.front();}
+   d.previewSelection(SelectionMask{0,0,1,1,{}});refresh();const auto history=d.historyPosition();
+   require(menuCommands_.invoke(path==2?"newGradientMapLayer":"newLayer"),"Layer UI actual menu entry");
+   const auto created=d.layer().id;
+   if(path==2){require(pending_==Pending::ColorAdjustment&&editingLayerAdjustment_,"Layer UI gradient settings entry");resolve(false);}
+   auto cleared=[&]{return d.timelineSelection().layers.empty()&&d.selectedGroupIds().empty()&&d.selectedFrames().empty()&&d.timelineSelection().cels.empty()&&d.timelineSelection().maskRows.empty()&&d.activeMaskId().empty()&&!d.maskIsolated()&&currentView().maskSlots.empty()&&!currentView().maskAnchor&&currentView().virtualSlots.empty()&&!currentView().virtualAnchor&&!currentView().frameSelection;};
+   require(created!=original&&d.historyPosition()==history+1&&d.frame().id==first&&cleared()&&d.selection(),"Layer UI creation history and clearing");
+   require(runShortcutCommand("undo"),"Layer UI actual Undo entry");refresh();require(d.layer().id==original&&cleared()&&d.selection(),"Layer UI Undo revived old selection");
+   require(runShortcutCommand("redo"),"Layer UI actual Redo entry");refresh();require(d.layer().id==created&&cleared()&&d.selection(),"Layer UI Redo revived old selection");
+   d.selectFrame(second);d.selectTimelineLayer(original);d.selectTimelineCel(d.timeline().findCel(original,second)->id);refresh();const auto current=d.captureAnimationSelection();
+   require(runShortcutCommand("undo"),"Layer UI current-state Undo entry");refresh();require(d.frame().id==second&&d.layer().id==original&&d.timelineSelection().cels==current.selection.cels&&d.timelineSelection().layers==current.selection.layers,"Layer UI Undo changed current frame/items");
+   require(runShortcutCommand("redo"),"Layer UI current-state Redo entry");refresh();require(d.frame().id==second&&d.layer().id==created&&d.timelineSelection().cels==current.selection.cels&&d.timelineSelection().layers==current.selection.layers,"Layer UI Redo changed current frame/items");traceStage("layer-creation",path,mode);
+  }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkFrameCreation){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
   for(int command=0;command<4;++command)for(int mode=0;mode<5;++mode){

@@ -178,7 +178,51 @@ void verifyImplicitLayerSelectionNormalization(){
  document.undo();check(!document.layer().layerStyles,"Implicit style undo failed");document.redo();check(document.layer().layerStyles&&document.timelineSelection().layers.empty(),"Implicit style redo changed selection mode");
  document.selectTimelineLayer(created);document.normalizeAnimationSelection();check(document.timelineSelection().layers==std::vector<std::string>{created},"Normalization lost explicit layer selection");
 }
-int main(){try{verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
+void verifyLayerCreationSelectionContract(){
+ for(int path=0;path<3;++path)for(int mode=0;mode<6;++mode){
+  auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
+  d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addFrame();const auto second=d.frame().id;d.selectFrame(first);
+  std::string group;if(path==1){d.selectTimelineLayer(original);check(d.createLayerGroup(),"Layer creation parent fixture");group=*d.selectedGroupId();d.selectTimelineLayer(original);}
+  check(d.createAttachedMask(original,first),"Layer creation mask fixture");d.exitAttachedMask();bindSelectionOwner(owner);bindSelectionOwner(other);
+  other->value.groups={{"other-group","other-frame"}};const auto unrelated=other->value.groups;
+  if(mode==0)d.selectTimelineLayer(original);
+  if(mode==1){d.selectFrameHeader(first);owner->value.frameSelection=true;}
+  if(mode==2)d.selectTimelineCel(d.cel().id);
+  if(mode==3){owner->value.masks={{original,first}};owner->value.maskAnchor=owner->value.masks.front();d.selectAttachedMask(original,first,true);}
+  if(mode==4){auto rows=d.timelineSelection();rows.maskRows={original};d.restoreTimelineSelection(rows,{});d.selectAttachedMask(original,first,true);}
+  if(mode==5&&!group.empty()){d.selectTimelineRow({LayerPanelKind::Group,group,0});owner->value.groups={{group,first}};owner->value.groupAnchor=owner->value.groups.front();}
+  const auto expectedParent=path==1&&(mode==0||mode==3||mode==4)?std::optional<std::string>(group):std::nullopt;
+  d.previewSelection(SelectionMask{0,0,1,1,{}});const auto history=d.historyPosition();
+  if(path==2)d.createGradientMapLayer();else d.addLayer();const auto created=d.layer().id;
+  auto cleared=[&]{return d.timelineSelection().layers.empty()&&d.selectedGroupIds().empty()&&!d.selectedGroupId()&&d.selectedFrames().empty()&&d.frameSelectionAnchor().empty()&&d.timelineSelection().cels.empty()&&d.timelineSelection().celAnchor.empty()&&d.timelineSelection().maskRows.empty()&&d.activeMaskId().empty()&&!d.maskIsolated()&&owner->value.groups.empty()&&!owner->value.groupAnchor&&owner->value.masks.empty()&&!owner->value.maskAnchor&&!owner->value.frameSelection;};
+  check(created!=original&&d.historyPosition()==history+1&&d.frame().id==first&&cleared()&&d.selection()&&d.selection()->x==0,"Layer creation clearing/history/pixel selection");
+  check(d.layer().groupId==expectedParent,"Layer creation parent placement");
+  check(path!=2||(d.layer().kind=="adjustment"&&d.layer().adjustment&&d.layer().adjustment->enabled),"Gradient-map creation properties");
+  d.undo();check(d.layer().id==original&&d.frame().id==first&&cleared()&&d.selection(),"Layer creation Undo revived old selection");
+  d.redo();check(d.layer().id==created&&cleared()&&d.selection(),"Layer creation Redo revived old selection");
+  // A later frame/row/Cel choice belongs to the current session, not this edit.
+  d.selectFrame(second);d.selectTimelineLayer(original);d.selectTimelineCel(d.timeline().findCel(original,second)->id);
+  d.previewSelection(SelectionMask{1,1,1,1,{}});const auto current=d.captureAnimationSelection();
+  d.undo();check(d.frame().id==second&&d.layer().id==original&&d.timelineSelection().layers==current.selection.layers&&d.timelineSelection().cels==current.selection.cels&&d.selection()&&d.selection()->x==1,"Layer Undo replaced current frame/items/pixel selection");
+  d.redo();check(d.frame().id==second&&d.layer().id==created&&d.timelineSelection().layers==current.selection.layers&&d.timelineSelection().cels==current.selection.cels&&d.selection()&&d.selection()->x==1,"Layer Redo replaced current frame/items/pixel selection");
+  check(other->value.groups==unrelated&&other->restored==0,"Layer history changed another session");
+ }
+}
+void verifyLayerCreationRasterReplay(){
+ for(bool grouped:{false,true}){
+  auto document=std::make_unique<Document>(16,16);auto& d=*document;
+  d.beginStroke({5,5},0xff123456);d.commitStroke();const auto original=d.layer().id;
+  if(grouped){d.selectTimelineLayer(original);check(d.createLayerGroup(),"Layer raster replay group fixture");d.selectTimelineLayer(original);}
+  const auto before=d.historyPosition();d.addLayer();const auto created=d.layer().id;
+  d.beginStroke({12,11},0xffabcdef);d.commitStroke();const auto after=d.historyPosition();
+  for(int cycle=0;cycle<3;++cycle){
+   check(d.setHistoryPosition(before)&&!d.timeline().hasLayer(created),"Layer creation Undo did not detach layer");
+   check(d.setHistoryPosition(after)&&d.layer().id==created&&d.canvasPixels()[11*16+12]==0xffabcdef,"Layer creation Redo lost expanded raster history");
+   d.selectLayer(original);check(d.canvasPixels()[5*16+5]==0xff123456,"Layer replay changed another layer pixels");
+  }
+ }
+}
+int main(){try{verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
   Document document(3,1);
   const auto first=document.frame().id;
   document.addFrame();const auto second=document.frame().id;

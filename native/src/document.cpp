@@ -645,16 +645,10 @@ void Document::beginFrameDuration(){cancelStroke();durationBefore_=frame().durat
 void Document::previewFrameDuration(int duration){if(durationBefore_)for(auto& f:timeline_.state_.frames)if(std::any_of(durationValuesBefore_.begin(),durationValuesBefore_.end(),[&](const auto& item){return item.first==f.id;}))f.duration=std::clamp(duration?duration:100,1,60000);}
 void Document::commitFrameDuration(){if(!durationBefore_)return;durationBefore_.reset();const auto start=history_.position();groupingHistory_=true;for(const auto& value:durationValuesBefore_){const auto f=std::find_if(timeline_.state().frames.begin(),timeline_.state().frames.end(),[&](const auto& x){return x.id==value.first;});if(f->duration==value.second)continue;Edit e{{},state_,nextState_};e.frameHistory.targetFrameId=value.first;e.frameHistory.beforeDuration=value.second;e.frameHistory.afterDuration=f->duration;pushEdit(std::move(e),U"修改帧时长");}groupingHistory_=false;groupEdits(start,selectedFrames_);durationValuesBefore_.clear();}
 // captureLayerOrder: definition in its history domain unit.
-void Document::addLayer() {if(!timeline_.state().groups.empty()){addLayerInGroupContext();return;}
- commitFloatingPaste();
- cancelStroke();cancelLayerOpacity();if(timeline_.state().layers.size()>=256 || std::uint64_t(width_)*height_*(timeline_.state().layers.size()+1)*timeline_.state().frames.size()*4>256*1024*1024)throw std::runtime_error("Layer pixel memory limit reached");Edit e{{},state_,nextState_};captureLayerOrder(e,false);e.beforeFrame=e.afterFrame=activeFrameId_;
- std::size_t index=0;for(std::size_t i=0;i<timeline_.state().layers.size();++i)if(std::find(timelineSelection_.layers.begin(),timelineSelection_.layers.end(),timeline_.state().layers[i].id)!=timelineSelection_.layers.end()){index=i;break;}
- DocumentLayer l;do {l.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);}while(std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& old){return old.id==l.id;}));l.name=U"图层 ";for(char c:std::to_string(timeline_.state().layers.size()+1))l.name+=char32_t(c);
- for(const auto& f:timeline_.state().frames) {DocumentCel c;c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;c.opacity=1;
- timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels.resize(std::size_t(width_)*height_);c.surface=std::move(surface);e.contentHistory.detachedCels.push_back(std::move(c));}
- e.layerHistory.detachedLayer=l;timeline_.state_.layers.insert(timeline_.state_.layers.begin()+index,std::move(l));timeline_.state_.cels.insert(timeline_.state_.cels.end(),e.contentHistory.detachedCels.begin(),e.contentHistory.detachedCels.end());timeline_.buildIndex();activeLayerId_=e.layerHistory.detachedLayer->id;
- timelineSelection_={};timelineSelection_.layerAnchor=activeLayerId_;selectedFrames_.clear();frameAnchor_.clear();e.afterTimelineSelection=timelineSelection_;e.beforeTimelineSelection=TimelineSelection{};e.beforeSelection=selectedFrames_;e.afterSelection=selectedFrames_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=frameAnchor_;
- captureLayerOrder(e,true);e.beforeActive=e.layerHistory.beforeOrder.front();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建图层");
+void Document::addLayer() {
+ // Both root and grouped creation use the existing sparse structural transfer,
+ // matching legacy addLayer's detached Cel ownership across later raster edits.
+ addLayerInGroupContext();
 }
 
 

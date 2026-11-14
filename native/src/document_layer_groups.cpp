@@ -79,7 +79,7 @@ void Document::applyLayerStructure(const Edit& e,bool forward,LayerStructureRepl
  shell.masks.erase(std::remove_if(shell.masks.begin(),shell.masks.end(),[&](const auto& m){return !wantedFrames.count(m.frameId)||(!m.group&&!wanted.count(m.ownerId))||(m.group&&std::none_of(shell.groups.begin(),shell.groups.end(),[&](const auto& g){return g.id==m.ownerId;}));}),shell.masks.end());
  for(auto& m:shell.masks)if(!m.mask.linkedMaskId.empty()&&std::none_of(shell.masks.begin(),shell.masks.end(),[&](const auto& v){return v.mask.id==m.mask.linkedMaskId;})){const auto* root=timeline::resolvedMask(current,m.ownerId,m.frameId);if(root)m.mask.surface=root->surface;m.mask.linkedMaskId.clear();}
  // Validate metadata and links before transferring any pixel ownership.
- timeline::Timeline replacement(std::move(shell));if(!replacement.diagnoseLinks().empty())throw std::invalid_argument("Invalid structural cel links");std::string active=forward?e.afterActive:e.beforeActive,frame=forward?e.afterFrame:e.beforeFrame;if(!replacement.hasLayer(active)||!replacement.hasFrame(frame))throw std::invalid_argument("Invalid structural active context");
+ timeline::Timeline replacement(std::move(shell));if(!replacement.diagnoseLinks().empty())throw std::invalid_argument("Invalid structural cel links");std::string active=forward?e.afterActive:e.beforeActive,frame=e.layerHistory.preserveCurrentFrame?activeFrameId_:(forward?e.afterFrame:e.beforeFrame);if(!replacement.hasLayer(active)||!replacement.hasFrame(frame))throw std::invalid_argument("Invalid structural active context");
  // Stage surface headers sharing the existing editable storage. Keep every
  // original header and detached owner alive until the complete replay succeeds.
  auto shareSurface=[](DocumentCel& target,const DocumentCel& source){
@@ -186,7 +186,17 @@ void Document::addLayerInGroupContext(bool gradientMap){
  LayerPanelDropTarget placement{LayerPanelDropTarget::Kind::Top,LayerPanelKind::Layer,{}};std::optional<std::string> parent;auto selectedGroups=selectedGroupIds_;if(selectedGroups.empty()&&selectedGroupId_)selectedGroups.push_back(*selectedGroupId_);for(const auto& row:buildLayerPanelTree(original))if(row.kind==LayerPanelKind::Layer?groupHas(timelineSelection_.layers,row.id):groupHas(selectedGroups,row.id)){placement={LayerPanelDropTarget::Kind::Above,row.kind,row.id};parent=row.kind==LayerPanelKind::Layer?original.layers[timeline_.layerIndex(row.id)].groupId:findGroup(row.id)->parentGroupId;break;}
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();Edit e{{},state_,nextState_};captureGroupEdit(e,false);captureGroupEdit(e,true);auto& metadata=*e.layerHistory.afterLayerStructure;auto counter=nextLayerId_;DocumentLayer created;do{created.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++counter);}while(timeline_.hasLayer(created.id)||findGroup(created.id));created.name=U"图层 ";for(char c:std::to_string(metadata.layers.size()+1))created.name+=char32_t(c);created.groupId=parent;if(gradientMap){created.kind="adjustment";created.name=U"渐变映射调整图层";created.adjustment=timeline::LayerAdjustment{};}
  std::size_t insertion=0;if(parent){const auto members=descendantLayers(timeline_.state(),*parent);insertion=metadata.layers.size();for(std::size_t i=0;i<metadata.layers.size();++i)if(groupHas(members,metadata.layers[i].id))insertion=std::min(insertion,i);if(insertion==metadata.layers.size())insertion=0;}metadata.layers.insert(metadata.layers.begin()+insertion,created);for(const auto& f:timeline_.state().frames){DocumentCel cel;cel.id="cel-"+created.id+"-"+f.id;cel.layerId=created.id;cel.frameId=f.id;cel.opacity=1;cel.surface=timeline::Surface{1,1,0,0,{},{},{0}};e.layerHistory.structureCelBytes+=groupCelStorageBytes(cel);e.layerHistory.structureCels.push_back(std::move(cel));}if(!moveMetadataRows(metadata,{created.id},{},placement))return;
- e.afterActive=created.id;e.afterTimelineSelection=TimelineSelection{};e.afterTimelineSelection->layerAnchor=created.id;e.layerHistory.afterGroupUi->selected.clear();e.layerHistory.afterGroupUi->focus.reset();e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};if(commitGroupEdit(std::move(e),U"新建图层"))nextLayerId_=counter;
+ // Legacy creates at the top of the parent, then records placement separately.
+ // Undo removes that layer after reversing placement and focuses the previous
+ // top child (or the root top); it does not restore pre-creation selection.
+ e.beforeActive=original.layers[std::min(insertion,original.layers.size()-1)].id;e.afterActive=created.id;
+ e.layerHistory.preserveCurrentFrame=true;
+ e.beforeAnimationSelection.reset();e.afterAnimationSelection.reset();
+ e.beforeTimelineSelection.reset();e.afterTimelineSelection.reset();e.beforeSelection.reset();e.afterSelection.reset();e.beforeFrameAnchor.reset();e.afterFrameAnchor.reset();
+ e.layerHistory.beforeGroupUi.reset();e.layerHistory.afterGroupUi.reset();
+ reserveHistoryEntries();applyEdit(e,true);
+ clearAnimationItemSelection();timelineSelection_={};timelineSelection_.layerAnchor=created.id;selectedGroupIds_.clear();selectedGroupId_.reset();
+ publishChange();pushEdit(std::move(e),U"新建图层");nextLayerId_=counter;
 }
 
 void Document::beginVisibilityGesture(){commitVisibilityGesture();visibilityGestureBefore_.clear();for(const auto& l:timeline_.state().layers)visibilityGestureBefore_.emplace_back(l.id,l.visible);for(const auto& g:timeline_.state().groups)visibilityGestureBefore_.emplace_back(g.id,g.visible);}

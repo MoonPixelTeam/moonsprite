@@ -7123,3 +7123,9 @@ attached-masks-tests 全部通过，含八组新增连接线检查；唯一正�
 按 legacy workspace-commands-animation-frame、clearAnimationItemSelection 和 linkCelsInRightFrame 的独立历史契约迁移：空白／复制／新建链接帧首次清理项目和像素选区，撤销不复活已清理项目，重做清理当前项目并保留当前行和像素选区；退出蒙版隔离。已有右侧帧的链接补齐完整选择快照，保留原先帧拖动／复制的选择恢复。通过弱引用 session 绑定更新原工程，不触碰其它工程。
 
 document-animation-binding 与 timeline-interaction 定向通过；旧版两个实际测试文件20项通过（8.32秒）。唯一正式 Release 构建成功，frame-creation 真实快捷键命令入口20组实际进程退出0；来源覆盖934文件及快照、Editor边界589源码、diff通过，strict因既有缺口退出1。document-transactions 原第76行失败已消除，继续在第84行新建图层撤销活动图层／选择断言失败，保留原断言并继续迁移，不宣称整套通过。无新人工图像或完整桌面验收。本阶段仅功能迁移，整体仍INCOMPLETE；详见[帧创建选择迁移](frame-creation-selection-migration-20261114.md)。阶段提交推送dev，保留全部用户数据和日志。
+
+### 2026-11-14 图层创建选择与历史（阶段验收）
+
+按 legacy addLayer、activateNewLayerContext、位置历史与复合回放迁移普通／组内／渐变映射图层：首次清理时间轴行和项目、退出蒙版隔离，保留像素选区；Undo/Redo恢复内容、位置和活动图层，保留当前帧及用户后来选择的存活项目。普通根图层复用已有稀疏结构 Cel 移交，保留后续绘制扩展几何；仅创建事务标记保留当前帧，其它结构验证不变。Editor入口不再复活旧选择。
+
+唯一正式 Release 构建成功，最终 document-transactions、document-raster-history、document-layer-groups、document-animation-binding 四套全部通过（共3.06秒），原综合事务第84行断言未放松。域检查覆盖三条路径×六种选择状态及两条绘制历史反复回放；正式 layer-creation 真实菜单和Undo/Redo共18组实际进程退出0。旧版三个实际测试文件42项通过（11.53秒）。来源934文件及快照、Editor边界589源码、diff通过，strict因其它登记缺口继续退出1。失败补偿夹具显式恢复原2×2表面与像素以适配稀疏新层，原断言保留；无人工图像或完整桌面验收。本阶段仅功能迁移，整体仍INCOMPLETE；详见[图层创建选择迁移](layer-creation-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据与日志。
