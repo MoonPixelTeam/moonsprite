@@ -808,8 +808,10 @@ private:
   struct LayerTilesetHistory {struct Entry{std::size_t index;tiles::Tileset value;};std::vector<Entry> before,after;std::size_t bytes()const;};
   // Composable layer payload; focus, selection and shared cels stay on Edit.
   struct LayerHistory {
-    // addLayer history changes the layer target, never the current frame.
+    // Layer creation and menu duplication keep the user's current frame.
     bool preserveCurrentFrame=false;
+    // Legacy row duplication restores rows, not the whole animation selection.
+    bool copiedRowSelection=false;
     std::shared_ptr<const LayerTilesetHistory> layerTilesets;
     std::optional<LayerMetadataSnapshot> beforeLayerMetadata,afterLayerMetadata;std::optional<std::size_t> layerMetadataBytes;
     std::vector<std::pair<std::string,double>> beforeLayerOpacityProjection,afterLayerOpacityProjection;
@@ -984,7 +986,7 @@ private:
   std::uint64_t nextGroupId_=0;
   bool commitLayerFlagGesture(std::vector<std::pair<std::string,bool>>&,bool visibility);
   void addLayerInGroupContext(bool gradientMap=false);
-  bool duplicateLayerRows(const std::vector<std::string>& direct,const std::vector<std::string>& groups,const LayerPanelDropTarget& target);
+  bool duplicateLayerRows(const std::vector<std::string>& direct,const std::vector<std::string>& groups,const LayerPanelDropTarget& target,bool copyMove=false);
   bool deleteLayerRows(const std::vector<std::string>& direct,const std::vector<std::string>& groups);
   void captureGroupEdit(Edit&,bool after)const;
   void appendDetachLinkedLayer(Edit&,const std::string&);std::u32string linkedLayerCopyName(const std::string&,const std::u32string&,const std::vector<DocumentLayer>* namingLayers=nullptr)const;

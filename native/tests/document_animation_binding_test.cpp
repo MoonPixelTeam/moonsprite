@@ -208,6 +208,45 @@ void verifyLayerCreationSelectionContract(){
   check(other->value.groups==unrelated&&other->restored==0,"Layer history changed another session");
  }
 }
+void verifyLayerCopySelectionContract(){
+ for(bool drag:{false,true})for(int mode=0;mode<6;++mode){
+  auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
+  d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addFrame();const auto second=d.frame().id;d.selectFrame(first);
+  d.selectTimelineLayer(original);check(d.createLayerGroup(),"Copy group fixture");const auto group=*d.selectedGroupId();d.selectLayer(original);
+  check(d.createAttachedMask(original,first),"Copy mask fixture");d.exitAttachedMask();bindSelectionOwner(owner);bindSelectionOwner(other);
+  d.selectTimelineLayer(original);auto before=d.captureAnimationSelection();
+  if(mode==1){before.frames={first};before.frameAnchor=first;before.sessionSelection->frameSelection=true;}
+  if(mode==2){before.selection.cels={d.cel().id};before.selection.celAnchor=d.cel().id;}
+  if(mode==3){before.sessionSelection->groups={{group,first}};before.sessionSelection->groupAnchor=before.sessionSelection->groups.front();}
+  if(mode==4||mode==5){d.selectAttachedMask(original,first,true);before=d.captureAnimationSelection();if(mode==4){before.sessionSelection->masks={{original,first}};before.sessionSelection->maskAnchor=before.sessionSelection->masks.front();}else before.selection.maskRows={original};}
+  check(d.restoreAnimationSelection(before),"Copy before selection fixture");d.previewSelection(SelectionMask{0,0,1,1,{}});
+  other->value.groups={{"other","frame"}};const auto unrelated=other->value.groups;const auto h=d.historyPosition();
+  if(drag)check(d.moveLayerPanelRows({LayerPanelDropTarget::Kind::Bottom,LayerPanelKind::Layer,{}},true),"Copy drag failed");else d.duplicateSelectedLayers();
+  const auto copy=d.layer().id;const auto after=d.captureAnimationSelection();
+  auto noMask=[&]{return d.activeMaskId().empty()&&!d.maskIsolated()&&d.timelineSelection().maskRows.empty()&&owner->value.masks.empty()&&!owner->value.maskAnchor;};
+  check(copy!=original&&d.historyPosition()==h+1&&noMask()&&d.selection(),"Copy creation history/mask/pixel selection");
+  check(after.frames==before.frames&&after.selection.cels==before.selection.cels&&owner->value.groups==before.sessionSelection->groups,"Copy cleared unrelated animation items");
+  check(d.timelineSelection().layers==std::vector<std::string>{copy},"Copy did not select copied rows");
+  d.undo();check(d.layer().id==original&&d.frame().id==first&&d.timelineSelection().layers==before.selection.layers&&noMask()&&d.selection(),"Copy Undo restored stale mask or lost rows");
+  d.redo();check(d.layer().id==copy&&noMask(),"Copy Redo restored stale mask");
+  d.selectFrame(second);d.selectTimelineCel(d.timeline().findCel(original,second)->id);owner->value={};const auto current=d.captureAnimationSelection();
+  d.undo();check(d.layer().id==original&&d.frame().id==(drag?first:second),"Copy Undo current frame contract");
+  check(d.timelineSelection().cels==(drag?before.selection.cels:current.selection.cels)&&owner->value.groups==(drag?before.sessionSelection->groups:current.sessionSelection->groups),"Copy Undo current item contract");
+  d.redo();check(d.layer().id==copy&&d.frame().id==(drag?first:second)&&d.timelineSelection().cels==(drag?after.selection.cels:current.selection.cels)&&noMask(),"Copy Redo current item contract");
+  check(other->value.groups==unrelated&&other->restored==0,"Copy touched another session");
+ }
+ {Document d(2,2);d.addLayer();check(d.timelineSelection().layers.empty()&&d.canDuplicateSelectedLayers(),"Implicit target copy disabled");const auto id=d.layer().id;d.duplicateSelectedLayers();check(d.layer().id!=id,"Implicit target copy missing");d.undo();check(d.layer().id==id&&d.timelineSelection().layers.empty(),"Implicit copy Undo changed selection mode");d.selectFrameHeader(d.frame().id);check(!d.canDuplicateSelectedLayers(),"Frame-only selection copied implicit layer");}
+}
+void verifyLayerCopyResources(){
+ for(bool free:{false,true}){
+  auto document=std::make_unique<Document>(2,2);auto& d=*document;d.fillSelectionOrCanvas(0xff123456);
+  check(free?d.createFreeTileLayer(U"Copy free"):d.convertLayerToTilemap(1,1,U"Copy tiles"),"Copy resource fixture");
+  const auto original=d.layer().id,source=d.tileSelection().tilesetId;d.addFrame(true);d.selectTimelineLayer(original);const auto before=d.timeline().state().tilesets.size();d.duplicateSelectedLayers();const auto copy=d.layer().id,set=d.tileSelection().tilesetId;
+  check(copy!=original&&set!=source&&d.timeline().state().tilesets.size()==before+1,"Copy owned resource selection/remapping");
+  d.undo();check(d.tileSelection().tilesetId==source&&d.timeline().state().tilesets.size()==before,"Copy resource Undo");
+  d.redo();check(d.tileSelection().tilesetId==set&&d.timeline().state().tilesets.size()==before+1,"Copy resource Redo");
+ }
+}
 void verifyLayerCreationRasterReplay(){
  for(bool grouped:{false,true}){
   auto document=std::make_unique<Document>(16,16);auto& d=*document;
@@ -222,7 +261,7 @@ void verifyLayerCreationRasterReplay(){
   }
  }
 }
-int main(){try{verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
+int main(){try{verifyLayerCopySelectionContract();verifyLayerCopyResources();verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
   Document document(3,1);
   const auto first=document.frame().id;
   document.addFrame();const auto second=document.frame().id;

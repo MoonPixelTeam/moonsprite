@@ -7129,3 +7129,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy addLayer、activateNewLayerContext、位置历史与复合回放迁移普通／组内／渐变映射图层：首次清理时间轴行和项目、退出蒙版隔离，保留像素选区；Undo/Redo恢复内容、位置和活动图层，保留当前帧及用户后来选择的存活项目。普通根图层复用已有稀疏结构 Cel 移交，保留后续绘制扩展几何；仅创建事务标记保留当前帧，其它结构验证不变。Editor入口不再复活旧选择。
 
 唯一正式 Release 构建成功，最终 document-transactions、document-raster-history、document-layer-groups、document-animation-binding 四套全部通过（共3.06秒），原综合事务第84行断言未放松。域检查覆盖三条路径×六种选择状态及两条绘制历史反复回放；正式 layer-creation 真实菜单和Undo/Redo共18组实际进程退出0。旧版三个实际测试文件42项通过（11.53秒）。来源934文件及快照、Editor边界589源码、diff通过，strict因其它登记缺口继续退出1。失败补偿夹具显式恢复原2×2表面与像素以适配稀疏新层，原断言保留；无人工图像或完整桌面验收。本阶段仅功能迁移，整体仍INCOMPLETE；详见[图层创建选择迁移](layer-creation-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据与日志。
+
+### 2026-11-14 图层复制选择与历史（阶段验收）
+
+对照 legacy duplicateSelectedLayerRows 与 Alt 拖动的复制／移动复合历史，区分菜单复制的行选择历史与拖动的完整选择历史。首次／Redo退出蒙版和自由实例编辑，保留帧、普通Cel、组格和像素选区；Undo不复活旧蒙版。菜单Undo/Redo保留后来切换的帧和存活项目，Alt路径恢复复制清理蒙版后的移动记录。补齐隐式活动目标解析与副本瓦片集选择，保留现有资源／链接／组／蒙版复制及失败补偿。
+
+唯一正式Release构建成功；五项定向CTest全部通过2.95秒，旧版两文件11项通过8.63秒，真实legacy模块命令oracle12组通过。正式layer-copy八组实际进程退出0，使用真实菜单与Undo/Redo入口；拖动以构造手势后调用生产finishTimelineGesture验收，不声称完整鼠标拖动。来源934文件及快照、Editor边界589源码、diff通过，strict继续因其它缺口失败。无性能优化、人工图像或完整桌面验收，整体仍INCOMPLETE；详见[图层复制选择迁移](layer-copy-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据和日志。

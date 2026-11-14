@@ -36,6 +36,7 @@ template<class Edit> void validateHistoryShape(const Edit& e){
  requireHistoryAfter(m.beforeMasks,m.afterMasks);
  requireHistoryAfter(e.sliceHistory.beforeSlices,e.sliceHistory.afterSlices);
  requireHistoryAfter(e.layerHistory.beforeLayerStructure,e.layerHistory.afterLayerStructure);
+ if(e.layerHistory.copiedRowSelection&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete copied row history");
  requireHistoryAfter(e.pixelSelectionHistory.beforeTrimPivot,e.pixelSelectionHistory.afterTrimPivot);
  requireHistoryAfter(e.frameHistory.beforeAnimationLoop,e.frameHistory.afterAnimationLoop);
  if(e.children.empty()){
@@ -184,12 +185,35 @@ applyRollbackHistory(edit.snapshotHistory,forward,plan);applySliceHistory(plan);
 // applyHistoryContent: definition in its content history domain unit.
 
 void Document::applyHistorySelection(const Edit& edit,bool forward,HistoryReplayPlan& plan){
+if(edit.layerHistory.copiedRowSelection){
+ // duplicateSelectedLayerRows records only row identities. The Alt-drag move
+ // adds a complete selection pair separately, after the copy cleared masks.
+ timelineSelection_.layers=(forward?edit.afterTimelineSelection:edit.beforeTimelineSelection)->layers;
+ return;
+}
 if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edit.afterActive:edit.beforeActive);selectFrame(forward?edit.afterFrame:edit.beforeFrame);}applyPixelSelectionHistory(plan);const auto& selection=forward?edit.afterSelection:edit.beforeSelection;if(selection)selectedFrames_=*selection;const auto& timelineSelection=forward?edit.afterTimelineSelection:edit.beforeTimelineSelection;if(timelineSelection)timelineSelection_=*timelineSelection;const auto& anchor=forward?edit.afterFrameAnchor:edit.beforeFrameAnchor;if(anchor)frameAnchor_=*anchor;if(forward&&edit.snapshotHistory.beforeTimeline&&edit.maskHistory.maskToActivateOnRedo){activeMaskId_=*edit.maskHistory.maskToActivateOnRedo;maskIsolated_=false;}if(edit.beforeTimelineSelection && !edit.beforeActive.empty()){activeLayerId_=forward?edit.afterActive:edit.beforeActive;activeFrameId_=forward?edit.afterFrame:edit.beforeFrame;}
 }
 
 void Document::applyHistoryProjection(const Edit& edit,bool forward){
 for(const auto& value:forward?edit.layerHistory.afterLayerOpacityProjection:edit.layerHistory.beforeLayerOpacityProjection){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==value.first;});if(it!=timeline_.state_.layers.end())it->opacity=value.second;}applyMaskHistoryContext(edit.maskHistory,forward);applyGroupUi(edit,forward);applyFreeTileSelectionHistory(edit.tileHistory,forward);
  if(forward&&edit.frameHistory.clearItemSelectionOnRedo)clearAnimationItemSelection();
+ if(edit.layerHistory.copiedRowSelection){
+  if(forward){
+   timelineSelection_.maskRows.clear();activeMaskId_.clear();maskIsolated_=false;
+   if(auto session=animationChangeBinding_.captureSessionSelection(*this)){session->masks.clear();session->maskAnchor.reset();animationChangeBinding_.restoreSessionSelection(*this,std::move(*session));}
+   freeInstanceViewLayer_.clear();freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();
+  }
+  // applyLayerRowSelection chooses the owned resource on Redo. Undo only
+  // runs ensureTileSelection: retain a compatible surviving selection first.
+  const auto& active=layer();const auto owned=active.kind=="tilemap"?active.tilemapTilesetId:active.freeTiles&&!active.freeTiles->sources.empty()?active.freeTiles->sources.front().tilesetId:std::string{};
+  const auto& sets=timeline_.state().tilesets;const auto found=std::find_if(sets.begin(),sets.end(),[&](const auto& set){return set.id==owned;});
+  if(forward&&found!=sets.end())tileSelection_.tilesetId=owned;
+  auto compatible=[&](const auto& set){if(active.freeTiles)return std::any_of(active.freeTiles->sources.begin(),active.freeTiles->sources.end(),[&](const auto& source){return source.tilesetId==set.id;});if(active.kind=="tilemap")return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.kind=="tilemap"&&l.tilemapTilesetId==set.id;});return true;};
+  auto selected=std::find_if(sets.begin(),sets.end(),[&](const auto& set){return compatible(set)&&set.id==tileSelection_.tilesetId;});if(selected==sets.end())selected=std::find_if(sets.begin(),sets.end(),compatible);
+  tileSelection_.tilesetId=selected==sets.end()?std::string{}:selected->id;
+  auto ensure=[&](std::string& id){if(selected==sets.end())id.clear();else if(std::find(selected->tileIds.begin(),selected->tileIds.end(),id)==selected->tileIds.end())id=selected->tileIds.empty()?std::string{}:selected->tileIds.front();};ensure(tileSelection_.primary);ensure(tileSelection_.secondary);
+  normalizeAnimationSelection();
+ }
 }
 
 // finishHistorySources: definition in its history domain unit.

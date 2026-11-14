@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -102,6 +102,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
   else if(value==L"layer-creation"){checkGeometry=checkTextDialogs=false;checkLayerCreation=true;recognized=true;}
+  else if(value==L"layer-copy"){checkGeometry=checkTextDialogs=false;checkLayerCopy=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -116,6 +117,29 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkLayerCopy){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
+  for(bool drag:{false,true})for(int mode=0;mode<4;++mode){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(2,2)));auto& d=currentDocument();d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addFrame();const auto second=d.frame().id;d.selectFrame(first);d.selectTimelineLayer(original);
+   require(d.createAttachedMask(original,first),"Copy UI mask fixture");d.exitAttachedMask();d.selectTimelineLayer(original);refresh();
+   auto initial=d.captureAnimationSelection();
+   if(mode==1){initial.frames={first};initial.frameAnchor=first;initial.sessionSelection->frameSelection=true;}
+   if(mode==2){initial.selection.cels={d.cel().id};initial.selection.celAnchor=d.cel().id;}
+   if(mode==3){d.selectAttachedMask(original,first,true);initial=d.captureAnimationSelection();initial.sessionSelection->masks={{original,first}};initial.sessionSelection->maskAnchor=initial.sessionSelection->masks.front();}
+   require(d.restoreAnimationSelection(initial),"Copy UI selection fixture");refresh();const auto history=d.historyPosition();
+   if(drag){timelineGesture_={};timelineGesture_.identity=d.identity();timelineGesture_.kind=1;timelineGesture_.canMove=timelineGesture_.moved=timelineGesture_.copy=true;timelineGesture_.rowDrop=LayerPanelDropTarget{LayerPanelDropTarget::Kind::Bottom,LayerPanelKind::Layer,{}};finishTimelineGesture(false);}
+   else require(menuCommands_.invoke("duplicateLayer"),"Copy UI menu entry");
+   refresh();const auto copy=d.layer().id;auto noMask=[&]{return d.activeMaskId().empty()&&!d.maskIsolated()&&currentView().maskSlots.empty()&&!currentView().maskAnchor;};
+   require(copy!=original&&d.historyPosition()==history+1&&noMask(),"Copy UI creation/mask clearing");
+   require(d.selectedFrames()==initial.frames&&d.timelineSelection().cels==initial.selection.cels,"Copy UI preserved item selection");
+   require(runShortcutCommand("undo"),"Copy UI Undo entry");refresh();require(d.layer().id==original&&noMask(),"Copy UI Undo revived mask");
+   require(runShortcutCommand("redo"),"Copy UI Redo entry");refresh();require(d.layer().id==copy&&noMask(),"Copy UI Redo revived mask");
+   d.selectFrame(second);d.selectTimelineCel(d.timeline().findCel(original,second)->id);refresh();const auto current=d.timelineSelection().cels;
+   require(runShortcutCommand("undo"),"Copy UI current Undo");refresh();require(d.frame().id==(drag?first:second)&&d.timelineSelection().cels==(drag?initial.selection.cels:current),"Copy UI current Undo selection");
+   require(runShortcutCommand("redo"),"Copy UI current Redo");refresh();require(d.layer().id==copy&&d.frame().id==(drag?first:second)&&noMask(),"Copy UI current Redo selection");traceStage("layer-copy",drag,mode);
+  }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkLayerCreation){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
   for(int path=0;path<3;++path)for(int mode=0;mode<6;++mode){
