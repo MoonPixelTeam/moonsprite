@@ -22,7 +22,7 @@ struct DecodedHistoryRasterStorage::Impl {
  explicit Impl(const project::ReadManifest& source,bool retain):archive(source.sourceArchive),comparison(retain){
   if(!archive||!color_mode::rgbaStorageMode(source.colorMode))invalid();project::Archive zip(archive);
   auto prepare=[&](const std::shared_ptr<const project::ManifestRaster>& raster){
-   if(!raster)return;const auto& r=*raster;if(layouts.count(key(r)))return;
+   if(!raster)return;const auto& r=*raster;if(r.format!=project::RasterFormat::Rgba)invalid();if(layouts.count(key(r)))return;
    if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>project::Limits{}.expandedBytes/4)invalid();
    const auto found=zip.entries().find(r.dataFile);if(found==zip.entries().end())invalid();auto& out=layouts[key(r)];out.width=r.width;out.height=r.height;out.left=r.width;out.top=r.height;
    if(r.dataEncoding=="raw"){

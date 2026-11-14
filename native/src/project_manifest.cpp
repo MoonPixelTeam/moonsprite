@@ -138,7 +138,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
         JsonObject animation,frame;frame.Insert(L"id",JsonValue::CreateStringValue(L"frame-1"));frame.Insert(L"duration",JsonValue::CreateNumberValue(100));JsonArray frames;frames.Append(frame);animation.Insert(L"frames",frames);animation.Insert(L"activeFrameId",JsonValue::CreateStringValue(L"frame-1"));animation.Insert(L"loop",JsonValue::CreateBooleanValue(true));
         // User-approved schema1 repair: retain the imported layer surface.
         // Legacy refreshActiveAnimationFrame otherwise clears it without a Cel.
-        JsonArray cels;unsigned serial=0;for(const auto& item:array(doc,"layers")){auto layer=item.GetObject();JsonObject cel;for(const auto* name:{L"width",L"height",L"offsetX",L"offsetY",L"dataFile",L"dataEncoding",L"opacity"})if(layer.HasKey(name))cel.Insert(name,layer.GetNamedValue(name));cel.Insert(L"id",JsonValue::CreateStringValue(winrt::to_hstring("cel-"+std::to_string(++serial))));cel.Insert(L"layerId",layer.GetNamedValue(L"id"));cel.Insert(L"frameId",JsonValue::CreateStringValue(L"frame-1"));cel.Insert(L"format",JsonValue::CreateStringValue(L"rgba"));cels.Append(cel);}animation.Insert(L"cels",cels);doc.Insert(L"animation",animation);
+        JsonArray cels;unsigned serial=0;for(const auto& item:array(doc,"layers")){auto layer=item.GetObject();JsonObject cel;for(const auto* name:{L"width",L"height",L"offsetX",L"offsetY",L"dataFile",L"dataEncoding",L"opacity"})if(layer.HasKey(name))cel.Insert(name,layer.GetNamedValue(name));cel.Insert(L"id",JsonValue::CreateStringValue(winrt::to_hstring("cel-"+std::to_string(++serial))));cel.Insert(L"layerId",layer.GetNamedValue(L"id"));cel.Insert(L"frameId",JsonValue::CreateStringValue(L"frame-1"));cel.Insert(L"format",JsonValue::CreateStringValue(str(doc,"colorMode")=="indexed"?L"indexed":L"rgba"));cels.Append(cel);}animation.Insert(L"cels",cels);doc.Insert(L"animation",animation);
       }
       auto animation=object(doc,"animation");
       for(const auto& item:array(animation,"cels")){if(item.ValueType()!=JsonValueType::Object)continue;auto cel=item.GetObject();if(sourceVersion<=4&&present(cel,"dataFile"))cel.Insert(L"dataEncoding",JsonValue::CreateStringValue(L"raw"));if(sourceVersion<13)cel.Remove(L"tilemap");if(sourceVersion<14)cel.Remove(L"freeTiles");}
@@ -177,7 +177,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       fields(o,{"id","name","parentGroupId","visible","locked","opacity","blendMode","panelOrder","displayColor","description","clippingMask","layerStyles","adjustment","cumulativeBlend"},"group",out);out.groups.push_back(std::move(group));
     }
     // Decode each shared resource/geometry tuple once. Source archive preserves all other files.
-    using RasterKey=std::tuple<std::string,std::string,int,int,int,int>;
+    using RasterKey=std::tuple<std::string,std::string,RasterFormat,int,int,int,int>;
     std::map<RasterKey,std::shared_ptr<const ManifestRaster>> rasters;std::size_t decodedBytes=0;
     std::set<std::string> consumedFiles{"manifest.json","preview.png"};
     if(auto recording=value(doc,"timelapse");recording&&recording.ValueType()==JsonValueType::Object)out.timelapse=timelapsejson::decode(recording.GetObject(),archive,consumedFiles,limits.expandedBytes,report);
@@ -186,13 +186,15 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       auto file=str(metadata,"dataFile"),encoding=str(metadata,"dataEncoding",false,"raw");consumedFiles.insert(file);
       int w=integer(metadata,"width",out.width,1),h=integer(metadata,"height",out.height,1);
       int x=integer(metadata,"offsetX",0),y=integer(metadata,"offsetY",0);
-      RasterKey cacheKey{file,encoding,w,h,x,y};auto cached=rasters.find(cacheKey);if(cached!=rasters.end()) return cached->second;
-      if(!color_mode::rgbaStorageMode(out.colorMode) || str(metadata,"format",false,"rgba")!="rgba") {out.unsupported.emplace_back("non-RGBA resource "+file);return {};}
+      const auto formatName=str(metadata,"format",false,"rgba");
+      if(formatName!="rgba"&&formatName!="indexed")bad("raster format");
+      const auto format=formatName=="indexed"?RasterFormat::Indexed:RasterFormat::Rgba;
+      RasterKey cacheKey{file,encoding,format,w,h,x,y};auto cached=rasters.find(cacheKey);if(cached!=rasters.end()) return cached->second;
       const std::uint64_t pixels=std::uint64_t(w)*h;
       if(pixels>(limits.expandedBytes-decodedBytes)/4) throw Error(ErrorKind::Limit,"Decoded project pixels exceed budget");
       auto data=archive.read(file,limits.expandedBytes);
-      auto result=std::make_shared<ManifestRaster>();result->width=w;result->height=h;result->offsetX=x;result->offsetY=y;result->dataFile=file;result->dataEncoding=encoding;
-      if(mask&&encoding=="raw"&&data.size()==pixels){result->pixels.reserve(std::size_t(pixels));for(auto v:data)result->pixels.push_back(0xff000000u|std::uint32_t(v)*0x010101u);}else result->pixels=decodeRgba(data,encoding,w,h,limits.expandedBytes-decodedBytes);decodedBytes+=std::size_t(pixels)*4;
+      auto result=std::make_shared<ManifestRaster>();result->width=w;result->height=h;result->offsetX=x;result->offsetY=y;result->dataFile=file;result->dataEncoding=encoding;result->format=format;
+      if(mask&&encoding=="raw"&&data.size()==pixels){result->pixels.reserve(std::size_t(pixels));for(auto v:data)result->pixels.push_back(0xff000000u|std::uint32_t(v)*0x010101u);}else result->pixels=decodeRaster(data,encoding,format,w,h,limits.expandedBytes-decodedBytes);decodedBytes+=std::size_t(pixels)*4;
       rasters.emplace(cacheKey,result);return result;
     };
 
@@ -248,6 +250,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       JsonObject layerRaster;for(const auto& field:o)layerRaster.Insert(field.Key(),field.Value());
       for(const auto* name:{"width","height"}){const auto raw=value(o,name);double n=std::string_view(name)=="width"?out.width:out.height;if(raw&&raw.ValueType()==JsonValueType::Number){const auto d=raw.GetNumber();if(std::isfinite(d)&&std::floor(d)==d&&d>0&&d<=9007199254740991.)n=d;}layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
       for(const auto* name:{"offsetX","offsetY"}){const auto raw=value(o,name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Layer offset exceeds native coordinates");layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
+      layerRaster.Insert(L"format",JsonValue::CreateStringValue(out.colorMode=="indexed"?L"indexed":L"rgba"));
       layer.surface=raster(layerRaster);if(!layer.surface && color_mode::rgbaStorageMode(out.colorMode) && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
     }
     if(out.layers.empty())bad("missing layers");if(!layerIds.count(out.activeLayerId))out.activeLayerId=out.layers.front().id;
@@ -356,7 +359,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     std::set<int> paletteIds;
     const auto rawPalette=value(doc,"palette");const auto paletteEntries=rawPalette&&rawPalette.ValueType()==JsonValueType::Array?rawPalette.GetArray():JsonArray{};
     for(const auto& item:paletteEntries) {
-      auto o=itemObject(item,"palette entry");ManifestPaletteEntry entry;entry.id=integer(o,"id",0,1,true);entry.name=str(o,"name",false);
+      auto o=itemObject(item,"palette entry");ManifestPaletteEntry entry;entry.id=integer(o,"id",0,0,true);entry.name=str(o,"name",false);
       if(!paletteIds.insert(entry.id).second) bad("duplicate palette ID");const auto c=object(o,"color");
       int shift=0;for(const auto channel:{"r","g","b","a"}) {const auto n=integer(c,channel,0,0,true);if(n>255) bad("palette channel");entry.color|=std::uint32_t(n)<<shift;shift+=8;}
       fields(o,{"id","name","color"},"palette",out);out.palette.push_back(std::move(entry));
@@ -369,8 +372,8 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     const auto rawSlots=value(doc,"paletteSlots");const auto sourceSlots=rawSlots&&rawSlots.ValueType()==JsonValueType::Array?rawSlots.GetArray():JsonArray{};
     std::set<int> visible,placed;std::vector<int> visibleIds;for(int id:out.paletteOrder)if(paletteIds.count(id)&&visible.insert(id).second)visibleIds.push_back(id);const auto columns=std::size_t(out.paletteColumns);
     const auto count=std::max(std::size_t(sourceSlots.Size()),visible.size());const auto slotCount=std::max(columns,((count+columns-1)/columns)*columns);
-    if(slotCount>limits.expandedBytes/sizeof(int))throw Error(ErrorKind::Limit,"Palette layout exceeds decoded byte budget");out.paletteSlots.assign(slotCount,0);
-    std::size_t index=0;for(const auto& item:sourceSlots){if(safeInteger(item)){const auto n=item.GetNumber();if(n>=1&&n<=std::numeric_limits<int>::max()){const int id=int(n);if(visible.count(id)&&placed.insert(id).second)out.paletteSlots[index]=id;}}++index;}
+    if(slotCount>limits.expandedBytes/sizeof(std::optional<int>))throw Error(ErrorKind::Limit,"Palette layout exceeds decoded byte budget");out.paletteSlots.resize(slotCount);
+    std::size_t index=0;for(const auto& item:sourceSlots){if(safeInteger(item)){const auto n=item.GetNumber();if(n>=0&&n<=std::numeric_limits<int>::max()){const int id=int(n);if(visible.count(id)&&placed.insert(id).second)out.paletteSlots[index]=id;}}++index;}
     // A monotonic hole cursor produces the same first-null filling as legacy
     // without repeatedly scanning an occupied prefix for large palettes.
     std::size_t hole=0;for(int id:visibleIds)if(placed.insert(id).second){while(hole<out.paletteSlots.size()&&out.paletteSlots[hole])++hole;out.paletteSlots[hole++]=id;}

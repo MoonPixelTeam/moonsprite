@@ -29,6 +29,8 @@ public:
   }
   Bytes read(const std::string& name,std::size_t limit) const;
 };
-// The dense destination preserves exact RGBA bytes, including transparent RGB.
+enum class RasterFormat { Rgba=1, Indexed=2 };
+// Four-byte words retain RGBA (including hidden RGB) or stable indexed IDs.
+std::vector<std::uint32_t> decodeRaster(const Bytes& data,const std::string& encoding,RasterFormat format,std::uint32_t width,std::uint32_t height,std::size_t maxBytes);
 std::vector<std::uint32_t> decodeRgba(const Bytes& data,const std::string& encoding,std::uint32_t width,std::uint32_t height,std::size_t maxBytes);
 }

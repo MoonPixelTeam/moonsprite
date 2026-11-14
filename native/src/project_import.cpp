@@ -28,6 +28,7 @@ std::u32string unicode(const std::string& text) {
  catch(const std::range_error&) {throw Error(ErrorKind::Corrupt,"Invalid UTF-8 name");}
 }
 void raster(const ManifestRaster& s) {
+ unsupported(s.format!=RasterFormat::Rgba,"Indexed raster editing is not migrated yet");
  corrupt(s.width<1||s.height<1,"Invalid raster size");
  const auto w=std::size_t(s.width),h=std::size_t(s.height);
  corrupt(w>std::numeric_limits<std::size_t>::max()/h||w*h!=s.pixels.size(),"Raster pixel count mismatch");
@@ -80,16 +81,22 @@ std::optional<ReadManifest> repairImportedLinks(const ReadManifest& m){
 }
 }
 ImportPalette prepareEditablePalette(const ReadManifest& m){
- ImportPalette p;p.columns=m.paletteColumns;p.nextId=m.nextColorId;p.order=m.paletteOrder;p.slots=m.paletteSlots;
+ ImportPalette p;p.columns=m.paletteColumns;p.nextId=m.nextColorId;p.order=m.paletteOrder;
  corrupt(p.columns<1||p.columns>256||p.nextId<1,"Invalid palette columns or next ID");
  std::set<int> ids,visible,placed;
  for(const auto& e:m.palette) {
+  unsupported(e.id==0,"Transparent palette ID zero editing is not migrated yet");
   corrupt(e.id<1||!ids.insert(e.id).second,"Duplicate or invalid palette ID");
   p.entries.push_back({e.id,unicode(e.name),e.color});
  }
  unsupported(!ids.empty()&&p.nextId<=*ids.rbegin(),"Colliding legacy palette allocation cursor is not editable yet");
  for(int id:p.order)if(ids.count(id))visible.insert(id);
- for(int id:p.slots) if(id) corrupt(!visible.count(id)||!placed.insert(id).second,"Invalid palette slot reference");
+ p.slots.reserve(m.paletteSlots.size());
+ for(const auto& slot:m.paletteSlots){
+  if(!slot){p.slots.push_back(0);continue;}
+  unsupported(*slot==0,"Transparent palette slot editing is not migrated yet");
+  corrupt(!visible.count(*slot)||!placed.insert(*slot).second,"Invalid palette slot reference");p.slots.push_back(*slot);
+ }
  p.slots=normalizePaletteSlots(p.entries,p.order,p.slots,p.columns);
  return p;
 }
@@ -99,6 +106,11 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  unsupported(m.width>32768||m.height>32768||std::uint64_t(m.width)*m.height>64ull*1024*1024,"Canvas exceeds native coordinate or 256 MiB pixel budget");
  unsupported(!color_mode::rgbaStorageMode(m.colorMode),"Only RGBA and grayscale projects are editable");
  unsupported(!color_mode::pixelFormat(m.pixelFormat),"Unsupported pixel format");
+ // Per-Cel format is independent from document mode, even for inactive and
+ // fallback storage. Never admit indexed IDs as packed RGBA via a mixed file.
+ for(const auto& l:m.layers)if(l.surface)raster(*l.surface);
+ for(const auto& c:m.cels)if(c.surface)raster(*c.surface);
+ for(const auto& mask:m.masks)if(mask.surface)raster(*mask.surface);
  // Legacy refreshActiveAnimationFrame clears missing ordinary slots while
  // preserving displayed geometry; ensureAnimationDocument later materializes
  // active blank storage and 1x1 inactive storage on editing/saving.

@@ -17,6 +17,7 @@ struct ManifestRaster {
   int width=0,height=0,offsetX=0,offsetY=0;
   std::string dataFile,dataEncoding;
   std::vector<std::uint32_t> pixels;
+  RasterFormat format=RasterFormat::Rgba;
 };
 struct ManifestLayer {
   std::string id,name,blendMode="normal",kind,groupId,linkedContentId;
@@ -76,7 +77,8 @@ struct ReadManifest {
   std::vector<ManifestMask> masks;
   std::vector<std::string> maskDataFiles; // Includes legacy-priority shadowed entries.
   std::vector<ManifestPaletteEntry> palette;
-  std::vector<int> paletteOrder,paletteSlots; // Empty slots use zero; real IDs are positive.
+  std::vector<int> paletteOrder;
+  std::vector<std::optional<int>> paletteSlots; // null is empty; ID zero is a real entry.
   std::vector<std::string> unsupported;
   // Lossless evidence retained, including fields not represented in this DTO.
   // Successful parsing does NOT authorize dropping unsupported data into Document.

@@ -74,36 +74,40 @@ Bytes Archive::read(const std::string& name,std::size_t limit) const {
   if(crc32(0,out.empty()?Z_NULL:out.data(),static_cast<uInt>(out.size()))!=e.crc) corrupt("ZIP CRC mismatch: "+name);
   return out;
 }
-std::vector<std::uint32_t> decodeRgba(const Bytes& b,const std::string& encoding,std::uint32_t w,std::uint32_t h,std::size_t maxBytes) {
+std::vector<std::uint32_t> decodeRaster(const Bytes& b,const std::string& encoding,RasterFormat format,std::uint32_t w,std::uint32_t h,std::size_t maxBytes) {
+  if(format!=RasterFormat::Rgba&&format!=RasterFormat::Indexed) throw Error(ErrorKind::Unsupported,"Unsupported raster format");
   if(!w || !h) corrupt("Invalid raster dimensions");
   const std::uint64_t pixels=std::uint64_t(w)*h;
   if(pixels>maxBytes/4 || pixels>std::numeric_limits<std::size_t>::max()/4) throw Error(ErrorKind::Limit,"Raster exceeds memory budget");
   const auto size=pixels*4;
   if(encoding!="raw" && encoding!="sparse-tiles-v1") throw Error(ErrorKind::Unsupported,"Unsupported raster encoding: "+encoding);
   if(encoding=="raw") {
-    if(b.size()!=size) corrupt("RGBA byte length mismatch");
+    if(b.size()!=size) corrupt("Raster byte length mismatch");
     std::vector<std::uint32_t> out(static_cast<std::size_t>(size/4));
     for(std::size_t i=0;i<out.size();++i) out[i]=u32(b,i*4);
     return out;
   }
   span(b,0,24);
-  if(u32(b,0)!=0x3154534d || u16(b,4)!=64 || b[6]!=1 || u32(b,8)!=w || u32(b,12)!=h) corrupt("Invalid sparse RGBA header");
+  if(u32(b,0)!=0x3154534d || u16(b,4)!=64 || b[6]!=unsigned(format) || u32(b,8)!=w || u32(b,12)!=h) corrupt("Invalid sparse raster header");
   const auto count=u32(b,16);const std::uint64_t end=24ull+16ull*count;
-  if(end>b.size() || u32(b,20)!=b.size()-end || count>std::uint64_t((w+63ull)/64)*((h+63ull)/64)) corrupt("Invalid sparse RGBA table");
+  if(end>b.size() || u32(b,20)!=b.size()-end || count>std::uint64_t((w+63ull)/64)*((h+63ull)/64)) corrupt("Invalid sparse raster table");
   std::set<std::pair<std::uint32_t,std::uint32_t>> slots;
   std::size_t expected=static_cast<std::size_t>(end);
   // Validate the complete payload before allocating the dense surface.
   for(std::uint32_t i=0;i<count;++i) {
     const auto at=24u+std::size_t(i)*16;const auto x=u32(b,at),y=u32(b,at+4);const auto tw=u16(b,at+8),th=u16(b,at+10);
-    if(x>=w || y>=h || x%64 || y%64 || tw!=std::min(64u,w-x) || th!=std::min(64u,h-y) || u32(b,at+12)!=expected || !slots.emplace(x,y).second) corrupt("Invalid sparse RGBA tile");
+    if(x>=w || y>=h || x%64 || y%64 || tw!=std::min(64u,w-x) || th!=std::min(64u,h-y) || u32(b,at+12)!=expected || !slots.emplace(x,y).second) corrupt("Invalid sparse raster tile");
     const std::size_t bytes=std::size_t(tw)*th*4;span(b,expected,bytes);expected+=bytes;
   }
-  if(expected!=b.size()) corrupt("Trailing sparse RGBA data");
+  if(expected!=b.size()) corrupt("Trailing sparse raster data");
   std::vector<std::uint32_t> out(static_cast<std::size_t>(size/4));
   for(std::uint32_t i=0;i<count;++i) {
     const auto at=24u+std::size_t(i)*16;const auto x=u32(b,at),y=u32(b,at+4);const auto tw=u16(b,at+8),th=u16(b,at+10);auto offset=std::size_t(u32(b,at+12));
     for(unsigned row=0;row<th;++row) for(unsigned col=0;col<tw;++col,offset+=4) out[std::size_t(y+row)*w+x+col]=u32(b,offset);
   }
   return out;
+}
+std::vector<std::uint32_t> decodeRgba(const Bytes& b,const std::string& encoding,std::uint32_t w,std::uint32_t h,std::size_t maxBytes) {
+  return decodeRaster(b,encoding,RasterFormat::Rgba,w,h,maxBytes);
 }
 }
