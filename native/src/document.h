@@ -57,6 +57,7 @@ namespace script {struct RasterBatch;struct CreatedLayer;}
 namespace local_history {class CommittedCapture;class PixelHistory;struct PixelHistoryEdit;}
 struct SymmetryRotationRaster;
 class RasterColorContext;
+struct CompositeSamplingBounds;
 namespace timelapse {class Session;}
 using Pixel = std::uint32_t; // RGBA: red in the low byte; transparent is zero.
 struct Point { int x, y; };
@@ -1049,6 +1050,7 @@ private:
   std::vector<std::pair<std::string,bool>> visibilityGestureBefore_;
   std::vector<std::pair<std::string,bool>> autoLinkGestureBefore_;
   bool fillSymmetryDispatch_=false;
+  const CompositeSamplingBounds* fillSamplingBounds_=nullptr;
   void reserveHistoryEntries(std::size_t additional=1);
   void finishAnimationSelectionHistory(AnimationSelectionHistoryScope&);
   void pushEdit(Edit edit,std::u32string label=U"绘制");

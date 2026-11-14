@@ -1,9 +1,55 @@
 #include "document.h"
 #include "raster_geometry.h"
 #include "layer_compositor.h"
+#include "raster_pixel_edit.h"
 #include <algorithm>
 #include <stdexcept>
 namespace moon {
+namespace {
+// tools-fill matches raw IDs at zero tolerance, palette colors otherwise.
+// Feed the established region/closure engine an opaque binary match surface;
+// its RGBA transparent-exterior shortcut must never interpret IDs as alpha.
+bool indexedFill(const Document& d){return d.activeMaskId().empty()&&d.layer().kind.empty()&&(d.activeSurfaceIfPresent()?d.activeSurfaceIfPresent()->format==timeline::RasterFormat::Indexed:d.colorMode()==color_mode::Mode::Indexed);}
+RasterColorContext fillColors(const Document& d){return {d.palette().entries,d.palette().order(),d.colorMode(),d.pixelFormat()};}
+std::optional<SelectionMask> fillRegion(const std::vector<Pixel>& storage,int w,int h,int x,int y,WandOptions options,const std::optional<SelectionMask>& selection,const RasterColorContext* colors){
+ if(!colors)return magicWandSelection(storage,w,h,x,y,options,selection);
+ const auto target=storage[std::size_t(y)*w+x];const auto targetColor=colors->toolColor(timeline::RasterFormat::Indexed,target);const int tolerance=std::clamp(options.tolerance,0,255);
+ std::vector<Pixel> matching;matching.reserve(storage.size());for(auto value:storage){bool match=value==target;if(tolerance){const auto color=colors->toolColor(timeline::RasterFormat::Indexed,value);int difference=0;for(int shift:{0,8,16,24})difference=std::max(difference,std::abs(int((color>>shift)&255)-int((targetColor>>shift)&255)));match=difference<=tolerance;}matching.push_back(match?0xffffffffu:0xff000000u);}
+ options.tolerance=0;return magicWandSelection(matching,w,h,x,y,options,selection);
+}
+// One compiled point sampler per symmetric transaction; only its bounds are
+// fixed. Preview colors below follow every write, including shared owners.
+class FillSamplingScope {
+ const CompositeSamplingBounds*& slot_;const CompositeSamplingBounds* previous_;
+ std::optional<CompositeSamplingBounds> bounds_;
+public:
+ FillSamplingScope(const Document& d,WandOptions options,const CompositeSamplingBounds*& slot):slot_(slot),previous_(slot){if(!slot&&options.visibleLayers&&indexedFill(d)){bounds_=compileCompositeSamplingBounds(d.timeline(),d.frame().id,fillColors(d));slot_=&*bounds_;}}
+ ~FillSamplingScope(){slot_=previous_;}
+};
+class FillCompositeSource {
+ const Document& d_;const RasterColorContext* colors_;const CompositeSamplingBounds* bounds_;
+ bool staged_;std::string root_;std::vector<Pixel> preview_;const std::vector<Pixel>& storage_;
+public:
+ FillCompositeSource(const Document& d,const std::vector<Pixel>& storage,const timeline::Surface* sparse,const RasterColorContext* colors,const CompositeSamplingBounds* bounds):d_(d),colors_(colors),bounds_(bounds),staged_(sparse||!d.timeline().findCel(d.layer().id,d.frame().id)),storage_(storage){
+  if(staged_&&colors_){preview_.reserve(storage.size());for(auto p:storage)preview_.push_back(colors_->rgba(timeline::RasterFormat::Indexed,p));}
+  if(sparse)root_=d.timeline().resolveSurface(d.cel().id).source->id;
+ }
+ void changed(std::size_t index,std::size_t count,Pixel value){if(staged_&&colors_)std::fill_n(preview_.begin()+index,count,colors_->rgba(timeline::RasterFormat::Indexed,value));}
+ std::vector<Pixel> read(CompositeRegion region)const{return compositeNormalRegion(d_.timeline(),d_.frame().id,region,staged_?d_.layer().id:std::string{},staged_?(colors_?&preview_:&storage_):nullptr,staged_?d_.width():0,0,0,false,{},root_,nullptr,nullptr,colors_,bounds_);}
+ Pixel point(int x,int y)const{return read({x,y,1,1}).front();}
+};
+// tools-fill enqueueIfMatching paints the popped pixel before testing its
+// neighbours. Styles and shared references therefore observe current pixels.
+template<class Allowed,class Paint>
+void visitLiveFill(int w,int h,Point seed,WandOptions options,const std::optional<SelectionMask>& selection,const Allowed& allowed,const FillCompositeSource& source,const Paint& paint){
+ const auto target=source.point(seed.x,seed.y);const int tolerance=std::clamp(options.tolerance,0,255);
+ auto matches=[&](int x,int y){if(!allowed(x,y)||(selection&&!selectionContains(selection,x,y)))return false;const auto color=source.point(x,y);int difference=0;for(int shift:{0,8,16,24})difference=std::max(difference,std::abs(int((color>>shift)&255)-int((target>>shift)&255)));return difference<=tolerance;};
+ if(!options.contiguous){for(int y=0;y<h;++y)for(int x=0;x<w;++x)if(matches(x,y))paint(x,y);return;}
+ std::vector<unsigned char> visited(std::size_t(w)*h);std::vector<std::size_t> stack;
+ auto enqueue=[&](int x,int y){if(x<0||y<0||x>=w||y>=h)return;const auto i=std::size_t(y)*w+x;if(visited[i]||!matches(x,y))return;visited[i]=1;stack.push_back(i);};
+ enqueue(seed.x,seed.y);while(!stack.empty()){const auto i=stack.back();stack.pop_back();const int x=int(i%w),y=int(i/w);paint(x,y);enqueue(x-1,y);enqueue(x+1,y);enqueue(x,y-1);enqueue(x,y+1);if(options.connectivity==8){enqueue(x-1,y-1);enqueue(x+1,y-1);enqueue(x-1,y+1);enqueue(x+1,y+1);}}
+}
+}
 std::vector<Pixel> Document::sparseFillCanvas(const timeline::Surface& source)const{
  raster::validate(source);raster::coordinate(std::int64_t(source.offsetX)+source.width);raster::coordinate(std::int64_t(source.offsetY)+source.height);
  constexpr std::size_t limit=256*1024*1024;const auto bytes=std::size_t(width_)*height_*sizeof(Pixel);std::size_t used=0;
@@ -17,7 +63,7 @@ bool Document::commitSparseFill(Edit edit,const std::vector<Pixel>& canvas,Spars
  const auto resolution=timeline_.resolveSurface(cel().id);if(resolution.issue!=timeline::LinkIssue::None||!resolution.source||!resolution.surface)throw std::logic_error("Invalid sparse fill owner");const auto& source=*resolution.surface;if(canvas.size()!=std::size_t(width_)*height_)throw std::logic_error("Invalid fill staging");
  std::optional<timeline::Surface> candidate;
  if(geometry.expanded){constexpr std::size_t limit=256*1024*1024;std::size_t used=canvas.size()*sizeof(Pixel);for(const auto& c:timeline_.state().cels)if(c.surface){if(c.surface->pixels.size()>(limit-used)/sizeof(Pixel))throw std::length_error("Fill expansion exceeds pixel budget");used+=c.surface->pixels.size()*sizeof(Pixel);}
-  if(source.width==1&&source.height==1){auto placeholderSource=source;placeholderSource.pixels[0]=geometry.discardPlaceholder?0:(source.pixels[0]|0xff000000u);candidate=raster::expanded(placeholderSource,{0,0,width_,height_},limit-used);}else candidate=raster::expanded(source,{0,0,width_,height_},limit-used);
+  if(source.width==1&&source.height==1){auto placeholderSource=source;placeholderSource.pixels[0]=geometry.discardPlaceholder?0:source.format==timeline::RasterFormat::Indexed?source.pixels[0]:(source.pixels[0]|0xff000000u);candidate=raster::expanded(placeholderSource,{0,0,width_,height_},limit-used);}else candidate=raster::expanded(source,{0,0,width_,height_},limit-used);
  }
  const auto& target=candidate?*candidate:source;const PixelAddressSpace address{width_,height_,raster::coordinate(std::int64_t(target.storageOriginX.value_or(0))-target.offsetX),raster::coordinate(std::int64_t(target.storageOriginY.value_or(0))-target.offsetY)};
  auto addresses=[&](auto&& self,Edit& e)->void{if(!e.contentHistory.runs.empty()||!e.pixels.empty()||e.contentHistory.dense)e.contentHistory.pixelAddress=address;for(auto& child:e.children)self(self,child);};addresses(addresses,edit);
@@ -27,25 +73,26 @@ bool Document::commitSparseFill(Edit edit,const std::vector<Pixel>& canvas,Spars
 }
 void Document::prepareSparseFillGeometry(std::vector<Pixel>& canvas,const timeline::Surface& s,Point seed,WandOptions options,SparseFillGeometry& geometry,bool compactSolid)const{
  geometry.localClosureResolved=false;geometry.localClosure.reset();if(geometry.expanded)return;
+ const auto colors=s.format==timeline::RasterFormat::Indexed?std::optional<RasterColorContext>{fillColors(*this)}:std::nullopt;
  auto current=[&](int x,int y){const std::int64_t wx=std::int64_t(s.offsetX)+x,wy=std::int64_t(s.offsetY)+y;return wx>=0&&wy>=0&&wx<width_&&wy<height_?canvas[std::size_t(wy)*width_+std::size_t(wx)]:s.pixels[std::size_t(y)*s.width+x];};
- auto expand=[&]{geometry.discardPlaceholder=s.width==1&&s.height==1&&(current(0,0)>>24)==0;geometry.expanded=true;if(geometry.discardPlaceholder&&s.offsetX>=0&&s.offsetY>=0&&s.offsetX<width_&&s.offsetY<height_)canvas[std::size_t(s.offsetY)*width_+s.offsetX]=0;};
+ auto expand=[&]{geometry.discardPlaceholder=s.width==1&&s.height==1&&(colors?current(0,0)==0:(current(0,0)>>24)==0);geometry.expanded=true;if(geometry.discardPlaceholder&&s.offsetX>=0&&s.offsetY>=0&&s.offsetX<width_&&s.offsetY<height_)canvas[std::size_t(s.offsetY)*width_+s.offsetX]=0;};
  if(!raster::worldIndex(s,seed.x,seed.y)){expand();return;}
  const std::int64_t sl=s.offsetX,st=s.offsetY,sr=sl+s.width,sb=st+s.height;
  if(sl<=0&&st<=0&&sr>=width_&&sb>=height_)return;
  if(options.visibleLayers)return;
  const Pixel target=canvas[std::size_t(seed.y)*width_+seed.x];const int tolerance=std::clamp(options.tolerance,0,255);
- auto matchesValue=[&](Pixel value){int difference=0;for(int shift:{0,8,16,24})difference=std::max(difference,std::abs(int((value>>shift)&255)-int((target>>shift)&255)));return difference<=tolerance;};
+ auto matchesValue=[&](Pixel value){if(colors&&!tolerance)return value==target;const auto a=colors?colors->toolColor(s.format,value):value,b=colors?colors->toolColor(s.format,target):target;int difference=0;for(int shift:{0,8,16,24})difference=std::max(difference,std::abs(int((a>>shift)&255)-int((b>>shift)&255)));return difference<=tolerance;};
  const bool matchesZero=matchesValue(0);
  const std::int64_t bl=selection_?std::max(0,selection_->x):0,bt=selection_?std::max(0,selection_->y):0,br=selection_?std::min<std::int64_t>(width_,std::int64_t(selection_->x)+selection_->width):width_,bb=selection_?std::min<std::int64_t>(height_,std::int64_t(selection_->y)+selection_->height):height_;
  const bool beyond=br>bl&&bb>bt&&(bl<sl||bt<st||br>sr||bb>sb);
  if(compactSolid&&options.contiguous&&options.gapClosing&&options.gapThreshold>0&&tolerance==0&&!selection_&&options.connectivity==4&&std::size_t(width_)*height_>=512*512){
   std::int64_t cl=0,ct=0,cr=0,cb=0;bool content=false;
-  for(int y=0;y<s.height;++y)for(int x=0;x<s.width;++x)if(current(x,y)>>24){const auto wx=sl+x,wy=st+y;if(!content){cl=wx;ct=wy;cr=wx+1;cb=wy+1;content=true;}else{cl=std::min(cl,wx);ct=std::min(ct,wy);cr=std::max(cr,wx+1);cb=std::max(cb,wy+1);}}
+  for(int y=0;y<s.height;++y)for(int x=0;x<s.width;++x)if(colors?colors->visible(s.format,current(x,y)):bool(current(x,y)>>24)){const auto wx=sl+x,wy=st+y;if(!content){cl=wx;ct=wy;cr=wx+1;cb=wy+1;content=true;}else{cl=std::min(cl,wx);ct=std::min(ct,wy);cr=std::max(cr,wx+1);cb=std::max(cb,wy+1);}}
   if(!content){cl=seed.x;ct=seed.y;cr=seed.x+1;cb=seed.y+1;}
   const int padding=std::max(2,options.gapThreshold+2);
   const auto left=std::max(std::max<std::int64_t>(0,sl),std::min<std::int64_t>(seed.x,cl)-padding),top=std::max(std::max<std::int64_t>(0,st),std::min<std::int64_t>(seed.y,ct)-padding),right=std::min(std::min<std::int64_t>(width_,sr),std::max<std::int64_t>(seed.x+1,cr)+padding),bottom=std::min(std::min<std::int64_t>(height_,sb),std::max<std::int64_t>(seed.y+1,cb)+padding);
   if(right<=left||bottom<=top)return;const int w=int(right-left),h=int(bottom-top);std::vector<Pixel> local(std::size_t(w)*h);for(int y=0;y<h;++y)for(int x=0;x<w;++x)local[std::size_t(y)*w+x]=current(int(left-sl)+x,int(top-st)+y);
-  auto region=magicWandSelection(local,w,h,int(seed.x-left),int(seed.y-top),options);const bool touches=region&&(region->x==0||region->y==0||region->x+region->width==w||region->y+region->height==h);if(matchesZero&&beyond&&touches){expand();return;}if(!touches){geometry.localClosureResolved=true;if(region){region->x+=int(left);region->y+=int(top);geometry.localClosure=std::move(region);}}return;
+  auto region=fillRegion(local,w,h,int(seed.x-left),int(seed.y-top),options,{},colors?&*colors:nullptr);const bool touches=region&&(region->x==0||region->y==0||region->x+region->width==w||region->y+region->height==h);if(matchesZero&&beyond&&touches){expand();return;}if(!touches){geometry.localClosureResolved=true;if(region){region->x+=int(left);region->y+=int(top);geometry.localClosure=std::move(region);}}return;
  }
  if(!matchesZero||!beyond)return;if(!options.contiguous){expand();return;}
  // Legacy geometry escape is four-connected even for an eight-connected fill.
@@ -64,20 +111,22 @@ bool Document::fillCanvasAt(std::vector<Pixel>& storage,Point point,Pixel color,
  if(point.x<0||point.y<0||point.x>=width_||point.y>=height_||(selection_&&!selectionContains(selection_,point.x,point.y)))return false;
  if(sparseSource&&geometry)prepareSparseFillGeometry(storage,*sparseSource,point,options,*geometry,true);
  auto allowed=[&](int x,int y){return !sparseSource||!geometry||geometry->expanded||bool(raster::worldIndex(*sparseSource,x,y));};
- const auto seed=std::size_t(point.y)*width_+point.x;const auto target=storage[seed];auto paint=[&](Pixel current){const auto painted=(color>>24)==0?color:brushComposite(current,color,100);return normalizeCanvasPacked(painted,!activeMaskId_.empty());};const auto next=paint(target);if(!options.visibleLayers&&target==next)return false;
- auto run=[&](std::size_t index,std::size_t count,Pixel before,Pixel after){if(before==after)return;if(sparseSource&&geometry&&!geometry->expanded){const auto x=std::int64_t(index%std::size_t(width_)),y=std::int64_t(index/std::size_t(width_)),left=std::max<std::int64_t>(x,sparseSource->offsetX),right=std::min<std::int64_t>(x+std::int64_t(count),std::int64_t(sparseSource->offsetX)+sparseSource->width);if(y<sparseSource->offsetY||y>=std::int64_t(sparseSource->offsetY)+sparseSource->height||right<=left)return;index+=std::size_t(left-x);count=std::size_t(right-left);}edit.contentHistory.runs.push_back({index,count,before,after});std::fill_n(storage.begin()+index,count,after);change_.include(int(index%width_),int(index/width_));change_.include(int((index+count-1)%width_),int((index+count-1)/width_));};
+ const auto colors=indexedFill(*this)?std::optional<RasterColorContext>{fillColors(*this)}:std::nullopt;
+ const auto seed=std::size_t(point.y)*width_+point.x;const auto target=storage[seed];auto paint=[&](Pixel current){if(colors)return colors->packedValue(timeline::RasterFormat::Indexed,raster::paintValue(timeline::RasterFormat::Indexed,current,{},color,*colors));const auto painted=(color>>24)==0?color:brushComposite(current,color,100);return normalizeCanvasPacked(painted,!activeMaskId_.empty());};const auto next=paint(target);if(!options.visibleLayers&&target==next)return false;
+ std::optional<FillCompositeSource> reference;if(fillSamplingBounds_&&options.visibleLayers)reference.emplace(*this,storage,sparseSource,colors?&*colors:nullptr,fillSamplingBounds_);
+ auto run=[&](std::size_t index,std::size_t count,Pixel before,Pixel after){if(before==after)return;if(sparseSource&&geometry&&!geometry->expanded){const auto x=std::int64_t(index%std::size_t(width_)),y=std::int64_t(index/std::size_t(width_)),left=std::max<std::int64_t>(x,sparseSource->offsetX),right=std::min<std::int64_t>(x+std::int64_t(count),std::int64_t(sparseSource->offsetX)+sparseSource->width);if(y<sparseSource->offsetY||y>=std::int64_t(sparseSource->offsetY)+sparseSource->height||right<=left)return;index+=std::size_t(left-x);count=std::size_t(right-left);}edit.contentHistory.runs.push_back({index,count,before,after});std::fill_n(storage.begin()+index,count,after);if(reference)reference->changed(index,count,after);change_.include(int(index%width_),int(index/width_));change_.include(int((index+count-1)%width_),int((index+count-1)/width_));};
  try{
   const bool compact=storage.size()>=512*512&&!options.visibleLayers&&options.connectivity==4&&options.tolerance==0&&!(options.contiguous&&options.gapClosing);
-  if(compact){auto matches=[&](std::size_t i){return storage[i]==target&&allowed(int(i%width_),int(i/width_))&&(!selection_||selectionContains(selection_,int(i%width_),int(i/width_)));};
+  if(reference&&(!options.contiguous||!options.gapClosing)){visitLiveFill(width_,height_,point,options,selection_,allowed,*reference,[&](int x,int y){const auto i=std::size_t(y)*width_+x;const auto before=storage[i];run(i,1,before,paint(before));});}
+  else if(compact){auto matches=[&](std::size_t i){return storage[i]==target&&allowed(int(i%width_),int(i/width_))&&(!selection_||selectionContains(selection_,int(i%width_),int(i/width_)));};
    if(!options.contiguous){for(int y=0;y<height_;++y){std::size_t i=std::size_t(y)*width_,end=i+width_;while(i<end){while(i<end&&!matches(i))++i;if(i==end)break;const auto left=i++;while(i<end&&matches(i))++i;run(left,i-left,target,next);}}}
    else if(!selection_&&(!sparseSource||geometry->expanded||(sparseSource->offsetX<=0&&sparseSource->offsetY<=0&&std::int64_t(sparseSource->offsetX)+sparseSource->width>=width_&&std::int64_t(sparseSource->offsetY)+sparseSource->height>=height_))&&std::all_of(storage.begin(),storage.end(),[&](Pixel p){return p==target;})){for(int y=0;y<height_;++y)run(std::size_t(y)*width_,width_,target,next);}
    else{std::vector<std::size_t> stack{seed};auto neighbor=[&](std::ptrdiff_t l,std::ptrdiff_t r){if(l<0||r>std::ptrdiff_t(storage.size()))return;while(l<r){while(l<r&&!matches(std::size_t(l)))++l;if(l==r)break;stack.push_back(std::size_t(l++));while(l<r&&matches(std::size_t(l)))++l;}};while(!stack.empty()){auto i=stack.back();stack.pop_back();if(!matches(i))continue;const auto row=i-i%width_;auto l=i,r=i+1;while(l>row&&matches(l-1))--l;while(r<row+width_&&matches(r))++r;run(l,r-l,target,next);neighbor(std::ptrdiff_t(l)-width_,std::ptrdiff_t(r)-width_);neighbor(l+width_,r+width_);}}
   }else{
    std::optional<SelectionMask> fillSelection=selection_;
  if(sparseSource&&geometry&&!geometry->expanded){const int left=int(std::max<std::int64_t>(0,sparseSource->offsetX)),top=int(std::max<std::int64_t>(0,sparseSource->offsetY)),right=int(std::min<std::int64_t>(width_,std::int64_t(sparseSource->offsetX)+sparseSource->width)),bottom=int(std::min<std::int64_t>(height_,std::int64_t(sparseSource->offsetY)+sparseSource->height));if(right<=left||bottom<=top)return false;SelectionMask clip{left,top,right-left,bottom-top,{}};if(selection_){clip.mask.resize(std::size_t(clip.width)*clip.height);for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)clip.mask[std::size_t(y-top)*clip.width+x-left]=selectionContains(selection_,x,y)?1:0;}fillSelection=std::move(clip);}
- const auto root=sparseSource?timeline_.resolveSurface(cel().id).source->id:std::string{};
-   const auto composite=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},!timeline_.findCel(layer().id,frame().id)?layer().id:std::string{},(sparseSource||!timeline_.findCel(layer().id,frame().id))?&storage:nullptr,(sparseSource||!timeline_.findCel(layer().id,frame().id))?width_:0,0,0,false,{},root):std::vector<Pixel>{};
-   auto region=(sparseSource&&geometry&&geometry->localClosureResolved)?geometry->localClosure:magicWandSelection(options.visibleLayers?composite:storage,width_,height_,point.x,point.y,options,fillSelection);if(!region)return false;
+   const auto composite=options.visibleLayers?FillCompositeSource(*this,storage,sparseSource,colors?&*colors:nullptr,fillSamplingBounds_).read({0,0,width_,height_}):std::vector<Pixel>{};
+   auto region=(sparseSource&&geometry&&geometry->localClosureResolved)?geometry->localClosure:fillRegion(options.visibleLayers?composite:storage,width_,height_,point.x,point.y,options,fillSelection,colors&&!options.visibleLayers?&*colors:nullptr);if(!region)return false;
    for(int y=region->y;y<region->y+region->height;++y){int x=region->x;while(x<region->x+region->width){if(!selectionContains(region,x,y)||!allowed(x,y)){++x;continue;}const auto index=std::size_t(y)*width_+x;const auto current=storage[index],value=paint(current);const int left=x++;while(x<region->x+region->width&&selectionContains(region,x,y)&&allowed(x,y)&&storage[std::size_t(y)*width_+x]==current)++x;run(index,x-left,current,value);}}
   }
  }catch(...){for(auto it=edit.contentHistory.runs.rbegin();it!=edit.contentHistory.runs.rend();++it)std::fill_n(storage.begin()+it->index,it->length,it->before);change_={};throw;}
@@ -88,25 +137,34 @@ bool Document::fillPatternCanvasAt(std::vector<Pixel>& storage,Point point,Pixel
  if(sparseSource&&geometry)prepareSparseFillGeometry(storage,*sparseSource,point,options,*geometry,false);
  std::optional<SelectionMask> fillSelection=selection_;
  if(sparseSource&&geometry&&!geometry->expanded){const int left=int(std::max<std::int64_t>(0,sparseSource->offsetX)),top=int(std::max<std::int64_t>(0,sparseSource->offsetY)),right=int(std::min<std::int64_t>(width_,std::int64_t(sparseSource->offsetX)+sparseSource->width)),bottom=int(std::min<std::int64_t>(height_,std::int64_t(sparseSource->offsetY)+sparseSource->height));if(right<=left||bottom<=top)return false;SelectionMask clip{left,top,right-left,bottom-top,{}};if(selection_){clip.mask.resize(std::size_t(clip.width)*clip.height);for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)clip.mask[std::size_t(y-top)*clip.width+x-left]=selectionContains(selection_,x,y)?1:0;}fillSelection=std::move(clip);}
- const auto root=sparseSource?timeline_.resolveSurface(cel().id).source->id:std::string{};
- const auto composite=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},!timeline_.findCel(layer().id,frame().id)?layer().id:std::string{},(sparseSource||!timeline_.findCel(layer().id,frame().id))?&storage:nullptr,(sparseSource||!timeline_.findCel(layer().id,frame().id))?width_:0,0,0,false,{},root):std::vector<Pixel>{};
- auto region=magicWandSelection(options.visibleLayers?composite:storage,width_,height_,point.x,point.y,options,fillSelection);if(!region)return false;
- const bool deferred=options.contiguous&&!pattern.brushes.empty()&&(pattern.mode!=PatternMode::Default||pattern.brushes.size()>1);auto bounds=deferred?*region:selection_.value_or(SelectionMask{0,0,width_,height_,{}});PatternFillSampler sampler(pattern,color,point.x,point.y,bounds.x,bounds.y,bounds.width,bounds.height);
- for(int y=region->y;y<region->y+region->height;++y)for(int x=region->x;x<region->x+region->width;++x){if(!selectionContains(region,x,y)||(sparseSource&&geometry&&!geometry->expanded&&!raster::worldIndex(*sparseSource,x,y)))continue;auto sample=sampler.sample(x,y);if(sample.coverage<=0)continue;auto source=sample.hasColor?sample.color:color;if(sample.coverage!=255)source=(source&0xffffff)|(std::uint32_t(std::lround((source>>24)*sample.coverage/255.0))<<24);const auto i=std::size_t(y)*width_+x;const auto before=storage[i];const auto painted=(source>>24)==0?source:brushComposite(before,source,100);const auto after=normalizeCanvasPacked(painted,!activeMaskId_.empty());if(before==after)continue;if(!edit.contentHistory.runs.empty()&&edit.contentHistory.runs.back().index+edit.contentHistory.runs.back().length==i&&edit.contentHistory.runs.back().index/width_==i/width_&&edit.contentHistory.runs.back().before==before&&edit.contentHistory.runs.back().after==after)++edit.contentHistory.runs.back().length;else edit.contentHistory.runs.push_back({i,1,before,after});change_.include(x,y);}
- if(edit.contentHistory.runs.empty())return false;for(const auto& run:edit.contentHistory.runs)std::fill_n(storage.begin()+run.index,run.length,run.after);return true;
+ const auto colors=indexedFill(*this)?std::optional<RasterColorContext>{fillColors(*this)}:std::nullopt;
+ const bool deferred=options.contiguous&&!pattern.brushes.empty()&&(pattern.mode!=PatternMode::Default||pattern.brushes.size()>1);
+ std::optional<FillCompositeSource> reference;if(fillSamplingBounds_&&options.visibleLayers)reference.emplace(*this,storage,sparseSource,colors?&*colors:nullptr,fillSamplingBounds_);
+ const bool live=reference&&!deferred&&(!options.contiguous||!options.gapClosing);
+ std::optional<SelectionMask> region;
+ if(!live){const auto composite=options.visibleLayers?FillCompositeSource(*this,storage,sparseSource,colors?&*colors:nullptr,fillSamplingBounds_).read({0,0,width_,height_}):std::vector<Pixel>{};region=fillRegion(options.visibleLayers?composite:storage,width_,height_,point.x,point.y,options,fillSelection,colors&&!options.visibleLayers?&*colors:nullptr);if(!region)return false;}
+ auto bounds=deferred?*region:selection_.value_or(SelectionMask{0,0,width_,height_,{}});PatternFillSampler sampler(pattern,color,point.x,point.y,bounds.x,bounds.y,bounds.width,bounds.height);
+ auto allowed=[&](int x,int y){return !sparseSource||!geometry||geometry->expanded||bool(raster::worldIndex(*sparseSource,x,y));};
+ auto paint=[&](int x,int y){auto sample=sampler.sample(x,y);if(sample.coverage<=0)return;auto source=sample.hasColor?sample.color:color;if(sample.coverage!=255)source=(source&0xffffff)|(std::uint32_t(std::lround((source>>24)*sample.coverage/255.0))<<24);const auto i=std::size_t(y)*width_+x;const auto before=storage[i];const auto after=colors?colors->packedValue(timeline::RasterFormat::Indexed,raster::paintValue(timeline::RasterFormat::Indexed,before,{},source,*colors)):normalizeCanvasPacked((source>>24)==0?source:brushComposite(before,source,100),!activeMaskId_.empty());if(before==after)return;
+  if(!edit.contentHistory.runs.empty()&&edit.contentHistory.runs.back().index+edit.contentHistory.runs.back().length==i&&edit.contentHistory.runs.back().index/width_==i/width_&&edit.contentHistory.runs.back().before==before&&edit.contentHistory.runs.back().after==after)++edit.contentHistory.runs.back().length;else edit.contentHistory.runs.push_back({i,1,before,after});change_.include(x,y);if(live){storage[i]=after;reference->changed(i,1,after);}
+ };
+ try{if(live)visitLiveFill(width_,height_,point,options,selection_,allowed,*reference,paint);else for(int y=region->y;y<region->y+region->height;++y)for(int x=region->x;x<region->x+region->width;++x)if(selectionContains(region,x,y)&&allowed(x,y))paint(x,y);}
+ catch(...){if(live)for(auto it=edit.contentHistory.runs.rbegin();it!=edit.contentHistory.runs.rend();++it)std::fill_n(storage.begin()+it->index,it->length,it->before);change_={};throw;}
+ if(edit.contentHistory.runs.empty())return false;if(!live)for(const auto& run:edit.contentHistory.runs)std::fill_n(storage.begin()+run.index,run.length,run.after);return true;
 }
+
 bool Document::fillSparse(Point point,Pixel color,WandOptions options,const PatternFillOptions* pattern){HistoryLabelScope historyLabel(*this,options.contiguous?U"连续填充":U"不连续填充");
  commitFloatingPaste();cancelStroke();if(pattern)cancelGradient();change_={};if(!rasterToolsAvailable())return false;
  std::vector<Point> seeds;if(symmetryHas(symmetryAxes)&&!fillSymmetryDispatch_){for(auto p:symmetryPoints({point.x,point.y},width_,height_,symmetryAxes,symmetryCenter()))seeds.push_back({p.x,p.y});}else seeds={point};
  seeds.erase(std::remove_if(seeds.begin(),seeds.end(),[&](auto p){return p.x<0||p.y<0||p.x>=width_||p.y>=height_||(selection_&&!selectionContains(selection_,p.x,p.y));}),seeds.end());if(seeds.empty())return false;
  if(!timeline_.findCel(layer().id,frame().id)){
 
-  timeline::Surface empty;empty.width=empty.height=1;empty.pixels={0};auto canvas=sparseFillCanvas(empty);Edit edit{{},state_,nextState_};
+  timeline::Surface empty;empty.format=colorMode_==color_mode::Mode::Indexed?timeline::RasterFormat::Indexed:timeline::RasterFormat::Rgba;empty.width=empty.height=1;empty.pixels={0};auto canvas=sparseFillCanvas(empty);Edit edit{{},state_,nextState_};
   try{
    for(auto seed:seeds){Edit child{{},state_,nextState_};const bool changed=pattern?fillPatternCanvasAt(canvas,seed,color,*pattern,options,child):fillCanvasAt(canvas,seed,color,options,child);if(changed)edit.children.push_back(std::move(child));}
    if(edit.children.empty()){change_={};return false;}
    if(edit.children.size()==1){auto single=std::move(edit.children.front());edit=std::move(single);}
-   auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::move(canvas))};
+   auto candidate=timeline_.state();timeline::Cel created;created.id="cel-"+layer().id+"-"+frame().id;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+layer().id+"-"+frame().id+"-"+std::to_string(suffix);created.layerId=layer().id;created.frameId=frame().id;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::move(canvas))};created.surface->format=empty.format;
    auto address=[&](auto&& self,Edit& e)->void{e.contentHistory.targetCelId=created.id;e.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,0,0};e.beforeSelection=e.afterSelection=selectedFrames_;for(auto& child:e.children)self(self,child);};address(address,edit);
    const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();auto previous=std::move(timeline_);timeline_=std::move(prepared);
    try{pushEdit(std::move(edit),options.contiguous?U"连续填充":U"不连续填充");}catch(...){timeline_=std::move(previous);throw;}publishChange();return true;
@@ -122,20 +180,22 @@ bool Document::fillPixels(Point point,Pixel color,WandOptions options){
  if(!activeMaskId_.empty())return fillAttachedMask(point,color,options,nullptr);
  if(layer().kind=="tilemap")return fillTilemapPixels(point,color,options,nullptr);
  if(layer().kind=="free-tile")return fillFreeTileSourcePixels(point,color,options,nullptr);
+ const FillSamplingScope sampling(*this,options,fillSamplingBounds_);
  {if(!timeline_.findCel(layer().id,frame().id))return fillSparse(point,color,options);const auto r=timeline_.resolveSurface(cel().id);if(r.surface&&!raster::fullCanvas(*r.surface,width_,height_))return fillSparse(point,color,options);}
  if(symmetryHas(symmetryAxes)&&!fillSymmetryDispatch_){const auto start=history_.position();const auto selected=selectedFrames_;const auto axes=symmetryAxes;symmetryAxes={};fillSymmetryDispatch_=true;const auto oldGrouping=groupingHistory_;groupingHistory_=true;try{for(auto p:symmetryPoints({point.x,point.y},width_,height_,axes,symmetryCenter()))fillPixels({p.x,p.y},color,options);}catch(...){groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;while(history_.position()>start)undo();throw;}groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;groupEdits(start,selected);return history_.position()>start;}
  commitFloatingPaste();cancelStroke();if(!rasterToolsAvailable()||point.x<0||point.y<0||point.x>=width_||point.y>=height_||(selection_&&!selectionContains(selection_,point.x,point.y)))return false;
- auto& storage=pixelStorage();Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=cel().id;edit.beforeSelection=edit.afterSelection=selectedFrames_;change_={};reserveHistoryEntries();if(!fillCanvasAt(storage,point,color,options,edit))return false;publishChange();pushEdit(std::move(edit),options.contiguous?U"连续填充":U"不连续填充");return true;
+ auto& storage=pixelStorage();Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=cel().id;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,activeSurface().storageOriginX.value_or(0),activeSurface().storageOriginY.value_or(0)};edit.beforeSelection=edit.afterSelection=selectedFrames_;change_={};reserveHistoryEntries();if(!fillCanvasAt(storage,point,color,options,edit))return false;publishChange();pushEdit(std::move(edit),options.contiguous?U"连续填充":U"不连续填充");return true;
 }
 bool Document::fillPatternPixels(Point point,Pixel color,const PatternFillOptions& pattern,WandOptions options){
  if(!activeMaskId_.empty())return fillAttachedMask(point,color,options,&pattern);
  if(layer().kind=="tilemap")return fillTilemapPixels(point,color,options,pattern.brushes.empty()&&pattern.texture==FillTexture::Solid?nullptr:&pattern);
  if(layer().kind=="free-tile")return fillFreeTileSourcePixels(point,color,options,&pattern);
  if(pattern.brushes.empty()&&pattern.texture==FillTexture::Solid)return fillPixels(point,color,options);
+ const FillSamplingScope sampling(*this,options,fillSamplingBounds_);
  {if(!timeline_.findCel(layer().id,frame().id))return fillSparse(point,color,options,&pattern);const auto r=timeline_.resolveSurface(cel().id);if(r.surface&&!raster::fullCanvas(*r.surface,width_,height_))return fillSparse(point,color,options,&pattern);}
  if(symmetryHas(symmetryAxes)&&!fillSymmetryDispatch_){const auto start=history_.position();const auto selected=selectedFrames_;const auto axes=symmetryAxes;symmetryAxes={};fillSymmetryDispatch_=true;const auto oldGrouping=groupingHistory_;groupingHistory_=true;try{for(auto p:symmetryPoints({point.x,point.y},width_,height_,axes,symmetryCenter()))fillPatternPixels({p.x,p.y},color,pattern,options);}catch(...){groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;while(history_.position()>start)undo();throw;}groupingHistory_=oldGrouping;fillSymmetryDispatch_=false;symmetryAxes=axes;groupEdits(start,selected);return history_.position()>start;}
  commitFloatingPaste();cancelStroke();cancelGradient();if(!rasterToolsAvailable()||point.x<0||point.y<0||point.x>=width_||point.y>=height_||(selection_&&!selectionContains(selection_,point.x,point.y)))return false;
- auto& storage=pixelStorage();Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=cel().id;edit.beforeSelection=edit.afterSelection=selectedFrames_;reserveHistoryEntries();change_={};if(!fillPatternCanvasAt(storage,point,color,pattern,options,edit))return false;publishChange();pushEdit(std::move(edit),options.contiguous?U"连续填充":U"不连续填充");return true;
+ auto& storage=pixelStorage();Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=cel().id;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,activeSurface().storageOriginX.value_or(0),activeSurface().storageOriginY.value_or(0)};edit.beforeSelection=edit.afterSelection=selectedFrames_;reserveHistoryEntries();change_={};if(!fillPatternCanvasAt(storage,point,color,pattern,options,edit))return false;publishChange();pushEdit(std::move(edit),options.contiguous?U"连续填充":U"不连续填充");return true;
 }
 }
 

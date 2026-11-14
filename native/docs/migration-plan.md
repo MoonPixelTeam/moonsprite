@@ -7192,3 +7192,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 直接承接 legacy paintBrush、paintLayerValue、笔刷底色／完美像素尾部和 revertPixelEdit：普通、图像、动态笔刷及预览按色板解析底色再写回索引 ID；覆盖、擦除、墨水、继承底色、取消／ISO 重算的 packed 归一化保持旧版规则。复用当前 Document 事务，缺失 Cel 与偏移存储保留 indexed format。
 
 真实旧版 oracle 的1200组普通事务、24组动态／继承底色、96组普通与动态完美像素尾部、48组ISO重算、12组链接事务及108组稀疏／偏移检查通过。14项定向CTest全部通过（14.13秒和2.83秒），旧版筛选14项及两个笔刷文件11项通过。唯一正式Release构建退出0并更新；来源覆盖950文件和快照、Editor593源码、架构593源码／250targets、diff检查通过，strict因其它缺口退出1。生产索引色新建／转换／可编辑导入继续关闭，填充及其它工具事务继续迁移；整体INCOMPLETE，无性能优化或人工桌面验收。详见[索引色笔刷事务迁移](indexed-brush-transactions-migration-20261114.md)。阶段保存推送dev，保留所有用户数据、缓存与日志。
+
+### 2026-11-15 索引色填充事务（阶段验收）
+
+按 legacy tools-fill、document-model、history 与 canvas-input-fill 的真实行为迁移桶／选区填充：容差零比较原始 ID，其它容差查色比较 RGBA，写回可见色板 ID；保留稀疏扩张、占位、缺失 Cel、storage origin 和点／run／dense 历史差异。可见层参考固定初始边界并读取实时像素，沿用旧版绘制后检查邻点的顺序；对称事务共用一次采样边界。关联图层继续共享存储并保留独立位置。
+
+1332 组真实旧版填充及172组关联／链接／裁切／占位事务通过，16项定向CTest全部通过23.69秒。旧版三个真实文件36项通过、77项跳过（22.18秒）。唯一正式Release及受影响目标构建成功，正式exe于01:52更新（30,638,080bytes）；来源952文件及快照、Editor593源码、架构593源码／251targets、diff通过，strict因其它缺口退出1。无UI、性能优化、人工图像或完整桌面验收；生产indexed新建／转换／可编辑导入继续关闭，整体INCOMPLETE。详见[索引色填充迁移](indexed-fill-transactions-migration-20261115.md)。阶段保存推送dev，保留全部用户数据、缓存和日志。

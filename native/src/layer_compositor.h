@@ -31,13 +31,20 @@ inline CompositeRegion rasterStyleGeometry(const timeline::Surface& surface,cons
  return right>left?CompositeRegion{surface.offsetX+left,surface.offsetY+top,right-left,bottom-top}:CompositeRegion{};
 }
 inline bool compositeContains(CompositeRegion bounds,int x,int y){return x>=bounds.x&&y>=bounds.y&&std::int64_t(x)<std::int64_t(bounds.x)+bounds.width&&std::int64_t(y)<std::int64_t(bounds.y)+bounds.height;}
+// Tool point samplers compile content/output bounds once, while source pixels
+// remain live. Display composition does not use this transaction-local input.
+struct CompositeSamplingBounds {
+ struct Item {CompositeRegion geometry,output;bool containsAdjustment=false;};
+ std::unordered_map<std::string,Item> items;
+};
+CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline&,const std::string& frame,const RasterColorContext&);
 // Adapter for legacy RGBA/indexed layer stacks, topmost first.
 // Preview vectors are resolved RGBA colors; Surface words retain their format.
 // Output is only the requested rectangle; caller retains unrelated cached pixels.
 // Valid links resolve once per layer; stable storage origins do not affect world rendering.
 // An optional preview owner replaces every linked instance of a staged owner.
 std::vector<timeline::Pixel> compositeNormalRegion(const timeline::Timeline& timeline,
- const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,bool cacheContent=false,const std::string& targetLayerId={},const std::string& previewOwnerCelId={},const timeline::AttachedMask* maskPreview=nullptr,const timeline::Surface* maskPixelsPreview=nullptr,const RasterColorContext* colors=nullptr);
+ const std::string& frameId,CompositeRegion region,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,bool cacheContent=false,const std::string& targetLayerId={},const std::string& previewOwnerCelId={},const timeline::AttachedMask* maskPreview=nullptr,const timeline::Surface* maskPixelsPreview=nullptr,const RasterColorContext* colors=nullptr,const CompositeSamplingBounds* sampling=nullptr);
 struct OnionSkinSettings {
  bool enabled=false,allLayers=false,showDuringPlayback=true;
  double previousFrames=1,nextFrames=1,previousOpacity=35,nextOpacity=35;

@@ -2182,7 +2182,7 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){auto selection
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
 }
 bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){commitFloatingPaste();return fillAttachedMaskSelection(color);}
- color=normalizeCanvasPacked(color);const auto commandLayers=selectedLayerIdsWithGroups();
+ const bool indexed=colorMode_==color_mode::Mode::Indexed;const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);color=indexed?colors.packedValue(timeline::RasterFormat::Indexed,colors.colorId(color)):normalizeCanvasPacked(color);const auto commandLayers=selectedLayerIdsWithGroups();
  commitFloatingPaste();cancelStroke();
  // Legacy single-target fillForeground edits the active display raster, then
  // syncActiveAnimationLayer creates its missing Cel. Frame proxies skip absences.
@@ -2195,7 +2195,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
   const auto area=std::size_t(bounds->width)*bounds->height;const bool dense=area>=512*512&&(!selection_||selection_->mask.empty()||changed*3>=area);
   std::size_t used=adjustmentStorageBudget(timeline_,1);floatingAddBytes(used,std::uint64_t(width_)*height_*sizeof(Pixel));floatingAddBytes(used,dense?std::uint64_t(area)*sizeof(Pixel)*2:std::uint64_t(changed)*sizeof(Delta));
   Edit edit{{},state_,nextState_};edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,0,0};
-  timeline::Cel created;created.id="cel-"+activeLayerId_+"-"+activeFrameId_;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+activeLayerId_+"-"+activeFrameId_+"-"+std::to_string(suffix);created.layerId=activeLayerId_;created.frameId=activeFrameId_;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::vector<Pixel>(std::size_t(width_)*height_))};edit.contentHistory.targetCelId=created.id;
+  timeline::Cel created;created.id="cel-"+activeLayerId_+"-"+activeFrameId_;for(std::size_t suffix=1;timeline_.findCelById(created.id);++suffix)created.id="cel-"+activeLayerId_+"-"+activeFrameId_+"-"+std::to_string(suffix);created.layerId=activeLayerId_;created.frameId=activeFrameId_;created.opacity=layer().opacity;created.surface=timeline::Surface{width_,height_,0,0,{},{},timeline::LinkedPixelStorage(std::vector<Pixel>(std::size_t(width_)*height_))};if(indexed)created.surface->format=timeline::RasterFormat::Indexed;edit.contentHistory.targetCelId=created.id;
   DensePixels region{bounds->x,bounds->y,bounds->width,bounds->height,{},{}};if(dense){region.before.assign(area,0);region.after.assign(area,0);}else edit.pixels.reserve(changed);
   PixelRegion dirty;for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){if(selection_&&!selectionContains(selection_,x,y))continue;const auto index=std::size_t(y)*width_+x;created.surface->pixels[index]=color;if(dense)region.after[std::size_t(y-bounds->y)*bounds->width+x-bounds->x]=color;else edit.pixels.push_back({index,0,color});dirty.include(x,y);}
   if(dense)edit.contentHistory.dense=std::move(region);auto candidate=timeline_.state();const auto preferredOwner=created.id;candidate.cels.push_back(std::move(created));timeline::Timeline prepared(std::move(candidate),preferredOwner);reserveHistoryEntries();auto previous=std::move(timeline_);timeline_=std::move(prepared);try{pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");}catch(...){timeline_=std::move(previous);throw;}change_=dirty;publishChange();return true;
@@ -2222,6 +2222,7 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
  edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  edit.beforeTimelineSelection=edit.afterTimelineSelection=timelineSelection_;edit.beforeSelection=edit.afterSelection=selectedFrames_;
  std::optional<std::size_t> sparseStaging;
+ std::vector<std::pair<std::string,timeline::Surface>> indexedFillExpansions;
  for(const auto* target:targets){
   const auto resolved=timeline_.resolveSurface(target->id);if(!resolved.source || !resolved.surface || !sources.insert(timeline_.linkedStorageKey(resolved.source->id)).second)continue;
   if(!raster::fullCanvas(*resolved.surface,width_,height_)){
@@ -2229,10 +2230,25 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
    const bool covered=bounds->x>=source.offsetX&&bounds->y>=source.offsetY&&std::int64_t(bounds->x)+bounds->width<=std::int64_t(source.offsetX)+source.width&&std::int64_t(bounds->y)+bounds->height<=std::int64_t(source.offsetY)+source.height;
    const auto padding=selection_?64:0;const raster::Rect64 requested{std::max(0,bounds->x-padding),std::max(0,bounds->y-padding),std::min<std::int64_t>(width_,std::int64_t(bounds->x)+bounds->width+padding),std::min<std::int64_t>(height_,std::int64_t(bounds->y)+bounds->height+padding)};
    auto expansion=covered?std::optional<timeline::Surface>{}:raster::expanded(source,requested,(adjustmentByteLimit-*sparseStaging)/2);auto after=expansion?std::move(*expansion):source;floatingAddBytes(*sparseStaging,convolutionSurfaceBytes(after)*2);bool changed=false;
+   // Legacy expands storage before recording pixels. Undo replays packed
+   // points (or raw dense values), retaining the expanded surface geometry.
+   if(indexed){
+    Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;
+    child.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,raster::coordinate(std::int64_t(after.storageOriginX.value_or(0))-after.offsetX),raster::coordinate(std::int64_t(after.storageOriginY.value_or(0))-after.offsetY)};
+    DensePixels region{bounds->x,bounds->y,bounds->width,bounds->height,{},{}};
+    if(dense){region.before.reserve(area);region.after.reserve(area);}
+    for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){
+     const auto before=raster::readWorld(after,x,y);const auto value=(!selection_||selectionContains(selection_,x,y))?color:before;
+     if(dense){region.before.push_back(before);region.after.push_back(value);}else if(before!=value)child.pixels.push_back({std::size_t(y)*width_+x,before,value});
+     changed|=before!=value;
+    }
+    if(changed){if(dense)child.contentHistory.dense=std::move(region);if(expansion)indexedFillExpansions.emplace_back(resolved.source->id,std::move(after));edit.children.push_back(std::move(child));}
+    continue;
+   }
    for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){if(selection_&&!selectionContains(selection_,x,y))continue;const auto index=raster::worldIndex(after,x,y);if(!index)continue;changed|=after.pixels[*index]!=color;after.pixels[*index]=color;}
    if(changed){Edit child{{},state_,nextState_};child.contentHistory.surfaceChanges.push_back({resolved.source->id,source,std::move(after)});edit.children.push_back(std::move(child));}continue;
   }
-  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;bool changed=false;
+  Edit child{{},state_,nextState_};child.contentHistory.targetCelId=target->id;child.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};bool changed=false;
   DensePixels region{bounds->x,bounds->y,bounds->width,bounds->height,{},{}};if(dense){region.before.reserve(area);region.after.reserve(area);}
   for(int y=bounds->y;y<bounds->y+bounds->height;++y)for(int x=bounds->x;x<bounds->x+bounds->width;++x){
    const auto index=std::size_t(y)*width_+x;const auto before=resolved.surface->pixels[index];const auto after=(!selection_ || selectionContains(selection_,x,y))?color:before;
@@ -2241,7 +2257,14 @@ bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){com
   if(changed){if(dense)child.contentHistory.dense=std::move(region);edit.children.push_back(std::move(child));}
  }
  if(edit.children.empty())return false;
- reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
+ // Prepare expanded owners before publishing geometry; retain displaced
+ // surfaces so a failed pixel replay also restores its original geometry.
+ std::vector<timeline::Surface*> expansionTargets;expansionTargets.reserve(indexedFillExpansions.size());
+ for(const auto& expansion:indexedFillExpansions){auto* owner=timeline_.mutableOwnedSurface(expansion.first);if(!owner)throw std::logic_error("Missing indexed fill expansion owner");expansionTargets.push_back(owner);}
+ reserveHistoryEntries();change_={};
+ for(std::size_t i=0;i<expansionTargets.size();++i)std::swap(*expansionTargets[i],indexedFillExpansions[i].second);
+ try{applyEdit(edit,true);}catch(...){for(std::size_t i=expansionTargets.size();i>0;--i)std::swap(*expansionTargets[i-1],indexedFillExpansions[i-1].second);throw;}
+ publishChange();pushEdit(std::move(edit),selection_?U"填充选区前景色":U"填充画布前景色");return true;
 }
 bool Document::deleteSelectedPixels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(floating_&&floating_->clipboard){cancelFloatingPaste();return true;}if(floating_&&floating_->freeTile)commitFloatingPaste();if(!activeMaskId_.empty())return deleteMaskSelection();if(layer().kind=="free-tile"){
  // Legacy deleteFreeTileSourceSelectionInSession clears the primary shared

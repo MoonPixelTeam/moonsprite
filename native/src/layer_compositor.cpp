@@ -31,7 +31,23 @@ void compositeOpaqueRgbaRow(Pixel* output,const Pixel* source,std::size_t count)
   ++p;
  }
 }
-std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,const std::string& frameId,CompositeRegion r,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth,int previewX,int previewY,bool cacheContent,const std::string& targetLayerId,const std::string& previewOwnerCelId,const timeline::AttachedMask* maskPreview,const timeline::Surface* maskPixelsPreview,const RasterColorContext* colorContext) {
+CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline& timeline,const std::string& frame,const RasterColorContext& colors){
+ CompositeSamplingBounds result;const auto& state=timeline.state();
+ for(const auto& l:state.layers){auto& item=result.items[l.id];item.containsAdjustment=l.kind=="adjustment"&&l.adjustment&&l.adjustment->enabled;
+  if(l.kind=="adjustment")item.geometry={0,0,state.canvasWidth,state.canvasHeight};
+  else if(const auto* cel=timeline.findCel(l.id,frame)){const auto r=timeline.resolveSurface(cel->id);if(r.surface)item.geometry=rasterStyleGeometry(*r.surface,colors);}
+  item.output=layerStyleOutputBounds(item.geometry,l.layerStyles);
+ }
+ const auto rows=buildLayerPanelTree(state);
+ for(auto row=rows.rbegin();row!=rows.rend();++row)if(row->kind==LayerPanelKind::Group){const auto found=std::find_if(state.groups.begin(),state.groups.end(),[&](const auto& g){return g.id==row->id;});auto& item=result.items[row->id];
+  auto add=[&](const std::string& id,bool visible){const auto& child=result.items.at(id);item.containsAdjustment=item.containsAdjustment||child.containsAdjustment;const auto b=child.output;if(!visible||b.width<=0||b.height<=0)return;auto& a=item.geometry;if(a.width<=0||a.height<=0){a=b;return;}const int x=std::min(a.x,b.x),y=std::min(a.y,b.y);a={x,y,std::max(a.x+a.width,b.x+b.width)-x,std::max(a.y+a.height,b.y+b.height)-y};};
+  for(const auto& l:state.layers)if(l.groupId&&*l.groupId==row->id)add(l.id,l.visible&&l.opacity>0);
+  for(const auto& g:state.groups)if(g.parentGroupId&&*g.parentGroupId==row->id)add(g.id,g.visible&&g.opacity>0);
+  item.output=layerStyleOutputBounds(item.geometry,found->layerStyles);if(item.geometry.width<=0||item.geometry.height<=0)item.geometry={0,0,state.canvasWidth,state.canvasHeight};
+ }
+ return result;
+}
+std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,const std::string& frameId,CompositeRegion r,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth,int previewX,int previewY,bool cacheContent,const std::string& targetLayerId,const std::string& previewOwnerCelId,const timeline::AttachedMask* maskPreview,const timeline::Surface* maskPixelsPreview,const RasterColorContext* colorContext,const CompositeSamplingBounds* sampling) {
  const auto& state=timeline.state();const RasterColorContext fallbackColors;const auto& colors=colorContext?*colorContext:fallbackColors;
  auto inCanvas=[&](int x,int y){return !colors.indexed()||(x>=0&&y>=0&&(state.canvasWidth<=0||x<state.canvasWidth)&&(state.canvasHeight<=0||y<state.canvasHeight));};
  const auto* linkedPreviewSlot=previewLayer.empty()?nullptr:timeline.findCel(previewLayer,frameId);
@@ -42,7 +58,7 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
  // legacy document-composite-region::compositeRegion copies a sole full-opacity
  // RGBA raster by rows, including RGB under zero alpha. Keep previews and all
  // effect/mask/resource paths on their existing compositor.
- if(!preview&&!maskPreview&&state.groups.empty()&&state.layers.size()==1){
+ if(!sampling&&!preview&&!maskPreview&&state.groups.empty()&&state.layers.size()==1){
   const auto& layer=state.layers.front();
   if(layer.kind.empty()&&layer.visible&&layer.blendMode=="normal"&&!layer.clippingMask&&!timeline::styleVisible(layer.layerStyles)&&frameCelOpacity(timeline,layer,frameId)==1&&!timeline::resolvedMask(state,layer.id,frameId)&&(targetLayerId.empty()||targetLayerId==layer.id)){
    const auto* cel=timeline.findCel(layer.id,frameId);
@@ -76,11 +92,11 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
   const auto& s=absentPreview?previewGeometry:*resolved.surface;styleGeometry={s.offsetX,s.offsetY,s.width,s.height};
   const bool linkedPreview=linkedPreviewRoot.surface&&s.pixels.identity()==linkedPreviewRoot.surface->pixels.identity();
   const std::int64_t linkedDx=linkedPreview?std::int64_t(s.offsetX)-linkedPreviewRoot.surface->offsetX:0,linkedDy=linkedPreview?std::int64_t(s.offsetY)-linkedPreviewRoot.surface->offsetY:0;
-  if(layerStyleNeedsSampling(layer.layerStyles)||(colors.indexed()&&timeline::styleVisible(layer.layerStyles))){
+  if(sampling||layerStyleNeedsSampling(layer.layerStyles)||(colors.indexed()&&timeline::styleVisible(layer.layerStyles))){
    const bool staged=preview&&(layer.id==previewLayer||(!previewOwnerCelId.empty()&&resolved.source&&resolved.source->id==previewOwnerCelId)||linkedPreview);
    auto read=[&](int x,int y){Pixel p=0;if(staged){const auto px=std::int64_t(x)-previewX-linkedDx,py=std::int64_t(y)-previewY-linkedDy;if(px>=0&&py>=0&&px<previewWidth&&std::uint64_t(py)*previewWidth+px<preview->size())p=(*preview)[std::size_t(py)*previewWidth+std::size_t(px)];}else p=colors.readWorld(s,x,y);if(mask&&mask->visible){const auto n=compositeMaskCoverage(*mask,x,y,maskPreview,maskPixelsPreview);p=(p&0xffffff)|(Pixel(std::floor((p>>24)*n/255.+.5))<<24);}return p;};
-   const auto outputBounds=!staged&&colors.indexed()?layerStyleOutputBounds(rasterStyleGeometry(s,colors),layer.layerStyles):CompositeRegion{};
-   auto styleRead=[&](int x,int y){return inCanvas(x,y)?read(x,y):Pixel(0);};LayerStyleSampler sampler(layer.layerStyles,&colors);for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int wx=r.x+x,wy=r.y+y;const auto p=!staged&&colors.indexed()&&!compositeContains(outputBounds,wx,wy)?Pixel(0):inCanvas(wx,wy)?sampler.sample(read(wx,wy),wx,wy,s.offsetX,s.offsetY,s.width,s.height,styleRead):read(wx,wy);auto& d=out[std::size_t(y)*r.width+x];d=mode==LayerBlendMode::Normal?over(d,p,opacity):blendLayerPixel(d,p,opacity,mode);}return;
+   const auto outputBounds=sampling?sampling->items.at(layer.id).output:!staged&&colors.indexed()?layerStyleOutputBounds(rasterStyleGeometry(s,colors),layer.layerStyles):CompositeRegion{};
+   auto styleRead=[&](int x,int y){return inCanvas(x,y)?read(x,y):Pixel(0);};LayerStyleSampler sampler(layer.layerStyles,&colors);for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const int wx=r.x+x,wy=r.y+y;const auto p=(sampling||(!staged&&colors.indexed()))&&!compositeContains(outputBounds,wx,wy)?Pixel(0):inCanvas(wx,wy)?sampler.sample(read(wx,wy),wx,wy,s.offsetX,s.offsetY,s.width,s.height,styleRead):read(wx,wy);auto& d=out[std::size_t(y)*r.width+x];d=mode==LayerBlendMode::Normal?over(d,p,opacity):blendLayerPixel(d,p,opacity,mode);}return;
   }
   if(preview && (layer.id==previewLayer || (!previewOwnerCelId.empty() && resolved.source && resolved.source->id==previewOwnerCelId)||linkedPreview)){for(int y=0;y<r.height;++y)for(int x=0;x<r.width;++x){const auto px=std::int64_t(r.x)+x-previewX-linkedDx,py=std::int64_t(r.y)+y-previewY-linkedDy;if(px>=0 && py>=0 && px<previewWidth && std::uint64_t(py)*previewWidth+px<preview->size())out[std::size_t(y)*r.width+x]=mode==LayerBlendMode::Normal?over(out[std::size_t(y)*r.width+x],masked((*preview)[std::size_t(py)*previewWidth+std::size_t(px)],r.x+x,r.y+y),opacity):blendLayerPixel(out[std::size_t(y)*r.width+x],masked((*preview)[std::size_t(py)*previewWidth+std::size_t(px)],r.x+x,r.y+y),opacity,mode);}return;}
   // Legacy opacityGroupCompositeStack excludes empty owners. Reuse only
@@ -97,7 +113,7 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
    else for(auto x=left;x<right;++x)out[dst+std::size_t(x-left)]=over(out[dst+std::size_t(x-left)],s.pixels[src+std::size_t(x-left)],opacity);
   }
  };
- if((colors.indexed()&&std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return timeline::styleVisible(g.layerStyles);}))||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return layerStyleNeedsSampling(l.layerStyles);})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return layerStyleNeedsSampling(g.layerStyles);})||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return l.clippingMask;})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return g.clippingMask||g.cumulativeBlend;}))return compositeClippingRegion(timeline,frameId,r,[&](auto i,auto tile,auto& pixels){renderLayer(i,tile,pixels,true);},maskPreview,previewLayer,preview,previewWidth,previewX,previewY,maskPixelsPreview,&colors);
+ if(sampling||(colors.indexed()&&std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return timeline::styleVisible(g.layerStyles);}))||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return layerStyleNeedsSampling(l.layerStyles);})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return layerStyleNeedsSampling(g.layerStyles);})||std::any_of(state.layers.begin(),state.layers.end(),[](const auto& l){return l.clippingMask;})||std::any_of(state.groups.begin(),state.groups.end(),[](const auto& g){return g.clippingMask||g.cumulativeBlend;}))return compositeClippingRegion(timeline,frameId,r,[&](auto i,auto tile,auto& pixels){renderLayer(i,tile,pixels,true);},maskPreview,previewLayer,preview,previewWidth,previewX,previewY,maskPixelsPreview,&colors,sampling);
  if(!state.groups.empty())return compositeGroupedRegion(timeline,frameId,r,renderLayer,maskPreview,previewLayer,preview,previewWidth,previewX,previewY,maskPixelsPreview,&colors);
  std::vector<Pixel> out(std::size_t(r.width)*r.height,0);for(const auto index:frameCompositeLayerOrder(timeline,frameId))renderLayer(index,r,out);
  return out;
