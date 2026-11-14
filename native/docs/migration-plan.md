@@ -7141,3 +7141,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按legacy deleteActiveLayer和deleteSelectedLayers分别迁移历史：保留当前帧和存活项目，删除失效Cel／组格／蒙版格后Undo不复活旧选择；所选行删除恢复原行，活动层删除回放保留当前存活行选择。折叠状态不纳入删除历史。复用现有结构Cel与瓦片资源所有权／补偿，补齐兼容资源选择回退和实例面板编辑时禁止删层。
 
 新增测试修复前实际失败于Undo切回旧帧／项目，修复后五项定向CTest全部通过3.05秒；域检查21组选择契约和四组独占／共享网格／自由资源及锁定／实例守卫通过。真实legacy模块oracle21组通过，旧版两文件11项通过7.27秒。唯一正式Release构建成功，layer-delete八组真实菜单与Undo/Redo、layer-copy八组回归实际进程均退出0。来源934文件及快照、Editor边界589源码、diff通过，strict因其它缺口继续退出1；无性能优化、人工图像或完整鼠标／桌面验收。整体仍INCOMPLETE，详见[图层删除选择迁移](layer-delete-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据、缓存和日志。
+
+
+### 2026-11-14 图层组创建与解组选择历史（阶段验收）
+
+按 legacy createLayerGroup／ungroupSelected 实际命令迁移首次与回放的不同契约：创建仅回放组上下文，解组仅回放结构，保留当前帧、有效项目及后来行选择，不复活旧组格／蒙版／折叠。保留共同父组、混合选层、纯组相邻空组及其固定活动层的复合放置语义；补齐隐式编辑层／普通 Cel 创建目标。解组蒙版随结构撤销恢复，目标及后代有效锁定拒绝，完整 session 历史测试改用旧版真正记录完整选择的移动行操作。
+
+旧版真实模块 oracle 46组通过，两文件9项通过10.23秒。最终六项 CTest 全部通过3.01秒，含新增嵌套／祖先解组、链接像素所有权、有效锁定、普通／恢复／本地历史三种编码的首次／Undo／Redo重开检查。唯一正式 Release 构建成功，group-structure 18组真实菜单与Undo/Redo、生产时间轴选择入口实际进程退出0；同一程序图层创建18组、复制8组、删除8组回归均退出0。来源934文件及快照、Editor边界589源码、diff通过，strict因其它缺口退出1。无性能优化、人工图像或完整鼠标／桌面验收，整体仍INCOMPLETE。详见[图层组创建与解组迁移](group-structure-selection-migration-20261114.md)。阶段保存推送dev，保留用户数据、缓存和日志。

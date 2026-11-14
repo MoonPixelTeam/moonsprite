@@ -810,6 +810,9 @@ private:
   struct LayerHistory {
     // Layer creation, deletion and menu duplication keep the current frame.
     bool preserveCurrentFrame=false;
+    bool preserveCurrentLayer=false;
+    enum class GroupRows {None,Created,Ungrouped};
+    GroupRows groupRows=GroupRows::None;
     // Legacy row duplication restores rows, not the whole animation selection.
     bool copiedRowSelection=false;
     enum class DeletedRows {None,ActiveLayer,SelectedRows};

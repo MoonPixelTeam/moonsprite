@@ -38,14 +38,75 @@ void verifyCompleteSessionSelectionHistory(){
  // Reorder ownership records without rebinding: a background structure change
  // and its undo/redo must target the original weak owner, with no activation.
  std::vector<std::shared_ptr<SelectionOwner>> sessions{first,second};std::swap(sessions[0],sessions[1]);
- check(document.ungroupSelected(),"Group removal fixture");check(first->value.groups.empty()&&!first->value.groupAnchor,"Background structure retained invalid group slots");
- const auto afterBytes=document.historyBytes();document.undo();
- check(document.timeline().state().groups.size()==1&&first->value.groups==saved.sessionSelection->groups&&first->value.groupAnchor==saved.sessionSelection->groupAnchor,"Undo did not restore removed group selection");
- document.redo();check(document.timeline().state().groups.empty()&&first->value.groups.empty()&&!first->value.groupAnchor&&document.historyBytes()==afterBytes,"Redo did not restore normalized after selection and budget");
+ check(document.moveLayerPanelRows({LayerPanelDropTarget::Kind::Bottom,LayerPanelKind::Group,{}}),"Group move fixture");
+ check(first->value.groups==saved.sessionSelection->groups,"Background move lost group slots");
+ const auto afterBytes=document.historyBytes();first->value.groups.clear();first->value.groupAnchor.reset();document.undo();
+ check(first->value.groups==saved.sessionSelection->groups&&first->value.groupAnchor==saved.sessionSelection->groupAnchor,"Move Undo did not restore original session group selection");
+ document.redo();check(first->value.groups==saved.sessionSelection->groups&&document.historyBytes()==afterBytes,"Move Redo lost complete selection or budget");
  check(second->value.groups==unrelated&&second->restored==0,"Background selection history touched another owner");
  auto copy=std::make_unique<Document>(document);check(!copy->captureAnimationSelection().sessionSelection,"Document copy retained live session access");
  auto retained=first->document;std::weak_ptr<SelectionOwner> weak=first;sessions.clear();first.reset();check(weak.expired()&&!retained->captureAnimationSelection().sessionSelection,"Selection binding kept closed owner alive");
 }
+
+void verifyGroupImplicitSelectionContract(){
+ for(int mode=0;mode<5;++mode){
+  auto owner=std::make_shared<SelectionOwner>();auto& d=*owner->document;d.fillSelectionOrCanvas(0xff123456);const auto layer=d.layer().id,frame=d.frame().id;bindSelectionOwner(owner);
+  if(mode==1)d.selectTimelineCel(d.cel().id);
+  if(mode==2)d.selectFrameHeader(frame);
+  if(mode>=3){check(d.createAttachedMask(layer,frame),"Implicit group mask fixture");d.exitAttachedMask();auto selection=d.captureAnimationSelection();selection.selection.layers.clear();selection.groups.clear();selection.groupFocus.reset();if(mode==3){selection.sessionSelection->masks={{layer,frame}};selection.sessionSelection->maskAnchor=selection.sessionSelection->masks.front();}else selection.selection.maskRows={layer};check(d.restoreAnimationSelection(selection),"Implicit mask group selection");}
+  check(d.createLayerGroup(),"Implicit group creation");const auto group=*d.selectedGroupId();
+  check(d.layer().groupId==(mode<2?std::optional<std::string>(group):std::nullopt),"Group implicit/Cel/frame/mask target differs from legacy");
+  check(d.timelineSelection().layers==(mode<2?std::vector<std::string>{layer}:std::vector<std::string>{}),"Group implicit command rows differ from legacy");
+ }
+ auto owner=std::make_shared<SelectionOwner>();auto& d=*owner->document;const auto layer=d.layer().id;check(d.createLayerGroup(),"Implicit ungroup parent");d.selectTimelineCel(d.cel().id);check(d.ungroupSelected()&&!d.layer().groupId,"Cel selection did not ungroup implicit layer");
+}
+void verifyGroupStructureSelectionContract(){
+ // Actual legacy create/ungroup command oracle: four create contexts and two
+ // ungroup entry contexts, each with row/frame/Cel/group/mask-cell/mask-row.
+ for(bool ungroup:{false,true})for(int route=0;route<(ungroup?2:4);++route)for(int mode=0;mode<6;++mode){
+  auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
+  d.fillSelectionOrCanvas(0xff123456);const auto a=d.layer().id,first=d.frame().id;d.addLayer();const auto gap=d.layer().id;d.addLayer();const auto b=d.layer().id;d.addLayer();const auto outside=d.layer().id;
+  d.restoreTimelineRowSelection({a,b},{});check(d.createLayerGroup(),"Group contract parent fixture");const auto g=*d.selectedGroupId();
+  d.restoreTimelineRowSelection({},{g});check(d.createLayerGroup(),"Group contract other fixture");const auto h=*d.selectedGroupId();
+  d.addFrame(true);const auto second=d.frame().id;d.selectFrame(first);check(d.createAttachedMask(ungroup?g:a,first,ungroup),"Group contract mask fixture");d.exitAttachedMask();
+  // root/common/cross-parent/empty peer. Root and cross-parent need the two
+  // selected layers moved independently out of the fixture parent.
+  if(!ungroup&&(route==0||route==2)){
+   d.restoreTimelineRowSelection({b},{});check(d.moveLayerPanelRows({LayerPanelDropTarget::Kind::Bottom,LayerPanelKind::Layer,{}}),"Group contract root placement");
+   if(route==0){d.restoreTimelineRowSelection({a},{});check(d.moveLayerPanelRows({LayerPanelDropTarget::Kind::Bottom,LayerPanelKind::Layer,{}}),"Group contract second root placement");}
+   else{d.restoreTimelineRowSelection({b},{});check(d.moveLayerPanelRows({LayerPanelDropTarget::Kind::Inside,LayerPanelKind::Group,h}),"Group contract cross-parent placement");}
+  }
+  bindSelectionOwner(owner);bindSelectionOwner(other);other->value.groups={{"other-group","other-frame"}};const auto untouched=other->value.groups;
+  auto initial=d.captureAnimationSelection();initial.activeLayer=a;initial.activeFrame=first;initial.selection={};initial.selection.layers=(!ungroup&&route==3)?std::vector<std::string>{}:std::vector<std::string>{a,b};initial.groups=(!ungroup&&(route==2||route==3))||(ungroup&&route==0)?std::vector<std::string>{g}:std::vector<std::string>{};initial.groupFocus=initial.groups.empty()?std::nullopt:std::optional<std::string>(g);initial.frames.clear();initial.frameAnchor.clear();initial.sessionSelection=AnimationSessionSelection{};
+  if(mode==1){initial.frames={first};initial.frameAnchor=first;initial.sessionSelection->frameSelection=true;}
+  if(mode==2){initial.selection.cels={d.timeline().findCel(a,first)->id};initial.selection.celAnchor=initial.selection.cels.front();}
+  if(mode==3){initial.sessionSelection->groups={{g,first}};initial.sessionSelection->groupAnchor=initial.sessionSelection->groups.front();}
+  if(mode>=4){check(d.selectAttachedMask(ungroup?g:a,first,true),"Group contract mask context");const auto mask=d.captureAnimationSelection();initial.activeMask=mask.activeMask;initial.activeMaskSlot=mask.activeMaskSlot;initial.maskIsolated=true;if(mode==4){initial.sessionSelection->masks={{ungroup?g:a,first}};initial.sessionSelection->maskAnchor=initial.sessionSelection->masks.front();}else initial.selection.maskRows={ungroup?g:a};}
+  check(d.restoreAnimationSelection(initial),"Group contract initial selection");d.toggleGroupCollapsed(g);const auto before=d.timeline().state().layers;const auto history=d.historyPosition();
+  check(ungroup?d.ungroupSelected():d.createLayerGroup(),"Group structure command");const auto created=ungroup?std::string{}:*d.selectedGroupId();
+  check(d.historyPosition()==history+1,"Group structure did not create one history entry");
+  if(!ungroup){check(d.findGroup(created)->parentGroupId==(route==1?std::optional<std::string>(g):std::nullopt),"Group create common parent");check(d.timelineSelection().layers==initial.selection.layers,"Group create first selected rows");}
+  else check(!d.findGroup(g)&&d.timelineSelection().layers.size()==2&&d.selectedGroupIds().empty()&&d.collapsedGroupIds().empty()&&d.timeline().state().masks.empty(),"Ungroup first structure/rows/masks");
+  const auto currentCells=d.timelineSelection().cels;const auto currentFrames=d.selectedFrames();const auto currentMask=d.activeMaskId();const auto currentMaskRows=d.timelineSelection().maskRows;const auto currentGroups=owner->value.groups;const auto currentMasks=owner->value.masks;
+  check(currentCells==initial.selection.cels&&currentFrames==initial.frames,"Group structure cleared surviving frame/Cel");
+  check(owner->value.groups==(ungroup?std::vector<AnimationCellSlot>{}:initial.sessionSelection->groups),"Group structure cleared surviving group slots or retained removed ones");
+  if(mode>=4)check(ungroup?currentMask.empty():currentMask==initial.activeMask,"Group structure active mask lifetime");
+  for(bool redo:{false,true}){if(redo)d.redo();else d.undo();
+   check(d.timelineSelection().cels==currentCells&&d.selectedFrames()==currentFrames&&d.activeMaskId()==currentMask&&d.timelineSelection().maskRows==currentMaskRows&&owner->value.groups==currentGroups&&owner->value.masks==currentMasks,"Group history revived or cleared timeline items");
+   if(ungroup)check(d.selectedGroupIds().empty()&&d.collapsedGroupIds().empty()&&bool(d.findGroup(g))==!redo&&d.timeline().state().masks.size()==(redo?0:1),"Ungroup history restored UI selection or lost masks");
+   else check(d.selectedGroupId()==(redo?std::optional<std::string>(created):route==1?std::optional<std::string>(g):std::nullopt),"Group create history parent selection");
+   if(!redo){check(d.timeline().state().layers.size()==before.size(),"Group history layer count");for(std::size_t i=0;i<before.size();++i)check(d.timeline().state().layers[i].id==before[i].id&&d.timeline().state().layers[i].groupId==before[i].groupId,"Group history layer order/parents");}
+  }
+  // Later choices are not owned by this structural history. Only the extra
+  // placement in an empty peer creation fixes the old active layer.
+  auto later=d.captureAnimationSelection();later.activeLayer=outside;later.activeFrame=second;later.selection={};later.selection.layers={outside};later.selection.cels={d.timeline().findCel(outside,second)->id};later.selection.celAnchor=later.selection.cels.front();later.groups={h};later.groupFocus=h;later.frames.clear();later.frameAnchor.clear();later.activeMask.clear();later.activeMaskSlot.reset();later.maskIsolated=false;later.sessionSelection=AnimationSessionSelection{};check(d.restoreAnimationSelection(later),"Group history later choices");
+  if(!ungroup)d.toggleGroupCollapsed(g);
+  const auto collapsed=d.collapsedGroupIds();
+  for(bool redo:{false,true}){if(redo)d.redo();else d.undo();check(d.layer().id==(!ungroup&&route==3?a:outside)&&d.frame().id==second&&d.timelineSelection().layers==later.selection.layers&&d.timelineSelection().cels==later.selection.cels&&d.collapsedGroupIds()==collapsed,"Group history replaced later active context/rows/items/collapse");if(ungroup)check(d.selectedGroupId()==std::optional<std::string>(h),"Ungroup history changed later group selection");}
+  check(other->value.groups==untouched&&other->restored==0,"Group history touched another session");
+ }
+}
+
 void verifyMaskSessionSelectionHistory(){
  auto owner=std::make_shared<SelectionOwner>();auto& document=*owner->document;
  check(document.fillSelectionOrCanvas(0xff123456),"Mask selection history pixels");const auto layer=document.layer().id,frame=document.frame().id;
@@ -303,7 +364,7 @@ void verifyLayerCreationRasterReplay(){
   }
  }
 }
-int main(){try{verifyLayerDeletionSelectionContract();verifyLayerDeletionResourcesAndGuards();verifyLayerCopySelectionContract();verifyLayerCopyResources();verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
+int main(){try{verifyGroupImplicitSelectionContract();verifyGroupStructureSelectionContract();verifyLayerDeletionSelectionContract();verifyLayerDeletionResourcesAndGuards();verifyLayerCopySelectionContract();verifyLayerCopyResources();verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
   Document document(3,1);
   const auto first=document.frame().id;
   document.addFrame();const auto second=document.frame().id;

@@ -38,6 +38,7 @@ template<class Edit> void validateHistoryShape(const Edit& e){
  requireHistoryAfter(e.layerHistory.beforeLayerStructure,e.layerHistory.afterLayerStructure);
  if(e.layerHistory.copiedRowSelection&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete copied row history");
  if(e.layerHistory.deletedRows!=decltype(e.layerHistory.deletedRows)::None&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete deleted row history");
+ if(e.layerHistory.groupRows!=decltype(e.layerHistory.groupRows)::None&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete group structure history");
  requireHistoryAfter(e.pixelSelectionHistory.beforeTrimPivot,e.pixelSelectionHistory.afterTrimPivot);
  requireHistoryAfter(e.frameHistory.beforeAnimationLoop,e.frameHistory.afterAnimationLoop);
  if(e.children.empty()){
@@ -186,6 +187,8 @@ applyRollbackHistory(edit.snapshotHistory,forward,plan);applySliceHistory(plan);
 // applyHistoryContent: definition in its content history domain unit.
 
 void Document::applyHistorySelection(const Edit& edit,bool forward,HistoryReplayPlan& plan){
+// Create changes group context only; ungroup replays structure only.
+if(edit.layerHistory.groupRows!=LayerHistory::GroupRows::None)return;
 if(edit.layerHistory.deletedRows!=LayerHistory::DeletedRows::None){
  // deleteActiveLayer only restores the active layer. Selected-row deletion
  // additionally owns layer/group rows; neither entry owns frames or items.
@@ -204,6 +207,7 @@ if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edi
 void Document::applyHistoryProjection(const Edit& edit,bool forward){
 for(const auto& value:forward?edit.layerHistory.afterLayerOpacityProjection:edit.layerHistory.beforeLayerOpacityProjection){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==value.first;});if(it!=timeline_.state_.layers.end())it->opacity=value.second;}applyMaskHistoryContext(edit.maskHistory,forward);applyGroupUi(edit,forward);applyFreeTileSelectionHistory(edit.tileHistory,forward);
  if(forward&&edit.frameHistory.clearItemSelectionOnRedo)clearAnimationItemSelection();
+ if(edit.layerHistory.groupRows!=LayerHistory::GroupRows::None)normalizeAnimationSelection();
  if(edit.layerHistory.copiedRowSelection||edit.layerHistory.deletedRows!=LayerHistory::DeletedRows::None){
   if(forward&&edit.layerHistory.copiedRowSelection){
    timelineSelection_.maskRows.clear();activeMaskId_.clear();maskIsolated_=false;

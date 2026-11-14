@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false,checkGroupStructure=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -103,6 +103,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
   else if(value==L"layer-creation"){checkGeometry=checkTextDialogs=false;checkLayerCreation=true;recognized=true;}
   else if(value==L"layer-copy"){checkGeometry=checkTextDialogs=false;checkLayerCopy=true;recognized=true;}
+  else if(value==L"group-structure"){checkGeometry=checkTextDialogs=false;checkGroupStructure=true;recognized=true;}
   else if(value==L"layer-delete"){checkGeometry=checkTextDialogs=false;checkLayerDelete=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
@@ -118,6 +119,29 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkGroupStructure){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
+  for(int route=0;route<3;++route)for(int mode=0;mode<6;++mode){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(2,2)));auto& d=currentDocument();d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addLayer();const auto outside=d.layer().id;
+   d.selectTimelineLayer(original);require(d.createLayerGroup(),"Group UI parent fixture");const auto group=*d.selectedGroupId();d.addFrame(true);const auto second=d.frame().id;d.selectFrame(first);
+   require(d.createAttachedMask(route==2?group:original,first,route==2),"Group UI mask fixture");d.exitAttachedMask();
+   if(route==0)d.selectTimelineLayer(original);else d.selectTimelineRow({LayerPanelKind::Group,group,0});refresh();
+   auto initial=d.captureAnimationSelection();
+   if(mode==1){initial.frames={first};initial.frameAnchor=first;initial.sessionSelection->frameSelection=true;}
+   if(mode==2){initial.selection.cels={d.timeline().findCel(original,first)->id};initial.selection.celAnchor=initial.selection.cels.front();}
+   if(mode==3){initial.sessionSelection->groups={{group,first}};initial.sessionSelection->groupAnchor=initial.sessionSelection->groups.front();}
+   if(mode>=4){require(d.selectAttachedMask(route==2?group:original,first,true),"Group UI mask context");const auto context=d.captureAnimationSelection();initial.activeMask=context.activeMask;initial.activeMaskSlot=context.activeMaskSlot;initial.maskIsolated=true;if(mode==4){initial.sessionSelection->masks={{route==2?group:original,first}};initial.sessionSelection->maskAnchor=initial.sessionSelection->masks.front();}else initial.selection.maskRows={route==2?group:original};}
+   require(d.restoreAnimationSelection(initial),"Group UI selection fixture");refresh();const auto history=d.historyPosition();require(menuCommands_.invoke(route==2?"ungroupLayers":"createLayerGroup"),"Group UI menu entry");refresh();const auto created=route==2?std::string{}:*d.selectedGroupId();
+   auto items=[&]{return d.selectedFrames()==initial.frames&&d.timelineSelection().cels==initial.selection.cels&&currentView().virtualSlots==(route==2?std::vector<AnimationCellSlot>{}:initial.sessionSelection->groups)&&currentView().maskSlots==(route==2?std::vector<Document::MaskSlotKey>{}:initial.sessionSelection->masks)&&d.activeMaskId()==(route==2?std::string{}:initial.activeMask);};
+   require(d.historyPosition()==history+1&&items(),"Group UI first history/items");
+   require(runShortcutCommand("undo"),"Group UI Undo entry");refresh();require(items()&&(route!=2||!d.selectedGroupId()),"Group UI Undo revived selection");
+   require(runShortcutCommand("redo"),"Group UI Redo entry");refresh();require(items()&&(route==2?!d.findGroup(group):d.findGroup(created)!=nullptr),"Group UI Redo items/structure");
+   const TimelineRows laterRows(d.timeline(),d.collapsedGroupIds(),!timelineHidden_);selectTimelineSlot(laterRows.index(outside),laterRows.frameIndex(second));refresh();const auto later=d.timelineSelection().cels;
+   for(bool redo:{false,true}){require(runShortcutCommand(redo?"redo":"undo"),"Group UI later history entry");refresh();require(d.frame().id==second&&d.layer().id==(route==1?initial.activeLayer:outside)&&d.timelineSelection().cels==later&&currentView().maskSlots.empty()&&currentView().virtualSlots.empty(),"Group UI later context");}
+   traceStage("group-structure",route,mode);
+  }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkLayerDelete){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
   for(bool group:{false,true})for(int mode=0;mode<4;++mode){

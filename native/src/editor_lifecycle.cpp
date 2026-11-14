@@ -532,7 +532,7 @@ menuCommands_.bind("redo",{[this]{requestHistoryAction(workspace::HistoryAction:
 
 menuCommands_.bind("openPreferences",{[this]{showPreferences();},{},{}});
 
-menuCommands_.bind("createLayerGroup",{[this]{currentDocument().createLayerGroup();currentView().virtualSlots.clear();currentView().virtualAnchor.reset();refresh();},[this]{return pending_==Pending::None;},{}});
+menuCommands_.bind("createLayerGroup",{[this]{currentDocument().createLayerGroup();refresh();},[this]{return pending_==Pending::None;},{}});
 menuCommands_.bind("ungroupLayers",{[this]{currentDocument().ungroupSelected();refresh();},[this]{return currentDocument().hasSelectedGroups();},{}});
 menuCommands_.bind("mergeLayerGroup",{[this]{currentDocument().mergeSelectedGroup();refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&currentDocument().canMergeSelectedGroup();},{}});
 menuCommands_.bind("toggleSelectedGroupCollapsed",{[this]{auto groups=currentDocument().selectedGroupIds();for(const auto& id:groups)currentDocument().toggleGroupCollapsed(id);refresh();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!currentDocument().selectedGroupIds().empty();},{}});

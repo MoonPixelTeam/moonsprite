@@ -32,4 +32,14 @@ void groupCommandTargets(){
  CHECK(d.timeline().resolveSurface("outside/f").surface->pixels==outside.pixels);d.undo();CHECK(d.timeline().resolveSurface("a/f").surface->pixels==beforeA.pixels&&d.timeline().resolveSurface("a/f").surface->offsetX==beforeA.offsetX);CHECK(d.timeline().resolveSurface("b/f").surface->pixels==beforeB.pixels&&d.timeline().resolveSurface("b/f").surface->offsetX==beforeB.offsetX);d.redo();CHECK(raster::readWorld(*d.timeline().resolveSurface("b/f").surface,3,2)==0xffabcdef);d.undo();
  d.setGroupLocked("g",true);const auto lockedHistory=d.historySize();CHECK(!d.fillSelectionOrCanvas(0xff334455));CHECK(d.historySize()==lockedHistory&&d.timeline().resolveSurface("a/f").surface->pixels==beforeA.pixels);
 }
-int main(int argc,char** argv){try{model();inheritedEditing();groupCommandTargets();io(argc>1?std::filesystem::path(argv[1]):std::filesystem::path("build/group-foundation-owned"));std::cout<<"Group metadata validation, internal archive/recovery bytes, snapshot and ordinary editable save/reopen passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+void groupStructureRoundtrip(){
+ Document d(2,2);d.fillSelectionOrCanvas(0xff112233);const auto layer=d.layer().id,frame=d.frame().id;CHECK(d.createLayerGroup());const auto parent=*d.selectedGroupId();d.selectTimelineLayer(layer);CHECK(d.createLayerGroup());const auto child=*d.selectedGroupId();CHECK(d.createAttachedMask(parent,frame,true));d.exitAttachedMask();d.selectTimelineRow({LayerPanelKind::Group,parent,0});CHECK(d.ungroupSelected());
+ auto verify=[&](bool restored){for(const auto bytes:{project::encodeEditableProject(d).bytes,project::encodeRecoveryProject(d).bytes,project::encodeHistoryProject(d).bytes}){
+  const auto reopened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes)));
+  CHECK(bool(reopened.findGroup(parent))==restored&&reopened.findGroup(child));
+  CHECK(reopened.findGroup(child)->parentGroupId==(restored?std::optional<std::string>(parent):std::nullopt));
+  CHECK(reopened.timeline().state().masks.size()==(restored?1:0)&&reopened.timeline().resolveSurface(reopened.timeline().findCel(layer,frame)->id).surface->pixels[0]==0xff112233);
+ }};
+ verify(false);d.undo();verify(true);d.redo();verify(false);
+}
+int main(int argc,char** argv){try{groupStructureRoundtrip();model();inheritedEditing();groupCommandTargets();io(argc>1?std::filesystem::path(argv[1]):std::filesystem::path("build/group-foundation-owned"));std::cout<<"Group metadata validation, internal archive/recovery bytes, snapshot and ordinary editable save/reopen passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
