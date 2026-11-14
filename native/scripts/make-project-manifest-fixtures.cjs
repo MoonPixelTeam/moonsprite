@@ -489,5 +489,43 @@ registerHooks({
   paletteDecodeOracle.push(row);
  }
  fs.writeFileSync(path.join(out,'palette-decode-oracle.json'),JSON.stringify(paletteDecodeOracle,null,2));console.log(`Palette decoder: ${paletteDecodeOracle.length} actual legacy cases; ${paletteDecodeOracle.reduce((n,r)=>n+r.operations.length,0)} command/Undo/Redo matrices`);
+
+ // Real ID zero in editable RGBA/gray palettes is distinct from a null slot.
+ const zeroOracle=[],zeroOps=['select','toggle','clear','range','box','move','adjacent','add','rename','update','paste','append','delete','sort','gradient','gradient-colors','apply','extract'];
+ const zeroLayout=await import(pathToFileURL(path.join(legacy,'src/renderer/src/core/palette-layout.ts')));
+ for(const mode of ['rgba','grayscale'])for(let layout=0;layout<3;++layout)for(const operation of zeroOps){
+  const d=createDocument('zero palette',2,2,mode),history=[];
+  d.palette=[{id:0,name:'zero',color:{r:20,g:40,b:60,a:128}},{id:7,name:'seven',color:{r:220,g:30,b:40,a:255}},{id:19,name:'nineteen',color:{r:10,g:200,b:30,a:255}}];
+  d.nextColorId=20;d.paletteColumns=3;d.paletteOrder=[0,7,19];d.paletteSlots=[[0,null,7,null,19,null],[7,null,0,19,null,null],[null,19,null,0,null,7]][layout];
+  const session={document:d,history:{push:e=>history.push(e)},selectedPaletteIds:[0,7,19],paletteSelectionId:0,primaryColor:{...d.palette[0].color},secondaryColor:{r:255,g:255,b:255,a:255}};
+  const packed=c=>(c.r|(c.g<<8)|(c.b<<16)|(c.a<<24))>>>0;
+  const state=()=>({entries:d.palette.map(e=>({id:e.id,name:e.name,color:packed(e.color)})),order:[...d.paletteOrder],slots:[...d.paletteSlots],columns:d.paletteColumns,next:d.nextColorId,selected:[...session.selectedPaletteIds],primaryId:session.paletteSelectionId,primary:packed(session.primaryColor)});
+  const row={mode,layout,operation,states:{},fit:zeroLayout.fitPaletteSlotsToGrid(d.paletteSlots,3,2,1)},save=side=>row.states[side]=state();
+  const slots=[...d.paletteSlots],zero=slots.indexOf(0),color={r:90,g:80,b:70,a:255};save('before');
+  switch(operation){
+   case 'select':paletteCommands.selectPaletteColor(session,0);break;
+   case 'toggle':paletteCommands.selectPaletteColor(session,0,true);break;
+   case 'clear':paletteCommands.selectPaletteColors(session,[],0);break;
+   case 'range':paletteCommands.selectPaletteColors(session,zeroLayout.paletteRangeIds(slots,3,0,7),7);break;
+   case 'box':paletteCommands.selectPaletteColors(session,zeroLayout.paletteRangeIdsBySlots(slots,3,0,5),slots[5]??-1);break;
+   case 'move':row.preview=zeroLayout.repositionPaletteSlots(slots,[0,7],8,0,3);paletteCommands.reorderPaletteColors(session,[0,7],row.preview,3);break;
+   case 'adjacent':paletteCommands.movePaletteColor(session,zero===0?1:-1);break;
+   case 'add':paletteCommands.addPaletteColor(session,color,false,{slots,columns:3,indices:[zero]});break;
+   case 'rename':paletteCommands.renamePaletteColor(session,0,' renamed zero ');break;
+   case 'update':paletteCommands.updatePaletteColor(session,0,color);break;
+   case 'paste':paletteCommands.pastePaletteColors(session,[color],{slots,columns:3,indices:[zero]});break;
+   case 'append':paletteCommands.pastePaletteColors(session,[color],{slots,columns:3,indices:[]});break;
+   case 'delete':paletteCommands.deletePaletteColors(session,[0]);break;
+   case 'sort':paletteCommands.sortPaletteColors(session,'red','ascending');break;
+   case 'gradient':paletteCommands.gradientPaletteSlots(session,[0,1,2,3,4,5],slots,3,false);break;
+   case 'gradient-colors':paletteCommands.gradientPaletteColors(session,false);break;
+   case 'apply':paletteCommands.applyPalette(session,[d.palette[0].color,color],{columns:3,slots:[0,null,1]},['reused zero','new']);break;
+   case 'extract':paletteCommands.applyPalette(session,[d.palette[0].color,color]);break;
+  }
+  save('after');if(history.length)history[0].undo();save('undo');if(history.length)history[0].redo();save('redo');
+  row.history=history.length;row.bytes=history.reduce((n,e)=>n+e.bytes,0);zeroOracle.push(row);
+ }
+ fs.writeFileSync(path.join(out,'palette-zero-oracle.json'),JSON.stringify(zeroOracle));console.log(`Palette zero: ${zeroOracle.length} actual legacy command/selection/Undo/Redo matrices`);
+
  console.log('Generated project manifest fixtures through legacy encodeProject');
 })().catch(e=>{console.error(e);process.exitCode=1;});

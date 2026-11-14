@@ -993,7 +993,7 @@ void Editor::layoutPalette(int only) {
     int columns=std::max(1,(area.w-padding*2-1)/step);
 
     const auto storedSlots=paletteManual_?normalizePaletteSlots(currentDocument().palette().entries,currentDocument().palette().order(),currentDocument().palette().slots,currentDocument().palette().columns):std::vector<int>{};
-    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(storedSlots,currentDocument().palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&!fit.slots[count-1])--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
+    if(paletteManual_){const auto fit=fitPaletteSlotsToGrid(storedSlots,currentDocument().palette().columns,columns);columns=fit.columns;count=int(fit.slots.size());while(count>columns&&fit.slots[count-1]==EmptyPaletteSlot)--count;if(2*padding+columns*step+1>area.w)rows=std::max(1,(area.h-6-padding*2-1)/step);}
 
     const bool overflow=(count+columns-1)/columns>rows;
 
@@ -1029,7 +1029,7 @@ void Editor::layoutPalette(int only) {
     const auto paletteViewport=paletteViewportBounds();
     const bool compareViewport=smoke_ && _wgetenv(L"MOONSPRITE_PALETTE_VIEWPORT_REFERENCE");
 
-    std::optional<PaletteSlotRange> manualRange;if(paletteManual_){if(paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity())manualRange=paletteSlotRange(columns,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<paletteButtonIds_.size();++i)if(paletteButtonIds_[i]&&std::find(currentDocument().palette().selected.begin(),currentDocument().palette().selected.end(),paletteButtonIds_[i])!=currentDocument().palette().selected.end()){const auto x=i%columns,y=i/columns;if(!manualRange)manualRange=PaletteSlotRange{x,y,x,y};else{manualRange->left=std::min(manualRange->left,x);manualRange->right=std::max(manualRange->right,x);manualRange->top=std::min(manualRange->top,y);manualRange->bottom=std::max(manualRange->bottom,y);}}}const bool manualBox=manualRange.has_value();
+    std::optional<PaletteSlotRange> manualRange;if(paletteManual_){if(paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity())manualRange=paletteSlotRange(columns,paletteBoxRange_->start,paletteBoxRange_->end);else for(std::size_t i=0;i<paletteButtonIds_.size();++i)if(paletteButtonIds_[i]!=EmptyPaletteSlot&&std::find(currentDocument().palette().selected.begin(),currentDocument().palette().selected.end(),paletteButtonIds_[i])!=currentDocument().palette().selected.end()){const auto x=i%columns,y=i/columns;if(!manualRange)manualRange=PaletteSlotRange{x,y,x,y};else{manualRange->left=std::min(manualRange->left,x);manualRange->right=std::max(manualRange->right,x);manualRange->top=std::min(manualRange->top,y);manualRange->bottom=std::max(manualRange->bottom,y);}}}const bool manualBox=manualRange.has_value();
 
     const bool shared=manualBox||currentDocument().palette().selected.size()>1;
 

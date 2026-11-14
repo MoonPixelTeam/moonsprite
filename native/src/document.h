@@ -41,6 +41,7 @@
 #include "liquify.h"
 #include "timeline_model.h"
 #include "document_color_mode.h"
+#include "palette_layout.h"
 #include "history_panel_model.h"
 #include "cel_properties.h"
 #include <vector>
@@ -67,14 +68,14 @@ struct PaletteEntry { int id; std::u32string name; Pixel color; };
 struct PaletteViewSelection {int columns=1;std::optional<std::size_t> focused;std::optional<std::pair<std::size_t,std::size_t>> box;};
 struct PaletteState {
   std::vector<PaletteEntry> entries{{1,U"墨黑",0xff211b18},{2,U"月蓝",0xffff7929}};
-  std::vector<int> slots{1,2,0,0,0,0,0,0}, selected;
-  int nextId=3, primaryId=0, secondaryId=0;
+  std::vector<int> slots{1,2,EmptyPaletteSlot,EmptyPaletteSlot,EmptyPaletteSlot,EmptyPaletteSlot,EmptyPaletteSlot,EmptyPaletteSlot}, selected;
+  int nextId=3, primaryId=EmptyPaletteSlot, secondaryId=EmptyPaletteSlot;
   Pixel primary=0xffff7929, secondary=0xffffffff;
   int columns=8; // Stored legacy palette layout; independent from the viewport auto grid.
   // Legacy stores paletteOrder independently. Ordinary slot-based states need
   // no duplicate allocation; imported independent order survives color edits.
   std::optional<std::vector<int>> independentOrder;
-  std::vector<int> order() const {if(independentOrder)return *independentOrder;std::vector<int> ids;for(int id:slots) if(id) ids.push_back(id);return ids;}
+  std::vector<int> order() const {if(independentOrder)return *independentOrder;std::vector<int> ids;for(int id:slots) if(id!=EmptyPaletteSlot) ids.push_back(id);return ids;}
   void setOrder(std::vector<int> ids){independentOrder.reset();if(ids!=order())independentOrder=std::move(ids);}
 };
 using DocumentLayer=timeline::Layer;
@@ -328,7 +329,7 @@ public:
   bool reorderPaletteColors(const std::vector<int>& ids,const std::vector<int>& targetSlots,int columns);
   void pastePaletteColors(const std::vector<Pixel>& colors,const std::vector<std::size_t>& targets={},bool selectResult=true,const std::vector<int>* viewSlots=nullptr,int viewColumns=0);
   void setPaletteRole(Pixel color,bool secondary,bool locked);
-  void swapPaletteRoles(Pixel primary,Pixel secondary){const int previousPrimaryId=palette_.primaryId;palette_.primaryId=0;setPaletteRole(primary,false,true);palette_.secondary=secondary;palette_.secondaryId=previousPrimaryId;}
+  void swapPaletteRoles(Pixel primary,Pixel secondary){const int previousPrimaryId=palette_.primaryId;palette_.primaryId=EmptyPaletteSlot;setPaletteRole(primary,false,true);palette_.secondary=secondary;palette_.secondaryId=previousPrimaryId;}
   void renamePaletteColor(int id,const std::u32string& name);
   void annotatePaletteView(PaletteViewSelection before,PaletteViewSelection after);
   const std::optional<PaletteViewSelection>& paletteViewRestore()const{return paletteViewRestore_;}

@@ -85,16 +85,14 @@ ImportPalette prepareEditablePalette(const ReadManifest& m){
  corrupt(p.columns<1||p.columns>256||p.nextId<1,"Invalid palette columns or next ID");
  std::set<int> ids,visible,placed;
  for(const auto& e:m.palette) {
-  unsupported(e.id==0,"Transparent palette ID zero editing is not migrated yet");
-  corrupt(e.id<1||!ids.insert(e.id).second,"Duplicate or invalid palette ID");
+  corrupt(e.id<0||!ids.insert(e.id).second,"Duplicate or invalid palette ID");
   p.entries.push_back({e.id,unicode(e.name),e.color});
  }
  unsupported(!ids.empty()&&p.nextId<=*ids.rbegin(),"Colliding legacy palette allocation cursor is not editable yet");
  for(int id:p.order)if(ids.count(id))visible.insert(id);
  p.slots.reserve(m.paletteSlots.size());
  for(const auto& slot:m.paletteSlots){
-  if(!slot){p.slots.push_back(0);continue;}
-  unsupported(*slot==0,"Transparent palette slot editing is not migrated yet");
+  if(!slot){p.slots.push_back(EmptyPaletteSlot);continue;}
   corrupt(!visible.count(*slot)||!placed.insert(*slot).second,"Invalid palette slot reference");p.slots.push_back(*slot);
  }
  p.slots=normalizePaletteSlots(p.entries,p.order,p.slots,p.columns);

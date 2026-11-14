@@ -1489,7 +1489,7 @@ void Editor::restorePaletteView(){const auto serial=currentDocument().paletteVie
 
 void Editor::choosePaletteLayout(bool manual){if(paletteGesture_)finishPalettePointer(true);if(paletteGrowth_)finishPaletteGrowth(true);paletteManual_=manual;if(!smoke_)try{const auto path=palettePreferencePath().parent_path();std::filesystem::create_directories(path);std::ofstream out(path/"palette-layout-mode.txt");out<<(manual?"manual":"auto");if(!out)throw std::runtime_error("Palette layout write");}catch(...){status_=U"色板布局偏好保存失败";}refresh();}
 
-void Editor::addManualPaletteColor(std::size_t slot){const auto slots=paletteViewSlots();if(slot<slots.size()&&slots[slot])return;try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_,slot,&slots,paletteColumns_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";refresh();return;}if(!paletteLocked_){paletteFocusedSlot_.reset();paletteBoxRange_.reset();}refresh();}
+void Editor::addManualPaletteColor(std::size_t slot){const auto slots=paletteViewSlots();if(slot<slots.size()&&slots[slot]!=EmptyPaletteSlot)return;try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_,slot,&slots,paletteColumns_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";refresh();return;}if(!paletteLocked_){paletteFocusedSlot_.reset();paletteBoxRange_.reset();}refresh();}
 
 std::string Editor::activeRailTool() const {
     if(currentTools().liquifyTool)return "liquify";

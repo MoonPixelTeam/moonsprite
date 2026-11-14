@@ -361,7 +361,7 @@ HistoryComparePaletteRoots appendDecodedHistoryPaletteValues(HistoryCompareDocum
    }
   }
   roots.paletteOrder=b.container(K::Array,manifest.paletteOrder.size());for(std::size_t i=0;i<manifest.paletteOrder.size();++i)b.add(roots.paletteOrder,std::to_string(i),b.number(manifest.paletteOrder[i]));
-  roots.paletteSlots=b.container(K::Array,palette.slots.size());for(std::size_t i=0;i<palette.slots.size();++i)b.add(roots.paletteSlots,std::to_string(i),palette.slots[i]?b.number(palette.slots[i]):b.null());
+  roots.paletteSlots=b.container(K::Array,palette.slots.size());for(std::size_t i=0;i<palette.slots.size();++i)b.add(roots.paletteSlots,std::to_string(i),palette.slots[i]!=EmptyPaletteSlot?b.number(palette.slots[i]):b.null());
   roots.paletteColumns=b.number(palette.columns);roots.nextColorId=b.number(palette.nextId);return roots;
  }catch(...){graph.values.resize(start);throw;}
 }

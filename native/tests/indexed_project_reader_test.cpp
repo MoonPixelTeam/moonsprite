@@ -1,4 +1,5 @@
 #include "project_import.h"
+#include "palette_layout.h"
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <roapi.h>
@@ -37,8 +38,10 @@ int wmain(int argc,wchar_t** argv){
    check(m.layers.size()==1&&m.cels.size()==1&&m.layers[0].surface==m.cels[0].surface,"Shared raster cache changed");
    const auto& s=*m.cels[0].surface;
    check(s.format==format&&s.width==row.GetNamedNumber(L"width")&&s.height==row.GetNamedNumber(L"height")&&s.pixels==pixels,"Raw/sparse indexed IDs changed");
-   rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);
-   rejects([&]{prepareEditablePalette(m);},ErrorKind::Unsupported);
+   const auto p=prepareEditablePalette(m);std::vector<int> runtimeSlots;for(const auto& id:slots)runtimeSlots.push_back(id.value_or(moon::EmptyPaletteSlot));
+   check(p.slots==runtimeSlots&&p.order==order&&p.entries.front().id==0,"Editable palette lost zero/null identities");
+   if(m.colorMode=="indexed")rejects([&]{prepareEditableImport(m);},ErrorKind::Unsupported);
+   else {const auto imported=prepareEditableImport(m);check(imported.palette.slots==runtimeSlots,"RGBA/grayscale palette import changed layout");}
   }
   for(const auto* mode:{"rgba","grayscale"})for(int linked:{0,1}){
    const auto m=readProjectManifest(load(dir/(std::string("mixed-")+mode+"-"+std::to_string(linked)+".moonsprite")));

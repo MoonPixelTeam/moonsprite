@@ -91,7 +91,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false,checkGroupStructure=false,checkGrayscale=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false,checkGroupStructure=false,checkGrayscale=false,checkPaletteZero=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -100,6 +100,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
   else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
   else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
+  else if(value==L"palette-zero"){checkGeometry=checkTextDialogs=false;checkPaletteZero=true;recognized=true;}
   else if(value==L"grayscale"){checkGeometry=checkTextDialogs=false;checkGrayscale=true;recognized=true;}
   else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
@@ -237,6 +238,18 @@ void Editor::smokeTileRepeat(){
   }
   replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
  }
+
+ if(checkPaletteZero){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  const auto previousLock=paletteLocked_;paletteLocked_=true;paletteManual_=false;palettePanelOpen_=true;
+  Document seed(2,2);auto p=seed.palette();p.entries={{0,U"zero",0x80443322},{7,U"seven",0xffabcdef}};p.slots={0,EmptyPaletteSlot,7,EmptyPaletteSlot};p.columns=2;p.nextId=8;p.independentOrder.reset();p.primaryId=EmptyPaletteSlot;p.selected.clear();replaceDocumentForSmoke(Document::fromImported(2,2,seed.timeline().state(),p,"palette-zero-ui",U"zero",std::make_shared<const std::vector<std::uint8_t>>()));refresh();
+  require(paletteButtonIds_==std::vector<int>({0,7})&&swatches_[0]->swatch==0x80443322,"Zero automatic swatch display");selectSwatch(0,false,false,false);require(currentDocument().palette().selected==std::vector<int>{0}&&currentDocument().palette().primaryId==0&&swatches_[0]->active&&swatches_[0]->foregroundMarker,"Zero swatch selection and role marker");
+  const auto h=currentDocument().historyPosition();swatches_[0]->doubleClick();require(pending_==Pending::PaletteName&&renameId_==0&&paletteInput_->text()=="zero"&&discard_->isVisible(),"Zero swatch rename entry");paletteInput_->setText("renamed zero");resolve(true);require(currentDocument().paletteEntry(0)->name==U"renamed zero"&&currentDocument().historyPosition()==h+1,"Zero rename commit");currentDocument().undo();require(currentDocument().paletteEntry(0)->name==U"zero","Zero rename Undo");currentDocument().redo();
+  openPaletteEditor(EmptyPaletteSlot,false);require(pending_==Pending::ColorRole,"Empty role sentinel editor");resolve(false);currentDocument().selectPalette(0);refresh();copyPaletteColors();require(paletteClipboard_==std::vector<Pixel>{0x80443322},"Zero clipboard copy");
+  paletteManual_=true;refresh();auto slots=paletteViewSlots();require(std::count(slots.begin(),slots.end(),0)==1&&std::count(slots.begin(),slots.end(),EmptyPaletteSlot)>0,"Zero manual view and holes");auto at=std::find(slots.begin(),slots.end(),0)-slots.begin();selectSwatch(at,false,false,false);require(currentDocument().palette().primaryId==0,"Zero manual selection");const auto hole=std::size_t(std::find(slots.begin(),slots.end(),EmptyPaletteSlot)-slots.begin());addManualPaletteColor(hole);require(currentDocument().paletteEntry(0)&&currentDocument().palette().entries.size()==3,"Manual add preserves zero");currentDocument().undo();refresh();require(currentDocument().palette().entries.size()==2&&std::find(paletteButtonIds_.begin(),paletteButtonIds_.end(),0)!=paletteButtonIds_.end(),"Zero manual add Undo");
+  currentDocument().selectPalette(0);currentDocument().selectSecondaryPalette(0);refresh();at=std::find(paletteButtonIds_.begin(),paletteButtonIds_.end(),0)-paletteButtonIds_.begin();require(swatches_.at(at)->foregroundMarker&&swatches_.at(at)->backgroundMarker,"Zero both role markers");traceStage("palette-zero");paletteLocked_=previousLock;paletteManual_=false;replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
+
  if(checkGrayscale){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));

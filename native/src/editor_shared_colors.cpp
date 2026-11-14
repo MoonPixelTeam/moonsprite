@@ -36,7 +36,7 @@ void Editor::setSharedColor(Pixel color,bool secondary){
 void Editor::rememberSelectedColor(bool secondary){
  if(!documentOpen_)return;
  if(secondary){sharedSecondary_=currentDocument().palette().secondary;colorRolesDirty_=true;colorRolesTimer_.stop();colorRolesTimer_.start();}
- else if(currentDocument().palette().primaryId)setSharedColor(currentDocument().palette().primary,false);
+ else if(currentDocument().palette().primaryId!=EmptyPaletteSlot)setSharedColor(currentDocument().palette().primary,false);
 }
 void Editor::swapSharedColors(){
  std::swap(sharedPrimary_,sharedSecondary_);

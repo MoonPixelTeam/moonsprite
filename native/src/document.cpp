@@ -1507,7 +1507,7 @@ Document Document::fromClipboardRaster(const SelectionClipboard& source) {
 }
 Document Document::fromImage(int width,int height,std::vector<Pixel> pixels,std::u32string name){if(width<1||height<1||width>32768||height>32768||std::uint64_t(width)*height>64ull*1024*1024||pixels.size()!=std::size_t(width)*height)throw std::invalid_argument("Image exceeds native coordinate or 256 MiB pixel budget");Document d(width,height);d.timeline_.mutableOwnedSurface(d.cel().id)->pixels=std::move(pixels);// legacy imported-palette.ts: sparse rare colors must survive large low-color images.
 std::unordered_set<Pixel> exact;for(const auto color:d.pixels())if(color>>24){exact.insert(color);if(exact.size()>4096)break;}
-auto colors=extractImportedPalette({d.pixels()},256,exact.size()<=4096?d.pixels().size():262144);d.palette_.entries.clear();d.palette_.slots.clear();int id=1;for(auto c:colors){{auto text=std::to_string(id);d.palette_.entries.push_back({id,std::u32string(text.begin(),text.end()),c});}d.palette_.slots.push_back(id++);}d.palette_.slots.resize((d.palette_.slots.size()+7)/8*8);d.palette_.nextId=id;d.name_=std::move(name);d.markSaved();return d;}
+auto colors=extractImportedPalette({d.pixels()},256,exact.size()<=4096?d.pixels().size():262144);d.palette_.entries.clear();d.palette_.slots.clear();int id=1;for(auto c:colors){{auto text=std::to_string(id);d.palette_.entries.push_back({id,std::u32string(text.begin(),text.end()),c});}d.palette_.slots.push_back(id++);}d.palette_.slots.resize((d.palette_.slots.size()+7)/8*8,EmptyPaletteSlot);d.palette_.nextId=id;d.name_=std::move(name);d.markSaved();return d;}
 bool Document::importSpriteSheet(const SheetImportOptions& options,std::optional<TransformPoint> pivot){
  if(pivot&&(!std::isfinite(pivot->x)||!std::isfinite(pivot->y)))throw std::invalid_argument("Invalid sprite sheet selection pivot");commitFloatingPaste();cancelStroke();
  validateSpriteSheetImportAllocation(*this,options);auto next=buildSpriteSheetImport(*this,options);
@@ -1645,7 +1645,7 @@ const PaletteEntry* Document::paletteEntry(int id) const {
 void Document::selectPaletteIds(const std::vector<int>& ids,int primary) {
   palette_.selected.clear();const auto& order=palette_.order();const std::unordered_set<int> available(order.begin(),order.end());std::unordered_set<int> chosen;chosen.reserve(std::min(ids.size(),available.size()));
   for(int id:ids)if(available.count(id)&&chosen.insert(id).second)palette_.selected.push_back(id);
-  palette_.primaryId=chosen.count(primary)?primary:palette_.selected.empty()?0:palette_.selected.back();
+  palette_.primaryId=chosen.count(primary)?primary:palette_.selected.empty()?EmptyPaletteSlot:palette_.selected.back();
   if(const auto entry=paletteEntry(palette_.primaryId)) palette_.primary=entry->color;
 }
 void Document::selectPalette(int id,bool additive) {
@@ -1658,7 +1658,7 @@ void Document::selectPalette(int id,bool additive) {
 void Document::selectPaletteRange(int id,int columns) {
   const auto& slots=palette_.slots;
   const auto end=std::find(slots.begin(),slots.end(),id);
-  if(id && end!=slots.end()) selectPaletteSlotRange(std::size_t(end-slots.begin()),columns);
+  if(id!=EmptyPaletteSlot && end!=slots.end()) selectPaletteSlotRange(std::size_t(end-slots.begin()),columns);
 }
 void Document::selectPaletteSlotRange(std::size_t slot,int columns,const std::vector<int>* viewSlots) {
   if(columns<1) return;
@@ -1666,37 +1666,37 @@ void Document::selectPaletteSlotRange(std::size_t slot,int columns,const std::ve
   if(slot>=slots.size()) return;
   const int id=slots[slot];
   const auto anchor=std::find(slots.begin(),slots.end(),palette_.primaryId);
-  if(!palette_.primaryId || anchor==slots.end()) {if(id) selectPalette(id);return;}
+  if(palette_.primaryId==EmptyPaletteSlot || anchor==slots.end()) {if(id!=EmptyPaletteSlot) selectPalette(id);return;}
   const int start=int(anchor-slots.begin()),end=int(slot);std::vector<int> ids;
   for(int row=std::min(start/columns,end/columns);row<=std::max(start/columns,end/columns);++row)
     for(int col=std::min(start%columns,end%columns);col<=std::max(start%columns,end%columns);++col)
-      if(row*columns+col<int(slots.size()) && slots[row*columns+col]) ids.push_back(slots[row*columns+col]);
+      if(row*columns+col<int(slots.size()) && slots[row*columns+col]!=EmptyPaletteSlot) ids.push_back(slots[row*columns+col]);
   selectPaletteIds(ids,id);
 }
 void Document::selectSecondaryPalette(int id) {
   if(const auto entry=paletteEntry(id)) {palette_.secondaryId=id;palette_.secondary=entry->color;palette_.selected={id};}
 }
-void Document::clearPaletteSelection() {palette_.selected.clear();palette_.primaryId=0;}
+void Document::clearPaletteSelection() {palette_.selected.clear();palette_.primaryId=EmptyPaletteSlot;}
 // legacy PalettePanel::movePalettePointer and palette-layout::repositionPaletteSlots.
 void Document::selectPaletteBox(std::size_t start,std::size_t end,int columns,const std::vector<int>* viewSlots) {
  if(columns<1)return;std::vector<int> ids;const auto& slots=viewSlots?*viewSlots:palette_.slots;
  for(std::size_t y=std::min(start/columns,end/columns);y<=std::max(start/columns,end/columns);++y)
-  for(std::size_t x=std::min(start%columns,end%columns);x<=std::max(start%columns,end%columns);++x){auto i=y*columns+x;if(i<slots.size() && slots[i])ids.push_back(slots[i]);}
- selectPaletteIds(ids,end<slots.size()?slots[end]:0);
+  for(std::size_t x=std::min(start%columns,end%columns);x<=std::max(start%columns,end%columns);++x){auto i=y*columns+x;if(i<slots.size() && slots[i]!=EmptyPaletteSlot)ids.push_back(slots[i]);}
+ selectPaletteIds(ids,end<slots.size()?slots[end]:EmptyPaletteSlot);
 }
 std::vector<int> Document::movedPaletteSlots(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns){
  columns=std::clamp(columns,1,256);target=std::max(0,target);const std::unordered_set<int> selected(ids.begin(),ids.end());
- std::vector<int> sources;for(int i=0;i<int(slots.size());++i)if(slots[i]&&selected.count(slots[i]))sources.push_back(i);
+ std::vector<int> sources;for(int i=0;i<int(slots.size());++i)if(slots[i]!=EmptyPaletteSlot&&selected.count(slots[i]))sources.push_back(i);
  if(sources.empty())return slots;int a=sources.front();for(int i:sources)if(slots[i]==anchor){a=i;break;}int minX=columns,maxX=0,minY=int(slots.size());
  for(int i:sources){minX=std::min(minX,i%columns);maxX=std::max(maxX,i%columns);minY=std::min(minY,i/columns);}
  const int dx=std::clamp(target%columns-a%columns,-minX,columns-1-maxX),dy=std::max(-minY,target/columns-a/columns);
  std::vector<int> destinations;auto next=slots;for(int i:sources)destinations.push_back((i/columns+dy)*columns+i%columns+dx);
- const int required=*std::max_element(destinations.begin(),destinations.end())+1;next.resize(std::max(int(next.size()),((required+columns-1)/columns)*columns),0);
- for(int i:sources)next[i]=0;std::vector<int> displaced;
- for(std::size_t i=0;i<sources.size();++i){const int dest=destinations[i];if(next[dest])displaced.push_back(next[dest]);next[dest]=slots[sources[i]];}
+ const int required=*std::max_element(destinations.begin(),destinations.end())+1;next.resize(std::max(int(next.size()),((required+columns-1)/columns)*columns),EmptyPaletteSlot);
+ for(int i:sources)next[i]=EmptyPaletteSlot;std::vector<int> displaced;
+ for(std::size_t i=0;i<sources.size();++i){const int dest=destinations[i];if(next[dest]!=EmptyPaletteSlot)displaced.push_back(next[dest]);next[dest]=slots[sources[i]];}
  const std::unordered_set<int> destinationSet(destinations.begin(),destinations.end());std::size_t sourceHole=0,hole=0;
- for(int id:displaced){while(sourceHole<sources.size()&&(next[sources[sourceHole]]||destinationSet.count(sources[sourceHole])))++sourceHole;int dest;
-  if(sourceHole<sources.size())dest=sources[sourceHole++];else{while(hole<next.size()&&(next[hole]||destinationSet.count(int(hole))))++hole;dest=int(hole);if(hole==next.size())next.resize(next.size()+columns,0);++hole;}next[dest]=id;}
+ for(int id:displaced){while(sourceHole<sources.size()&&(next[sources[sourceHole]]!=EmptyPaletteSlot||destinationSet.count(sources[sourceHole])))++sourceHole;int dest;
+  if(sourceHole<sources.size())dest=sources[sourceHole++];else{while(hole<next.size()&&(next[hole]!=EmptyPaletteSlot||destinationSet.count(int(hole))))++hole;dest=int(hole);if(hole==next.size())next.resize(next.size()+columns,EmptyPaletteSlot);++hole;}next[dest]=id;}
 
  return next;
 }
@@ -1709,7 +1709,7 @@ bool Document::reorderPaletteColors(const std::vector<int>& ids,const std::vecto
 // Actual movePaletteColor swaps only the primary slot with its neighbor,
 // including an empty neighbor. It never moves the entire selected group.
 bool Document::movePaletteColor(int direction){
- if(direction!=-1&&direction!=1)return false;auto before=currentPaletteSlots(palette_);const auto current=std::find(before.begin(),before.end(),palette_.primaryId?palette_.primaryId:-1);if(current==before.end())return false;const auto target=std::ptrdiff_t(current-before.begin())+direction;if(target<0||std::size_t(target)>=before.size())return false;auto after=before;std::swap(after[std::size_t(current-before.begin())],after[std::size_t(target)]);
+ if(direction!=-1&&direction!=1)return false;auto before=currentPaletteSlots(palette_);const auto current=std::find(before.begin(),before.end(),palette_.primaryId);if(palette_.primaryId==EmptyPaletteSlot||current==before.end())return false;const auto target=std::ptrdiff_t(current-before.begin())+direction;if(target<0||std::size_t(target)>=before.size())return false;auto after=before;std::swap(after[std::size_t(current-before.begin())],after[std::size_t(target)]);
  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=9;edit.paletteHistory.beforePalette=PaletteState{};edit.paletteHistory.afterPalette=PaletteState{};edit.paletteHistory.beforePalette->entries.clear();edit.paletteHistory.afterPalette->entries.clear();edit.paletteHistory.beforePalette->slots=std::move(before);edit.paletteHistory.beforePalette->columns=palette_.columns;edit.paletteHistory.afterPalette->slots=after;edit.paletteHistory.afterPalette->columns=palette_.columns;palette_.slots=std::move(after);palette_.independentOrder.reset();pushEdit(std::move(edit),U"调整颜色板顺序");return true;
 }
 void Document::repositionPaletteColors(const std::vector<int>& slots,const std::vector<int>& ids,int target,int anchor,int columns,bool storeColumns){
@@ -1739,30 +1739,30 @@ void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::ve
  // overwrite-only paste at exhaustion. Avoid another full
  // PaletteState copy for the ordinary paste path.
  const auto sourceSlots=normalizePaletteSlots(palette_.entries,palette_.order(),viewSlots?*viewSlots:palette_.slots,viewColumns>0?viewColumns:palette_.columns);std::size_t allocations=0;
- if(targets.empty()){const auto end=std::min<std::size_t>(sourceSlots.size(),65536);const auto available=std::count(sourceSlots.begin(),sourceSlots.begin()+end,0)+(65536-end);allocations=std::min<std::size_t>(count,available);}
- else{for(auto slot:indices)if(slot<65536&&(slot>=sourceSlots.size()||!sourceSlots[slot]))++allocations;}
+ if(targets.empty()){const auto end=std::min<std::size_t>(sourceSlots.size(),65536);const auto available=std::count(sourceSlots.begin(),sourceSlots.begin()+end,EmptyPaletteSlot)+(65536-end);allocations=std::min<std::size_t>(count,available);}
+ else{for(auto slot:indices)if(slot<65536&&(slot>=sourceSlots.size()||sourceSlots[slot]==EmptyPaletteSlot))++allocations;}
  requirePaletteIds(palette_,allocations);const bool independentOrder=palette_.independentOrder.has_value();cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=7;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,false);palette_.slots=sourceSlots;if(viewColumns>0)palette_.columns=std::clamp(viewColumns,1,256);std::vector<int> ids;
  // Entry indices survive vector reallocation; monotonic hole search preserves
  // legacy earliest-empty append order without scanning the occupied prefix again.
  std::unordered_map<int,std::size_t> positions;positions.reserve(palette_.entries.size()+allocations);for(std::size_t i=0;i<palette_.entries.size();++i)positions.emplace(palette_.entries[i].id,i);std::size_t hole=0;
- for(std::size_t i=0;i<count;++i){if(targets.empty())while(hole<palette_.slots.size()&&palette_.slots[hole])++hole;auto slot=targets.empty()?hole:indices[i];
-  if(slot>=65536)continue;if(slot>=palette_.slots.size())palette_.slots.resize(slot+1,0);int id=palette_.slots[slot];
-  if(id){if(const auto found=positions.find(id);found!=positions.end())palette_.entries[found->second].color=colors[i];}
+ for(std::size_t i=0;i<count;++i){if(targets.empty())while(hole<palette_.slots.size()&&palette_.slots[hole]!=EmptyPaletteSlot)++hole;auto slot=targets.empty()?hole:indices[i];
+  if(slot>=65536)continue;if(slot>=palette_.slots.size())palette_.slots.resize(slot+1,EmptyPaletteSlot);int id=palette_.slots[slot];
+  if(id!=EmptyPaletteSlot){if(const auto found=positions.find(id);found!=positions.end())palette_.entries[found->second].color=colors[i];}
   else{id=allocatePaletteId(palette_);const auto number=std::to_string(id);positions.emplace(id,palette_.entries.size());palette_.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});palette_.slots[slot]=id;}ids.push_back(id);
  }
 
- const auto columns=std::size_t(palette_.columns);palette_.slots.resize(std::max(columns,((palette_.slots.size()+columns-1)/columns)*columns),0);
- palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?0:ids.back());else clearPaletteSelection();const auto& before=*edit.paletteHistory.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.paletteHistory.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
+ const auto columns=std::size_t(palette_.columns);palette_.slots.resize(std::max(columns,((palette_.slots.size()+columns-1)/columns)*columns),EmptyPaletteSlot);
+ palette_.independentOrder.reset();if(selectResult)selectPaletteIds(ids,ids.empty()?EmptyPaletteSlot:ids.back());else clearPaletteSelection();const auto& before=*edit.paletteHistory.beforePalette;if(before.columns==palette_.columns && before.slots==palette_.slots && before.entries.size()==palette_.entries.size() && std::equal(before.entries.begin(),before.entries.end(),palette_.entries.begin(),[](const auto& a,const auto& b){return a.id==b.id&&a.name==b.name&&a.color==b.color;})){if(independentOrder){modified_=true;state_=nextState_++;++revision_;projectInformation_.operation();notifyRecording();}return;}edit.paletteHistory.afterPalette=palette_;pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 
 int Document::addPaletteColor(Pixel color,bool selectAdded,std::optional<std::size_t> targetSlot,const std::vector<int>* viewSlots,int viewColumns) {
   requirePaletteIds(palette_,1);if(targetSlot&&*targetSlot>=65536)throw std::length_error("Palette target exceeds native slot range");
   cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,false);edit.paletteHistory.paletteKind=1;const int id=allocatePaletteId(palette_);auto slots=currentPaletteSlots(palette_);
-  const auto append=[&](std::vector<int>& into,int columns){const auto hole=std::find(into.begin(),into.end(),0);if(hole!=into.end())*hole=id;else{const auto n=into.size();into.resize(n+columns,0);into[n]=id;}};
+  const auto append=[&](std::vector<int>& into,int columns){const auto hole=std::find(into.begin(),into.end(),EmptyPaletteSlot);if(hole!=into.end())*hole=id;else{const auto n=into.size();into.resize(n+columns,EmptyPaletteSlot);into[n]=id;}};
   append(slots,palette_.columns);
   if(targetSlot){slots=viewSlots?*viewSlots:edit.paletteHistory.beforePalette->slots;const int columns=viewColumns>0?std::clamp(viewColumns,1,256):palette_.columns;append(slots,columns);slots=movedPaletteSlots(slots,{id},int(*targetSlot),id,columns);palette_.columns=columns;}
   const auto name=std::to_string(id);palette_.entries.push_back({id,std::u32string(name.begin(),name.end()),color});palette_.slots=std::move(slots);
-  palette_.independentOrder.reset();palette_.selected=selectAdded?std::vector<int>{id}:std::vector<int>{};palette_.primaryId=selectAdded?id:0;
+  palette_.independentOrder.reset();palette_.selected=selectAdded?std::vector<int>{id}:std::vector<int>{};palette_.primaryId=selectAdded?id:EmptyPaletteSlot;
   edit.paletteHistory.afterPalette=capturePaletteEdit(1);pushEdit(std::move(edit),U"调整颜色板颜色");return id;
 }
 void Document::deletePaletteColors(const std::vector<int>& ids) {
@@ -1770,9 +1770,9 @@ void Document::deletePaletteColors(const std::vector<int>& ids) {
   // only. Entries remain available for later reuse and earlier color history.
   const auto order=palette_.order();const std::unordered_set<int> visible(order.begin(),order.end());std::unordered_set<int> removed;removed.reserve(std::min(ids.size(),visible.size()));for(int id:ids)if(visible.count(id))removed.insert(id);if(removed.empty())return;
   cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(2);edit.paletteHistory.beforePalette->slots=currentPaletteSlots(palette_);edit.paletteHistory.beforePalette->setOrder(order);edit.paletteHistory.paletteKind=2;palette_.slots=edit.paletteHistory.beforePalette->slots;
-  for(auto& slot:palette_.slots)if(slot&&removed.count(slot))slot=0;
+  for(auto& slot:palette_.slots)if(slot!=EmptyPaletteSlot&&removed.count(slot))slot=EmptyPaletteSlot;
   palette_.independentOrder.reset();auto& selected=palette_.selected;selected.erase(std::remove_if(selected.begin(),selected.end(),[&](int id){return removed.count(id);}),selected.end());
-  if(std::find(selected.begin(),selected.end(),palette_.primaryId)==selected.end())palette_.primaryId=selected.empty()?0:selected.back();
+  if(std::find(selected.begin(),selected.end(),palette_.primaryId)==selected.end())palette_.primaryId=selected.empty()?EmptyPaletteSlot:selected.back();
   edit.paletteHistory.afterPalette=capturePaletteEdit(2);pushEdit(std::move(edit),removed.size()>1?U"批量移除颜色板颜色":U"从颜色板移除颜色");
 }
 void Document::updatePaletteColor(int id,Pixel color) {
@@ -1813,7 +1813,7 @@ bool Document::sortPaletteColors(PaletteSortMode mode,bool descending){
  std::stable_sort(ids.begin(),ids.end(),[&](int left,int right){const auto& l=keys.at(left);const auto& r=keys.at(right);const Pixel a=l.color,b=r.color;const auto& x=l.derived;const auto& y=r.derived;double d=0;
  switch(mode){case PaletteSortMode::Saturation:d=x.saturation-y.saturation;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Brightness:d=x.brightness-y.brightness;if(!d)d=x.saturation-y.saturation;break;case PaletteSortMode::Luminance:d=x.luminance-y.luminance;if(!d)d=x.brightness-y.brightness;break;case PaletteSortMode::Red:case PaletteSortMode::Green:case PaletteSortMode::Blue:{int first=mode==PaletteSortMode::Red?0:mode==PaletteSortMode::Green?8:16;for(int shift:{first,0,8,16,24}){d=double((a>>shift)&255)-double((b>>shift)&255);if(d)break;}break;}case PaletteSortMode::Alpha:d=double(a>>24)-double(b>>24);break;default:break;}
  if(!d)d=hue(a,b,x,y);return descending?d>0:d<0;});
- const auto before=currentPaletteSlots(palette_);ids.resize(std::max(ids.size(),before.size()),0);if(ids==before)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteHistory.paletteKind=9;e.paletteHistory.beforePalette=PaletteState{};e.paletteHistory.afterPalette=PaletteState{};e.paletteHistory.beforePalette->entries.clear();e.paletteHistory.afterPalette->entries.clear();e.paletteHistory.beforePalette->slots=before;e.paletteHistory.beforePalette->columns=palette_.columns;e.paletteHistory.afterPalette->slots=ids;e.paletteHistory.afterPalette->setOrder(paletteOrderFromSlots(ids));e.paletteHistory.afterPalette->columns=palette_.columns;palette_.slots=std::move(ids);palette_.setOrder(paletteOrderFromSlots(palette_.slots));pushEdit(std::move(e),U"排序颜色板颜色");return true;
+ const auto before=currentPaletteSlots(palette_);ids.resize(std::max(ids.size(),before.size()),EmptyPaletteSlot);if(ids==before)return false;cancelStroke();Edit e{{},state_,nextState_};e.paletteHistory.paletteKind=9;e.paletteHistory.beforePalette=PaletteState{};e.paletteHistory.afterPalette=PaletteState{};e.paletteHistory.beforePalette->entries.clear();e.paletteHistory.afterPalette->entries.clear();e.paletteHistory.beforePalette->slots=before;e.paletteHistory.beforePalette->columns=palette_.columns;e.paletteHistory.afterPalette->slots=ids;e.paletteHistory.afterPalette->setOrder(paletteOrderFromSlots(ids));e.paletteHistory.afterPalette->columns=palette_.columns;palette_.slots=std::move(ids);palette_.setOrder(paletteOrderFromSlots(palette_.slots));pushEdit(std::move(e),U"排序颜色板颜色");return true;
 }
 namespace {
 struct PaletteGradientSampler {
@@ -1830,7 +1830,7 @@ struct PaletteGradientSampler {
 // legacy paletteGradient/raster HSV and workspace-palette gradientPaletteSlots.
 void Document::gradientPaletteSlots(std::vector<std::size_t> indices,int columns,bool byHue,const std::vector<int>* viewSlots){
  indices.erase(std::remove_if(indices.begin(),indices.end(),[](auto i){return i>=65536;}),indices.end());std::sort(indices.begin(),indices.end());indices.erase(std::unique(indices.begin(),indices.end()),indices.end());if(indices.size()<2)return;columns=std::clamp(columns,1,256);
- auto next=palette_;next.slots=normalizePaletteSlots(next.entries,next.order(),viewSlots?*viewSlots:next.slots,columns);next.columns=columns;const auto required=indices.back()+1;while(next.slots.size()<required)next.slots.resize(next.slots.size()+columns,0);std::unordered_map<int,std::size_t> positions;for(std::size_t i=0;i<next.entries.size();++i)positions.emplace(next.entries[i].id,i);
+ auto next=palette_;next.slots=normalizePaletteSlots(next.entries,next.order(),viewSlots?*viewSlots:next.slots,columns);next.columns=columns;const auto required=indices.back()+1;while(next.slots.size()<required)next.slots.resize(next.slots.size()+columns,EmptyPaletteSlot);std::unordered_map<int,std::size_t> positions;for(std::size_t i=0;i<next.entries.size();++i)positions.emplace(next.entries[i].id,i);
  auto endpoint=[&](std::size_t slot,Pixel fallback){auto found=positions.find(next.slots[slot]);return found==positions.end()?fallback:next.entries[found->second].color;};const auto start=endpoint(indices.front(),palette_.primary),end=endpoint(indices.back(),palette_.secondary);
  const PaletteGradientSampler sample(start,end,byHue);for(std::size_t i=0;i<indices.size();++i){const Pixel color=sample(i,indices.size());
  const auto slot=indices[i];auto found=positions.find(next.slots[slot]);if(found!=positions.end())next.entries[found->second].color=color;else{const int id=allocatePaletteId(next);const auto number=std::to_string(id);positions.emplace(id,next.entries.size());next.entries.push_back({id,std::u32string(number.begin(),number.end()),color});next.slots[slot]=id;}}
@@ -1859,10 +1859,10 @@ void Document::setPaletteRole(Pixel color,bool secondary,bool locked) {
   if(!locked && entry && entry->color==previous) updatePaletteColor(id,color);
   (secondary?palette_.secondary:palette_.primary)=color;
   if(!locked) return;
-  int matching=entry && entry->color==color?id:0;
-  if(!matching) for(int candidate:palette_.order()) if(const auto* found=paletteEntry(candidate);found&&found->color==color) {matching=candidate;break;}
+  int matching=entry && entry->color==color?id:EmptyPaletteSlot;
+  if(matching==EmptyPaletteSlot) for(int candidate:palette_.order()) if(const auto* found=paletteEntry(candidate);found&&found->color==color) {matching=candidate;break;}
   if(secondary) palette_.secondaryId=matching;
-  else {palette_.primaryId=matching;if(!matching) palette_.selected.clear();
+  else {palette_.primaryId=matching;if(matching==EmptyPaletteSlot) palette_.selected.clear();
     else if(std::find(palette_.selected.begin(),palette_.selected.end(),matching)==palette_.selected.end()) palette_.selected={matching};}
 }
 void Document::renamePaletteColor(int id,const std::u32string& name) {
@@ -1881,10 +1881,10 @@ void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,c
  for(std::size_t i=0;i<colors.size();++i){auto& cursor=cursors[colors[i]];const auto found=reusable.find(colors[i]);std::size_t entry;if(found!=reusable.end()&&cursor<found->second.size())entry=found->second[cursor++];else{const int id=allocatePaletteId(next);const auto number=std::to_string(id);entry=next.entries.size();positions.emplace(id,entry);next.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});}ids.push_back(next.entries[entry].id);if(names&&i<names->size())next.entries[entry].name=(*names)[i];}
 
  next.columns=columns?std::clamp(columns,1,256):palette_.columns;
- if(columns){next.slots.clear();for(auto cell:slots)next.slots.push_back(cell&&*cell<ids.size()?ids[*cell]:0);}else{next.slots=ids;while(next.slots.size()%next.columns)next.slots.push_back(0);}
+ if(columns){next.slots.clear();for(auto cell:slots)next.slots.push_back(cell&&*cell<ids.size()?ids[*cell]:EmptyPaletteSlot);}else{next.slots=ids;while(next.slots.size()%next.columns)next.slots.push_back(EmptyPaletteSlot);}
  next.slots=normalizePaletteSlots(next.entries,ids,columns?next.slots:std::vector<int>{},next.columns);
  bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(std::size_t i=0;same&&i<palette_.entries.size();++i)same=next.entries[i].name==palette_.entries[i].name;if(same)return;
- next.independentOrder.reset();next.selected.clear();next.primaryId=0;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
+ next.independentOrder.reset();next.selected.clear();next.primaryId=EmptyPaletteSlot;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=11;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,true);edit.paletteHistory.afterPalette=next;palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");
 }
 void Document::applyExtractedPalette(const std::vector<Pixel>& colors,bool append,int columns){

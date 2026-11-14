@@ -1427,7 +1427,7 @@ gfx::Size Editor::modalMinimumSize() const {
     else if(pending_==Pending::OpenError){width=214;height=99;}
     else if(pending_==Pending::SheetImport){width=480;height=315;}
     else if(pending_==Pending::LoopSection)width=240;
-    else if(pending_==Pending::BrushFolderName || (pending_==Pending::PaletteName && renameId_!=0))width=146;
+    else if(pending_==Pending::BrushFolderName || (pending_==Pending::PaletteName && renameId_!=EmptyPaletteSlot))width=146;
     return {width,height};
   }
 
@@ -1634,7 +1634,7 @@ void Editor::layoutModal() {const auto rc=uiLogical(clientBounds());
 
     const bool confirmation=pending_==Pending::New || pending_==Pending::Open || pending_==Pending::Close || pending_==Pending::CloseDocument;
 
-    const bool two=confirmation || pending_==Pending::PaletteSave || pending_==Pending::AntiAlias || pending_==Pending::Convolution || pending_==Pending::SheetImport || pending_==Pending::GifExport || pending_==Pending::SpriteSheet || pending_==Pending::StaticExport || pending_==Pending::ReplaceColor || pending_==Pending::BrushFolderName || pending_==Pending::ImageResize || pending_==Pending::ColorAdjustment || pending_==Pending::PaletteExtract || pending_==Pending::LoopSection || (pending_==Pending::PaletteName && renameId_!=0);
+    const bool two=confirmation || pending_==Pending::PaletteSave || pending_==Pending::AntiAlias || pending_==Pending::Convolution || pending_==Pending::SheetImport || pending_==Pending::GifExport || pending_==Pending::SpriteSheet || pending_==Pending::StaticExport || pending_==Pending::ReplaceColor || pending_==Pending::BrushFolderName || pending_==Pending::ImageResize || pending_==Pending::ColorAdjustment || pending_==Pending::PaletteExtract || pending_==Pending::LoopSection || (pending_==Pending::PaletteName && renameId_!=EmptyPaletteSlot);
 
     const int count=confirmation?3:two?2:1;
 

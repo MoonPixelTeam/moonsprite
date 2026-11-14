@@ -246,13 +246,13 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
     // once; do not rescan all old entries for every swatch on a large save.
     std::map<int,JsonObject> originalPalette;if(source){const auto original=doc.TryLookup(L"palette");if(original&&original.ValueType()==JsonValueType::Array)for(const auto& old:original.GetArray()){const auto o=old.GetObject();originalPalette.emplace(int(o.GetNamedNumber(L"id")),o);}}
     JsonArray palette,order,slots;std::set<int> ids;
-    for(const auto& entry:d.palette().entries){if(entry.id<1||!ids.insert(entry.id).second||entry.id>=d.palette().nextId)throw Error(ErrorKind::Corrupt,"Invalid save palette ID");JsonObject item,color;
+    for(const auto& entry:d.palette().entries){if(entry.id<0||!ids.insert(entry.id).second||entry.id>=d.palette().nextId)throw Error(ErrorKind::Corrupt,"Invalid save palette ID");JsonObject item,color;
       // Preserve original palette-entry metadata where present.
       if(const auto original=originalPalette.find(entry.id);original!=originalPalette.end())item=original->second;
       number(item,L"id",entry.id);text(item,L"name",utf8(entry.name));int shift=0;for(const auto key:{L"r",L"g",L"b",L"a"}){number(color,key,(entry.color>>shift)&255);shift+=8;}item.Insert(L"color",color);palette.Append(item);
     }
     const auto rawOrder=d.palette().order();for(int id:rawOrder)order.Append(JsonValue::CreateNumberValue(id));
-    for(int slot:normalizePaletteSlots(d.palette().entries,rawOrder,d.palette().slots,d.palette().columns)){if(slot)slots.Append(JsonValue::CreateNumberValue(slot));else slots.Append(JsonValue::CreateNullValue());}
+    for(int slot:normalizePaletteSlots(d.palette().entries,rawOrder,d.palette().slots,d.palette().columns)){if(slot!=EmptyPaletteSlot)slots.Append(JsonValue::CreateNumberValue(slot));else slots.Append(JsonValue::CreateNullValue());}
     number(doc,L"paletteColumns",d.palette().columns);doc.Insert(L"palette",palette);doc.Insert(L"paletteOrder",order);doc.Insert(L"paletteSlots",slots);number(doc,L"nextColorId",d.palette().nextId);
     if(source)for(auto it=files.begin();it!=files.end();){const auto& name=it->first;if(name.rfind("timelapse/",0)==0&&name.size()>14&&name.substr(name.size()-4)==".png")it=files.erase(it);else ++it;}
     doc.Insert(L"timelapse",timelapsejson::encode(d.timelapseSettings(),files));

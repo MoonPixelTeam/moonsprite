@@ -960,7 +960,7 @@ private:
 
   PaletteClipboardData paletteClipboardLayout_;
 
-  int paletteColumns_=1,renameId_=0;
+  int paletteColumns_=1,renameId_=EmptyPaletteSlot;
 
   SpaceDragScroll panelScrollDrag_;
 

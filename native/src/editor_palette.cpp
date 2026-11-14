@@ -8,7 +8,7 @@ namespace moon::editor {
 
 void Editor::syncPaletteButtons() {
 
-    auto ids=paletteGrowth_?paletteGrowth_->preview.slots:paletteGesture_ && paletteGesture_->moving && paletteGesture_->active?Document::movedPaletteSlots(paletteGesture_->slots,paletteGesture_->ids,int(paletteGesture_->last),paletteGesture_->anchor,paletteGesture_->columns):paletteViewSlots();if(paletteManual_){auto count=ids.size();while(count>std::size_t(paletteColumns_)&&!ids[count-1])--count;ids.resize(count);}
+    auto ids=paletteGrowth_?paletteGrowth_->preview.slots:paletteGesture_ && paletteGesture_->moving && paletteGesture_->active?Document::movedPaletteSlots(paletteGesture_->slots,paletteGesture_->ids,int(paletteGesture_->last),paletteGesture_->anchor,paletteGesture_->columns):paletteViewSlots();if(paletteManual_){auto count=ids.size();while(count>std::size_t(paletteColumns_)&&ids[count-1]==EmptyPaletteSlot)--count;ids.resize(count);}
 
     while(swatches_.size()<ids.size()) {
 
@@ -32,7 +32,7 @@ void Editor::syncPaletteButtons() {
 
         const int id=paletteButtonIds_[index];cancelStroke();
 
-        if(!id) {if(paletteManual_)addManualPaletteColor(index);else {try{currentDocument().addPaletteColor(ink_,paletteLocked_,index<currentDocument().palette().slots.size()?std::optional<std::size_t>(index):std::nullopt);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}}
+        if(id==EmptyPaletteSlot) {if(paletteManual_)addManualPaletteColor(index);else {try{currentDocument().addPaletteColor(ink_,paletteLocked_,index<currentDocument().palette().slots.size()?std::optional<std::size_t>(index):std::nullopt);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();}}
 
         else openPaletteEditor(id,false);
 
@@ -61,7 +61,7 @@ void Editor::syncPaletteButtons() {
 
       for(const int id:palette.slots) if(const auto entry=lookup(entries,id)) if(entry->color==color) return id;
 
-      return 0;
+      return EmptyPaletteSlot;
 
     };
 
@@ -69,7 +69,7 @@ void Editor::syncPaletteButtons() {
 
     for(std::size_t i=0;i<swatches_.size();++i) {
 
-      const auto entry=lookup(displayEntries,paletteButtonIds_[i]);swatches_[i]->swatch=paletteButtonIds_[i]<0?0xff000000:entry?entry->color:0;
+      const auto entry=lookup(displayEntries,paletteButtonIds_[i]);swatches_[i]->swatch=paletteButtonIds_[i]<0&&paletteButtonIds_[i]!=EmptyPaletteSlot?0xff000000:entry?entry->color:0;
 
       swatches_[i]->paletteDisplayName=showPaletteNames_ && entry && std::any_of(entry->name.begin(),entry->name.end(),[](char32_t c){return !javascriptWhitespace(c);})?entry->name:U"";
 
@@ -125,13 +125,13 @@ void Editor::beginPalettePointer(std::size_t index,const ui::MouseMessage& mouse
 
     bool outline=paletteSelectionOverlay_ && paletteSelectionOverlay_->isVisible() && paletteOutlineContains(mouse.position());
 
-    int anchor=0;
+    int anchor=EmptyPaletteSlot;
 
     if(outline){double nearest=1e30;for(std::size_t i=0;i<swatches_.size();++i)if(swatches_[i]->active){const auto c=swatches_[i]->paletteColorBounds().center();double distance=double(c.x-mouse.position().x)*(c.x-mouse.position().x)+double(c.y-mouse.position().y)*(c.y-mouse.position().y);if(distance<nearest){nearest=distance;anchor=paletteButtonIds_[i];}}}
 
     for(std::size_t i=0;i<swatches_.size();++i)if(swatches_[i]->isVisible() && swatches_[i]->active && swatches_[i]->paletteSelectionContains(mouse.position())){outline=true;anchor=paletteButtonIds_[i];break;}
 
-    const auto selected=currentDocument().palette().selected;const int id=index<paletteButtonIds_.size()?paletteButtonIds_[index]:0;
+    const auto selected=currentDocument().palette().selected;const int id=index<paletteButtonIds_.size()?paletteButtonIds_[index]:EmptyPaletteSlot;
 
     const bool moving=!mouse.shiftPressed() && !mouse.ctrlPressed() && !mouse.cmdPressed() &&
 
@@ -143,7 +143,7 @@ void Editor::beginPalettePointer(std::size_t index,const ui::MouseMessage& mouse
 
     if(mouse.shiftPressed() || mouse.ctrlPressed() || mouse.cmdPressed())return;
 
-    paletteGesture_=PaletteGesture{index,index,moving?(mouse.right()?id:(anchor?anchor:id)):id,paletteColumns_,mouse.right(),moving,false,mouse.position(),paletteViewSlots(),selected,std::chrono::steady_clock::now(),beforeView};
+    paletteGesture_=PaletteGesture{index,index,moving?(mouse.right()?id:(anchor!=EmptyPaletteSlot?anchor:id)):id,paletteColumns_,mouse.right(),moving,false,mouse.position(),paletteViewSlots(),selected,std::chrono::steady_clock::now(),beforeView};
 
     captureMouse();
 
@@ -197,11 +197,11 @@ void Editor::pastePaletteColors() try {
 
     PaletteClipboardData data=paletteClipboardLayout_;if(data.colors!=paletteClipboard_){data={};data.colors=paletteClipboard_;}std::string text;if(clip::get_text(text)&&text.size()<=4*1024*1024)if(auto parsed=parsePaletteClipboard(text))data=std::move(*parsed);if(data.colors.empty())return;
 
-    auto slots=paletteViewSlots();int columns=paletteColumns_;const auto before=capturePaletteView();auto after=before;std::vector<std::size_t> targets;const auto& selectedIds=currentDocument().palette().selected;const std::unordered_set<int> selected(selectedIds.begin(),selectedIds.end());const bool bounded=paletteManual_&&paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity();if(bounded)targets=paletteGradientSlots();else for(std::size_t i=0;i<slots.size();++i)if(slots[i]&&selected.count(slots[i]))targets.push_back(i);if(targets.empty()&&paletteFocusedSlot_)targets.push_back(*paletteFocusedSlot_);
+    auto slots=paletteViewSlots();int columns=paletteColumns_;const auto before=capturePaletteView();auto after=before;std::vector<std::size_t> targets;const auto& selectedIds=currentDocument().palette().selected;const std::unordered_set<int> selected(selectedIds.begin(),selectedIds.end());const bool bounded=paletteManual_&&paletteBoxRange_&&paletteBoxRange_->identity==currentDocument().identity();if(bounded)targets=paletteGradientSlots();else for(std::size_t i=0;i<slots.size();++i)if(slots[i]!=EmptyPaletteSlot&&selected.count(slots[i]))targets.push_back(i);if(targets.empty()&&paletteFocusedSlot_)targets.push_back(*paletteFocusedSlot_);
 
     auto colors=data.colors;if(targets.size()==1&&!bounded){const auto start=targets.front();targets.clear();for(std::size_t i=0;i<colors.size();++i)targets.push_back(start+i);}
 
-    if(paletteManual_&&data.columns>0&&!data.slots.empty()){const auto empty=std::find(slots.begin(),slots.end(),0);const auto start=targets.empty()?std::size_t(empty-slots.begin()):targets.front();const auto x=start%columns,y=start/columns,height=data.slots.size()/data.columns;auto fit=fitPaletteSlotsToGrid(slots,columns,std::max(columns,int(x)+data.columns),int(y+height));slots=std::move(fit.slots);columns=fit.columns;targets.clear();colors.clear();for(std::size_t i=0;i<data.slots.size();++i)if(data.slots[i]&&x+i%data.columns<std::size_t(columns)){targets.push_back((y+i/data.columns)*columns+x+i%data.columns);colors.push_back(data.colors[*data.slots[i]]);}after.columns=columns;after.focused=y*columns+x;after.box=std::make_pair(y*columns+x,(y+height-1)*columns+std::min(std::size_t(columns-1),x+data.columns-1));}
+    if(paletteManual_&&data.columns>0&&!data.slots.empty()){const auto empty=std::find(slots.begin(),slots.end(),EmptyPaletteSlot);const auto start=targets.empty()?std::size_t(empty-slots.begin()):targets.front();const auto x=start%columns,y=start/columns,height=data.slots.size()/data.columns;auto fit=fitPaletteSlotsToGrid(slots,columns,std::max(columns,int(x)+data.columns),int(y+height));slots=std::move(fit.slots);columns=fit.columns;targets.clear();colors.clear();for(std::size_t i=0;i<data.slots.size();++i)if(data.slots[i]&&x+i%data.columns<std::size_t(columns)){targets.push_back((y+i/data.columns)*columns+x+i%data.columns);colors.push_back(data.colors[*data.slots[i]]);}after.columns=columns;after.focused=y*columns+x;after.box=std::make_pair(y*columns+x,(y+height-1)*columns+std::min(std::size_t(columns-1),x+data.columns-1));}
 
     const auto revision=currentDocument().revision();currentDocument().pastePaletteColors(colors,targets,true,&slots,paletteManual_?columns:0);if(currentDocument().revision()!=revision&&paletteManual_)currentDocument().annotatePaletteView(before,after);if(!paletteManual_)paletteBoxRange_.reset();refresh();
 
@@ -211,13 +211,13 @@ void Editor::selectSwatch(std::size_t index,bool ctrl,bool shift,bool secondary)
 
     paletteBoxRange_.reset();
 
-    const int id=index<paletteButtonIds_.size()?paletteButtonIds_[index]:0;if(!gradientPending_)cancelStroke();paletteFocused_=true;
+    const int id=index<paletteButtonIds_.size()?paletteButtonIds_[index]:EmptyPaletteSlot;if(!gradientPending_)cancelStroke();paletteFocused_=true;
 
     if(secondary) currentDocument().selectSecondaryPalette(id);
 
     else if(shift) {const auto slots=paletteViewSlots();currentDocument().selectPaletteSlotRange(index,paletteColumns_,&slots);}
 
-    else if(id) currentDocument().selectPalette(id,ctrl);else currentDocument().clearPaletteSelection();
+    else if(id!=EmptyPaletteSlot) currentDocument().selectPalette(id,ctrl);else currentDocument().clearPaletteSelection();
 
     rememberSelectedColor(secondary);ink_=currentDocument().palette().primary;lastPaletteInk_=ink_;if(gradientPending_){gradientRequest_=true;gradientTick();}requestFocus();refresh();
 
@@ -383,15 +383,15 @@ void Editor::openPaletteEditor(int id,bool secondary) {
 
     if(!gradientPending_)cancelStroke();renameId_=id;editingSecondary_=secondary;
 
-    pending_=id?Pending::PaletteName:Pending::ColorRole;layoutPalette();
+    pending_=id!=EmptyPaletteSlot?Pending::PaletteName:Pending::ColorRole;layoutPalette();
 
-    paletteInput_->setText(id?utf8Text(currentDocument().paletteEntry(id)->name):paletteHex(secondary?currentDocument().palette().secondary:currentDocument().palette().primary));
+    paletteInput_->setText(id!=EmptyPaletteSlot?utf8Text(currentDocument().paletteEntry(id)->name):paletteHex(secondary?currentDocument().palette().secondary:currentDocument().palette().primary));
 
     menuBar_->setEnabled(false);for(auto b:commands_) b->setEnabled(false);for(auto b:swatches_) b->setEnabled(false);for(auto b:panelTabs_) b->setEnabled(false);
 
-    discard_->caption=U"确定";keep_->caption=id?U"取消":U"关闭";
+    discard_->caption=U"确定";keep_->caption=id!=EmptyPaletteSlot?U"取消":U"关闭";
 
-    discard_->setVisible(id!=0);keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);paletteInput_->requestFocus();paletteInput_->selectAllText();refresh();
+    discard_->setVisible(id!=EmptyPaletteSlot);keep_->setVisible(true);dialogClose_->setVisible(true);paletteInput_->setVisible(true);paletteInput_->requestFocus();paletteInput_->selectAllText();refresh();
 
   }
 
@@ -411,7 +411,7 @@ void Editor::openPaletteSave(){
     // temporary palette even when its colors match a library file.
     const auto active=activeStoredPalette_;refreshStoredPalettes();activeStoredPalette_=active;persistStoredPalettePreferences();if(paletteSaveName_.empty())paletteSaveName_=extractionDefaultName();
 
-    openPaletteEditor(0,false);pending_=Pending::PaletteSave;paletteInput_->numeric=false;paletteInput_->suffix.clear();paletteInput_->setText(utf8Text(paletteSaveName_));discard_->caption=U"保存为 PNG";keep_->caption=U"关闭";discard_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();
+    openPaletteEditor(EmptyPaletteSlot,false);pending_=Pending::PaletteSave;paletteInput_->numeric=false;paletteInput_->suffix.clear();paletteInput_->setText(utf8Text(paletteSaveName_));discard_->caption=U"保存为 PNG";keep_->caption=U"关闭";discard_->setVisible(true);refresh();paletteInput_->requestFocus();paletteInput_->selectAllText();
 
   }
 
@@ -435,7 +435,7 @@ void Editor::openPaletteExtraction(){
 
     if(pending_!=Pending::None || currentDocument().active())return;
 
-    openPaletteEditor(0,false);pending_=Pending::PaletteExtract;extractMode_=0;paletteInput_->numeric=true;paletteInput_->setText(std::to_string(extractLimit_));extractNameInput_->setText(utf8Text(extractionDefaultName()));discard_->caption=U"提取";keep_->caption=U"取消";discard_->setVisible(true);layoutModal();paletteInput_->requestFocus();paletteInput_->selectAllText();invalidate();
+    openPaletteEditor(EmptyPaletteSlot,false);pending_=Pending::PaletteExtract;extractMode_=0;paletteInput_->numeric=true;paletteInput_->setText(std::to_string(extractLimit_));extractNameInput_->setText(utf8Text(extractionDefaultName()));discard_->caption=U"提取";keep_->caption=U"取消";discard_->setVisible(true);layoutModal();paletteInput_->requestFocus();paletteInput_->selectAllText();invalidate();
 
   }
 
@@ -453,7 +453,7 @@ bool Editor::applyPaletteExtraction(){
 
 std::vector<std::size_t> Editor::paletteGradientSlots()const{
 
-    const auto slots=paletteViewSlots();const int columns=paletteColumns_;if(columns<1)return {};const auto& selection=currentDocument().palette().selected;const std::unordered_set<int> chosen(selection.begin(),selection.end());std::vector<std::size_t> selected;for(std::size_t i=0;i<slots.size();++i)if(slots[i]&&chosen.count(slots[i]))selected.push_back(i);
+    const auto slots=paletteViewSlots();const int columns=paletteColumns_;if(columns<1)return {};const auto& selection=currentDocument().palette().selected;const std::unordered_set<int> chosen(selection.begin(),selection.end());std::vector<std::size_t> selected;for(std::size_t i=0;i<slots.size();++i)if(slots[i]!=EmptyPaletteSlot&&chosen.count(slots[i]))selected.push_back(i);
 
     std::size_t left=columns,right=0,top=65536,bottom=0;auto include=[&](std::size_t i){left=std::min(left,i%columns);right=std::max(right,i%columns);top=std::min(top,i/columns);bottom=std::max(bottom,i/columns);};if(paletteBoxRange_ && paletteBoxRange_->identity==currentDocument().identity() && paletteBoxRange_->selected==currentDocument().palette().selected){include(paletteBoxRange_->start);include(paletteBoxRange_->end);}else{if(selected.size()<2)return {};for(auto i:selected)include(i);}std::vector<std::size_t> result;for(auto y=top;y<=bottom;++y)for(auto x=left;x<=right;++x){const auto i=y*columns+x;if(paletteManual_||i<slots.size())result.push_back(i);}return result;
 
@@ -565,7 +565,7 @@ void Editor::refreshStoredPalettes(){try{auto palettes=paletteLibraryStore().lis
 
 void Editor::importStoredPalette(){wchar_t filename[32768]{};OPENFILENAMEW picker{};picker.lStructSize=sizeof(picker);picker.hwndOwner=GetActiveWindow();picker.lpstrFile=filename;picker.nMaxFile=32768;picker.lpstrFilter=L"支持的色板\0*.json;*.gpl;*.txt;*.hex;*.csv;*.act;*.pal;*.ase;*.aco;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.ico\0MoonSprite JSON\0*.palette.json\0\0";picker.Flags=OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_NOCHANGEDIR;if(!choosePaletteImportFile_(&picker))return;try{auto saved=paletteLibraryStore().importFile(filename);activeStoredPalette_=saved.id;refreshStoredPalettes();applyStoredPalette(saved);}catch(const std::exception& e){status_=U"色板导入失败："+storedPaletteError(e);refresh();}}
 
-bool Editor::saveStoredPalette(bool current){try{StoredPalette p;const auto name=javascriptTrim(unicodeText(paletteInput_->text()));p.name=utf8Text(name.empty()?extractionDefaultName():std::u32string(name));const auto& state=currentDocument().palette();p.columns=state.columns;p.names.emplace();auto ids=visiblePaletteOrder(state.entries,state.order());for(int id:ids){auto e=currentDocument().paletteEntry(id);p.colors.push_back(e->color);p.names->push_back(utf8Text(e->name));}std::unordered_map<int,std::size_t> index;for(std::size_t i=0;i<ids.size();++i)index[ids[i]]=i;for(int id:normalizePaletteSlots(state.entries,state.order(),state.slots,state.columns)){auto it=index.find(id);p.slots.push_back(id&&it!=index.end()?std::optional<std::size_t>(it->second):std::nullopt);}auto saved=paletteLibraryStore().save(std::move(p),current?activeStoredPalette_:std::string());activeStoredPalette_=saved.id;paletteSaveName_=unicodeText(saved.name);persistStoredPalettePreferences();status_=U"色板已保存："+unicodeText(saved.name);return true;}catch(const std::exception& e){status_=U"色板保存失败："+storedPaletteError(e);invalidate();return false;}}
+bool Editor::saveStoredPalette(bool current){try{StoredPalette p;const auto name=javascriptTrim(unicodeText(paletteInput_->text()));p.name=utf8Text(name.empty()?extractionDefaultName():std::u32string(name));const auto& state=currentDocument().palette();p.columns=state.columns;p.names.emplace();auto ids=visiblePaletteOrder(state.entries,state.order());for(int id:ids){auto e=currentDocument().paletteEntry(id);p.colors.push_back(e->color);p.names->push_back(utf8Text(e->name));}std::unordered_map<int,std::size_t> index;for(std::size_t i=0;i<ids.size();++i)index[ids[i]]=i;for(int id:normalizePaletteSlots(state.entries,state.order(),state.slots,state.columns)){auto it=index.find(id);p.slots.push_back(id!=EmptyPaletteSlot&&it!=index.end()?std::optional<std::size_t>(it->second):std::nullopt);}auto saved=paletteLibraryStore().save(std::move(p),current?activeStoredPalette_:std::string());activeStoredPalette_=saved.id;paletteSaveName_=unicodeText(saved.name);persistStoredPalettePreferences();status_=U"色板已保存："+unicodeText(saved.name);return true;}catch(const std::exception& e){status_=U"色板保存失败："+storedPaletteError(e);invalidate();return false;}}
 
 void Editor::openStoredPaletteLibrary(){if(pending_!=Pending::None)return;pending_=Pending::PaletteLibrary;menuBar_->setEnabled(false);discard_->setVisible(false);keep_->caption=U"关闭";keep_->setVisible(true);dialogClose_->setVisible(true);refreshStoredPalettes();}
 
