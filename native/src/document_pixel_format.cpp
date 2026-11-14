@@ -1,9 +1,38 @@
 #include "document.h"
 #include <unordered_set>
+#include <unordered_map>
+#include "document_history_storage.h"
 
 namespace moon {
+bool Document::convertColorMode(color_mode::Mode target){
+ if(target==color_mode::Mode::Indexed)throw std::invalid_argument("Indexed storage migration is incomplete");
+ if(target==colorMode_||active())return false;
+ // Legacy visits displayed layers and cels, excluding masks and independent
+ // tileset resources. Native displayed layers use the owning cel storage.
+ (void)history_storage::adjustmentStorageBudget(timeline_,3);
+ Edit edit{{},state_,nextState_};
+ edit.snapshotHistory.beforeColorMode=colorMode_;edit.snapshotHistory.afterColorMode=target;
+ edit.paletteHistory.paletteKind=13;
+ edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=palette_;
+ edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=timeline_.state().masks;
+ std::unordered_map<const void*,timeline::LinkedPixelStorage> converted;
+ for(const auto& cel:timeline_.state().cels)if(cel.surface&&timeline_.resolveSurface(cel.id).source->id==cel.id){
+  const auto& before=*cel.surface;
+  auto found=converted.find(before.pixels.identity());
+  if(found==converted.end()){
+   timeline::LinkedPixelStorage pixels(before.pixels);
+   if(target==color_mode::Mode::Grayscale)for(auto& value:pixels)value=relativeLuminancePixel(value);
+   found=converted.emplace(before.pixels.identity(),std::move(pixels)).first;
+  }
+  auto after=before;after.pixels.share(found->second);
+  edit.contentHistory.surfaceChanges.push_back({cel.id,before,std::move(after)});
+ }
+ // No animation-selection snapshot: replay keeps the current UI context.
+ reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();
+ pushEdit(std::move(edit),U"转换颜色模式");return true;
+}
 bool Document::setPixelFormat(color_mode::PixelFormat format){
- if(format==pixelFormat_)return false;
+ if(colorMode_!=color_mode::Mode::Rgba||format==pixelFormat_)return false;
  // workspace-commands-color.ts::setPixelFormat: visit document layers/cels,
  // deduplicate shared storage, leave masks and independent source resources.
  std::unordered_set<const void*> seen;

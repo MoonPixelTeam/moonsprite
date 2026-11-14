@@ -6,7 +6,7 @@ namespace moon {
 // Legacy workspace-commands-color document replacement, extended by the user's
 // approved resource fix: unlocked references select resources; every reference
 // observes the resulting resource, including references on locked layers.
-inline bool synchronizePaletteResources(timeline::State& state,timeline::Pixel before,timeline::Pixel after){
+inline bool synchronizePaletteResources(timeline::State& state,timeline::Pixel before,timeline::Pixel after,bool grayscale=false){
  if(state.tilesets.empty()||before==after)return false;
  std::unordered_map<std::string,const timeline::Layer*> layers;
  std::unordered_map<std::string,bool> locked;
@@ -40,13 +40,13 @@ inline bool synchronizePaletteResources(timeline::State& state,timeline::Pixel b
  for(auto& c:state.cels){if(c.linkedCelId||c.runtimeSharedCelId||!c.surface)continue;
   if(c.tilemap){const auto& grid=*c.tilemap;auto& surface=*c.surface;
    for(std::size_t i=0;i<grid.cells.size();++i){const auto& cell=grid.cells[i];if(!cell)continue;auto set=changed.find(cell->tilesetId);if(set==changed.end()||!set->second.count(cell->tileId))continue;
-    const auto tile=tiles::cellPixels(cell,grid.tileWidth,grid.tileHeight,catalog);const int x=int(i%grid.columns)*grid.tileWidth,y=int(i/grid.columns)*grid.tileHeight;
+    const auto tile=tiles::cellPixels(cell,grid.tileWidth,grid.tileHeight,catalog,grayscale);const int x=int(i%grid.columns)*grid.tileWidth,y=int(i/grid.columns)*grid.tileHeight;
     auto& pixels=static_cast<std::vector<timeline::Pixel>&>(surface.pixels);
     for(int dy=0;dy<grid.tileHeight&&y+dy<surface.height;++dy)if(x<surface.width)std::copy_n(tile.begin()+std::size_t(dy)*grid.tileWidth,std::min(grid.tileWidth,surface.width-x),pixels.begin()+std::size_t(y+dy)*surface.width+x);
    }
   }
   if(c.freeTiles){const auto& l=*layers.at(c.layerId);if(!l.freeTiles)continue;const auto& data=*l.freeTiles;bool affected=changed.count(data.legacyTilesetId)>0;for(const auto& s:data.sources)affected|=changed.count(s.tilesetId)>0;
-   if(affected)c.surface->pixels=free_tiles::render(data,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height);
+   if(affected)c.surface->pixels=free_tiles::render(data,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height,grayscale);
   }
  }
  return true;

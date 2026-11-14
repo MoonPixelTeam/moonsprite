@@ -15,13 +15,14 @@ using Format=color_mode::PixelFormat;
 namespace moon {struct RasterHistoryFixture {
  static void install(Document& d,bool sparse){auto state=d.timeline_.state();auto& s=*state.cels.front().surface;s.width=sparse?2:d.width_;s.height=sparse?2:d.height_;s.offsetX=sparse?-1:0;s.offsetY=sparse?1:0;s.pixels.assign(std::size_t(s.width)*s.height,0x7f29537b);s.pixels[0]=0x00123456;d.timeline_=timeline::Timeline(std::move(state));}
  static void raw(Document& d,std::vector<Pixel> pixels,int w=0,int h=0,int x=0,int y=0){auto state=d.timeline_.state();auto& s=*state.cels.front().surface;s.width=w?w:d.width_;s.height=h?h:d.height_;s.offsetX=x;s.offsetY=y;s.pixels=std::move(pixels);d.timeline_=timeline::Timeline(std::move(state));}
+ static void timelineState(Document& d,timeline::State state){d.timeline_=timeline::Timeline(std::move(state));}
  static void resource(Document& d){auto state=d.timeline_.state();auto t=tiles::blankTileset("independent",U"Tiles",1,1,"tile",1);t.pixels[0]=0x9729537b;state.tilesets.push_back(std::move(t));d.timeline_=timeline::Timeline(std::move(state));}
  static void run(Document& d){Document::Edit e{{},d.state_,d.nextState_};e.contentHistory.targetCelId=d.cel().id;e.contentHistory.runs={{0,2,0,0x7f29537b}};d.applyEdit(e,true);d.pushEdit(std::move(e),U"Run");}
 };}
 static void dot(Document& d,Point p,Pixel value){d.beginStroke(p,value);CHECK(d.commitStroke());}
 static void normalized(const Document& d,const std::vector<Pixel>& pixels){for(auto p:pixels)CHECK(d.normalizeCanvasPacked(p)==p);}
 static Document snapshot(const Document& d){DocumentSnapshot s(d);while(!s.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(2))){}return s.finish();}
-static void roundtrip(Document& d){for(int type=0;type<3;++type){auto encoded=type==0?project::encodeEditableProject(d):type==1?project::encodeRecoveryProject(d):project::encodeHistoryProject(d);auto m=project::readProjectManifest(encoded.bytes);CHECK(m.unsupported.empty()&&m.pixelFormat==color_mode::name(d.pixelFormat()));auto copy=project::createEditableDocument(project::prepareEditableImport(m));CHECK(copy.pixelFormat()==d.pixelFormat()&&copy.canvasPixels()==d.canvasPixels());auto again=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(project::encodeEditableProject(copy).bytes)));CHECK(again.pixelFormat()==d.pixelFormat()&&again.canvasPixels()==d.canvasPixels());}}
+static void roundtrip(Document& d){for(int type=0;type<3;++type){auto encoded=type==0?project::encodeEditableProject(d):type==1?project::encodeRecoveryProject(d):project::encodeHistoryProject(d);auto m=project::readProjectManifest(encoded.bytes);CHECK(m.unsupported.empty()&&m.pixelFormat==color_mode::name(d.pixelFormat())&&m.colorMode==color_mode::name(d.colorMode()));auto copy=project::createEditableDocument(project::prepareEditableImport(m));CHECK(copy.colorMode()==d.colorMode()&&copy.pixelFormat()==d.pixelFormat()&&copy.canvasPixels()==d.canvasPixels());auto again=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(project::encodeEditableProject(copy).bytes)));CHECK(again.colorMode()==d.colorMode()&&again.pixelFormat()==d.pixelFormat()&&again.canvasPixels()==d.canvasPixels());}}
 static void conversion(Format format,bool sparse){
  Document d(5,4);RasterHistoryFixture::install(d,sparse);d.addLinkedFrame();const auto alias=d.cel().id;const auto root=d.timeline().resolveSurface(alias).source->id;const auto before=d.timeline().resolveSurface(root).surface->pixels;
  const auto owner=d.layer().id,frame=d.frame().id;CHECK(d.createAttachedMask(owner,frame));CHECK(d.fillSelectionOrCanvas(0xff808080));const auto masks=d.timeline().state().masks;d.exitAttachedMask();
@@ -29,8 +30,8 @@ static void conversion(Format format,bool sparse){
  const auto& actual=d.timeline().resolveSurface(root).surface->pixels;for(std::size_t i=0;i<before.size();++i)CHECK(actual[i]==color_mode::quantizePixelColor(before[i],format));CHECK(d.timeline().state().masks.front().mask.surface.pixels==masks.front().mask.surface.pixels);
  const auto revision=d.revision();CHECK(!d.setPixelFormat(format)&&d.revision()==revision);CHECK(snapshot(d).pixelFormat()==format);roundtrip(d);
 }
-static void tools(Format format){
- Document d(8,6);d.setImportedPixelFormat(format);const auto blank=d.canvasPixels();constexpr Pixel color=0x9729537b;BrushOptions brush{1,100,BrushShape::Square};
+static void tools(Format format,color_mode::Mode mode=color_mode::Mode::Rgba){
+ Document d(8,6);d.setImportedPixelFormat(format);d.setImportedColorMode(mode);const auto blank=d.canvasPixels();constexpr Pixel color=0x9729537b;BrushOptions brush{1,100,BrushShape::Square};
  auto preview=d.brushPreview({2,2},{2,2},color,brush);CHECK(preview.at(18)==d.normalizeCanvasPacked(color));d.beginStroke({2,2},color,brush);CHECK(d.pixels()[18]==preview.at(18));d.cancelStroke();CHECK(d.canvasPixels()==blank);
  d.beginStroke({2,2},color,brush);CHECK(d.commitStroke());const auto drawn=d.canvasPixels();d.undo();CHECK(d.canvasPixels()==blank);d.redo();CHECK(d.canvasPixels()==drawn);normalized(d,drawn);
  d.beginStroke({2,2},0,brush);CHECK(d.commitStroke());CHECK(d.pixels()[18]==0);d.undo();CHECK(d.canvasPixels()==drawn);
@@ -65,8 +66,8 @@ static void dynamicsAndAa(Format format){
  Document d(8,6);d.setImportedPixelFormat(format);BrushOptions brush{1,73,BrushShape::Square};d.beginStroke({1,1},0x9729537b,brush,nullptr,0,nullptr,false);d.configureStrokeDynamics(brush,nullptr,0x9129537b,0x536b9513,0);d.updateDynamicStroke({1,1},{1,1,1,73,0,.25},true);d.updateDynamicStroke({5,3},{5,3,2,57,0,.75});CHECK(d.commitStroke());normalized(d,d.canvasPixels());const auto painted=d.canvasPixels();d.undo();d.redo();CHECK(d.canvasPixels()==painted);
  Document aa(5,5);aa.setImportedPixelFormat(format);for(int i=1;i<4;++i)dot(aa,{i,i},0xffc06020);const auto before=aa.canvasPixels();CHECK(aa.beginAntiAliasPreview());auto task=aa.captureAntiAliasSurfaceTask({});CHECK(task&&Document::runAntiAliasSurfaceTask(*task,[]{return false;}));aa.publishAntiAliasSurfaceTask(std::move(*task));const auto preview=aa.displayPixels();normalized(aa,preview);aa.commitAntiAliasAdjustment();CHECK(aa.canvasPixels()==preview);aa.undo();CHECK(aa.canvasPixels()==before);aa.redo();CHECK(aa.canvasPixels()==preview);
 }
-static void localHistoryFormat(Format format){
- Document source=Document::withBuiltinPalette(3,2,U"History format");source.setImportedPixelFormat(format);
+static void localHistoryFormat(Format format,color_mode::Mode mode=color_mode::Mode::Rgba){
+ Document source=Document::withBuiltinPalette(3,2,U"History format");source.setImportedPixelFormat(format);source.setImportedColorMode(mode);
  const auto saved=project::encodeHistoryProject(source);auto manifest=std::make_shared<const project::ReadManifest>(project::readProjectManifest(saved.bytes));auto d=project::createEditableDocument(project::prepareEditableImport(*manifest));
  local_history::HistoryCompareDocument comparison;const auto root=local_history::appendDecodedHistoryMetadataValues(comparison,d,*manifest,"runtime-format");
  const auto& fields=comparison.values[root].properties;const auto field=std::find_if(fields.begin(),fields.end(),[](const auto& p){return p.first=="pixelFormat";});CHECK(field!=fields.end());const auto text=std::string(color_mode::name(format));CHECK(comparison.values[field->second].text==std::u16string(text.begin(),text.end()));
@@ -79,4 +80,68 @@ static void manifestFallback(){
  auto& bytes=files.at("manifest.json");const std::string json(bytes.begin(),bytes.end());
  for(int kind=0;kind<4;++kind){auto root=JsonObject::Parse(winrt::to_hstring(json));auto doc=root.GetNamedObject(L"document");if(kind==0)doc.Remove(L"pixelFormat");if(kind==1)doc.Insert(L"pixelFormat",JsonValue::CreateStringValue(L"unknown"));if(kind==2)doc.Insert(L"pixelFormat",JsonValue::CreateNumberValue(42));if(kind==3)doc.Insert(L"pixelFormat",JsonValue::CreateNullValue());const auto text=winrt::to_string(root.Stringify());bytes.assign(text.begin(),text.end());auto m=readProjectManifest(std::make_shared<const Bytes>(encodeResourceArchive(files)));CHECK(m.unsupported.empty()&&m.pixelFormat=="rgba32");CHECK(createEditableDocument(prepareEditableImport(m)).pixelFormat()==Format::Rgba32);}
 }
-int main(){try{winrt::init_apartment();for(unsigned i=0;i<8;++i){std::cout<<"format "<<i<<std::endl;const auto format=Format(i);conversion(format,false);conversion(format,true);tools(format);scriptsAndHistory(format);transforms(format);dynamicsAndAa(format);linkedLayersAndResources(format);localHistoryFormat(format);preferences::RuntimeSettings p;p.set("colorLayers.pixelFormat.Select",std::to_string(i));std::istringstream encoded(p.encode());CHECK(preferences::RuntimeSettings::decode(encoded).index("colorLayers.pixelFormat.Select")==int(i));}manifestFallback();std::cout<<"Eight RGBA pixel formats: conversion/tools/preview/history/script/save/recovery passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+static void grayscaleTiles(){
+ using Mode=color_mode::Mode;
+ // Grid display is document-normalized; its independent source remains color.
+ Document grid(4,2);dot(grid,{0,0},0xff29537b);CHECK(grid.convertLayerToTilemap(2,2,U"Gray grid"));const auto resources=grid.timeline().state().tilesets;const auto cells=grid.cel().tilemap->cells;
+ CHECK(grid.convertColorMode(Mode::Grayscale));CHECK(grid.timeline().state().tilesets.front().pixels==resources.front().pixels&&grid.cel().tilemap->cells==cells);roundtrip(grid);
+ const auto gray=grid.canvasPixels();grid.undo();CHECK(grid.colorMode()==Mode::Rgba&&grid.canvasPixels()[0]==0xff29537b);grid.redo();CHECK(grid.canvasPixels()==gray);
+ CHECK(grid.resizeImage(8,4));normalized(grid,grid.canvasPixels());roundtrip(grid);grid.undo();CHECK(grid.canvasPixels()==gray);
+ // Overlapping free instances normalize each source before blend, not the output.
+ Document free(4,2);CHECK(free.createFreeTileLayer(U"Gray free"));auto state=free.timeline().state();auto& layer=*std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==free.layer().id;});auto& cel=*std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==layer.id;});
+ auto& data=*layer.freeTiles;const auto first=data.sources.front();auto& set=*std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==first.tilesetId;});set.pixels[0]=0xff29537b;
+ auto secondSet=set;secondSet.id="gray-second-set";secondSet.pixels[0]=0x975b1997;state.tilesets.push_back(secondSet);auto second=first;second.id="gray-second-source";second.tilesetId=secondSet.id;data.sources.push_back(second);
+ free_tiles::Instance a;a.id="gray-instance-a";a.sourceId=first.id;free_tiles::Instance b=a;b.id="gray-instance-b";b.sourceId=second.id;b.opacity=.73;cel.freeTiles->instances={a,b};cel.surface->pixels=free_tiles::render(data,*cel.freeTiles,state.tilesets,4,2,true);
+ const auto expected=cel.surface->pixels;auto colored=free_tiles::render(data,*cel.freeTiles,state.tilesets,4,2);CHECK(expected[0]!=relativeLuminancePixel(colored[0]));
+ const auto layerId=layer.id;RasterHistoryFixture::timelineState(free,std::move(state));free.setImportedColorMode(Mode::Grayscale);free.selectLayer(layerId);const auto sourcePixels=free.timeline().state().tilesets.front().pixels;CHECK(free.canvasPixels()==expected);roundtrip(free);
+ CHECK(free.setFreeTileInstanceView(true));const auto instance=free.freeTileCel().freeTiles->instances.front().id;Document::FreeTileInstanceChanges move;move.x=1;CHECK(free.setFreeTileInstanceProperties(instance,move));normalized(free,free.canvasPixels());CHECK(free.timeline().state().tilesets.front().pixels==sourcePixels);roundtrip(free);free.undo();CHECK(free.canvasPixels()==expected);free.redo();roundtrip(free);
+}
+static void grayscaleContract(){
+ using Mode=color_mode::Mode;
+ constexpr Pixel source=0x7f29537b,hidden=0x00123456;
+ Document d(5,4);RasterHistoryFixture::install(d,true);d.setImportedPixelFormat(Format::Rgb565);
+ const auto firstFrame=d.frame().id;d.addLinkedFrame();
+ const auto alias=d.cel().id,root=d.timeline().resolveSurface(alias).source->id;
+ const auto before=d.timeline().resolveSurface(root).surface->pixels;
+ const auto palette=d.palette();const auto h=d.historyPosition();
+ CHECK(d.convertColorMode(Mode::Grayscale)&&d.colorMode()==Mode::Grayscale);
+ CHECK(d.pixelFormat()==Format::Rgb565&&d.historyPosition()==h+1);
+ const auto& converted=d.timeline().resolveSurface(root).surface->pixels;
+ for(std::size_t i=0;i<before.size();++i)CHECK(converted[i]==relativeLuminancePixel(before[i]));
+ CHECK(converted[0]==relativeLuminancePixel(hidden));
+ CHECK(d.timeline().resolveSurface(alias).source->id==root);
+ CHECK(d.palette().entries.size()==palette.entries.size()&&d.palette().primary==palette.primary);
+ CHECK(!d.convertColorMode(Mode::Grayscale)&&d.historyPosition()==h+1);
+ const auto revision=d.revision();CHECK(!d.setPixelFormat(Format::Rgb24)&&d.revision()==revision&&d.pixelFormat()==Format::Rgb565);
+ d.selectFrame(firstFrame);d.previewSelection(SelectionMask{1,1,2,1,{}});const auto selection=d.selection();
+ d.undo();CHECK(d.colorMode()==Mode::Rgba&&d.frame().id==firstFrame&&selectionEqual(d.selection(),selection));
+ CHECK(d.timeline().resolveSurface(root).surface->pixels==before);
+ d.redo();CHECK(d.colorMode()==Mode::Grayscale&&d.frame().id==firstFrame&&selectionEqual(d.selection(),selection));
+ CHECK(snapshot(d).colorMode()==Mode::Grayscale);roundtrip(d);
+ const auto gray=d.canvasPixels();CHECK(d.convertColorMode(Mode::Rgba));
+ CHECK(d.canvasPixels()==gray&&d.pixelFormat()==Format::Rgb565);
+ d.undo();CHECK(d.colorMode()==Mode::Grayscale&&d.canvasPixels()==gray);
+ bool rejected=false;try{d.convertColorMode(Mode::Indexed);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected&&d.colorMode()==Mode::Grayscale);
+ Document linked(4,2);dot(linked,{0,0},source);const auto original=linked.layer().id;
+ const auto peer=linked.createLinkedLayer(original);CHECK(!peer.empty());
+ RasterHistoryFixture::resource(linked);const auto resource=linked.timeline().state().tilesets[0].pixels;
+ CHECK(linked.createAttachedMask(original,linked.frame().id));CHECK(linked.fillSelectionOrCanvas(0xff808080));linked.exitAttachedMask();
+ const auto masks=linked.timeline().state().masks;
+ CHECK(linked.convertColorMode(Mode::Grayscale));
+ auto checkLinked=[&]{const auto* a=linked.timeline().findCel(original,linked.frame().id);const auto* b=linked.timeline().findCel(peer,linked.frame().id);CHECK(linked.timeline().resolveSurface(a->id).surface->pixels.identity()==linked.timeline().resolveSurface(b->id).surface->pixels.identity());};checkLinked();
+ CHECK(linked.timeline().state().tilesets[0].pixels==resource);
+ CHECK(linked.timeline().state().masks[0].mask.surface.pixels==masks[0].mask.surface.pixels);
+ linked.undo();CHECK(linked.colorMode()==Mode::Rgba&&linked.canvasPixels()[0]==source);checkLinked();
+ linked.redo();CHECK(linked.colorMode()==Mode::Grayscale);checkLinked();
+ Document drawing(5,4);drawing.setImportedColorMode(Mode::Grayscale);
+ CHECK(drawing.normalizeCanvasPacked(hidden)==hidden&&drawing.normalizeCanvasColor(hidden)==relativeLuminancePixel(hidden));
+ const auto preview=drawing.brushPreview({2,2},{2,2},source,BrushOptions{1,100,BrushShape::Square});
+ dot(drawing,{2,2},source);CHECK(drawing.canvasPixels()[12]==relativeLuminancePixel(source)&&drawing.canvasPixels()[12]==preview.at(12));
+ const auto drawn=drawing.canvasPixels();drawing.undo();CHECK(drawing.canvasPixels()[12]==0);drawing.redo();CHECK(drawing.canvasPixels()==drawn);
+ CHECK(drawing.fillPixels({0,0},0xff1937b9));normalized(drawing,drawing.canvasPixels());
+ Document live(5,4);CHECK(live.rollbackProject(drawing)&&live.colorMode()==Mode::Grayscale);
+ live.undo();CHECK(live.colorMode()==Mode::Rgba);live.redo();CHECK(live.colorMode()==Mode::Grayscale);
+ for(unsigned i=0;i<8;++i){tools(Format(i),Mode::Grayscale);localHistoryFormat(Format(i),Mode::Grayscale);}
+}
+
+int main(){try{winrt::init_apartment();grayscaleContract();grayscaleTiles();for(unsigned i=0;i<8;++i){std::cout<<"format "<<i<<std::endl;const auto format=Format(i);conversion(format,false);conversion(format,true);tools(format);scriptsAndHistory(format);transforms(format);dynamicsAndAa(format);linkedLayersAndResources(format);localHistoryFormat(format);preferences::RuntimeSettings p;p.set("colorLayers.pixelFormat.Select",std::to_string(i));std::istringstream encoded(p.encode());CHECK(preferences::RuntimeSettings::decode(encoded).index("colorLayers.pixelFormat.Select")==int(i));}manifestFallback();std::cout<<"Eight RGBA pixel formats: conversion/tools/preview/history/script/save/recovery passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

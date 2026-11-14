@@ -461,6 +461,7 @@ menuCommands_.bind("exportAllFrames",{[this]{openFramePngExport();},[this]{retur
 
 menuCommands_.bind("exportDocument",{[this]{openDocumentExport();},{},{}});
 
+for(const auto& choice:std::vector<std::pair<std::string,color_mode::Mode>>{{"convertColorModeRgba",color_mode::Mode::Rgba},{"convertColorModeGrayscale",color_mode::Mode::Grayscale}}){const auto mode=choice.second;menuCommands_.bind(choice.first,{[this,mode]{try{if(currentDocument().convertColorMode(mode))refresh();}catch(const std::exception& e){status_=U"颜色模式转换失败："+unicodeText(e.what());refresh();}},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!currentDocument().active();},[this,mode]{return currentDocument().colorMode()==mode;}});}
 menuCommands_.bind("canvasResize",{[this]{openCanvasResize();},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating());},{}});
 for(const auto& definition:filterPresetDefinitions()){const auto preset=definition.preset;menuCommands_.bind("filter:"+std::string(definition.id),{[this,preset]{openFilterPreset(preset);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating());},{}});}
 menuCommands_.bind("lcdScreen",{[this]{openFilterPreset(FilterPreset::CrtSubtle,0,true);},[this]{return documentOpen_&&!homeOpen_&&pending_==Pending::None&&(!currentDocument().active()||currentDocument().floating())&&currentDocument().timelineSelection().layers.size()==1;},{}});

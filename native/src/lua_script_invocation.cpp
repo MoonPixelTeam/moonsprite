@@ -44,7 +44,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
  }
  auto& out=invocation_;out.target={d.identity(),d.revision(),d.projectId(),d.layer().id,d.frame().id,{}};
  out.target.capturePreview(d);
- out.documentName=d.name();out.layerName=d.layer().name;out.filePath=path.value_or(d.sourceFilePath());out.width=d.width();out.height=d.height();
+ out.colorMode=d.colorMode();out.documentName=d.name();out.layerName=d.layer().name;out.filePath=path.value_or(d.sourceFilePath());out.width=d.width();out.height=d.height();
  out.opacity=int(std::clamp(std::floor(d.layer().opacity*255+.5),0.,255.));out.visible=d.layer().visible;out.locked=d.layer().locked;out.groupId=d.layer().groupId;
  out.stackIndex=state.layers.size()-std::size_t(std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==d.layer().id;})-state.layers.begin());
  out.foreground=d.palette().primary;out.background=d.palette().secondary;out.selection=d.selection();out.mseSnapshotJson=std::move(mse);
@@ -90,7 +90,7 @@ std::string Invocation::contextJson()const{
  winrt::Windows::Data::Json::JsonValue::Parse(winrt::to_hstring(mseSnapshotJson));
  std::string out="{";auto field=[&](const char* key,const std::string& value){if(out.size()>1)out+=',';out+='"';out+=key;out+="\":";out+=value;};
  auto text=[&](const char* key,const std::string& value){field(key,quote(value));};auto number=[&](const char* key,auto value){field(key,std::to_string(value));};
- text("documentId",target.documentId);text("documentName",utf8(documentName));number("documentWidth",width);number("documentHeight",height);text("documentFilePath",winrt::to_string(filePath.wstring()));text("colorMode","rgba");
+ text("documentId",target.documentId);text("documentName",utf8(documentName));number("documentWidth",width);number("documentHeight",height);text("documentFilePath",winrt::to_string(filePath.wstring()));text("colorMode",std::string(color_mode::name(colorMode)));
  text("layerId",target.layerId);text("layerName",utf8(layerName));number("layerWidth",target.expected.width);number("layerHeight",target.expected.height);number("layerOffsetX",target.expected.x);number("layerOffsetY",target.expected.y);number("layerOpacity",opacity);
  field("layerVisible",visible?"true":"false");field("layerLocked",locked?"true":"false");text("layerFormat","rgba");field("layerGroupId",groupId?quote(*groupId):"null");number("layerStackIndex",stackIndex);number("frameNumber",frameNumber);
  field("pixels","");array(out,*target.expected.pixels);field("activeLayerCels","");out+='[';bool comma=false;for(const auto& c:cels){if(comma)out+=',';comma=true;out+="{\"id\":"+quote(c.id)+",\"frameId\":"+quote(c.frameId)+",\"frameNumber\":"+std::to_string(c.frameNumber)+",\"surface\":";surface(out,c.surface);out+='}';}out+=']';

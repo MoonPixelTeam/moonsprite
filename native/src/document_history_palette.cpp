@@ -20,6 +20,12 @@ std::unique_ptr<Document::PaletteReplay> Document::preparePaletteEdit(const Edit
  const auto& view=redo?edit.paletteHistory.afterPaletteView:edit.paletteHistory.beforePaletteView;
  if(view){target.view.emplace(view);target.viewSerial=paletteViewRestoreSerial_+1;}
  const int kind=edit.paletteHistory.paletteKind;
+ if(kind==13){
+  // Color-mode history owns palette data, not selected swatches or role colors.
+  target.entries=state.entries;target.order.emplace(state.independentOrder);
+  target.slots=state.slots;target.columns=state.columns;target.nextId=state.nextId;
+  return prepared;
+ }
  if(kind==12||kind==7){target.full.emplace(state);if(kind==7){target.full->secondary=palette_.secondary;target.full->secondaryId=palette_.secondaryId;}return prepared;}
  if(kind==4||kind==11){
   std::unordered_map<int,const std::u32string*> names;names.reserve(state.entries.size());for(const auto& entry:state.entries)names[entry.id]=&entry.name;

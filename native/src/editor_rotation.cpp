@@ -10,6 +10,7 @@
 #include "ui/property.h"
 #include "relative_luminance.h"
 #include "raster_geometry.h"
+#include "new_document_dialog.h"
 namespace moon::editor {
 std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
 void drawSelectionBrushCoverage(ui::Graphics&,const SelectionBrushStroke&,int,int,repeat::Mode,const gfx::Rect&,double);
@@ -90,7 +91,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false,checkGroupStructure=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false,checkGroupStructure=false,checkGrayscale=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -99,6 +100,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"free-placement-preview"){checkGeometry=checkTextDialogs=false;checkPlacementPreview=true;recognized=true;}
   else if(value==L"mask-brush-preview"){checkGeometry=checkTextDialogs=false;checkMaskPreview=true;recognized=true;}
   else if(value==L"mask-shift-lines"){checkGeometry=checkTextDialogs=false;checkMaskShift=true;recognized=true;}
+  else if(value==L"grayscale"){checkGeometry=checkTextDialogs=false;checkGrayscale=true;recognized=true;}
   else if(value==L"pixel-formats"){checkGeometry=checkTextDialogs=false;checkPixelFormats=true;recognized=true;}
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
   else if(value==L"layer-creation"){checkGeometry=checkTextDialogs=false;checkLayerCreation=true;recognized=true;}
@@ -233,6 +235,16 @@ void Editor::smokeTileRepeat(){
    else require(cleared(),"Frame UI creation Undo revived cleared selection");
    require(runShortcutCommand("redo"),"Frame UI Redo entry");refresh();require(d.frame().id==made&&cleared(),"Frame UI Redo clearing");traceStage("frame-creation",command,mode);
   }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
+ if(checkGrayscale){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));
+  for(int i=0;i<8;++i){auto& d=currentDocument();d.setImportedPixelFormat(color_mode::PixelFormat(i));d.beginStroke({0,0},0x7f29537b);d.commitStroke();const auto before=d.canvasPixels();const auto frame=d.frame().id;const auto h=d.historyPosition();refresh();require(menuItems_.at("convertColorModeGrayscale")->available(),"Gray conversion menu enabled");menuItems_.at("convertColorModeGrayscale")->Click();require(d.colorMode()==color_mode::Mode::Grayscale&&d.historyPosition()==h+1&&d.pixelFormat()==color_mode::PixelFormat(i),"Gray actual menu transaction");const auto gray=d.canvasPixels();menuItems_.at("undo")->Click();require(d.colorMode()==color_mode::Mode::Rgba&&d.canvasPixels()==before&&d.frame().id==frame,"Gray actual Undo");menuItems_.at("redo")->Click();require(d.colorMode()==color_mode::Mode::Grayscale&&d.canvasPixels()==gray,"Gray actual Redo");
+   commands_[1]->Click();currentTools().eraser=false;currentTools().brushDynamics={};currentTools().pencilImageBrush.reset();currentTools().brushProfiles[0]={1,100,BrushShape::Square};currentView().isoViewEnabled=false;currentView().relativeLuminance=false;setTileRepeat(repeat::Mode::Off);currentView().zoom=8./uiScale;ink_=0x9729537b;refresh();requestFocus();const auto expected=d.brushPreview({3,2},{3,2},ink_,currentTools().brushProfiles[0]);send(ui::kMouseDownMessage,{3.25,2.25});if(d.strokeActive())enableFlags(ui::HAS_CAPTURE);send(ui::kMouseUpMessage,{3.25,2.25});disableFlags(ui::HAS_CAPTURE);require(d.canvasPixels()[19]==relativeLuminancePixel(ink_)&&d.canvasPixels()[19]==expected.at(19),"Gray actual pointer preview/commit");menuItems_.at("convertColorModeRgba")->Click();require(d.colorMode()==color_mode::Mode::Rgba&&d.canvasPixels()[19]==expected.at(19),"Gray to RGBA does not requantize");traceStage("grayscale",i);replaceDocumentForSmoke(std::move(*std::make_unique<Document>(8,6)));
+  }
+  runtimePreferences_.set("colorLayers.pixelFormat.Select","4");runScriptWorkspace("document.create",R"({"width":8,"height":6,"name":"Gray workspace","colorMode":"grayscale"})");require(currentDocument().colorMode()==color_mode::Mode::Grayscale&&currentDocument().pixelFormat()==color_mode::PixelFormat::Rgb332&&!currentDocument().canUndo(),"Gray workspace create");
+  NewDocumentDialog dialog(font_,skin_,toolIcons_,assets_.parent_path()/"new-document-test-owned"/"grayscale-presets.txt",[](std::u32string,int,int){return false;});dialog.createWithMode=[&](std::u32string name,int width,int height,bool record,color_mode::Mode mode){auto made=Document::withBuiltinPalette(width,height,std::move(name));made.setImportedColorMode(mode);made.mutableTimelapseSettings().enabled=record;addProject(std::move(made));return true;};dialog.setDisplay(display(),false);dialog.setBounds({bounds().x+20,bounds().y+20,320*uiScale,dialog.preferredHeight(320)*uiScale});dialog.smokeGrayscale();require(currentDocument().colorMode()==color_mode::Mode::Grayscale&&currentDocument().width()==9&&currentDocument().height()==7&&currentDocument().timelapseSettings().enabled&&currentDocument().palette().entries.size()==32,"Gray dialog result");traceStage("grayscale-create");
   replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
  }
  if(checkPixelFormats){

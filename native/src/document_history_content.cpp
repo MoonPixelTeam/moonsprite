@@ -167,6 +167,7 @@ void Document::applySurfaceEdit(const Edit& e,bool forward,SurfaceReplay* prepar
  for(const auto& value:prepared->offsets){value.target->offsetX=value.x;value.target->offsetY=value.y;}
  for(auto& value:prepared->replacements)std::swap(*value.target,value.value);
  if(!prepared->active.empty())activeLayerId_=std::move(prepared->active);if(!prepared->frame.empty())activeFrameId_=std::move(prepared->frame);
+ if(e.snapshotHistory.beforeColorMode)timeline_.buildIndex();
  if(!prepared->offsets.empty()||!prepared->replacements.empty())change_={0,0,width_,height_};
 }
 void Document::applyCelPropertiesEdit(const Edit& e,bool forward){if(!e.contentHistory.celProperties)return;applyCelPropertiesPlan(timeline_.state_,*e.contentHistory.celProperties,forward);timeline_.invalidateCompositeOrder();projectActiveCelOpacities();change_={0,0,width_,height_};}

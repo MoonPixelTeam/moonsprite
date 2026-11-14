@@ -10,19 +10,21 @@ void Document::applyRollbackHistory(const SnapshotHistory& snapshot,bool forward
 if(snapshot.beforeRollback)applyRollbackPayload(*(forward?snapshot.afterRollback:snapshot.beforeRollback),false,nullptr,&plan.rollbackPayload);
 }
 void Document::applySnapshotStructure(const Edit& edit,bool forward,HistoryReplayPlan& plan){
- if(!edit.snapshotHistory.beforeTimeline&&!edit.snapshotHistory.beforeDimensions)return;
+ if(!edit.snapshotHistory.beforeTimeline&&!edit.snapshotHistory.beforeDimensions&&!edit.snapshotHistory.beforeColorMode)return;
  if(!plan.snapshot){
   HistoryReplayPlan::Snapshot prepared;
   if(edit.snapshotHistory.beforeTimeline){auto restored=forward?*edit.snapshotHistory.afterTimeline:*edit.snapshotHistory.beforeTimeline;if(edit.layerHistory.layerTilesets)restored.tilesets=tilesetsForLayerEdit(edit,forward);prepared.timeline.emplace(std::move(restored));prepared.layer=forward?edit.afterActive:edit.beforeActive;prepared.frame=forward?edit.afterFrame:edit.beforeFrame;}
   prepared.dimensions=bool(edit.snapshotHistory.beforeDimensions);
+  if(edit.snapshotHistory.beforeColorMode)prepared.colorMode=forward?edit.snapshotHistory.afterColorMode:edit.snapshotHistory.beforeColorMode;
   const auto dims=prepared.dimensions?*(forward?edit.snapshotHistory.afterDimensions:edit.snapshotHistory.beforeDimensions):std::pair<int,int>{width_,height_};
   prepared.width=dims.first;prepared.height=dims.second;
-  prepared.damage=prepared.dimensions&&prepared.timeline?PixelRegion{0,0,dims.first,dims.second}:change_;
+  prepared.damage=(prepared.colorMode||(prepared.dimensions&&prepared.timeline))?PixelRegion{0,0,dims.first,dims.second}:change_;
   plan.snapshot.emplace(std::move(prepared));
  }
  exchangeSnapshotStructure(*plan.snapshot);
 }
 void Document::exchangeSnapshotStructure(HistoryReplayPlan::Snapshot& prepared)noexcept{
+ if(prepared.colorMode)std::swap(colorMode_,*prepared.colorMode);
  if(prepared.timeline){std::swap(timeline_,*prepared.timeline);activeLayerId_.swap(prepared.layer);activeFrameId_.swap(prepared.frame);}
  if(prepared.dimensions){std::swap(width_,prepared.width);std::swap(height_,prepared.height);}
  std::swap(change_,prepared.damage);prepared.applied=!prepared.applied;

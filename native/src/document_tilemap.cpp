@@ -11,8 +11,8 @@
 #include <locale>
 namespace moon {
 namespace {
-void rebuildTilemapCaches(timeline::State& s){
- for(auto& c:s.cels)if(c.tilemap){timeline::Surface r;r.width=c.tilemap->columns*c.tilemap->tileWidth;r.height=c.tilemap->rows*c.tilemap->tileHeight;r.pixels=tiles::render(*c.tilemap,s.tilesets);c.surface=std::move(r);c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
+void rebuildTilemapCaches(timeline::State& s,bool grayscale){
+ for(auto& c:s.cels)if(c.tilemap){timeline::Surface r;r.width=c.tilemap->columns*c.tilemap->tileWidth;r.height=c.tilemap->rows*c.tilemap->tileHeight;r.pixels=tiles::render(*c.tilemap,s.tilesets,grayscale);c.surface=std::move(r);c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
 }
 }
 bool Document::hasTilemapContent()const{return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& l){return l.kind=="tilemap";});}
@@ -28,7 +28,7 @@ bool Document::createFreeTileLayer(std::u32string name,const std::string& shared
  Document placement(width_,height_);placement.timeline_=timeline_;placement.activeLayerId_=activeLayerId_;placement.activeFrameId_=activeFrameId_;placement.timelineSelection_=timelineSelection_;placement.selectedFrames_=selectedFrames_;placement.selectedGroupIds_=selectedGroupIds_;placement.selectedGroupId_=selectedGroupId_;placement.collapsedGroupIds_=collapsedGroupIds_;placement.nextLayerId_=nextLayerId_;placement.addLayer();nextLayerId_=placement.nextLayerId_;
  const auto id=placement.activeLayerId_;next.layers=placement.timeline_.state().layers;next.groups=placement.timeline_.state().groups;next.cels=placement.timeline_.state().cels;
  for(auto& l:next.layers)if(l.id==id){l.kind="free-tile";l.name=name;l.freeTiles=data;l.autoLinkAnimationCels=false;}
- for(auto& c:next.cels)if(c.layerId==id){c.freeTiles=free_tiles::CelData{};c.tilemap.reset();c.text.reset();c.linkedCelId.reset();c.runtimeSharedCelId.reset();timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,width_,height_);c.surface=std::move(surface);}
+ for(auto& c:next.cels)if(c.layerId==id){c.freeTiles=free_tiles::CelData{};c.tilemap.reset();c.text.reset();c.linkedCelId.reset();c.runtimeSharedCelId.reset();timeline::Surface surface;surface.width=width_;surface.height=height_;surface.pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,width_,height_,colorMode_==color_mode::Mode::Grayscale);c.surface=std::move(surface);}
  TilemapSelection selected;selected.mode=tiles::Mode::Edit;selected.tilesetId=data.sources.front().tilesetId;const auto& set=*std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==selected.tilesetId;});selected.primary=selected.secondary=set.tileIds.front();
  Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=timeline_.state();e.snapshotHistory.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=id;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=placement.timelineSelection_;e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=placement.frameAnchor_;e.paletteHistory.beforePalette=palette_;e.paletteHistory.afterPalette=palette_;e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});e.tileHistory.beforeTileSelection=tileSelection_;e.tileHistory.afterTileSelection=selected;e.layerHistory.beforeGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};e.layerHistory.afterGroupUi=GroupUiSnapshot{placement.selectedGroupIds_,placement.collapsedGroupIds_,placement.selectedGroupId_};reserveHistoryEntries();applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"新建自由瓦片图层");return true;
 }
@@ -58,7 +58,7 @@ bool Document::applyFreeTileSourceSnapshot(const FreeTileSourceSnapshot& value){
  for(auto& c:next.cels)if(owners.count(c.layerId)&&c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& layer){return layer.id==c.layerId;});const auto& data=*l->freeTiles;const auto& source=value.source;
   const auto set=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return t.id==source.tilesetId;});
   const bool referenced=std::any_of(c.freeTiles->instances.begin(),c.freeTiles->instances.end(),[&](const auto& i){const auto& id=i.sourceId.empty()?i.tileId:i.sourceId;return id==source.id||id==source.tilesetId||(set!=next.tilesets.end()&&std::find(set->tileIds.begin(),set->tileIds.end(),i.tileId)!=set->tileIds.end());});
-  if(referenced)c.surface->pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);
+  if(referenced)c.surface->pixels=free_tiles::render(data,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height,colorMode_==color_mode::Mode::Grayscale);
  }
  timeline::Timeline prepared;prepared.state_=std::move(next);prepared.linkedDirtyOwner_=timeline_.linkedDirtyOwner_;prepared.contentScans_=timeline_.contentScans_;prepared.buildIndex();timeline_=std::move(prepared);return true;
 }
@@ -106,7 +106,7 @@ bool Document::deleteFreeTileSource(const std::string& id){
  auto next=timeline_.state();std::unordered_map<std::string,std::string> sourceForLayer;
  for(auto& l:next.layers)if(l.kind=="free-tile"&&l.freeTiles){const auto ref=std::find_if(l.freeTiles->sources.begin(),l.freeTiles->sources.end(),[&](const auto& s){return s.tilesetId==source.tilesetId;});if(ref!=l.freeTiles->sources.end())sourceForLayer[l.id]=ref->id;if(l.id==activeLayerId_||(!original.setId.empty()&&l.freeTiles->setId==original.setId))l.freeTiles->sources=sources;}
  next.tilesets.erase(std::remove_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==source.tilesetId;}),next.tilesets.end());
- for(auto& c:next.cels){const auto owner=sourceForLayer.find(c.layerId);if(owner==sourceForLayer.end()||!c.freeTiles)continue;auto& instances=c.freeTiles->instances;const auto before=instances.size();instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const auto& i){return i.sourceId==owner->second||i.sourceId==source.tilesetId||(!tileId.empty()&&i.tileId==tileId);}),instances.end());if(instances.size()!=before&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& v){return v.id==c.layerId;});c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}}
+ for(auto& c:next.cels){const auto owner=sourceForLayer.find(c.layerId);if(owner==sourceForLayer.end()||!c.freeTiles)continue;auto& instances=c.freeTiles->instances;const auto before=instances.size();instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const auto& i){return i.sourceId==owner->second||i.sourceId==source.tilesetId||(!tileId.empty()&&i.tileId==tileId);}),instances.end());if(instances.size()!=before&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& v){return v.id==c.layerId;});c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height,colorMode_==color_mode::Mode::Grayscale);}}
  auto selection=tileSelection_;if(selection.tilesetId==source.tilesetId){const auto& fallback=sources[std::min(index,sources.size()-1)];const auto resource=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& s){return s.id==fallback.tilesetId;});if(resource==next.tilesets.end()||resource->tileIds.empty())return false;selection.tilesetId=resource->id;selection.primary=selection.secondary=resource->tileIds.front();}
  timeline::Timeline checked(next);Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.tileHistory.beforeTileSelection=tileSelection_;edit.tileHistory.afterTileSelection=selection;edit.tileHistory.freeTileSourceDeletion=true;
  reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"删除瓦片");return true;
@@ -147,7 +147,7 @@ bool Document::beginFreeTilePlacement(Point point,bool erase,bool secondary){
   after.freeTiles->instances.push_back(std::move(instance));
  }
  if(after.freeTiles==slot->freeTiles)return false;
- after.surface->pixels=free_tiles::render(*owner.freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*owner.freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  freeTilePlacement_=std::move(draft);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);
  change_={0,0,width_,height_};publishChange();return true;
 }
@@ -182,7 +182,7 @@ bool Document::updateFreeTilePlacement(Point point){
  // Match rasterLinePoints: the initial event samples itself; later events skip
  // the shared path endpoint, preventing repeat deletion on stationary moves.
  bool first=true;for(;;){if(!first||!draft.sampled)eraseAt({x,y});first=false;if(x==point.x&&y==point.y)break;const int twice=2*error;if(twice>-dy){error-=dy;x+=sx;}if(twice<dx){error+=dx;y+=sy;}}
- if(changed){after.surface->pixels=free_tiles::render(data,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();}
+ if(changed){after.surface->pixels=free_tiles::render(data,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();}
  draft.last=point;draft.sampled=true;return changed;
 }
 bool Document::commitFreeTilePlacement(){
@@ -199,10 +199,10 @@ void Document::setSelectedTile(const std::string& set,const std::string& tile,bo
 bool Document::commitTilemapState(timeline::State next,const TilemapSelection& selection,std::u32string label,const std::string& active,bool clearPixelSelection,bool preserveTilemapOwners){
  if(preserveTilemapOwners){
   std::set<std::string> changedSets;for(const auto& set:next.tilesets){const auto prior=std::find_if(timeline_.state().tilesets.begin(),timeline_.state().tilesets.end(),[&](const auto& t){return t.id==set.id;});if(prior==timeline_.state().tilesets.end()||prior->pixels!=set.pixels||prior->tileIds!=set.tileIds||prior->columns!=set.columns||prior->rows!=set.rows)changedSets.insert(set.id);}
-  for(auto& c:next.cels){if(c.linkedCelId||c.runtimeSharedCelId)continue;if(c.tilemap&&c.surface){const auto* prior=timeline_.findCelById(c.id);const bool affected=!prior||!prior->tilemap||prior->tilemap->cells!=c.tilemap->cells||std::any_of(c.tilemap->cells.begin(),c.tilemap->cells.end(),[&](const auto& cell){return cell&&changedSets.count(cell->tilesetId);});if(!affected)continue;const auto& grid=*c.tilemap;const auto rendered=tiles::render(grid,next.tilesets);auto& surface=*c.surface;for(int y=0;y<std::min(surface.height,grid.rows*grid.tileHeight);++y)std::copy_n(rendered.begin()+std::size_t(y)*grid.columns*grid.tileWidth,std::min(surface.width,grid.columns*grid.tileWidth),surface.pixels.begin()+std::size_t(y)*surface.width);}
-   if(c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==c.layerId;});if(l!=next.layers.end()&&l->freeTiles&&(changedSets.count(l->freeTiles->legacyTilesetId)||std::any_of(l->freeTiles->sources.begin(),l->freeTiles->sources.end(),[&](const auto& source){return changedSets.count(source.tilesetId);})))c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}
+  for(auto& c:next.cels){if(c.linkedCelId||c.runtimeSharedCelId)continue;if(c.tilemap&&c.surface){const auto* prior=timeline_.findCelById(c.id);const bool affected=!prior||!prior->tilemap||prior->tilemap->cells!=c.tilemap->cells||std::any_of(c.tilemap->cells.begin(),c.tilemap->cells.end(),[&](const auto& cell){return cell&&changedSets.count(cell->tilesetId);});if(!affected)continue;const auto& grid=*c.tilemap;const auto rendered=tiles::render(grid,next.tilesets,colorMode_==color_mode::Mode::Grayscale);auto& surface=*c.surface;for(int y=0;y<std::min(surface.height,grid.rows*grid.tileHeight);++y)std::copy_n(rendered.begin()+std::size_t(y)*grid.columns*grid.tileWidth,std::min(surface.width,grid.columns*grid.tileWidth),surface.pixels.begin()+std::size_t(y)*surface.width);}
+   if(c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==c.layerId;});if(l!=next.layers.end()&&l->freeTiles&&(changedSets.count(l->freeTiles->legacyTilesetId)||std::any_of(l->freeTiles->sources.begin(),l->freeTiles->sources.end(),[&](const auto& source){return changedSets.count(source.tilesetId);})))c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height,colorMode_==color_mode::Mode::Grayscale);}
   }
- }else rebuildTilemapCaches(next);timeline::Timeline checked(next);
+ }else rebuildTilemapCaches(next,colorMode_==color_mode::Mode::Grayscale);timeline::Timeline checked(next);
  Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=timeline_.state();e.snapshotHistory.afterTimeline=std::move(next);e.beforeActive=activeLayerId_;e.afterActive=active.empty()?activeLayerId_:active;e.beforeFrame=e.afterFrame=activeFrameId_;
  e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.beforeFrameAnchor=e.afterFrameAnchor=frameAnchor_;e.layerHistory.beforeGroupUi=e.layerHistory.afterGroupUi=GroupUiSnapshot{selectedGroupIds_,collapsedGroupIds_,selectedGroupId_};
  if(!active.empty()){e.afterTimelineSelection=TimelineSelection{};e.afterTimelineSelection->layerAnchor=active;e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};}
@@ -245,14 +245,14 @@ void Document::paintTilemapLine(Point p){
   std::sort(indexes.begin(),indexes.end());indexes.erase(std::unique(indexes.begin(),indexes.end()),indexes.end());
   struct Prepared{std::size_t index;std::optional<tiles::Cell> value;std::vector<Pixel> pixels;};std::vector<Prepared> prepared;prepared.reserve(indexes.size());tiles::Catalog catalog(state.tilesets);
   for(const auto index:indexes){if(grid.cells[index]==tilePaintValue_)continue;
-   if(!tileStrokeCells_.count(index))tileStrokeCells_.emplace(index,TilemapStrokeCell{grid.cells[index],tiles::cellPixels(grid.cells[index],grid.tileWidth,grid.tileHeight,catalog)});
-   prepared.push_back({index,tilePaintValue_,tiles::cellPixels(tilePaintValue_,grid.tileWidth,grid.tileHeight,catalog)});
+   if(!tileStrokeCells_.count(index))tileStrokeCells_.emplace(index,TilemapStrokeCell{grid.cells[index],tiles::cellPixels(grid.cells[index],grid.tileWidth,grid.tileHeight,catalog,colorMode_==color_mode::Mode::Grayscale)});
+   prepared.push_back({index,tilePaintValue_,tiles::cellPixels(tilePaintValue_,grid.tileWidth,grid.tileHeight,catalog,colorMode_==color_mode::Mode::Grayscale)});
   }
   // All allocations (including the stamp) precede authority writes.
   if(!prepared.empty())timeline_.thumbnailStorage(c->id);
   for(auto& patch:prepared){grid.cells[patch.index].swap(patch.value);const auto left=patch.index%grid.columns*grid.tileWidth,top=patch.index/grid.columns*grid.tileHeight;auto& pixels=static_cast<std::vector<Pixel>&>(c->surface->pixels);for(int py=0;py<grid.tileHeight;++py)std::copy_n(patch.pixels.begin()+std::size_t(py)*grid.tileWidth,grid.tileWidth,pixels.begin()+(top+py)*c->surface->width+left);++tilemapCacheCellWrites_;}
   if(!prepared.empty()){timeline_.selectionContent_.erase(c->id);timeline_.visibleContent_.erase(c->id);++timeline_.thumbnailStorage_.at(c->id).revision;}
- }else rebuildTilemapCaches(state);
+ }else rebuildTilemapCaches(state,colorMode_==color_mode::Mode::Grayscale);
  tileStrokePoint_=p;change_={0,0,width_,height_};publishChange();
 }
 bool Document::commitTilemapStroke(){
@@ -278,7 +278,7 @@ bool Document::commitTilemapStroke(){
   }catch(...){if(tileStrokeIncremental_)cancelTilemapStroke();else{change_={0,0,width_,height_};publishChange();}throw;}
  }
  if(!tileStrokeBefore_)return false;auto before=*tileStrokeBefore_;auto next=before;const auto* live=timeline_.findCelById(tileStrokeCel_);auto target=std::find_if(next.cels.begin(),next.cels.end(),[&](const auto& c){return c.id==tileStrokeCel_;});bool changed=false;
- if(live&&target!=next.cels.end()&&target->tilemap){if(tileSelection_.mode==tiles::Mode::Paint){changed=target->tilemap->cells!=live->tilemap->cells;target->tilemap=live->tilemap;}else{auto layer=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==target->layerId;});auto set=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return layer!=next.layers.end()&&t.id==layer->tilemapTilesetId;});if(set!=next.tilesets.end()){auto old=tiles::render(*target->tilemap,before.tilesets);auto after=old;std::vector<std::size_t> cells;for(const auto& d:pending_)if(d.before!=d.after){int x=int(d.index%width_),y=int(d.index/width_);if(x>=target->tilemap->columns*target->tilemap->tileWidth||y>=target->tilemap->rows*target->tilemap->tileHeight)continue;after[std::size_t(y)*target->surface->width+x]=d.after;cells.push_back(std::size_t(y/target->tilemap->tileHeight)*target->tilemap->columns+x/target->tilemap->tileWidth);}changed=tiles::applyPixelEdit(*target->tilemap,*set,old,after,tileSelection_.mode,cells,[&]{return uniqueTileId("tile");},tileEditCell_);}}}
+ if(live&&target!=next.cels.end()&&target->tilemap){if(tileSelection_.mode==tiles::Mode::Paint){changed=target->tilemap->cells!=live->tilemap->cells;target->tilemap=live->tilemap;}else{auto layer=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==target->layerId;});auto set=std::find_if(next.tilesets.begin(),next.tilesets.end(),[&](const auto& t){return layer!=next.layers.end()&&t.id==layer->tilemapTilesetId;});if(set!=next.tilesets.end()){auto old=tiles::render(*target->tilemap,before.tilesets,colorMode_==color_mode::Mode::Grayscale);auto after=old;std::vector<std::size_t> cells;for(const auto& d:pending_)if(d.before!=d.after){int x=int(d.index%width_),y=int(d.index/width_);if(x>=target->tilemap->columns*target->tilemap->tileWidth||y>=target->tilemap->rows*target->tilemap->tileHeight)continue;after[std::size_t(y)*target->surface->width+x]=d.after;cells.push_back(std::size_t(y/target->tilemap->tileHeight)*target->tilemap->columns+x/target->tilemap->tileWidth);}changed=tiles::applyPixelEdit(*target->tilemap,*set,old,after,tileSelection_.mode,cells,[&]{return uniqueTileId("tile");},tileEditCell_);}}}
  tileStrokeBefore_.reset();active_=false;strokePixels_=nullptr;clearPendingStroke();timeline_=timeline::Timeline(std::move(before));if(!changed){change_={0,0,width_,height_};publishChange();return false;}return commitTilemapState(std::move(next),tileSelection_,U"绘制瓦片");
 }
 void Document::cancelTilemapStroke(){
@@ -386,7 +386,7 @@ void Document::publishTilemapPreview(GradientPreview& g){
  previewTileIds.clear();tilemapRegions.clear();for(const auto& entry:modified)previewTileIds.push_back(entry.first);
  auto addRegion=[&](PixelRegion r){const int left=std::clamp(r.x,0,width_),top=std::clamp(r.y,0,height_),right=std::clamp(r.x+r.w,0,width_),bottom=std::clamp(r.y+r.h,0,height_);if(right<=left||bottom<=top)return;r={left,top,right-left,bottom-top};for(const auto& old:tilemapRegions)if(old.x==r.x&&old.y==r.y&&old.w==r.w&&old.h==r.h)return;if(tilemapRegions.size()<256)tilemapRegions.push_back(r);else{auto& bounds=tilemapRegions.front();bounds.include(r.x,r.y);bounds.include(r.x+r.w-1,r.y+r.h-1);for(std::size_t i=1;i<tilemapRegions.size();++i){const auto old=tilemapRegions[i];bounds.include(old.x,old.y);bounds.include(old.x+old.w-1,old.y+old.h-1);}tilemapRegions.resize(1);}};
  tiles::Catalog catalog(state.tilesets);std::set<std::size_t> changedCels;
- for(const auto& id:affected){const auto references=g.tilemapReferences.find(id);if(references==g.tilemapReferences.end())continue;for(const auto& ref:references->second){auto& c=state.cels[ref.first];const auto& map=*c.tilemap;const auto index=ref.second;const auto& cell=map.cells[index];const auto pixels=tiles::cellPixels(cell,map.tileWidth,map.tileHeight,catalog);const int left=int(index%map.columns)*map.tileWidth,top=int(index/map.columns)*map.tileHeight;for(int y=0;y<map.tileHeight;++y)std::copy_n(pixels.begin()+std::size_t(y)*map.tileWidth,map.tileWidth,c.surface->pixels.begin()+std::size_t(top+y)*c.surface->width+left);changedCels.insert(ref.first);if(modified.count(id))addRegion({c.surface->offsetX+left,c.surface->offsetY+top,map.tileWidth,map.tileHeight});}}
+ for(const auto& id:affected){const auto references=g.tilemapReferences.find(id);if(references==g.tilemapReferences.end())continue;for(const auto& ref:references->second){auto& c=state.cels[ref.first];const auto& map=*c.tilemap;const auto index=ref.second;const auto& cell=map.cells[index];const auto pixels=tiles::cellPixels(cell,map.tileWidth,map.tileHeight,catalog,colorMode_==color_mode::Mode::Grayscale);const int left=int(index%map.columns)*map.tileWidth,top=int(index/map.columns)*map.tileHeight;for(int y=0;y<map.tileHeight;++y)std::copy_n(pixels.begin()+std::size_t(y)*map.tileWidth,map.tileWidth,c.surface->pixels.begin()+std::size_t(top+y)*c.surface->width+left);changedCels.insert(ref.first);if(modified.count(id))addRegion({c.surface->offsetX+left,c.surface->offsetY+top,map.tileWidth,map.tileHeight});}}
  if(g.tilemapMode==tiles::Mode::Hybrid){std::set<std::size_t> rawCells;visitCells(current,[&](std::size_t i){rawCells.insert(i);});visitCells(tilemapRawRegion,[&](std::size_t i){rawCells.insert(i);});const auto rawCel=display.cels_.at(g.celId);auto* surface=state.cels[rawCel].surface?&*state.cels[rawCel].surface:nullptr;if(surface)changedCels.insert(rawCel);if(surface)for(const auto index:rawCells){if(grid.cells[index]&&grid.cells[index]->tilesetId==original.id)continue;const int left=int(index%grid.columns)*grid.tileWidth,top=int(index/grid.columns)*grid.tileHeight;bool changed=false;for(int y=0;y<grid.tileHeight;++y)for(int x=0;x<grid.tileWidth;++x){const auto wx=std::int64_t(originX)+left+x,wy=std::int64_t(originY)+top+y;if(wx<0||wy<0||wx>=width_||wy>=height_)continue;const auto at=std::size_t(wy)*width_+std::size_t(wx);surface->pixels[std::size_t(top+y)*surface->width+left+x]=g.preview[at];changed|=g.preview[at]!=g.tilemapBaseline[at];}if(changed)addRegion({originX+left,originY+top,grid.tileWidth,grid.tileHeight});}tilemapRawRegion=current;}
  for(const auto ci:changedCels){const auto& id=state.cels[ci].id;display.selectionContent_.erase(id);display.visibleContent_.erase(id);++display.thumbnailStorage_[id].revision;}display.invalidateCompositeOrder();g.tilemapDisplay=std::move(display);g.previewTileIds.swap(previewTileIds);g.tilemapRegions.swap(tilemapRegions);g.tilemapRawRegion=tilemapRawRegion;
 }
@@ -449,7 +449,7 @@ void Document::applyTilemapPixelHistory(const Edit& edit,bool forward){
  struct CachePatch{std::size_t cel,index;std::vector<Pixel> pixels;};std::vector<CachePatch> patches;std::set<std::size_t> changedCels;
  for(std::size_t ci=0;ci<state.cels.size();++ci){const auto& c=state.cels[ci];if(!c.tilemap||!c.surface)continue;std::set<std::size_t> indexes;if(ci==ownerIndex)for(const auto& value:cells)indexes.insert(value.index);
   if(!changedIds.empty())for(std::size_t index=0;index<c.tilemap->cells.size();++index){const auto& value=cellValue(ci,index);if(value&&value->tilesetId==h.beforeSet.id&&changedIds.count(value->tileId))indexes.insert(index);}
-  for(const auto index:indexes){const auto& value=cellValue(ci,index);if(value){const auto entry=catalog.sets.find(value->tilesetId);if(entry==catalog.sets.end()||entry->second->tileWidth!=c.tilemap->tileWidth||entry->second->tileHeight!=c.tilemap->tileHeight||!catalog.indexes.at(value->tilesetId).find(value->tileId))throw std::logic_error("Invalid incremental tile reference");}patches.push_back({ci,index,tiles::cellPixels(value,c.tilemap->tileWidth,c.tilemap->tileHeight,catalog)});changedCels.insert(ci);}
+  for(const auto index:indexes){const auto& value=cellValue(ci,index);if(value){const auto entry=catalog.sets.find(value->tilesetId);if(entry==catalog.sets.end()||entry->second->tileWidth!=c.tilemap->tileWidth||entry->second->tileHeight!=c.tilemap->tileHeight||!catalog.indexes.at(value->tilesetId).find(value->tileId))throw std::logic_error("Invalid incremental tile reference");}patches.push_back({ci,index,tiles::cellPixels(value,c.tilemap->tileWidth,c.tilemap->tileHeight,catalog,colorMode_==color_mode::Mode::Grayscale)});changedCels.insert(ci);}
  }
  auto pixelsSelection=edit.pixelSelectionHistory.pixelSelectionEdit?(forward?edit.pixelSelectionHistory.afterPixelsSelection:edit.pixelSelectionHistory.beforePixelsSelection):std::optional<SelectionMask>{};
  auto selected=forward?*edit.tileHistory.afterTileSelection:*edit.tileHistory.beforeTileSelection;auto active=forward?edit.afterActive:edit.beforeActive;auto frame=forward?edit.afterFrame:edit.beforeFrame;auto frames=forward?*edit.afterSelection:*edit.beforeSelection;auto selection=forward?*edit.afterTimelineSelection:*edit.beforeTimelineSelection;auto anchor=forward?*edit.afterFrameAnchor:*edit.beforeFrameAnchor;auto groupUi=forward?*edit.layerHistory.afterGroupUi:*edit.layerHistory.beforeGroupUi;
@@ -473,7 +473,7 @@ bool Document::commitTilemapPixelCanvas(const std::vector<Pixel>& baseline,const
  struct TileIdGuard{std::uint64_t& value;std::uint64_t before;bool applied=false;~TileIdGuard(){if(!applied)value=before;}} ids{nextTileId_,nextTileId_};
  if((linkedCreateSelection&&!linkedCreateSelectionAvailable(false))||(linkedEditSelection&&!linkedEditSelectionAvailable(false))||(linkedHybridSelection&&!linkedHybridSelectionAvailable(false))||(linkedCreateFloating&&(!beforePixels||!afterPixels||!linkedCreateSelectionAvailable(false,paintFloating)))||(linkedEditFloating&&(!beforePixels||!afterPixels||!editCell||!linkedEditSelectionAvailable(false)))||(linkedHybridFloating&&(!beforePixels||!afterPixels||!linkedHybridSelectionAvailable(false)))||(int(linkedCreateSelection)+int(linkedEditSelection)+int(linkedHybridSelection)+int(linkedCreateFloating)+int(linkedEditFloating)+int(linkedHybridFloating)>1))return false;const bool linkedPixelSelection=linkedCreateSelection||linkedEditSelection||linkedHybridSelection||linkedCreateFloating||linkedEditFloating||linkedHybridFloating;const auto* target=linkedPixelSelection?timeline_.resolveSurface(cel().id).source:&cel();const auto count=std::size_t(width_)*height_;if((!regional&&(baseline.size()!=count||canvas.size()!=count))||!target||!target->tilemap)return false;
  const auto& state=timeline_.state();const auto set=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==layer().tilemapTilesetId;});if(set==state.tilesets.end())return false;
- const auto& sourceGrid=*target->tilemap;auto nextGrid=sourceGrid;auto nextSet=*set;std::vector<Pixel> before,after;if(!regional){before=tiles::render(sourceGrid,state.tilesets);after=before;}const auto stride=std::size_t(sourceGrid.columns)*sourceGrid.tileWidth;std::vector<std::size_t> indexes;
+ const auto& sourceGrid=*target->tilemap;auto nextGrid=sourceGrid;auto nextSet=*set;std::vector<Pixel> before,after;if(!regional){before=tiles::render(sourceGrid,state.tilesets,colorMode_==color_mode::Mode::Grayscale);after=before;}const auto stride=std::size_t(sourceGrid.columns)*sourceGrid.tileWidth;std::vector<std::size_t> indexes;
  const int originX=target->surface->offsetX,originY=target->surface->offsetY;
  if(regional){for(const auto& item:*regional)indexes.push_back(item.first);}else for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto lx=std::int64_t(x)-originX,ly=std::int64_t(y)-originY;if(lx<0||ly<0||lx>=stride||ly>=sourceGrid.rows*sourceGrid.tileHeight)continue;const auto at=std::size_t(y)*width_+x;if(canvas[at]==baseline[at])continue;after[std::size_t(ly)*stride+std::size_t(lx)]=canvas[at];indexes.push_back(std::size_t(ly/sourceGrid.tileHeight)*sourceGrid.columns+std::size_t(lx/sourceGrid.tileWidth));}
  if(indexes.empty())return false;std::sort(indexes.begin(),indexes.end());indexes.erase(std::unique(indexes.begin(),indexes.end()),indexes.end());std::vector<std::string> changed;
@@ -662,7 +662,7 @@ bool Document::previewFreeTileInstanceProperties(const FreeTileInstanceChanges& 
   if(changes.blendMode&&parseLayerBlendMode(*changes.blendMode)){if(i.blendMode||*changes.blendMode!=source->blendMode)i.blendMode=*changes.blendMode;}
  }
  const auto live=timeline_.findCelById(after.id);if(!live||live->freeTiles==after.freeTiles)return false;
- after.surface->pixels=free_tiles::render(data,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(data,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();return true;
 }
 bool Document::setFreeTileInstanceProperties(const std::string& id,const FreeTileInstanceChanges& changes){
@@ -682,7 +682,7 @@ bool Document::reorderFreeTileInstance(const std::string& id,const std::string& 
  const auto moved=*from;instances.erase(from);
  auto to=std::find_if(instances.begin(),instances.end(),[&](const auto& i){return i.id==target;});if(beforeTarget)++to;instances.insert(to,moved);
  if(after.freeTiles==before.freeTiles)return false;
- after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  Edit edit{{},state_,nextState_};edit.contentHistory.beforeCels.push_back(before);edit.contentHistory.afterCels.push_back(std::move(after));edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"调整自由瓦片实例顺序");
  const auto selected=selectedFreeTileInstances();if(std::find(selected.begin(),selected.end(),id)==selected.end())selectFreeTileInstance(id);else freeInstancePrimary_=id;
@@ -746,7 +746,7 @@ bool Document::pasteFreeTilePixels(const SelectionClipboard& image,Point at){
   for(auto& l:next.layers)if(l.freeTiles&&(l.id==layer().id||(!layer().freeTiles->setId.empty()&&l.freeTiles->setId==layer().freeTiles->setId))){l.freeTiles->sources=sources;affectedOwners.insert(l.id);}
  }
  // Reuse the existing authoritative source/instance render and atomic timeline history.
- for(auto& c:next.cels)if(affectedOwners.count(c.layerId)&&c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==c.layerId;});free_tiles::validate(*l->freeTiles,*c.freeTiles,next.tilesets);c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height);}
+ for(auto& c:next.cels)if(affectedOwners.count(c.layerId)&&c.freeTiles&&c.surface){const auto l=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& l){return l.id==c.layerId;});free_tiles::validate(*l->freeTiles,*c.freeTiles,next.tilesets);c.surface->pixels=free_tiles::render(*l->freeTiles,*c.freeTiles,next.tilesets,c.surface->width,c.surface->height,colorMode_==color_mode::Mode::Grayscale);}
  timeline::Timeline checked(next);tileSelection.freePaint=false;
  Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  edit.tileHistory.beforeTileSelection=tileSelection_;edit.tileHistory.afterTileSelection=tileSelection;edit.tileHistory.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};edit.tileHistory.afterFreeTileSelection=FreeTileSelectionSnapshot{{primary},primary,primary,activeFrameId_,freeInstanceViewLayer_};
@@ -781,7 +781,7 @@ bool Document::pasteFreeTileInstances(const FreeTileInstanceClipboardSnapshot& c
  for(auto& item:next.layers)if(item.freeTiles&&(item.id==activeLayerId_||(!original.setId.empty()&&item.freeTiles->setId==original.setId)))item.freeTiles->sources=sources;
  const auto targetLayer=std::find_if(next.layers.begin(),next.layers.end(),[&](const auto& item){return item.id==activeLayerId_;});if(targetLayer==next.layers.end()||!target->surface)return false;
  free_tiles::validate(*targetLayer->freeTiles,*target->freeTiles,next.tilesets);
- target->surface->pixels=free_tiles::render(*targetLayer->freeTiles,*target->freeTiles,next.tilesets,target->surface->width,target->surface->height);
+ target->surface->pixels=free_tiles::render(*targetLayer->freeTiles,*target->freeTiles,next.tilesets,target->surface->width,target->surface->height,colorMode_==color_mode::Mode::Grayscale);
  timeline::Timeline checked(next);
  Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeTimeline=timeline_.state();edit.snapshotHistory.afterTimeline=std::move(next);edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  edit.tileHistory.beforeFreeTileSelection=FreeTileSelectionSnapshot{freeInstanceSelected_,freeInstancePrimary_,freeInstanceAnchor_,freeInstanceSelectionFrame_,freeInstanceViewLayer_};
@@ -796,7 +796,7 @@ bool Document::showOnlyFreeTileInstance(const std::string& id){
  const auto before=freeTileCel();auto after=before;
  for(auto& instance:after.freeTiles->instances)instance.visible=instance.id==id;
  if(after.freeTiles==before.freeTiles)return false;
- after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  Edit edit{{},state_,nextState_};edit.contentHistory.beforeCels.push_back(before);edit.contentHistory.afterCels.push_back(std::move(after));edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;
  reserveHistoryEntries();applyEdit(edit,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"仅显示自由瓦片实例");
  selectFreeTileInstance(id);return true;
@@ -811,7 +811,7 @@ bool Document::previewFreeTileInstanceFlags(const std::vector<std::string>& ids,
   (draft.flagControl==1?i.locked:i.visible)=value;
  }
  const auto* live=timeline_.findCelById(after.id);if(!live||live->freeTiles==after.freeTiles)return false;
- if(draft.flagControl==0)after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ if(draft.flagControl==0)after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();return true;
 }
 bool Document::canDeleteFreeTileInstances(const std::vector<std::string>& ids)const{
@@ -830,7 +830,7 @@ bool Document::deleteFreeTileInstances(const std::vector<std::string>& ids){
  auto& remaining=after.freeTiles->instances;remaining.erase(std::remove_if(remaining.begin(),remaining.end(),[&](const auto& i){return requested.count(i.id);}),remaining.end());
  const std::string fallback=remaining.empty()?std::string{}:remaining[remaining.size()-1-std::min(std::size_t(index),remaining.size()-1)].id;
  const auto nextPrimary=!primary.empty()&&!requested.count(primary)?primary:fallback;
- after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  Edit e{{},state_,nextState_};e.contentHistory.beforeCels.push_back(before);e.contentHistory.afterCels.push_back(std::move(after));e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;
  reserveHistoryEntries();applyEdit(e,true);change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"擦除自由瓦片");
  freeInstanceSelected_.clear();for(const auto& id:selected)if(!requested.count(id))freeInstanceSelected_.push_back(id);
@@ -868,7 +868,7 @@ bool Document::previewFreeTileInstanceMove(int dx,int dy){
   const auto x=std::int64_t(i.x)+dx,y=std::int64_t(i.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::out_of_range("Free tile instance move exceeds coordinate limit");i.x=int(x);i.y=int(y);
  }
  const auto* live=timeline_.findCelById(after.id);if(!live||after.freeTiles==live->freeTiles)return false;
- after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();return true;
 }
 struct Document::FreeTileSourceStroke {
@@ -945,7 +945,7 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
  const int padding=std::clamp(std::max(width_,height_),16,128);const int left=std::min(point.x,transformed.x)-padding,top=std::min(point.y,transformed.y)-padding;
  const int right=std::max(point.x+1,transformed.x+transformed.w)+padding,bottom=std::max(point.y+1,transformed.y+transformed.h)+padding;
  const auto count=std::uint64_t(right-left)*std::uint64_t(bottom-top);if(count>16*1024*1024)throw std::length_error("自由瓦片源临时画布超出原生内存预算");
- d->scan={transformed.x-left,transformed.y-top,transformed.w,transformed.h};d->origin={left,top};d->raster=std::make_unique<Document>(1,1);auto& edit=*d->raster;edit.pixelFormat_=pixelFormat_;edit.width_=right-left;edit.height_=bottom-top;
+ d->scan={transformed.x-left,transformed.y-top,transformed.w,transformed.h};d->origin={left,top};d->raster=std::make_unique<Document>(1,1);auto& edit=*d->raster;edit.pixelFormat_=pixelFormat_;edit.colorMode_=colorMode_;edit.width_=right-left;edit.height_=bottom-top;
  auto rasterState=edit.timeline_.state();auto& surface=*rasterState.cels.front().surface;surface.width=edit.width_;surface.height=edit.height_;surface.pixels=std::vector<Pixel>(std::size_t(count));rasterState.canvasWidth=edit.width_;rasterState.canvasHeight=edit.height_;
  for(int y=0;y<set->tileHeight;++y)for(int x=0;x<set->tileWidth;++x){const auto p=free_tiles::transform(d->instance,source->offsetX+x,source->offsetY+y);surface.pixels[std::size_t(p.second+d->anchor.y-top)*edit.width_+p.first+d->anchor.x-left]=d->beforePixels[std::size_t(y)*set->tileWidth+x];}
  edit.timeline_=timeline::Timeline(std::move(rasterState));edit.palette_=palette_;auto localSelection=selection_;if(localSelection){localSelection->x-=left;localSelection->y-=top;}edit.setSelectionValue(std::move(localSelection));
@@ -1021,7 +1021,7 @@ void Document::publishFreeTileSourceStroke(FreeTileSourceStroke& d){
  std::vector<tiles::Tileset> resources;for(const auto& set:timeline_.state().tilesets)if(needed.count(set.id))resources.push_back(set.id==d.tilesetId?resource:set);
  std::vector<DocumentCel> changed;
  for(const auto& owner:timeline_.state().layers)if(owner.freeTiles){auto data=*owner.freeTiles;bool affected=data.legacyTilesetId==d.tilesetId;for(auto& s:data.sources){if(s.id==d.sourceId){s.offsetX=offsetX;s.offsetY=offsetY;}if(s.tilesetId==d.tilesetId)affected=true;}
- if(!affected)continue;for(const auto& c:timeline_.state().cels)if(c.layerId==owner.id&&c.freeTiles&&c.surface){auto next=c;if(d.placement&&c.id==d.targetCel&&std::none_of(next.freeTiles->instances.begin(),next.freeTiles->instances.end(),[&](const auto& i){return i.id==d.instance.id;}))next.freeTiles->instances.push_back(d.instance);next.surface->pixels=free_tiles::render(data,*next.freeTiles,resources,next.surface->width,next.surface->height);changed.push_back(std::move(next));}}
+ if(!affected)continue;for(const auto& c:timeline_.state().cels)if(c.layerId==owner.id&&c.freeTiles&&c.surface){auto next=c;if(d.placement&&c.id==d.targetCel&&std::none_of(next.freeTiles->instances.begin(),next.freeTiles->instances.end(),[&](const auto& i){return i.id==d.instance.id;}))next.freeTiles->instances.push_back(d.instance);next.surface->pixels=free_tiles::render(data,*next.freeTiles,resources,next.surface->width,next.surface->height,colorMode_==color_mode::Mode::Grayscale);changed.push_back(std::move(next));}}
  // Allocate last-preview state first; mutations below are moves/scalar writes.
  d.lastPixels=std::move(source);d.lastWidth=width;d.lastHeight=height;d.lastX=offsetX;d.lastY=offsetY;
  auto& state=timeline_.state_;*std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& t){return t.id==d.tilesetId;})=std::move(resource);
@@ -1061,7 +1061,7 @@ bool Document::flipFreeTileContent(bool horizontal){auto selectionOperation=anim
  const auto ids=selectedFreeTileInstances();if(ids.empty()||!freeTileCel().freeTiles||!freeTileCel().surface)return false;
  auto after=freeTileCel();for(auto& i:after.freeTiles->instances)if(!i.locked&&std::find(ids.begin(),ids.end(),i.id)!=ids.end()){if(horizontal)i.flipHorizontal=!i.flipHorizontal;else i.flipVertical=!i.flipVertical;}
  if(after.freeTiles==freeTileCel().freeTiles)return false;
- after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);
+ after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);
  Edit edit{{},state_,nextState_};edit.contentHistory.beforeCels={freeTileCel()};edit.contentHistory.afterCels={after};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;reserveHistoryEntries();timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),horizontal?U"水平翻转选区":U"垂直翻转选区");return true;
 }
 bool Document::freeTileSelectionPlacementMoving()const{return floating_&&floating_->freeTile&&floating_->freeTile->placement;}
@@ -1109,7 +1109,7 @@ void Document::transformFreeTileSelectionMove(const SelectionTransform& transfor
   // Same single-Cel preview strategy as previewFreeTileInstanceMove.
   const auto& original=f.beforeCelTimeline->cels;auto after=*std::find_if(original.begin(),original.end(),[&](const auto& c){return c.id==freeTileCel().id;});
   for(auto& instance:after.freeTiles->instances)if(std::find(move.instances.begin(),move.instances.end(),instance.id)!=move.instances.end()){const auto x=std::int64_t(instance.x)+dx,y=std::int64_t(instance.y)+dy;if(std::abs(x)>free_tiles::MaxCoordinate||std::abs(y)>free_tiles::MaxCoordinate)throw std::length_error("自由瓦片实例位置超出限制");instance.x=int(x);instance.y=int(y);}
-  if(after.freeTiles!=freeTileCel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
+  if(after.freeTiles!=freeTileCel().freeTiles){after.surface->pixels=free_tiles::render(*layer().freeTiles,*after.freeTiles,timeline_.state().tilesets,after.surface->width,after.surface->height,colorMode_==color_mode::Mode::Grayscale);timeline_.state_.cels[timeline_.cels_.at(after.id)]=std::move(after);}move.changed=dx||dy;
  }else{
   auto& d=*move.source;PixelRegion sourceBounds;for(int y:{0,d.beforeHeight-1})for(int x:{0,d.beforeWidth-1}){const auto q=free_tiles::transform(d.instance,d.beforeX+x,d.beforeY+y);sourceBounds.include(q.first+d.anchor.x,q.second+d.anchor.y);}
   const int padding=std::clamp(std::max(width_,height_),16,128),left=std::min({0,sourceBounds.x,destination.x,f.sourceX})-padding,top=std::min({0,sourceBounds.y,destination.y,f.sourceY})-padding;
@@ -1251,7 +1251,7 @@ bool Document::updateShapePreview(const ShapeSpec& spec,Pixel color){if(!shapeAc
  try{
   // Existing isolated preview pattern: run the actual source transaction on a
   // COW draft and keep the authoritative timeline untouched until confirmation.
-  auto draft=std::make_unique<Document>(width_,height_);draft->pixelFormat_=pixelFormat_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
+  auto draft=std::make_unique<Document>(width_,height_);draft->pixelFormat_=pixelFormat_;draft->colorMode_=colorMode_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
   bool changed=false;
   if(!g.sourceShapeSeed)g.sourceShapeSeed=Point{int(spec.start.x),int(spec.start.y)};
   if(draft->beginFreeTileSourceStroke(*g.sourceShapeSeed,color,spec.brush,nullptr,0,nullptr,false)){

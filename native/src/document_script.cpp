@@ -11,7 +11,7 @@ struct ScriptDocumentBuilder {
  static bool structure(const Document& source,timeline::Timeline& timeline,std::unordered_map<std::string,std::array<int,4>>& geometry,script::LayerStructureUi& context,const std::string& operation,const std::string& id,const std::optional<std::u32string>& name,const std::optional<double>& opacity){
   // A small detached shell runs the established structural algorithms without
   // copying live history, recording callbacks or allocating a canvas bitmap.
-  Document draft(1,1);draft.pixelFormat_=source.pixelFormat_;draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);draft.layerDisplayColors_=source.layerDisplayColors_;
+  Document draft(1,1);draft.pixelFormat_=source.pixelFormat_;draft.colorMode_=source.colorMode_;draft.width_=source.width_;draft.height_=source.height_;draft.timeline_=std::move(timeline);draft.displayedLayerGeometry_=geometry;restore(draft,context);draft.layerDisplayColors_=source.layerDisplayColors_;
   bool changed=false;
   if(operation=="freeTiles.createLayer"){
    changed=draft.createFreeTileLayer(name.value_or(U"自由瓦片图层"),id);
@@ -76,7 +76,7 @@ struct ScriptDocumentBuilder {
   d.floating_=std::move(floating);
  }
  static Document build(const script::CreatedDocument& value){
-  if(value.colorMode!="rgba")throw std::invalid_argument("Native Lua document color mode is not yet supported");
+  if(!color_mode::rgbaStorageMode(value.colorMode))throw std::invalid_argument("Native Lua document color mode is not yet supported");
   if(value.name.empty()||value.width<1||value.height<1||std::uint64_t(value.width)*value.height>script::InvocationCapture::maxImagePixels||value.layers.empty())throw std::invalid_argument("Invalid Lua created document");
   constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t bytes=std::uint64_t(value.width)*value.height*sizeof(Pixel);std::size_t frames=1;std::unordered_set<std::string> ids;
   for(const auto& l:value.layers){const auto& s=l.surface;if(l.id.empty()||l.name.empty()||!ids.insert(l.id).second||l.opacity<0||l.opacity>255||!std::isfinite(l.frameNumber)||l.frameNumber<1||std::floor(l.frameNumber)!=l.frameNumber||l.frameNumber>double(limit/sizeof(DocumentFrame))||!s.pixels||s.width<1||s.height<1||std::uint64_t(s.width)*s.height!=s.pixels->size()||s.pixels->size()>script::InvocationCapture::maxImagePixels)throw std::invalid_argument("Invalid Lua created document layer");
@@ -85,7 +85,7 @@ struct ScriptDocumentBuilder {
   if(frames>(limit-bytes)/(sizeof(DocumentFrame)+64))throw std::length_error("Lua created document frame metadata exceeds native budget");
   // Native constructor supplies IDs/statistics/role colors; replace its default
   // bitmap with the exact sparse per-frame result, no creation undo entries.
-  Document d(value.width,value.height);timeline::State state;state.canvasWidth=value.width;state.canvasHeight=value.height;
+  Document d(value.width,value.height);d.colorMode_=color_mode::editableMode(value.colorMode);timeline::State state;state.canvasWidth=value.width;state.canvasHeight=value.height;
   for(std::size_t i=0;i<frames;++i)state.frames.push_back({"frame-"+std::to_string(i+1),100,false});
   for(const auto& l:value.layers){DocumentLayer layer;layer.id=l.id;layer.name=l.name;layer.opacity=l.opacity/255.;layer.visible=l.visible;layer.locked=l.locked;layer.groupId=l.parentGroupId;state.layers.push_back(std::move(layer));
    timeline::Surface s;s.width=l.surface.width;s.height=l.surface.height;s.offsetX=l.surface.x;s.offsetY=l.surface.y;s.storageOriginX=s.storageOriginY=0;s.pixels=*l.surface.pixels;

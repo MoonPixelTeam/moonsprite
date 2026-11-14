@@ -1,5 +1,6 @@
 #include "local_history_raster_cost.h"
 #include "project_manifest.h"
+#include "document_color_mode.h"
 #include "local_history_diff.h"
 #include <unordered_map>
 #include <unordered_set>
@@ -19,7 +20,7 @@ struct DecodedHistoryRasterStorage::Impl {
  std::unordered_map<Key,Layout,KeyHash> layouts;
  std::unordered_map<std::string,std::size_t> files;
  explicit Impl(const project::ReadManifest& source,bool retain):archive(source.sourceArchive),comparison(retain){
-  if(!archive||source.colorMode!="rgba")invalid();project::Archive zip(archive);
+  if(!archive||!color_mode::rgbaStorageMode(source.colorMode))invalid();project::Archive zip(archive);
   auto prepare=[&](const std::shared_ptr<const project::ManifestRaster>& raster){
    if(!raster)return;const auto& r=*raster;if(layouts.count(key(r)))return;
    if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>project::Limits{}.expandedBytes/4)invalid();

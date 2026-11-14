@@ -1,10 +1,12 @@
 #pragma once
 #include "relative_luminance.h"
+#include "timeline_model.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -15,6 +17,9 @@ namespace moon::color_mode {
 // precision changes channel values; RGBA storage remains four bytes per pixel.
 using Pixel=timeline::Pixel;
 enum class Mode {Rgba,Indexed,Grayscale};
+inline std::string_view name(Mode mode){return mode==Mode::Grayscale?"grayscale":mode==Mode::Indexed?"indexed":"rgba";}
+inline bool rgbaStorageMode(std::string_view mode){return mode=="rgba"||mode=="grayscale";}
+inline Mode editableMode(std::string_view mode){if(!rgbaStorageMode(mode))throw std::invalid_argument("Unsupported document color mode");return mode=="grayscale"?Mode::Grayscale:Mode::Rgba;}
 enum class PixelFormat {Rgba32,Rgb24,Rgb565,Rgb555,Rgb332,Rgba4444,Rgba5551,Argb1555};
 inline constexpr std::array<std::string_view,8> pixelFormatNames{{"rgba32","rgb24","rgb565","rgb555","rgb332","rgba4444","rgba5551","argb1555"}};
 inline std::optional<PixelFormat> pixelFormat(std::string_view name){for(std::size_t i=0;i<pixelFormatNames.size();++i)if(pixelFormatNames[i]==name)return PixelFormat(i);return {};}
@@ -29,6 +34,7 @@ inline Pixel quantizePixelColor(Pixel color,PixelFormat format){
 }
 inline Pixel normalizeDocumentColor(Mode mode,PixelFormat format,Pixel color){return mode==Mode::Grayscale?relativeLuminancePixel(color):mode==Mode::Rgba?quantizePixelColor(color,format):color;}
 inline Pixel normalizeRgbaPackedValue(PixelFormat format,Pixel value){return value>>24?quantizePixelColor(value,format):value;}
+inline Pixel normalizePackedValue(Mode mode,PixelFormat format,Pixel value){return value>>24?normalizeDocumentColor(mode,format,value):value;}
 
 // Accept existing palette entry containers directly; their stable IDs and
 // independent visible order are authoritative, rather than slot positions.

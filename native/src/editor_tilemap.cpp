@@ -47,7 +47,7 @@ void Editor::paintFreeTilePlacementPreview(ui::Graphics& g,const gfx::Rect& cv){
   const int l=std::max({0,area.x,int(std::floor((clip.x-cv.x)/scale))}),t=std::max({0,area.y,int(std::floor((clip.y-cv.y)/scale))}),r=std::min({doc.width(),area.x+area.w,int(std::ceil((clip.x2()-cv.x)/scale))}),b=std::min({doc.height(),area.y+area.h,int(std::ceil((clip.y2()-cv.y)/scale))});
   if(r>l&&b>t){
    std::vector<Pixel> replacement(std::size_t(r-l)*(b-t));const auto* surface=doc.activeSurfaceIfPresent();
-   for(int y=t;y<b;++y)for(int x=l;x<r;++x){const auto base=surface?raster::readWorld(*surface,x,y):0,ink=pixels[std::size_t(y-area.y)*area.w+x-area.x];replacement[std::size_t(y-t)*(r-l)+x-l]=(ink>>24)?brushComposite(base,ink,100):base;}
+   for(int y=t;y<b;++y)for(int x=l;x<r;++x){const auto base=surface?raster::readWorld(*surface,x,y):0,ink=doc.normalizeCanvasColor(pixels[std::size_t(y-area.y)*area.w+x-area.x]);replacement[std::size_t(y-t)*(r-l)+x-l]=(ink>>24)?brushComposite(base,ink,100):base;}
    // Native currently admits RGBA32 documents. Other legacy color modes remain
    // a registered migration gap; preview must not mutate palette or resources.
    const auto composed=compositeNormalRegion(doc.displayTimeline(),doc.frame().id,{l,t,r-l,b-t},doc.layer().id,&replacement,r-l,l,t);

@@ -14,7 +14,7 @@ Document createEditableDocument(PreparedImport imported){
  PaletteState palette;palette.entries.clear();palette.slots=std::move(imported.palette.slots);palette.setOrder(std::move(imported.palette.order));palette.nextId=imported.palette.nextId;palette.columns=imported.palette.columns;
  for(auto& e:imported.palette.entries)palette.entries.push_back({e.id,std::move(e.name),e.color});
  auto candidate=Document::fromImported(imported.width,imported.height,std::move(imported.timeline),std::move(palette),std::move(imported.id),std::move(imported.name),std::move(imported.sourceArchive),imported.activeFrameId);
- candidate.setImportedPixelFormat(color_mode::preferencePixelFormat(imported.pixelFormat));candidate.setImportedOutlineSettings(std::move(imported.outline));candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
+ candidate.setImportedColorMode(color_mode::editableMode(imported.colorMode));candidate.setImportedPixelFormat(color_mode::preferencePixelFormat(imported.pixelFormat));candidate.setImportedOutlineSettings(std::move(imported.outline));candidate.setImportedProjectInformation(std::move(imported.information));candidate.setImportedReferenceImages(std::move(imported.referenceImages));candidate.setImportedSlices(std::move(imported.slices));candidate.setImportedTimelapse(std::move(imported.timelapse));candidate.setImportedProjectBrushes(std::move(imported.customBrushes));
  candidate.selectLayer(imported.activeLayerId);candidate.selectFrame(imported.activeFrameId);candidate.setImportedLoop(imported.loop);candidate.setPixelGrid(imported.showPixelGrid,false);candidate.setCustomGrid(imported.showCustomGrid,imported.customGrid,false);
  candidate.applyLayerPanelState(std::move(imported.layerPanelState));
  candidate.setImportedLayerGeometry(std::move(imported.layerGeometry));
@@ -97,7 +97,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  if(!m.unsupported.empty()) throw Error(ErrorKind::Unsupported,"Unsupported project content: "+m.unsupported.front());
  corrupt(m.id.empty()||m.width<1||m.height<1,"Invalid document identity or dimensions");
  unsupported(m.width>32768||m.height>32768||std::uint64_t(m.width)*m.height>64ull*1024*1024,"Canvas exceeds native coordinate or 256 MiB pixel budget");
- unsupported(m.colorMode!="rgba","Only RGBA projects are editable");
+ unsupported(!color_mode::rgbaStorageMode(m.colorMode),"Only RGBA and grayscale projects are editable");
  unsupported(!color_mode::pixelFormat(m.pixelFormat),"Unsupported pixel format");
  // Legacy refreshActiveAnimationFrame clears missing ordinary slots while
  // preserving displayed geometry; ensureAnimationDocument later materializes
@@ -218,12 +218,12 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
  }
  }
 
- try{tilejson::validateAndRender(state);for(const auto& l:state.layers)if(l.kind=="free-tile"){if(!l.freeTiles)throw std::invalid_argument("Missing free tile sources");for(auto& c:state.cels)if(c.layerId==l.id&&!c.linkedCelId&&!c.runtimeSharedCelId){if(!c.freeTiles||!c.surface)throw std::invalid_argument("Missing free tile instance surface");c.surface->pixels=free_tiles::render(*l.freeTiles,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height);}}}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}
+ try{tilejson::validateAndRender(state,m.colorMode=="grayscale");for(const auto& l:state.layers)if(l.kind=="free-tile"){if(!l.freeTiles)throw std::invalid_argument("Missing free tile sources");for(auto& c:state.cels)if(c.layerId==l.id&&!c.linkedCelId&&!c.runtimeSharedCelId){if(!c.freeTiles||!c.surface)throw std::invalid_argument("Missing free tile instance surface");c.surface->pixels=free_tiles::render(*l.freeTiles,*c.freeTiles,state.tilesets,c.surface->width,c.surface->height,m.colorMode=="grayscale");}}}catch(const std::exception& e){throw Error(ErrorKind::Corrupt,e.what());}
  std::map<std::pair<std::string,std::string>,const ManifestRaster*> linkedRasters;
  for(const auto& layer:m.layers)if(!layer.linkedContentId.empty())for(const auto& frame:m.frames){const auto* root=rootCel(m.cels[slotIndex(layer.id,frame.id)]);corrupt(!root->surface,"Missing associated raster");const auto& raster=*root->surface;const auto key=std::make_pair(layer.linkedContentId,frame.id);const auto found=linkedRasters.emplace(key,&raster);if(!found.second){const auto& previous=*found.first->second;corrupt(previous.width!=raster.width||previous.height!=raster.height||previous.pixels!=raster.pixels,"Linked layer raster content mismatch");}}
  // Legacy document.layers is bottom-to-top; native compositor is top-to-bottom.
  std::reverse(state.layers.begin(),state.layers.end());
- PreparedImport result;result.pixelFormat=m.pixelFormat;result.width=m.width;result.height=m.height;result.activeLayerId=m.activeLayerId;result.activeFrameId=m.activeFrameId;result.loop=m.loop;result.id=m.id;result.name=unicode(m.name);result.timeline=std::move(state);result.sourceArchive=m.sourceArchive;
+ PreparedImport result;result.colorMode=m.colorMode;result.pixelFormat=m.pixelFormat;result.width=m.width;result.height=m.height;result.activeLayerId=m.activeLayerId;result.activeFrameId=m.activeFrameId;result.loop=m.loop;result.id=m.id;result.name=unicode(m.name);result.timeline=std::move(state);result.sourceArchive=m.sourceArchive;
  for(const auto& layer:m.layers)if(layer.surface){const auto& g=*layer.surface;result.layerGeometry.emplace(layer.id,std::array<int,4>{g.width,g.height,g.offsetX,g.offsetY});}
  result.layerPanelState=m.layerPanelState;result.palette=prepareEditablePalette(m);
  result.information=m.information;result.timelapse=m.timelapse;

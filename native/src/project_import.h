@@ -15,7 +15,7 @@ struct PreparedImport {
  LayerPanelState layerPanelState;
  int width=0,height=0;std::string id,activeLayerId,activeFrameId;bool loop=true,showPixelGrid=false,showCustomGrid=false;GridSettings customGrid;std::u32string name;
  timeline::State timeline;ImportPalette palette;
- std::string pixelFormat="rgba32";
+ std::string pixelFormat="rgba32",colorMode="rgba";
  std::unordered_map<std::string,std::array<int,4>> layerGeometry;
  ProjectInformation information=ProjectInformation::fresh();timelapse::Settings timelapse;
  std::vector<ProjectBrushResource> customBrushes;

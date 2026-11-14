@@ -63,7 +63,7 @@ inline void validate(const LayerData& layer,const CelData& cel,const std::vector
   }
  }
 }
-inline std::vector<std::uint32_t> render(const LayerData& layer,const CelData& cel,const std::vector<tiles::Tileset>& sets,int width,int height){
+inline std::vector<std::uint32_t> render(const LayerData& layer,const CelData& cel,const std::vector<tiles::Tileset>& sets,int width,int height,bool grayscale=false){
  if(width<1||height<1||std::uint64_t(width)*height>MaxSurfacePixels)throw std::length_error("Free tile surface is too large");
  validate(layer,cel,sets);std::vector<std::uint32_t> out(std::size_t(width)*height);
  struct Resolved {const Source* source;const tiles::Tileset* set;std::vector<std::uint32_t> pixels;};
@@ -79,7 +79,7 @@ inline std::vector<std::uint32_t> render(const LayerData& layer,const CelData& c
   for(int y=0;y<resolved.set->tileHeight;++y)for(int x=0;x<resolved.set->tileWidth;++x){
    const auto p=resolved.pixels[std::size_t(y)*resolved.set->tileWidth+x];if(!(p>>24))continue;
    const auto at=transform(i,s.offsetX+x,s.offsetY+y);const auto tx=std::int64_t(i.x)+at.first,ty=std::int64_t(i.y)+at.second;
-   if(tx<0||ty<0||tx>=width||ty>=height)continue;auto& dst=out[std::size_t(ty)*width+std::size_t(tx)];dst=blendLayerPixel(dst,p,opacity,blend);
+   if(tx<0||ty<0||tx>=width||ty>=height)continue;auto& dst=out[std::size_t(ty)*width+std::size_t(tx)];dst=blendLayerPixel(dst,grayscale?relativeLuminancePixel(p):p,opacity,blend);
   }
  }
  return out;

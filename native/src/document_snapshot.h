@@ -15,6 +15,7 @@ class DocumentSnapshot {
   std::unordered_map<std::string,std::array<int,4>> layerGeometry_;
   std::u32string name_;PaletteState palette_;SymmetryCenter symmetry_;
   color_mode::PixelFormat pixelFormat_=color_mode::PixelFormat::Rgba32;
+  color_mode::Mode colorMode_=color_mode::Mode::Rgba;
   ProjectInformation information_;timelapse::Settings timelapse_;
   std::shared_ptr<const std::vector<std::uint8_t>> archive_;
   std::vector<ProjectBrushResource> brushes_;

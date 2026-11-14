@@ -153,7 +153,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
     auto date=[&](const char* name){auto v=value(doc,name);return v&&v.ValueType()==JsonValueType::String&&!v.GetString().empty()?winrt::to_string(v.GetString()):clock();};out.information.createdAt=date("createdAt");out.information.updatedAt=date("updatedAt");
     if(auto v=value(doc,"statistics");v&&v.ValueType()==JsonValueType::Object){const auto statistics=v.GetObject();auto counter=[&](const char* name){const auto n=value(statistics,name);return n&&n.ValueType()==JsonValueType::Number?projectCounter(n.GetNumber()):std::uint64_t(0);};out.information.strokeCount=counter("strokeCount");out.information.operationCount=counter("operationCount");out.information.drawingTimeMs=counter("drawingTimeMs");}
 
-    if(out.colorMode!="rgba") out.unsupported.emplace_back("colorMode="+out.colorMode);
+    if(!color_mode::rgbaStorageMode(out.colorMode)) out.unsupported.emplace_back("colorMode="+out.colorMode);
     // project-format-decode.ts: invalid, absent and non-string formats fall back.
     if(auto v=value(doc,"pixelFormat");v&&v.ValueType()==JsonValueType::String)
       out.pixelFormat=std::string(color_mode::name(color_mode::preferencePixelFormat(winrt::to_string(v.GetString()))));
@@ -187,7 +187,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       int w=integer(metadata,"width",out.width,1),h=integer(metadata,"height",out.height,1);
       int x=integer(metadata,"offsetX",0),y=integer(metadata,"offsetY",0);
       RasterKey cacheKey{file,encoding,w,h,x,y};auto cached=rasters.find(cacheKey);if(cached!=rasters.end()) return cached->second;
-      if(out.colorMode!="rgba" || str(metadata,"format",false,"rgba")!="rgba") {out.unsupported.emplace_back("non-RGBA resource "+file);return {};}
+      if(!color_mode::rgbaStorageMode(out.colorMode) || str(metadata,"format",false,"rgba")!="rgba") {out.unsupported.emplace_back("non-RGBA resource "+file);return {};}
       const std::uint64_t pixels=std::uint64_t(w)*h;
       if(pixels>(limits.expandedBytes-decodedBytes)/4) throw Error(ErrorKind::Limit,"Decoded project pixels exceed budget");
       auto data=archive.read(file,limits.expandedBytes);
@@ -248,7 +248,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       JsonObject layerRaster;for(const auto& field:o)layerRaster.Insert(field.Key(),field.Value());
       for(const auto* name:{"width","height"}){const auto raw=value(o,name);double n=std::string_view(name)=="width"?out.width:out.height;if(raw&&raw.ValueType()==JsonValueType::Number){const auto d=raw.GetNumber();if(std::isfinite(d)&&std::floor(d)==d&&d>0&&d<=9007199254740991.)n=d;}layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
       for(const auto* name:{"offsetX","offsetY"}){const auto raw=value(o,name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Layer offset exceeds native coordinates");layerRaster.Insert(key(name),JsonValue::CreateNumberValue(n));}
-      layer.surface=raster(layerRaster);if(!layer.surface && out.colorMode=="rgba" && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
+      layer.surface=raster(layerRaster);if(!layer.surface && color_mode::rgbaStorageMode(out.colorMode) && layer.kind.empty()) bad("missing layer raster");out.layers.push_back(std::move(layer));
     }
     if(out.layers.empty())bad("missing layers");if(!layerIds.count(out.activeLayerId))out.activeLayerId=out.layers.front().id;
     std::set<std::string> modernFreeLayers;std::map<std::string,const ManifestLayer*> celOwners;for(const auto& layer:out.layers){celOwners.emplace(layer.id,&layer);if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty())modernFreeLayers.insert(layer.id);}
@@ -322,7 +322,7 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       }
       else {const auto format=value(rasterMetadata,"format");if(!format||format.ValueType()!=JsonValueType::String||(format.GetString()!=L"rgba"&&format.GetString()!=L"indexed"))bad("cel raster format");auto validDimension=[&](const char* name){const auto n=value(rasterMetadata,name);if(!n||n.ValueType()!=JsonValueType::Number)return false;const auto d=n.GetNumber();return std::isfinite(d)&&std::floor(d)==d&&d>=1&&d<=9007199254740991.;};if(!validDimension("width")||!validDimension("height")){consumedFiles.insert(winrt::to_string(path.GetString()));continue;}}
       for(const auto* name:{L"offsetX",L"offsetY"}){const auto raw=rasterMetadata.TryLookup(name);double n=0;if(raw&&raw.ValueType()==JsonValueType::Number&&std::isfinite(raw.GetNumber()))n=std::trunc(raw.GetNumber());if(n<std::numeric_limits<int>::min()||n>std::numeric_limits<int>::max())throw Error(ErrorKind::Limit,"Cel offset exceeds native coordinates");rasterMetadata.Insert(name,JsonValue::CreateNumberValue(n));}
-      cel.surface=raster(rasterMetadata);if(!cel.surface && cel.linkedCelId.empty() && out.colorMode=="rgba") bad("missing cel raster");out.cels.push_back(std::move(cel));
+      cel.surface=raster(rasterMetadata);if(!cel.surface && cel.linkedCelId.empty() && color_mode::rgbaStorageMode(out.colorMode)) bad("missing cel raster");out.cels.push_back(std::move(cel));
     }
     // Broken targets are retained for the explicitly approved editable-import
     // repair; every explicit fallback raster was validated above.

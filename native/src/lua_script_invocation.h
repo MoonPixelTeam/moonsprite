@@ -40,6 +40,7 @@ struct Invocation {
  std::vector<Cel> cels;
  // Supplied by the workspace adapter, not fabricated as an empty MSE model.
  std::string mseSnapshotJson;
+ color_mode::Mode colorMode=color_mode::Mode::Rgba;
  // Run on the executor worker; no per-pixel WinRT objects on the UI thread.
  std::string contextJson()const;
 };

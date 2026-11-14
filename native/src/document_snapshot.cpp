@@ -5,7 +5,7 @@
 namespace moon {
 DocumentSnapshot::DocumentSnapshot(const Document& d,std::string newProjectId)
  :raster_(d.timeline().state()),identity_(d.identity()),revision_(d.revision()),contentRevision_(d.contentRevision()),width_(d.width()),height_(d.height()),loop_(d.animationLoop()),projectId_(d.projectId().empty()?std::move(newProjectId):d.projectId()),layer_(d.layer().id),frame_(d.frame().id),name_(d.name()),palette_(d.palette()),symmetry_(d.symmetryCenter()),archive_(d.sourceArchive()){
-  pixelFormat_=d.pixelFormat();outline_=d.outlineSettings();panel_=d.layerPanelState();timelapse_=d.timelapseSettings();references_=d.referenceImages();slices_=d.slices();information_=d.projectInformation();
+  pixelFormat_=d.pixelFormat();colorMode_=d.colorMode();outline_=d.outlineSettings();panel_=d.layerPanelState();timelapse_=d.timelapseSettings();references_=d.referenceImages();slices_=d.slices();information_=d.projectInformation();
   showPixelGrid_=d.showPixelGrid();showCustomGrid_=d.showCustomGrid();customGrid_=d.customGrid();
   for(const auto& resource:d.projectBrushes()){
     ProjectBrushResource copy;copy.metadata=resource.metadata;const auto& b=resource.brush;
@@ -13,7 +13,7 @@ DocumentSnapshot::DocumentSnapshot(const Document& d,std::string newProjectId)
   }
   for(const auto& layer:d.timeline().state().layers)layerGeometry_.emplace(layer.id,d.displayedLayerGeometry(layer.id));
 }
-bool DocumentSnapshot::matches(const Document& d)const{for(const auto& layer:d.timeline().state().layers){const auto found=layerGeometry_.find(layer.id);if(found==layerGeometry_.end()||found->second!=d.displayedLayerGeometry(layer.id))return false;}const auto center=d.symmetryCenter();return !d.active() && pixelFormat_==d.pixelFormat() && identity_==d.identity() && revision_==d.revision() && contentRevision_==d.contentRevision() && symmetry_.x==center.x && symmetry_.y==center.y && loop_==d.animationLoop() && showPixelGrid_==d.showPixelGrid() && showCustomGrid_==d.showCustomGrid() && customGrid_==d.customGrid() && panel_==d.layerPanelState() && raster_.matches(d.timeline().state());}
+bool DocumentSnapshot::matches(const Document& d)const{for(const auto& layer:d.timeline().state().layers){const auto found=layerGeometry_.find(layer.id);if(found==layerGeometry_.end()||found->second!=d.displayedLayerGeometry(layer.id))return false;}const auto center=d.symmetryCenter();return !d.active() && pixelFormat_==d.pixelFormat() && colorMode_==d.colorMode() && identity_==d.identity() && revision_==d.revision() && contentRevision_==d.contentRevision() && symmetry_.x==center.x && symmetry_.y==center.y && loop_==d.animationLoop() && showPixelGrid_==d.showPixelGrid() && showCustomGrid_==d.showCustomGrid() && customGrid_==d.customGrid() && panel_==d.layerPanelState() && raster_.matches(d.timeline().state());}
 bool DocumentSnapshot::advance(const Document& d,std::chrono::steady_clock::time_point deadline){
   const auto progress=advanceChecked(d,deadline);
   if(progress==Progress::SourceChanged)throw std::logic_error("Document changed during snapshot");
@@ -51,7 +51,7 @@ Document DocumentSnapshot::finish(){
   timeline::Timeline captured(raster_.take());
   if(!captured.diagnoseLinks().empty())throw std::invalid_argument("Invalid snapshot cel link");
   for(const auto& cel:captured.state().cels){const auto resolved=captured.resolveSurface(cel.id);if(!resolved.surface)throw std::invalid_argument("Missing snapshot owner");raster::validate(*resolved.surface);}
-  Document result(width_,height_);result.pixelFormat_=pixelFormat_;result.timeline_=std::move(captured);result.palette_=std::move(palette_);result.name_=std::move(name_);
+  Document result(width_,height_);result.pixelFormat_=pixelFormat_;result.colorMode_=colorMode_;result.timeline_=std::move(captured);result.palette_=std::move(palette_);result.name_=std::move(name_);
   result.setImportedOutlineSettings(std::move(outline_));result.activeLayerId_=layer_;result.activeFrameId_=frame_;result.setImportedLayerGeometry(std::move(layerGeometry_));result.projectActiveCelOpacities();
   result.setImportedProjectInformation(std::move(information_));result.setImportedTimelapse(std::move(timelapse_));
   result.projectId_=std::move(projectId_);result.sourceArchive_=std::move(archive_);
