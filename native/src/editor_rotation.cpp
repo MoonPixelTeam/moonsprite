@@ -90,7 +90,7 @@ void Editor::smokeTileRepeat(){
  auto traceStage=[&](const char* stage,int mode=0,int sample=0){if(checkTrace.is_open()){checkTrace<<(GetTickCount64()-checkStarted)<<'\t'<<stage<<'\t'<<mode<<'\t'<<sample<<'\n';checkTrace.flush();}};
  // Run the original assertions in bounded phases without repeating the full
  // text-editor suite inside the geometry phase. No selection means all phases.
- bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false;int checkTextCase=-1;
+ bool checkGeometry=true,checkTextDialogs=true,checkShiftLines=false,checkFreePreview=false,checkPlacementPreview=false,checkMaskPreview=false,checkMaskShift=false,checkPixelFormats=false,checkFrameCreation=false,checkLayerCreation=false,checkLayerCopy=false,checkLayerDelete=false;int checkTextCase=-1;
  if(const auto phase=_wgetenv(L"MOONSPRITE_TILE_REPEAT_CHECK_PHASE")){
   const std::wstring value(phase);bool recognized=false;
   if(value==L"geometry"){checkTextDialogs=false;recognized=true;}
@@ -103,6 +103,7 @@ void Editor::smokeTileRepeat(){
   else if(value==L"frame-creation"){checkGeometry=checkTextDialogs=false;checkFrameCreation=true;recognized=true;}
   else if(value==L"layer-creation"){checkGeometry=checkTextDialogs=false;checkLayerCreation=true;recognized=true;}
   else if(value==L"layer-copy"){checkGeometry=checkTextDialogs=false;checkLayerCopy=true;recognized=true;}
+  else if(value==L"layer-delete"){checkGeometry=checkTextDialogs=false;checkLayerDelete=true;recognized=true;}
   else for(int index=0;index<12;++index)if(value==L"text-"+std::to_wstring(index)){checkGeometry=false;checkTextCase=index;recognized=true;break;}
   if(!recognized)throw std::runtime_error("Invalid tile repeat check phase");
  }
@@ -117,6 +118,23 @@ void Editor::smokeTileRepeat(){
  // The default pivot at the fixture press otherwise consumes the content drag.
  currentView().selectionPivotVisible=false;
  auto send=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
+ if(checkLayerDelete){
+  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
+  for(bool group:{false,true})for(int mode=0;mode<4;++mode){
+   replaceDocumentForSmoke(std::move(*std::make_unique<Document>(2,2)));auto& d=currentDocument();d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addLayer();const auto outside=d.layer().id;d.selectTimelineLayer(original);require(d.createLayerGroup(),"Delete UI group fixture");const auto groupId=*d.selectedGroupId();d.addFrame(true);const auto second=d.frame().id;d.selectFrame(first);
+   require(d.createAttachedMask(original,first),"Delete UI mask fixture");d.exitAttachedMask();if(group)d.selectTimelineRow({LayerPanelKind::Group,groupId,0});else d.selectTimelineLayer(original);refresh();auto initial=d.captureAnimationSelection();
+   if(mode==1){initial.frames={first};initial.frameAnchor=first;initial.sessionSelection->frameSelection=true;}
+   if(mode==2){initial.selection.cels={d.timeline().findCel(original,first)->id,d.timeline().findCel(outside,first)->id};initial.selection.celAnchor=initial.selection.cels.front();}
+   if(mode==3){d.selectAttachedMask(original,first,true);const auto context=d.captureAnimationSelection();initial.activeMask=context.activeMask;initial.activeMaskSlot=context.activeMaskSlot;initial.maskIsolated=true;initial.sessionSelection->masks={{original,first}};initial.sessionSelection->maskAnchor=initial.sessionSelection->masks.front();}
+   require(d.restoreAnimationSelection(initial),"Delete UI selection fixture");refresh();const auto history=d.historyPosition();require(menuCommands_.invoke("deleteLayer"),"Delete UI menu entry");refresh();
+   const auto cells=mode==2?std::vector<std::string>{d.timeline().findCel(outside,first)->id}:std::vector<std::string>{};auto noMask=[&]{return d.activeMaskId().empty()&&currentView().maskSlots.empty()&&!currentView().maskAnchor;};
+   require(!d.timeline().hasLayer(original)&&d.layer().id==outside&&d.historyPosition()==history+1&&d.timelineSelection().cels==cells&&d.selectedFrames()==initial.frames&&noMask(),"Delete UI first selection");
+   require(runShortcutCommand("undo"),"Delete UI Undo entry");refresh();require(d.timeline().hasLayer(original)&&d.layer().id==original&&d.timelineSelection().layers==initial.selection.layers&&d.selectedGroupIds()==initial.groups&&d.timelineSelection().cels==cells&&noMask(),"Delete UI Undo selection");
+   require(runShortcutCommand("redo"),"Delete UI Redo entry");refresh();require(!d.timeline().hasLayer(original)&&noMask(),"Delete UI Redo mask");d.selectFrame(second);d.selectTimelineCel(d.timeline().findCel(outside,second)->id);refresh();const auto current=d.timelineSelection().cels;
+   require(runShortcutCommand("undo"),"Delete UI current Undo");refresh();require(d.frame().id==second&&d.timelineSelection().cels==current&&noMask(),"Delete UI current Undo selection");require(runShortcutCommand("redo"),"Delete UI current Redo");refresh();require(d.frame().id==second&&d.timelineSelection().cels==current&&noMask(),"Delete UI current Redo selection");traceStage("layer-delete",group,mode);
+  }
+  replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();return;
+ }
  if(checkLayerCopy){
   auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};layersPanelOpen_=true;setTimelineHidden(false,false);
   for(bool drag:{false,true})for(int mode=0;mode<4;++mode){

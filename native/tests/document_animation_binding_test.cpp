@@ -208,6 +208,33 @@ void verifyLayerCreationSelectionContract(){
   check(other->value.groups==unrelated&&other->restored==0,"Layer history changed another session");
  }
 }
+void verifyLayerDeletionSelectionContract(){
+ for(int route=0;route<3;++route)for(int mode=0;mode<7;++mode){
+  auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
+  d.fillSelectionOrCanvas(0xff123456);const auto original=d.layer().id,first=d.frame().id;d.addLayer();const auto outside=d.layer().id;d.fillSelectionOrCanvas(0xffabcdef);d.selectTimelineLayer(original);check(d.createLayerGroup(),"Delete group fixture");const auto group=*d.selectedGroupId();d.addFrame(true);const auto second=d.frame().id;d.selectFrame(first);
+  check(d.createAttachedMask(original,first),"Delete original mask fixture");d.exitAttachedMask();check(d.createAttachedMask(outside,first),"Delete surviving mask fixture");d.exitAttachedMask();bindSelectionOwner(owner);bindSelectionOwner(other);
+  if(route==2){d.selectTimelineRow({LayerPanelKind::Group,group,0});d.toggleGroupCollapsed(group);}else d.selectTimelineLayer(original);
+  auto before=d.captureAnimationSelection();const auto originalCel=d.timeline().findCel(original,first)->id,outsideCel=d.timeline().findCel(outside,first)->id;
+  if(mode==1){before.frames={first};before.frameAnchor=first;before.sessionSelection->frameSelection=true;}
+  if(mode==2){before.selection.cels={originalCel,outsideCel};before.selection.celAnchor=originalCel;}
+  if(mode==3){before.sessionSelection->groups={{group,first}};before.sessionSelection->groupAnchor=before.sessionSelection->groups.front();}
+  if(mode>=4){d.selectAttachedMask(mode==6?outside:original,first,true);const auto context=d.captureAnimationSelection();before.activeMask=context.activeMask;before.activeMaskSlot=context.activeMaskSlot;before.maskIsolated=true;if(mode==5)before.selection.maskRows={original};else{before.sessionSelection->masks={{mode==6?outside:original,first}};before.sessionSelection->maskAnchor=before.sessionSelection->masks.front();}}
+  check(d.restoreAnimationSelection(before),"Delete selection fixture");d.previewSelection(SelectionMask{0,0,1,1,{}});other->value.groups={{"unrelated","frame"}};const auto unrelated=other->value.groups;const auto h=d.historyPosition();
+  if(route==1)d.deleteLayer();else d.deleteSelectedLayers();
+  const auto survivingCells=mode==2?std::vector<std::string>{outsideCel}:std::vector<std::string>{};
+  const auto survivingGroups=mode==3&&route!=2?before.sessionSelection->groups:std::vector<AnimationCellSlot>{};
+  const auto survivingMasks=mode==6?before.sessionSelection->masks:std::vector<AnimationSessionSelection::MaskSlot>{};
+  auto items=[&]{return d.timelineSelection().cels==survivingCells&&d.selectedFrames()==before.frames&&owner->value.groups==survivingGroups&&owner->value.masks==survivingMasks;};
+  auto mask=[&]{return d.activeMaskId()==(mode==6?before.activeMask:std::string{});};
+  check(d.timeline().state().layers.size()==1&&d.layer().id==outside&&d.historyPosition()==h+1&&d.timelineSelection().layers==std::vector<std::string>{outside}&&items()&&mask()&&d.selection(),"Delete first selection contract");
+  d.undo();check(d.layer().id==original&&d.timelineSelection().layers==(route==1?std::vector<std::string>{outside}:before.selection.layers)&&d.selectedGroupIds()==(route==1?std::vector<std::string>{}:before.groups)&&items()&&mask()&&d.selection(),"Delete Undo revived stale selection");
+  d.redo();check(d.layer().id==outside&&items()&&mask(),"Delete Redo revived stale selection");
+  d.selectFrame(second);d.selectTimelineCel(d.timeline().findCel(outside,second)->id);owner->value={};const auto current=d.captureAnimationSelection();
+  d.undo();check(d.layer().id==original&&d.frame().id==second&&d.timelineSelection().cels==current.selection.cels&&owner->value.groups.empty()&&owner->value.masks.empty()&&d.activeMaskId().empty(),"Delete Undo restored old frame/items");
+  d.redo();check(d.layer().id==outside&&d.frame().id==second&&d.timelineSelection().cels==current.selection.cels&&d.activeMaskId().empty(),"Delete Redo restored old frame/items");
+  check(other->value.groups==unrelated&&other->restored==0,"Delete changed another session");
+ }
+}
 void verifyLayerCopySelectionContract(){
  for(bool drag:{false,true})for(int mode=0;mode<6;++mode){
   auto owner=std::make_shared<SelectionOwner>(),other=std::make_shared<SelectionOwner>();auto& d=*owner->document;
@@ -237,6 +264,21 @@ void verifyLayerCopySelectionContract(){
  }
  {Document d(2,2);d.addLayer();check(d.timelineSelection().layers.empty()&&d.canDuplicateSelectedLayers(),"Implicit target copy disabled");const auto id=d.layer().id;d.duplicateSelectedLayers();check(d.layer().id!=id,"Implicit target copy missing");d.undo();check(d.layer().id==id&&d.timelineSelection().layers.empty(),"Implicit copy Undo changed selection mode");d.selectFrameHeader(d.frame().id);check(!d.canDuplicateSelectedLayers(),"Frame-only selection copied implicit layer");}
 }
+void verifyLayerDeletionResourcesAndGuards(){
+ for(bool free:{false,true})for(bool shared:{false,true}){
+  auto seed=std::make_unique<Document>(2,2);seed->fillSelectionOrCanvas(0xff123456);
+  check(free?seed->createFreeTileLayer(U"Delete free"):seed->convertLayerToTilemap(1,1,U"Delete tiles"),"Delete resource fixture");
+  const auto original=seed->layer().id,set=seed->tileSelection().tilesetId;seed->addFrame(true);seed->addLayer();const auto outside=seed->layer().id;
+  auto state=seed->timeline().state();if(shared){auto& peer=state.layers.front();const auto& source=state.layers[seed->timeline().layerIndex(original)];peer.kind=source.kind;peer.tilemapTilesetId=source.tilemapTilesetId;peer.freeTiles=source.freeTiles;for(auto& cel:state.cels)if(cel.layerId==outside){const auto* value=seed->timeline().findCel(original,cel.frameId);cel.tilemap=value->tilemap;cel.freeTiles=value->freeTiles;cel.surface=value->surface;}}
+  auto document=std::make_unique<Document>(Document::fromImported(2,2,std::move(state),seed->palette(),"delete-resources",U"Resources",std::make_shared<const std::vector<std::uint8_t>>()));auto& d=*document;d.selectTimelineLayer(original);d.setSelectedTile(set,d.timeline().state().tilesets.front().tileIds.front());
+  const auto count=d.timeline().state().tilesets.size(),history=d.historyPosition();const auto pixels=d.timeline().resolveSurface(d.timeline().findCel(original,d.frame().id)->id).surface->pixels.data();
+  if(free){check(d.setFreeTileInstanceView(true),"Delete instance-view fixture");check(!d.canDeleteLayers()&&!d.canDeleteSelectedLayers(),"Delete allowed in instance view");d.deleteLayer();d.deleteSelectedLayers();check(d.historyPosition()==history&&d.timeline().hasLayer(original),"Delete changed instance-view document");d.setFreeTileInstanceView(false);d.selectTimelineLayer(original);}
+  d.setLayerLocked(true);const auto locked=d.historyPosition();d.deleteSelectedLayers();check(d.historyPosition()==locked&&d.timeline().hasLayer(original),"Delete ignored layer lock");d.undo();
+  d.deleteSelectedLayers();check(!d.timeline().hasLayer(original)&&d.timeline().state().tilesets.size()==count-(shared?0:1)&&d.tileSelection().tilesetId==(shared?set:std::string{}),"Delete owned/shared resource selection");
+  d.undo();check(d.timeline().hasLayer(original)&&d.timeline().state().tilesets.size()==count&&d.tileSelection().tilesetId==set&&d.timeline().resolveSurface(d.timeline().findCel(original,d.frame().id)->id).surface->pixels.data()==pixels,"Delete resource Undo ownership");
+  d.redo();check(d.timeline().state().tilesets.size()==count-(shared?0:1)&&d.tileSelection().tilesetId==(shared?set:std::string{}),"Delete resource Redo");
+ }
+}
 void verifyLayerCopyResources(){
  for(bool free:{false,true}){
   auto document=std::make_unique<Document>(2,2);auto& d=*document;d.fillSelectionOrCanvas(0xff123456);
@@ -261,7 +303,7 @@ void verifyLayerCreationRasterReplay(){
   }
  }
 }
-int main(){try{verifyLayerCopySelectionContract();verifyLayerCopyResources();verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
+int main(){try{verifyLayerDeletionSelectionContract();verifyLayerDeletionResourcesAndGuards();verifyLayerCopySelectionContract();verifyLayerCopyResources();verifyLayerCreationSelectionContract();verifyLayerCreationRasterReplay();verifyImplicitLayerSelectionNormalization();verifyCompleteSessionSelectionHistory();verifyMaskSessionSelectionHistory();verifyTrimDoesNotCreateSelectionHistory();verifyNormalizedSlotOrder();verifyFramePasteSelectionContract();verifyCelCutSelectionContract();verifyFrameCreationSelectionContract();verifyExistingRightFrameLinkSelectionContract();
   Document document(3,1);
   const auto first=document.frame().id;
   document.addFrame();const auto second=document.frame().id;

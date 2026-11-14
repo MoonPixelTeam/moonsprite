@@ -1825,7 +1825,8 @@
         "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
         "legacy/src/renderer/src/core/layer-operations.ts",
         "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
-        "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts",
+        "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts"
       ],
       "scope": "Native history replay adaptation; independent terminal branches then ordered resources, structure, content, selection/focus, projection and source settlement. All original phase statements concatenate to original applyEdit body; nested replay suppression remains at root. Typed payload migration remains incomplete.",
       "adaptation": "Reuse original Document algorithms and legacy compound redo forward/undo reverse; keep all writes private to Document. No new history owner or public mutation service.",
@@ -1873,6 +1874,21 @@
           "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
         ],
         "nativeAdaptation": "Migrate duplicateSelectedLayerRows and useLayerRowDrag compound ordering: menu copy restores layer/group/collapsed rows while retaining current frame and surviving animation item choices; initial/Redo applyLayerRowSelection exits mask editing/isolation and free instance selection without clearing ordinary Cel/frame/group cells. Alt copy-move records the animation selection after copy has cleared masks, then restores original rows and active layer on Undo. Keep normal move selection history. Resolve the legacy implicit active editing target at the copy command boundary without promoting native implicit focus to explicit selection; frame/Cel/mask-only modes do not acquire a fallback row. Owned tileset selection follows applyLayerRowSelection on Redo and ensureTileSelection compatible surviving resource on Undo. Native top-first layer ordering and single transactional structural replay adapt legacy bottom-first creation+placement+move while retaining Cels/resources, current pixels and failure compensation. Tests cover 12 selection cases, current-frame replay, mask exit, resources and isolated session ownership; formal menu and drag-finish checks in editor_rotation. See layer-copy-selection-migration-20261114.md; remaining migration gaps retained."
+      },
+      "layerDeletionSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-mutation.ts",
+          "legacy/src/renderer/src/store/workspace-commands-history.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection.ts",
+          "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts",
+          "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
+          "legacy/src/renderer/src/core/history.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+          "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        ],
+        "nativeAdaptation": "Port actual deleteActiveLayer and deleteSelectedLayers history closures: preserve current frame and surviving animation items; selected deletion restores layer/group rows only, while active-layer deletion changes landing row only initially and preserves later row choices on replay. Removed mask/Cel/group items stay removed on Undo, surviving mask context remains. Deletion leaves collapsed state outside history. Reuse ensureTileSelection compatible resource fallback and legacy owned-resource removal, preserve structural Cel ownership and compensation. Reject layer deletion while the free-instance panel owns editing. Domain cases cover 3 routes x 7 modes plus shared/owned grid/free resources and lock/instance guards; formal menu and shortcut replay entry checked in editor_rotation. Native existing group dispatch and explicit-versus-implicit row representation retained; see layer-delete-selection-migration-20261114.md for exact verified scope and remaining gaps."
       }
     },
     {
@@ -2099,7 +2115,8 @@
         "legacy/src/renderer/src/store/workspace-commands-layer-selection.ts",
         "legacy/src/renderer/src/components/panels/useLayerRowDrag.ts",
         "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
-        "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
+        "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+        "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts"
       ],
       "classification": "legacy-partial",
       "scope": "Native live Document animation observation for C06 lifecycle decoupling; no UI, timer or Editor ownership.",
@@ -2189,6 +2206,21 @@
           "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
         ],
         "nativeAdaptation": "Migrate duplicateSelectedLayerRows and useLayerRowDrag compound ordering: menu copy restores layer/group/collapsed rows while retaining current frame and surviving animation item choices; initial/Redo applyLayerRowSelection exits mask editing/isolation and free instance selection without clearing ordinary Cel/frame/group cells. Alt copy-move records the animation selection after copy has cleared masks, then restores original rows and active layer on Undo. Keep normal move selection history. Resolve the legacy implicit active editing target at the copy command boundary without promoting native implicit focus to explicit selection; frame/Cel/mask-only modes do not acquire a fallback row. Owned tileset selection follows applyLayerRowSelection on Redo and ensureTileSelection compatible surviving resource on Undo. Native top-first layer ordering and single transactional structural replay adapt legacy bottom-first creation+placement+move while retaining Cels/resources, current pixels and failure compensation. Tests cover 12 selection cases, current-frame replay, mask exit, resources and isolated session ownership; formal menu and drag-finish checks in editor_rotation. See layer-copy-selection-migration-20261114.md; remaining migration gaps retained."
+      },
+      "layerDeletionSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-mutation.ts",
+          "legacy/src/renderer/src/store/workspace-commands-history.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection.ts",
+          "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts",
+          "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
+          "legacy/src/renderer/src/core/history.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+          "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        ],
+        "nativeAdaptation": "Port actual deleteActiveLayer and deleteSelectedLayers history closures: preserve current frame and surviving animation items; selected deletion restores layer/group rows only, while active-layer deletion changes landing row only initially and preserves later row choices on replay. Removed mask/Cel/group items stay removed on Undo, surviving mask context remains. Deletion leaves collapsed state outside history. Reuse ensureTileSelection compatible resource fallback and legacy owned-resource removal, preserve structural Cel ownership and compensation. Reject layer deletion while the free-instance panel owns editing. Domain cases cover 3 routes x 7 modes plus shared/owned grid/free resources and lock/instance guards; formal menu and shortcut replay entry checked in editor_rotation. Native existing group dispatch and explicit-versus-implicit row representation retained; see layer-delete-selection-migration-20261114.md for exact verified scope and remaining gaps."
       }
     },
     {
@@ -4204,6 +4236,21 @@
           "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
         ],
         "nativeAdaptation": "Migrate duplicateSelectedLayerRows and useLayerRowDrag compound ordering: menu copy restores layer/group/collapsed rows while retaining current frame and surviving animation item choices; initial/Redo applyLayerRowSelection exits mask editing/isolation and free instance selection without clearing ordinary Cel/frame/group cells. Alt copy-move records the animation selection after copy has cleared masks, then restores original rows and active layer on Undo. Keep normal move selection history. Resolve the legacy implicit active editing target at the copy command boundary without promoting native implicit focus to explicit selection; frame/Cel/mask-only modes do not acquire a fallback row. Owned tileset selection follows applyLayerRowSelection on Redo and ensureTileSelection compatible surviving resource on Undo. Native top-first layer ordering and single transactional structural replay adapt legacy bottom-first creation+placement+move while retaining Cels/resources, current pixels and failure compensation. Tests cover 12 selection cases, current-frame replay, mask exit, resources and isolated session ownership; formal menu and drag-finish checks in editor_rotation. See layer-copy-selection-migration-20261114.md; remaining migration gaps retained."
+      },
+      "layerDeletionSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-mutation.ts",
+          "legacy/src/renderer/src/store/workspace-commands-history.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection.ts",
+          "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts",
+          "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
+          "legacy/src/renderer/src/core/history.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+          "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        ],
+        "nativeAdaptation": "Port actual deleteActiveLayer and deleteSelectedLayers history closures: preserve current frame and surviving animation items; selected deletion restores layer/group rows only, while active-layer deletion changes landing row only initially and preserves later row choices on replay. Removed mask/Cel/group items stay removed on Undo, surviving mask context remains. Deletion leaves collapsed state outside history. Reuse ensureTileSelection compatible resource fallback and legacy owned-resource removal, preserve structural Cel ownership and compensation. Reject layer deletion while the free-instance panel owns editing. Domain cases cover 3 routes x 7 modes plus shared/owned grid/free resources and lock/instance guards; formal menu and shortcut replay entry checked in editor_rotation. Native existing group dispatch and explicit-versus-implicit row representation retained; see layer-delete-selection-migration-20261114.md for exact verified scope and remaining gaps."
       }
     },
     {
@@ -23696,6 +23743,21 @@
           "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
         ],
         "nativeAdaptation": "Migrate duplicateSelectedLayerRows and useLayerRowDrag compound ordering: menu copy restores layer/group/collapsed rows while retaining current frame and surviving animation item choices; initial/Redo applyLayerRowSelection exits mask editing/isolation and free instance selection without clearing ordinary Cel/frame/group cells. Alt copy-move records the animation selection after copy has cleared masks, then restores original rows and active layer on Undo. Keep normal move selection history. Resolve the legacy implicit active editing target at the copy command boundary without promoting native implicit focus to explicit selection; frame/Cel/mask-only modes do not acquire a fallback row. Owned tileset selection follows applyLayerRowSelection on Redo and ensureTileSelection compatible surviving resource on Undo. Native top-first layer ordering and single transactional structural replay adapt legacy bottom-first creation+placement+move while retaining Cels/resources, current pixels and failure compensation. Tests cover 12 selection cases, current-frame replay, mask exit, resources and isolated session ownership; formal menu and drag-finish checks in editor_rotation. See layer-copy-selection-migration-20261114.md; remaining migration gaps retained."
+      },
+      "layerDeletionSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-mutation.ts",
+          "legacy/src/renderer/src/store/workspace-commands-history.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection.ts",
+          "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts",
+          "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
+          "legacy/src/renderer/src/core/history.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+          "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        ],
+        "nativeAdaptation": "Port actual deleteActiveLayer and deleteSelectedLayers history closures: preserve current frame and surviving animation items; selected deletion restores layer/group rows only, while active-layer deletion changes landing row only initially and preserves later row choices on replay. Removed mask/Cel/group items stay removed on Undo, surviving mask context remains. Deletion leaves collapsed state outside history. Reuse ensureTileSelection compatible resource fallback and legacy owned-resource removal, preserve structural Cel ownership and compensation. Reject layer deletion while the free-instance panel owns editing. Domain cases cover 3 routes x 7 modes plus shared/owned grid/free resources and lock/instance guards; formal menu and shortcut replay entry checked in editor_rotation. Native existing group dispatch and explicit-versus-implicit row representation retained; see layer-delete-selection-migration-20261114.md for exact verified scope and remaining gaps."
       }
     },
     {
@@ -26159,7 +26221,9 @@
         "legacy/src/renderer/src/store/workspace-commands-layer-selection.ts",
         "legacy/src/renderer/src/components/panels/useLayerRowDrag.ts",
         "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
-        "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
+        "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts",
+        "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts"
       ],
       "adaptation": "View rotation 20261020: legacy view-geometry mirror-then-clockwise transform and reverse inverse; 22.5 degree Math.round snap; legacy rotate gesture indicator pivots, native physical pointer/capture/escape, screen pan and anchored zoom, rotation-aware document hit coordinates and renderer matrix. Native ProjectSession and atomic document preference file retain zoom/pan/angle/mirrors; tablet reset addresses view angle. Indicator seven PNGs copied byte-for-byte from legacy; rotate cursor existing legacy catalog. Native integration and smoke are necessary regression adapters. Coverage does not imply equivalence.",
       "viewRotation20261020": "View rotation 20261020: legacy view-geometry mirror-then-clockwise transform and reverse inverse; 22.5 degree Math.round snap; legacy rotate gesture indicator pivots, native physical pointer/capture/escape, screen pan and anchored zoom, rotation-aware document hit coordinates and renderer matrix. Native ProjectSession and atomic document preference file retain zoom/pan/angle/mirrors; tablet reset addresses view angle. Indicator seven PNGs copied byte-for-byte from legacy; rotate cursor existing legacy catalog. Native integration and smoke are necessary regression adapters. Coverage does not imply equivalence.",
@@ -26308,6 +26372,21 @@
           "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
         ],
         "nativeAdaptation": "Migrate duplicateSelectedLayerRows and useLayerRowDrag compound ordering: menu copy restores layer/group/collapsed rows while retaining current frame and surviving animation item choices; initial/Redo applyLayerRowSelection exits mask editing/isolation and free instance selection without clearing ordinary Cel/frame/group cells. Alt copy-move records the animation selection after copy has cleared masks, then restores original rows and active layer on Undo. Keep normal move selection history. Resolve the legacy implicit active editing target at the copy command boundary without promoting native implicit focus to explicit selection; frame/Cel/mask-only modes do not acquire a fallback row. Owned tileset selection follows applyLayerRowSelection on Redo and ensureTileSelection compatible surviving resource on Undo. Native top-first layer ordering and single transactional structural replay adapt legacy bottom-first creation+placement+move while retaining Cels/resources, current pixels and failure compensation. Tests cover 12 selection cases, current-frame replay, mask exit, resources and isolated session ownership; formal menu and drag-finish checks in editor_rotation. See layer-copy-selection-migration-20261114.md; remaining migration gaps retained."
+      },
+      "layerDeletionSelection20261114": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts",
+          "legacy/src/renderer/src/store/workspace-mutation.ts",
+          "legacy/src/renderer/src/store/workspace-commands-history.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection.ts",
+          "legacy/src/renderer/src/store/workspace-layer-owned-tilesets.ts",
+          "legacy/src/renderer/src/components/app/LayerMenuCommands.tsx",
+          "legacy/src/renderer/src/core/history.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts",
+          "legacy/src/renderer/src/store/workspace-cross-layer-history.test.ts"
+        ],
+        "nativeAdaptation": "Port actual deleteActiveLayer and deleteSelectedLayers history closures: preserve current frame and surviving animation items; selected deletion restores layer/group rows only, while active-layer deletion changes landing row only initially and preserves later row choices on replay. Removed mask/Cel/group items stay removed on Undo, surviving mask context remains. Deletion leaves collapsed state outside history. Reuse ensureTileSelection compatible resource fallback and legacy owned-resource removal, preserve structural Cel ownership and compensation. Reject layer deletion while the free-instance panel owns editing. Domain cases cover 3 routes x 7 modes plus shared/owned grid/free resources and lock/instance guards; formal menu and shortcut replay entry checked in editor_rotation. Native existing group dispatch and explicit-versus-implicit row representation retained; see layer-delete-selection-migration-20261114.md for exact verified scope and remaining gaps."
       }
     },
     {

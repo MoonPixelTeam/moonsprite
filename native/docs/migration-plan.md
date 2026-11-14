@@ -7135,3 +7135,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 对照 legacy duplicateSelectedLayerRows 与 Alt 拖动的复制／移动复合历史，区分菜单复制的行选择历史与拖动的完整选择历史。首次／Redo退出蒙版和自由实例编辑，保留帧、普通Cel、组格和像素选区；Undo不复活旧蒙版。菜单Undo/Redo保留后来切换的帧和存活项目，Alt路径恢复复制清理蒙版后的移动记录。补齐隐式活动目标解析与副本瓦片集选择，保留现有资源／链接／组／蒙版复制及失败补偿。
 
 唯一正式Release构建成功；五项定向CTest全部通过2.95秒，旧版两文件11项通过8.63秒，真实legacy模块命令oracle12组通过。正式layer-copy八组实际进程退出0，使用真实菜单与Undo/Redo入口；拖动以构造手势后调用生产finishTimelineGesture验收，不声称完整鼠标拖动。来源934文件及快照、Editor边界589源码、diff通过，strict继续因其它缺口失败。无性能优化、人工图像或完整桌面验收，整体仍INCOMPLETE；详见[图层复制选择迁移](layer-copy-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据和日志。
+
+### 2026-11-14 图层删除选择与历史（阶段验收）
+
+按legacy deleteActiveLayer和deleteSelectedLayers分别迁移历史：保留当前帧和存活项目，删除失效Cel／组格／蒙版格后Undo不复活旧选择；所选行删除恢复原行，活动层删除回放保留当前存活行选择。折叠状态不纳入删除历史。复用现有结构Cel与瓦片资源所有权／补偿，补齐兼容资源选择回退和实例面板编辑时禁止删层。
+
+新增测试修复前实际失败于Undo切回旧帧／项目，修复后五项定向CTest全部通过3.05秒；域检查21组选择契约和四组独占／共享网格／自由资源及锁定／实例守卫通过。真实legacy模块oracle21组通过，旧版两文件11项通过7.27秒。唯一正式Release构建成功，layer-delete八组真实菜单与Undo/Redo、layer-copy八组回归实际进程均退出0。来源934文件及快照、Editor边界589源码、diff通过，strict因其它缺口继续退出1；无性能优化、人工图像或完整鼠标／桌面验收。整体仍INCOMPLETE，详见[图层删除选择迁移](layer-delete-selection-migration-20261114.md)。阶段提交推送dev，保留用户数据、缓存和日志。

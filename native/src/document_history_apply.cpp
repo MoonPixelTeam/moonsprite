@@ -37,6 +37,7 @@ template<class Edit> void validateHistoryShape(const Edit& e){
  requireHistoryAfter(e.sliceHistory.beforeSlices,e.sliceHistory.afterSlices);
  requireHistoryAfter(e.layerHistory.beforeLayerStructure,e.layerHistory.afterLayerStructure);
  if(e.layerHistory.copiedRowSelection&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete copied row history");
+ if(e.layerHistory.deletedRows!=decltype(e.layerHistory.deletedRows)::None&&(!e.layerHistory.beforeLayerStructure||!e.layerHistory.afterLayerStructure||!e.beforeTimelineSelection||!e.afterTimelineSelection||!e.layerHistory.beforeGroupUi||!e.layerHistory.afterGroupUi))throw std::logic_error("Incomplete deleted row history");
  requireHistoryAfter(e.pixelSelectionHistory.beforeTrimPivot,e.pixelSelectionHistory.afterTrimPivot);
  requireHistoryAfter(e.frameHistory.beforeAnimationLoop,e.frameHistory.afterAnimationLoop);
  if(e.children.empty()){
@@ -185,6 +186,12 @@ applyRollbackHistory(edit.snapshotHistory,forward,plan);applySliceHistory(plan);
 // applyHistoryContent: definition in its content history domain unit.
 
 void Document::applyHistorySelection(const Edit& edit,bool forward,HistoryReplayPlan& plan){
+if(edit.layerHistory.deletedRows!=LayerHistory::DeletedRows::None){
+ // deleteActiveLayer only restores the active layer. Selected-row deletion
+ // additionally owns layer/group rows; neither entry owns frames or items.
+ if(edit.layerHistory.deletedRows==LayerHistory::DeletedRows::SelectedRows)timelineSelection_.layers=(forward?edit.afterTimelineSelection:edit.beforeTimelineSelection)->layers;
+ return;
+}
 if(edit.layerHistory.copiedRowSelection){
  // duplicateSelectedLayerRows records only row identities. The Alt-drag move
  // adds a complete selection pair separately, after the copy cleared masks.
@@ -197,8 +204,8 @@ if(!edit.children.empty() && !edit.beforeActive.empty()){selectLayer(forward?edi
 void Document::applyHistoryProjection(const Edit& edit,bool forward){
 for(const auto& value:forward?edit.layerHistory.afterLayerOpacityProjection:edit.layerHistory.beforeLayerOpacityProjection){auto it=std::find_if(timeline_.state_.layers.begin(),timeline_.state_.layers.end(),[&](const auto& l){return l.id==value.first;});if(it!=timeline_.state_.layers.end())it->opacity=value.second;}applyMaskHistoryContext(edit.maskHistory,forward);applyGroupUi(edit,forward);applyFreeTileSelectionHistory(edit.tileHistory,forward);
  if(forward&&edit.frameHistory.clearItemSelectionOnRedo)clearAnimationItemSelection();
- if(edit.layerHistory.copiedRowSelection){
-  if(forward){
+ if(edit.layerHistory.copiedRowSelection||edit.layerHistory.deletedRows!=LayerHistory::DeletedRows::None){
+  if(forward&&edit.layerHistory.copiedRowSelection){
    timelineSelection_.maskRows.clear();activeMaskId_.clear();maskIsolated_=false;
    if(auto session=animationChangeBinding_.captureSessionSelection(*this)){session->masks.clear();session->maskAnchor.reset();animationChangeBinding_.restoreSessionSelection(*this,std::move(*session));}
    freeInstanceViewLayer_.clear();freeInstanceSelected_.clear();freeInstancePrimary_.clear();freeInstanceAnchor_.clear();
@@ -207,7 +214,7 @@ for(const auto& value:forward?edit.layerHistory.afterLayerOpacityProjection:edit
   // runs ensureTileSelection: retain a compatible surviving selection first.
   const auto& active=layer();const auto owned=active.kind=="tilemap"?active.tilemapTilesetId:active.freeTiles&&!active.freeTiles->sources.empty()?active.freeTiles->sources.front().tilesetId:std::string{};
   const auto& sets=timeline_.state().tilesets;const auto found=std::find_if(sets.begin(),sets.end(),[&](const auto& set){return set.id==owned;});
-  if(forward&&found!=sets.end())tileSelection_.tilesetId=owned;
+  if(forward&&edit.layerHistory.copiedRowSelection&&found!=sets.end())tileSelection_.tilesetId=owned;
   auto compatible=[&](const auto& set){if(active.freeTiles)return std::any_of(active.freeTiles->sources.begin(),active.freeTiles->sources.end(),[&](const auto& source){return source.tilesetId==set.id;});if(active.kind=="tilemap")return std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.kind=="tilemap"&&l.tilemapTilesetId==set.id;});return true;};
   auto selected=std::find_if(sets.begin(),sets.end(),[&](const auto& set){return compatible(set)&&set.id==tileSelection_.tilesetId;});if(selected==sets.end())selected=std::find_if(sets.begin(),sets.end(),compatible);
   tileSelection_.tilesetId=selected==sets.end()?std::string{}:selected->id;
