@@ -1,5 +1,6 @@
 #include "timeline_model.h"
 #include "timeline_index_validation.h"
+#include "raster_color_context.h"
 #include "layer_blend.h"
 #include <cmath>
 #include <algorithm>
@@ -11,7 +12,7 @@
 #include <mutex>
 
 namespace moon::timeline {
-struct SelectionCacheEntry {std::array<int,6> key;std::optional<SelectionMask> local;std::size_t bytes=0;};
+struct SelectionCacheEntry {std::array<int,6> key;std::optional<SelectionMask> local;std::size_t bytes=0;std::string visibility;};
 namespace {
 constexpr std::size_t selectionBudget=4*1024*1024;
 std::list<std::shared_ptr<SelectionCacheEntry>> selectionLru;
@@ -109,19 +110,26 @@ Resolution Timeline::resolveSurface(const std::string& celId) const {
   return {&source,source.surface?&*source.surface:nullptr,resolved.issue,resolved.offendingId};
 }
 bool Timeline::hasVisiblePixels(const std::string& celId,bool cache) const {
+  return hasVisiblePixels(celId,RasterColorContext{},cache);
+}
+bool Timeline::hasVisiblePixels(const std::string& celId,const RasterColorContext& colors,bool cache) const {
   const auto resolved=resolveSurface(celId);
   if(!resolved.source || !resolved.surface)return false;
   const auto& id=resolved.source->id;
-  if(cache){const auto found=visibleContent_.find(id);if(found!=visibleContent_.end())return found->second;}
+  const auto& key=colors.visibilityKey(resolved.surface->format);
+  if(cache){const auto found=visibleContent_.find(id);if(found!=visibleContent_.end()&&found->second.key==key)return found->second.value;}
   ++contentScans_;
   const auto& pixels=resolved.surface->pixels;
-  const bool value=std::any_of(pixels.begin(),pixels.end(),[](Pixel p){return (p>>24)!=0;});
-  if(cache)visibleContent_[id]=value;
+  const bool value=std::any_of(pixels.begin(),pixels.end(),[&](Pixel p){return colors.visible(resolved.surface->format,p);});
+  if(cache)visibleContent_[id]={key,value};
   return value;
 }
 // legacy animation-cel-content-cache.ts: local masks, private copies and global bounded LRU.
 // Native owned value storage uses the existing write barriers in place of JS storage revisions.
 std::optional<SelectionMask> Timeline::contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,bool cache) const {
+ return contentSelection(celId,canvasWidth,canvasHeight,RasterColorContext{},cache);
+}
+std::optional<SelectionMask> Timeline::contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,const RasterColorContext& colors,bool cache) const {
  const auto resolved=resolveSurface(celId);if(!resolved.source || !resolved.surface)return {};
  const auto& surface=*resolved.surface;const int left=std::max(0,-surface.offsetX),top=std::max(0,-surface.offsetY),right=std::min(surface.width,canvasWidth-surface.offsetX),bottom=std::min(surface.height,canvasHeight-surface.offsetY);if(right<=left || bottom<=top)return {};
  const std::array<int,6> key{surface.width,surface.height,left,top,right,bottom};
@@ -129,15 +137,15 @@ std::optional<SelectionMask> Timeline::contentSelection(const std::string& celId
  std::lock_guard<std::mutex> lock(selectionMutex);
  auto previous=selectionContent_.find(resolved.source->id);
  auto entry=previous==selectionContent_.end()?std::shared_ptr<SelectionCacheEntry>{}:previous->second.lock();
- if(cache && entry && entry->key==key){const auto found=std::find(selectionLru.begin(),selectionLru.end(),entry);if(found!=selectionLru.end()){++selectionStats.hits;selectionLru.splice(selectionLru.end(),selectionLru,found);return placed(entry->local);}}
+ if(cache && entry && entry->key==key&&entry->visibility==colors.visibilityKey(surface.format)){const auto found=std::find(selectionLru.begin(),selectionLru.end(),entry);if(found!=selectionLru.end()){++selectionStats.hits;selectionLru.splice(selectionLru.end(),selectionLru,found);return placed(entry->local);}}
  if(cache && entry){const auto found=std::find(selectionLru.begin(),selectionLru.end(),entry);if(found!=selectionLru.end()){selectionStats.bytes-=entry->bytes;selectionLru.erase(found);}selectionContent_.erase(resolved.source->id);}
  ++selectionStats.builds;
  int minX=right,minY=bottom,maxX=-1,maxY=-1;
- for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)if(surface.pixels[std::size_t(y)*surface.width+x]>>24){minX=std::min(minX,x);minY=std::min(minY,y);maxX=std::max(maxX,x);maxY=std::max(maxY,y);}
+ for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)if(colors.visible(surface.format,surface.pixels[std::size_t(y)*surface.width+x])){minX=std::min(minX,x);minY=std::min(minY,y);maxX=std::max(maxX,x);maxY=std::max(maxY,y);}
  std::optional<SelectionMask> local;
- if(maxX>=minX && maxY>=minY){SelectionMask mask{minX,minY,maxX-minX+1,maxY-minY+1,{}};mask.mask.resize(std::size_t(mask.width)*mask.height);std::size_t count=0;for(int y=minY;y<=maxY;++y)for(int x=minX;x<=maxX;++x){const bool opaque=(surface.pixels[std::size_t(y)*surface.width+x]>>24)!=0;mask.mask[std::size_t(y-minY)*mask.width+x-minX]=opaque;count+=opaque;}if(count==mask.mask.size())std::vector<unsigned char>{}.swap(mask.mask);local=std::move(mask);}
+ if(maxX>=minX && maxY>=minY){SelectionMask mask{minX,minY,maxX-minX+1,maxY-minY+1,{}};mask.mask.resize(std::size_t(mask.width)*mask.height);std::size_t count=0;for(int y=minY;y<=maxY;++y)for(int x=minX;x<=maxX;++x){const bool opaque=colors.visible(surface.format,surface.pixels[std::size_t(y)*surface.width+x]);mask.mask[std::size_t(y-minY)*mask.width+x-minX]=opaque;count+=opaque;}if(count==mask.mask.size())std::vector<unsigned char>{}.swap(mask.mask);local=std::move(mask);}
  const auto bytes=local?local->mask.size():0;
- if(cache && bytes<=selectionBudget){while(selectionStats.bytes+bytes>selectionBudget || selectionLru.size()>=256){selectionStats.bytes-=selectionLru.front()->bytes;selectionLru.pop_front();++selectionStats.evictions;}auto next=std::make_shared<SelectionCacheEntry>(SelectionCacheEntry{key,std::move(local),bytes});selectionContent_[resolved.source->id]=next;selectionLru.push_back(next);selectionStats.bytes+=bytes;return placed(next->local);}
+ if(cache && bytes<=selectionBudget){while(selectionStats.bytes+bytes>selectionBudget || selectionLru.size()>=256){selectionStats.bytes-=selectionLru.front()->bytes;selectionLru.pop_front();++selectionStats.evictions;}auto next=std::make_shared<SelectionCacheEntry>(SelectionCacheEntry{key,std::move(local),bytes,colors.visibilityKey(surface.format)});selectionContent_[resolved.source->id]=next;selectionLru.push_back(next);selectionStats.bytes+=bytes;return placed(next->local);}
  return placed(std::move(local));
 }
 std::vector<LinkDiagnostic> Timeline::diagnoseLinks() const {
@@ -149,9 +157,12 @@ std::vector<LinkDiagnostic> Timeline::diagnoseLinks() const {
   return diagnostics;
 }
 bool Timeline::isKnownEmpty(const std::string& celId) const {
+  return isKnownEmpty(celId,RasterColorContext{});
+}
+bool Timeline::isKnownEmpty(const std::string& celId,const RasterColorContext& colors) const {
   const auto resolved=resolveSurface(celId);if(!resolved.source || !resolved.surface)return false;
   const auto found=visibleContent_.find(resolved.source->id);
-  return found!=visibleContent_.end() && !found->second;
+  return found!=visibleContent_.end() && found->second.key==colors.visibilityKey(resolved.surface->format) && !found->second.value;
 }
 void Timeline::addLayer(Layer layer) {
   checkLayer(layer);if(layers_.count(layer.id)) throw std::invalid_argument("Duplicate layer ID: "+layer.id);

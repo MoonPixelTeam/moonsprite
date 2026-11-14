@@ -35,6 +35,7 @@ int main(){try{
   rejectsMetadata([](auto& s){s.cels[0].surface->width=256;s.cels[0].surface->height=1024;},"Equal-area stride change entered snapshot");
   rejectsMetadata([](auto& s){++s.cels[0].surface->offsetX;},"Same-size world offset change entered snapshot");
   rejectsMetadata([](auto& s){++*s.cels[0].surface->storageOriginY;},"Stable history origin change entered snapshot");
+  rejectsMetadata([](auto& s){s.cels[0].surface->format=timeline::RasterFormat::Indexed;},"Same-size pixel format change entered snapshot");
   rejectsMetadata([](auto& s){s.cels[0].surface->pixels.pop_back();},"Changed payload length entered snapshot");
   rejectsMetadata([](auto& s){s.cels[1].linkedCelId.reset();},"Cel owner relationship change entered snapshot");
   RasterSnapshot stale(source);source.cels[0].id="changed";bool rejected=false;try{stale.advance(source,future);}catch(const std::logic_error&){rejected=true;}require(rejected,"Changed source accepted");

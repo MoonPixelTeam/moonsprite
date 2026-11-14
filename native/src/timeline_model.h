@@ -16,12 +16,13 @@
 #include <memory>
 #include "selection_model.h"
 
-namespace moon {class Document;}
+namespace moon {class Document;class RasterColorContext;}
 namespace moon::timeline {
 struct SelectionCacheEntry;
 struct SelectionCacheStats {std::uint64_t builds=0,hits=0,evictions=0;std::size_t bytes=0,entries=0;};
 SelectionCacheStats celSelectionCacheStats();
-using Pixel=std::uint32_t; // Legacy packed RGBA: red in the low byte.
+using Pixel=std::uint32_t; // Packed RGBA or an indexed color ID, according to Surface::format.
+enum class RasterFormat {Rgba,Indexed};
 struct BackgroundSettings {std::string mode="canvas",pattern;int repeatWidth=0,repeatHeight=0;};
 // legacy core/layer-styles.ts: global visibility retains the configured effect.
 struct StrokeStyle {bool enabled=false;Pixel color=0xff000000;int size=1,position=1,kernel=0;unsigned directions=0x5a;bool smartHue=false,followOpacity=false;int darkness=45;};
@@ -68,6 +69,7 @@ struct Surface {
   int width=0,height=0,offsetX=0,offsetY=0;
   std::optional<int> storageOriginX,storageOriginY;
   LinkedPixelStorage pixels;
+  RasterFormat format=RasterFormat::Rgba;
 };
 struct AttachedMask {std::string id,linkedMaskId;bool visible=true,locked=false,autoLinkAnimationCels=false,moveWithOwner=true;Surface surface;};
 struct MaskSlot {std::string ownerId,frameId;bool group=false;AttachedMask mask;};
@@ -132,7 +134,7 @@ struct PixelChange {
   bool changed() const {return before!=after;}
 };
 
-// RGBA subset only. IDs come from the application/importer; no ID generation,
+// IDs come from the application/importer; no ID generation,
 // active-session state, history, dirty flags, or file I/O lives in this model.
 class Timeline {
 public:
@@ -159,9 +161,12 @@ public:
   // Cache by resolved owner. Callers with a retained mutable surface (live
   // strokes) bypass caching until their transaction ends.
   bool hasVisiblePixels(const std::string& celId,bool cache=true) const;
+  bool hasVisiblePixels(const std::string& celId,const RasterColorContext&,bool cache=true) const;
   // Read an existing summary without scanning or caching borrowed live pixels.
   std::optional<SelectionMask> contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,bool cache=true) const;
+  std::optional<SelectionMask> contentSelection(const std::string& celId,int canvasWidth,int canvasHeight,const RasterColorContext&,bool cache=true) const;
   bool isKnownEmpty(const std::string& celId) const;
+  bool isKnownEmpty(const std::string& celId,const RasterColorContext&) const;
   std::uint64_t contentScans() const {return contentScans_;}
   Resolution resolveSurface(const std::string& celId) const;
   struct StorageStamp {std::shared_ptr<const void> owner;std::uint64_t revision=0;};
@@ -173,7 +178,8 @@ public:
   PixelChange setPixel(const std::string& celId,std::size_t localIndex,Pixel color);
 private:
   mutable std::unordered_map<std::string,std::weak_ptr<SelectionCacheEntry>> selectionContent_;
-  mutable std::unordered_map<std::string,bool> visibleContent_;
+  struct VisibleContent {std::string key;bool value=false;};
+  mutable std::unordered_map<std::string,VisibleContent> visibleContent_;
   mutable std::unordered_map<std::string,StorageStamp> thumbnailStorage_;
   mutable std::uint64_t contentScans_=0;
   friend class ::moon::Document;

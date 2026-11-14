@@ -6,7 +6,7 @@
 namespace moon {
 RasterSnapshot::RasterSnapshot(const timeline::State& source){
   state_.canvasWidth=source.canvasWidth;state_.canvasHeight=source.canvasHeight;state_.layers=source.layers;state_.frames=source.frames;state_.loopSections=source.loopSections;state_.groups=source.groups;
-  for(const auto& original:source.masks){timeline::MaskSlot copy;copy.ownerId=original.ownerId;copy.frameId=original.frameId;copy.group=original.group;copy.mask.id=original.mask.id;copy.mask.linkedMaskId=original.mask.linkedMaskId;copy.mask.visible=original.mask.visible;copy.mask.locked=original.mask.locked;copy.mask.autoLinkAnimationCels=original.mask.autoLinkAnimationCels;copy.mask.moveWithOwner=original.mask.moveWithOwner;const auto& r=original.mask.surface;copy.mask.surface.width=r.width;copy.mask.surface.height=r.height;copy.mask.surface.offsetX=r.offsetX;copy.mask.surface.offsetY=r.offsetY;copy.mask.surface.storageOriginX=r.storageOriginX;copy.mask.surface.storageOriginY=r.storageOriginY;state_.masks.push_back(std::move(copy));}
+  for(const auto& original:source.masks){timeline::MaskSlot copy;copy.ownerId=original.ownerId;copy.frameId=original.frameId;copy.group=original.group;copy.mask.id=original.mask.id;copy.mask.linkedMaskId=original.mask.linkedMaskId;copy.mask.visible=original.mask.visible;copy.mask.locked=original.mask.locked;copy.mask.autoLinkAnimationCels=original.mask.autoLinkAnimationCels;copy.mask.moveWithOwner=original.mask.moveWithOwner;const auto& r=original.mask.surface;copy.mask.surface.format=r.format;copy.mask.surface.width=r.width;copy.mask.surface.height=r.height;copy.mask.surface.offsetX=r.offsetX;copy.mask.surface.offsetY=r.offsetY;copy.mask.surface.storageOriginX=r.storageOriginX;copy.mask.surface.storageOriginY=r.storageOriginY;state_.masks.push_back(std::move(copy));}
   for(const auto& original:source.tilesets){tiles::Tileset header;header.id=original.id;header.name=original.name;header.tileWidth=original.tileWidth;header.tileHeight=original.tileHeight;header.columns=original.columns;header.rows=original.rows;header.tileIds=original.tileIds;header.tileSlots=original.tileSlots;state_.tilesets.push_back(std::move(header));}
   state_.cels.reserve(source.cels.size());
   sourcePixelCounts_.reserve(source.cels.size());
@@ -16,13 +16,13 @@ RasterSnapshot::RasterSnapshot(const timeline::State& source){
     sourcePixelCounts_.push_back(c.surface?c.surface->pixels.size():0);
     timeline::Cel copy;copy.id=c.id;copy.layerId=c.layerId;copy.frameId=c.frameId;
     copy.linkedCelId=c.linkedCelId;copy.runtimeSharedCelId=c.runtimeSharedCelId;copy.opacity=c.opacity;copy.zIndex=c.zIndex;copy.text=c.text;copy.tilemap=c.tilemap;copy.freeTiles=c.freeTiles;
-    if(c.surface){timeline::Surface s;s.width=c.surface->width;s.height=c.surface->height;s.offsetX=c.surface->offsetX;s.offsetY=c.surface->offsetY;s.storageOriginX=c.surface->storageOriginX;s.storageOriginY=c.surface->storageOriginY;copy.surface=std::move(s);}
+    if(c.surface){timeline::Surface s;s.format=c.surface->format;s.width=c.surface->width;s.height=c.surface->height;s.offsetX=c.surface->offsetX;s.offsetY=c.surface->offsetY;s.storageOriginX=c.surface->storageOriginX;s.storageOriginY=c.surface->storageOriginY;copy.surface=std::move(s);}
     state_.cels.push_back(std::move(copy));
   }
 }
 bool RasterSnapshot::matches(const timeline::State& source)const{if(state_.canvasWidth!=source.canvasWidth||state_.canvasHeight!=source.canvasHeight)return false;
   if(source.tilesets.size()!=state_.tilesets.size())return false;for(std::size_t i=0;i<state_.tilesets.size();++i){const auto& a=state_.tilesets[i];const auto& b=source.tilesets[i];if(std::tie(a.id,a.name,a.tileWidth,a.tileHeight,a.columns,a.rows,a.tileIds,a.tileSlots)!=std::tie(b.id,b.name,b.tileWidth,b.tileHeight,b.columns,b.rows,b.tileIds,b.tileSlots)||b.pixels.size()!=std::size_t(b.columns)*b.rows*b.tileWidth*b.tileHeight)return false;}
-  if(source.masks.size()!=state_.masks.size())return false;for(std::size_t i=0;i<source.masks.size();++i){const auto& a=source.masks[i];const auto& b=state_.masks[i];const auto& x=a.mask;const auto& y=b.mask;if(std::tie(a.ownerId,a.frameId,a.group,x.id,x.linkedMaskId,x.visible,x.locked,x.autoLinkAnimationCels,x.moveWithOwner,x.surface.width,x.surface.height,x.surface.offsetX,x.surface.offsetY)!=std::tie(b.ownerId,b.frameId,b.group,y.id,y.linkedMaskId,y.visible,y.locked,y.autoLinkAnimationCels,y.moveWithOwner,y.surface.width,y.surface.height,y.surface.offsetX,y.surface.offsetY))return false;}
+  if(source.masks.size()!=state_.masks.size())return false;for(std::size_t i=0;i<source.masks.size();++i){const auto& a=source.masks[i];const auto& b=state_.masks[i];const auto& x=a.mask;const auto& y=b.mask;if(std::tie(a.ownerId,a.frameId,a.group,x.id,x.linkedMaskId,x.visible,x.locked,x.autoLinkAnimationCels,x.moveWithOwner,x.surface.width,x.surface.height,x.surface.offsetX,x.surface.offsetY,x.surface.storageOriginX,x.surface.storageOriginY,x.surface.format)!=std::tie(b.ownerId,b.frameId,b.group,y.id,y.linkedMaskId,y.visible,y.locked,y.autoLinkAnimationCels,y.moveWithOwner,y.surface.width,y.surface.height,y.surface.offsetX,y.surface.offsetY,y.surface.storageOriginX,y.surface.storageOriginY,y.surface.format))return false;}
   if(source.layers.size()!=state_.layers.size() || source.frames.size()!=state_.frames.size() || source.cels.size()!=state_.cels.size() || source.loopSections.size()!=state_.loopSections.size() || source.groups.size()!=state_.groups.size())return false;
   for(std::size_t i=0;i<state_.layers.size();++i){const auto& a=state_.layers[i];const auto& b=source.layers[i];
     if(timeline::styleSignature(a.layerStyles)!=timeline::styleSignature(b.layerStyles))return false;
@@ -42,7 +42,7 @@ bool RasterSnapshot::matches(const timeline::State& source)const{if(state_.canva
     if(a.freeTiles!=b.freeTiles)return false;
     if(bool(a.tilemap)!=bool(b.tilemap))return false;if(a.tilemap){const auto& x=*a.tilemap;const auto& y=*b.tilemap;if(std::tie(x.tileWidth,x.tileHeight,x.columns,x.rows,x.cells)!=std::tie(y.tileWidth,y.tileHeight,y.columns,y.rows,y.cells))return false;}
     if(a.surface){const auto& x=*a.surface;const auto& y=*b.surface;
-      if(std::tie(x.width,x.height,x.offsetX,x.offsetY,x.storageOriginX,x.storageOriginY)!=std::tie(y.width,y.height,y.offsetX,y.offsetY,y.storageOriginX,y.storageOriginY) || y.pixels.size()!=sourcePixelCounts_[i])return false;
+      if(std::tie(x.width,x.height,x.offsetX,x.offsetY,x.storageOriginX,x.storageOriginY,x.format)!=std::tie(y.width,y.height,y.offsetX,y.offsetY,y.storageOriginX,y.storageOriginY,y.format) || y.pixels.size()!=sourcePixelCounts_[i])return false;
     }
   }
   return true;

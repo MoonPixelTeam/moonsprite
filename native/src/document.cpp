@@ -113,6 +113,7 @@ Document Document::fromImported(int width,int height,timeline::State state,Palet
   if(projectId.empty() || !sourceArchive || state.layers.empty() || state.frames.empty() || state.cels.size()!=state.layers.size()*state.frames.size())
     throw std::invalid_argument("Unsupported imported document structure");
   if(palette.columns<1||palette.columns>256)throw std::invalid_argument("Invalid imported palette columns");
+  for(const auto& c:state.cels)if(c.surface&&c.surface->format!=timeline::RasterFormat::Rgba)throw std::invalid_argument("Indexed raster editing is not migrated yet");
   normalizeHistoricalFreeSources(state);state.canvasWidth=width;state.canvasHeight=height;timeline::Timeline validated(std::move(state));
   if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Invalid imported cel link");
 
