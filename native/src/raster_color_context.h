@@ -24,6 +24,12 @@ public:
  }
  // legacy composite sampling builds a Map: the last duplicate ID wins.
  timeline::Pixel rgba(timeline::RasterFormat format,timeline::Pixel packed)const{if(format==timeline::RasterFormat::Rgba)return packed;const auto found=byId_.find(packed);return found==byId_.end()?0:found->second;}
+ // document-model readLayerColor/getPaletteEntry use the first duplicate ID.
+ // Compositing's Map lookup above deliberately has a different contract.
+ timeline::Pixel toolColor(timeline::RasterFormat format,timeline::Pixel packed)const{return format==timeline::RasterFormat::Rgba?packed:color_mode::paletteColor(entries_,int(packed));}
+ timeline::Pixel colorValue(timeline::RasterFormat format,timeline::Pixel color,bool mask=false)const{return mask?timeline::normalizedMaskPixel(color):format==timeline::RasterFormat::Indexed?timeline::Pixel(color_mode::paletteColorIdForCanvas(entries_,order_,color)):color_mode::normalizeDocumentColor(mode_,precision_,color);}
+ timeline::Pixel packedValue(timeline::RasterFormat format,timeline::Pixel packed,bool mask=false)const{return color_mode::normalizeLayerPackedValue(mode_,precision_,format==timeline::RasterFormat::Indexed,mask,entries_,order_,packed);}
+ timeline::Pixel colorId(timeline::Pixel color)const{return timeline::Pixel(color_mode::paletteColorIdForCanvas(entries_,order_,color));}
  timeline::Pixel readWorld(const timeline::Surface& surface,std::int64_t x,std::int64_t y)const{const auto index=raster::worldIndex(surface,x,y);return index?rgba(surface.format,surface.pixels[*index]):0;}
  // Content scans intentionally use legacy's union of opaque palette IDs,
  // and nonzero IDs when no palette was supplied; this differs from rendering.
