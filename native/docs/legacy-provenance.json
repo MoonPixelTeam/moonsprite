@@ -1471,7 +1471,8 @@
         "legacy/src/renderer/src/store/workspace-document-history.ts",
         "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
         "legacy/src/renderer/src/store/workspace-commands-color.ts",
-        "legacy/src/renderer/src/store/workspace.test.ts"
+        "legacy/src/renderer/src/store/workspace.test.ts",
+        "legacy/src/renderer/src/core/animation.ts"
       ],
       "scope": "Four composable SnapshotHistory/TileResourceHistory/SliceHistory/ContentHistory payloads retain existing replay priority, cross-domain children and focus, existing validation and cost formulas. Shared cel storage stays single-owned inside the parent content payload; first three Edit aggregate fields remain compatible. Canonical native working-storage budget extracted once and reused. Exact inverse proof retained; runtime acceptance tracked in history-edit-contract.md.",
       "adaptation": "Private C++ aggregate and compilation boundary extraction of existing native code, without new operations, variant exclusivity, budget policy or persisted format change.",
@@ -1488,6 +1489,10 @@
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "indexedHistoryReplay20261114": {
+        "legacyEvidence": "history::commitPixelEdit applies reverse undo runs, raw dense region patches, then points. Indexed points and runs call document-model::writeLayerPacked(/Run), using current visible palette IDs and current target row clipping. Capture stores storage-space coordinates; replay maps through current origin. history.test preserves entries on exceptions; animation shares linked owners.",
+        "nativeAdaptation": "Keep Surface format while preparing metadata-only history drafts. Normalize indexed point/run values before writes through the existing color-mode function; preserve dense raw uint32 IDs. Indexed replay and compensation spans use current-row run clipping, including expanded/cropped owners; RGBA behavior stays unchanged. Test-only friend constructs indexed documents while production indexed tool/import/conversion gates remain closed. Forty-eight actual unchanged legacy redo/undo/redo cases, checkpoint/rollback/link checks and ninety-six failed-sibling compensations pass; see docs/indexed-history-replay-migration-20261114.md."
       }
     },
     {
@@ -8116,6 +8121,10 @@
       "indexedRasterCodec20261114": {
         "legacyEvidence": "project-format-raster encodeSparseRasterData/encodeRuntimeRasterData: 64px tiles, nonzero raw words, equal-size raw fallback, sparse format byte and empty runtime header. project-format-encode keeps surface format, idx32 paths and preview/compression policies. project-format-decode decodePixels keys include format; unaligned stored indexed views copy their backing, while aligned views and RGBA retain ZIP storage. local-history-delta transfer preserves Uint32Array versus Uint8ClampedArray and runtime aliases; project-format-manifest preview resolves palette colors before PNG encoding.",
         "nativeAdaptation": "Extract existing native encoder into checked little-endian project_raster_encode; retain raw uint32 IDs, link identities, empty-frame storage and caller-owned save/history state. History cost/compare adapters retain format, typed view, backing/alias semantics and reject stale native formats transactionally. Preview supplies existing RasterColorContext to direct and composited paths. Node oracle executes unchanged legacy modules: 140 codecs and 74 decoded storage/cost cases; test-only friend bypass exercises 12 encodings, six decoded comparison/format-rejection captures and two previews without opening production indexed admission. docs/indexed-raster-codec-migration-20261114.md records remaining gates."
+      },
+      "indexedHistoryReplay20261114": {
+        "legacyEvidence": "history::commitPixelEdit applies reverse undo runs, raw dense region patches, then points. Indexed points and runs call document-model::writeLayerPacked(/Run), using current visible palette IDs and current target row clipping. Capture stores storage-space coordinates; replay maps through current origin. history.test preserves entries on exceptions; animation shares linked owners.",
+        "nativeAdaptation": "Keep Surface format while preparing metadata-only history drafts. Normalize indexed point/run values before writes through the existing color-mode function; preserve dense raw uint32 IDs. Indexed replay and compensation spans use current-row run clipping, including expanded/cropped owners; RGBA behavior stays unchanged. Test-only friend constructs indexed documents while production indexed tool/import/conversion gates remain closed. Forty-eight actual unchanged legacy redo/undo/redo cases, checkpoint/rollback/link checks and ninety-six failed-sibling compensations pass; see docs/indexed-history-replay-migration-20261114.md."
       }
     },
     {
@@ -38297,6 +38306,38 @@
       "indexedRasterCodec20261114": {
         "legacyEvidence": "project-format-raster encodeSparseRasterData/encodeRuntimeRasterData: 64px tiles, nonzero raw words, equal-size raw fallback, sparse format byte and empty runtime header. project-format-encode keeps surface format, idx32 paths and preview/compression policies. project-format-decode decodePixels keys include format; unaligned stored indexed views copy their backing, while aligned views and RGBA retain ZIP storage. local-history-delta transfer preserves Uint32Array versus Uint8ClampedArray and runtime aliases; project-format-manifest preview resolves palette colors before PNG encoding.",
         "nativeAdaptation": "Extract existing native encoder into checked little-endian project_raster_encode; retain raw uint32 IDs, link identities, empty-frame storage and caller-owned save/history state. History cost/compare adapters retain format, typed view, backing/alias semantics and reject stale native formats transactionally. Preview supplies existing RasterColorContext to direct and composited paths. Node oracle executes unchanged legacy modules: 140 codecs and 74 decoded storage/cost cases; test-only friend bypass exercises 12 encodings, six decoded comparison/format-rejection captures and two previews without opening production indexed admission. docs/indexed-raster-codec-migration-20261114.md records remaining gates."
+      }
+    },
+    {
+      "file": "tests/indexed_history_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/history.test.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/raster.ts",
+        "legacy/src/renderer/src/core/animation.ts"
+      ],
+      "scope": "Indexed same-format pixel history replay, current palette normalization, raw dense regions, storage-coordinate clipping, links, snapshots and failure compensation. Production indexed editing and mode conversion remain incomplete.",
+      "indexedHistoryReplay20261114": {
+        "legacyEvidence": "history::commitPixelEdit applies reverse undo runs, raw dense region patches, then points. Indexed points and runs call document-model::writeLayerPacked(/Run), using current visible palette IDs and current target row clipping. Capture stores storage-space coordinates; replay maps through current origin. history.test preserves entries on exceptions; animation shares linked owners.",
+        "nativeAdaptation": "Keep Surface format while preparing metadata-only history drafts. Normalize indexed point/run values before writes through the existing color-mode function; preserve dense raw uint32 IDs. Indexed replay and compensation spans use current-row run clipping, including expanded/cropped owners; RGBA behavior stays unchanged. Test-only friend constructs indexed documents while production indexed tool/import/conversion gates remain closed. Forty-eight actual unchanged legacy redo/undo/redo cases, checkpoint/rollback/link checks and ninety-six failed-sibling compensations pass; see docs/indexed-history-replay-migration-20261114.md."
+      }
+    },
+    {
+      "file": "scripts/make-indexed-history-oracle.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/history.test.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/raster.ts",
+        "legacy/src/renderer/src/core/animation.ts"
+      ],
+      "scope": "Indexed same-format pixel history replay, current palette normalization, raw dense regions, storage-coordinate clipping, links, snapshots and failure compensation. Production indexed editing and mode conversion remain incomplete.",
+      "indexedHistoryReplay20261114": {
+        "legacyEvidence": "history::commitPixelEdit applies reverse undo runs, raw dense region patches, then points. Indexed points and runs call document-model::writeLayerPacked(/Run), using current visible palette IDs and current target row clipping. Capture stores storage-space coordinates; replay maps through current origin. history.test preserves entries on exceptions; animation shares linked owners.",
+        "nativeAdaptation": "Keep Surface format while preparing metadata-only history drafts. Normalize indexed point/run values before writes through the existing color-mode function; preserve dense raw uint32 IDs. Indexed replay and compensation spans use current-row run clipping, including expanded/cropped owners; RGBA behavior stays unchanged. Test-only friend constructs indexed documents while production indexed tool/import/conversion gates remain closed. Forty-eight actual unchanged legacy redo/undo/redo cases, checkpoint/rollback/link checks and ninety-six failed-sibling compensations pass; see docs/indexed-history-replay-migration-20261114.md."
       }
     }
   ],

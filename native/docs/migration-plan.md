@@ -7179,3 +7179,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy project-format-raster／encode／decode、local-history-delta 和 manifest 迁移完整uint32栅格编码、格式标签／idx32路径、缺失活动Cel空runtime、历史typed view／共享backing与成本、历史比较格式守卫及色板解析后的PNG预览。沿用原压缩、资源与身份，不开放生产indexed编辑准入。
 
 140组真实旧版编码、74组存储／类型／别名／成本、12次生产编码、六次比较格式校验及两种实际PNG预览通过，最终进程退出0。七项定向CTest均通过；修复历史成本测试残留的八格式拒绝计数，改为逐项检查八格式及非法回退，保留全部原成本／身份期望。唯一正式Release构建成功；来源946文件、Editor593源码、架构593源码／248targets、diff通过，strict因其它缺口退出1。无UI、性能优化、人工图像或完整桌面验收。索引色工具事务、历史回放、模式转换／新建／导入及sourceArchive准入继续迁移，整体INCOMPLETE。详见[索引色编码迁移](indexed-raster-codec-migration-20261114.md)。阶段提交推送dev，保留用户数据、缓存和日志。
+
+
+### 2026-11-14 索引色历史回放（阶段验收）
+
+按 legacy commitPixelEdit 与 writeLayerPacked/Run 迁移 indexed 的 runs→dense→points 顺序、当前可见色板 ID 归一化、dense 原始 uint32、当前目标行截断与 storage origin 映射。元数据草稿保留 Surface format，失败补偿捕获实际写入跨度，原非索引规则保留。
+
+48组真实旧版三次回放逐像素一致，快照／回滚／关联图层与链接帧检查和96组正反向失败补偿通过。8项定向CTest全部通过13.09秒；旧版真实history.test.ts的15项通过8.55秒。唯一正式Release构建成功；来源覆盖948文件及证据快照、Editor593源码、架构593源码／249targets、diff检查通过，strict因其它缺口退出1。仅同格式索引历史，生产工具事务、模式转换／新建／可编辑导入及sourceArchive准入继续迁移，整体INCOMPLETE。没有性能优化、UI修改、人工图像或完整桌面验收。详见[索引色历史回放迁移](indexed-history-replay-migration-20261114.md)。阶段保存推送dev，保留所有用户数据、缓存与日志。
