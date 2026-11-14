@@ -1,9 +1,65 @@
 #include "document.h"
 #include "raster_geometry.h"
 #include "layer_compositor.h"
+#include "raster_pixel_edit.h"
 #include <algorithm>
 #include <stdexcept>
 namespace moon {
+namespace {
+// gradientRegionSelection uses magicWandSelection's resolved-color matching,
+// including tolerance zero. An explicit full domain disables the RGBA wand's
+// empty-alpha shortcut; the paint selection never blocks region traversal.
+std::optional<SelectionMask> indexedGradientRegion(const Document& d,const timeline::Surface* source,Point seed,WandOptions options,const RasterColorContext& colors){
+ std::vector<Pixel> reference;
+ if(options.visibleLayers)reference=compositeNormalRegion(d.timeline(),d.frame().id,{0,0,d.width(),d.height()},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);
+ else{reference.resize(std::size_t(d.width())*d.height());if(source)for(int y=0;y<d.height();++y)for(int x=0;x<d.width();++x)if(const auto i=raster::worldIndex(*source,x,y))reference[std::size_t(y)*d.width()+x]=colors.toolColor(source->format,source->pixels[*i]);}
+ return magicWandSelection(reference,d.width(),d.height(),seed.x,seed.y,options,SelectionMask{0,0,d.width(),d.height(),{}});
+}
+// Count retained and temporary packed buffers before allocating. Existing
+// preview/region state remains intact when a new update cannot be prepared.
+void indexedGradientBudget(const Document& d,std::size_t buffers){
+ constexpr std::size_t limit=256*1024*1024;std::size_t used=0;
+ auto account=[&](std::size_t n){if(n>(limit-used)/sizeof(Pixel))throw std::length_error("Indexed gradient exceeds document pixel budget");used+=n*sizeof(Pixel);};
+ for(const auto& c:d.timeline().state().cels)if(c.surface)account(c.surface->pixels.size());
+ for(std::size_t i=0;i<buffers;++i)account(std::size_t(d.width())*d.height());
+}
+}
+bool Document::indexedGradientAvailable()const{return activeMaskId_.empty()&&layer().kind.empty()&&(activeSurfaceIfPresent()?activeSurfaceIfPresent()->format==timeline::RasterFormat::Indexed:colorMode_==color_mode::Mode::Indexed);}
+bool Document::beginIndexedGradient(Point seed,WandOptions options){
+ const auto* source=activeSurfaceIfPresent();indexedGradientBudget(*this,gradient_?8:5);options.gapClosing=false;
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ auto region=indexedGradientRegion(*this,source,seed,options,colors);if(!region)return false;
+ auto baseline=source?sparseFillCanvas(*source):std::vector<Pixel>(std::size_t(width_)*height_);
+ GradientPreview pending{seed,source?cel().id:std::string{},layer().id,frame().id,baseline,selection_,std::move(region),options,contentRevision_};
+ pending.indexedDisplay=std::vector<Pixel>(baseline.size());
+ if(source)for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(const auto i=raster::worldIndex(*source,x,y))(*pending.indexedDisplay)[std::size_t(y)*width_+x]=colors.rgba(source->format,source->pixels[*i]);
+ if(!source){pending.absentRaster=true;pending.absentRasterBaseline=std::move(baseline);}
+ else if(!raster::fullCanvas(*source,width_,height_)){const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source)throw std::logic_error("Invalid indexed gradient owner");pending.sparse=SparseGradientBaseline{std::move(baseline),r.source->id,source->width,source->height,source->offsetX,source->offsetY,source->storageOriginX,source->storageOriginY};}
+ gradient_=std::move(pending);++gradientRevision_;return true;
+}
+bool Document::updateIndexedGradient(const GradientSpec& spec,WandOptions options){
+ if(gradient_->sparse&&!sparseGradientSourceValid()){cancelGradient();return false;}
+ auto& g=*gradient_;options.gapClosing=false;indexedGradientBudget(*this,8);
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);const auto* surface=activeSurfaceIfPresent();
+ auto region=g.region;
+ if(options.tolerance!=g.options.tolerance||options.contiguous!=g.options.contiguous||options.connectivity!=g.options.connectivity||options.visibleLayers!=g.options.visibleLayers)region=indexedGradientRegion(*this,surface,g.seed,options,colors);
+ const auto& baseline=g.sparse?g.sparse->canvas:previewBaseline();auto packed=baseline;std::vector<Pixel> display(baseline.size());
+ for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(surface)if(const auto i=raster::worldIndex(*surface,x,y))display[std::size_t(y)*width_+x]=colors.rgba(surface->format,surface->pixels[*i]);
+ if(region){const auto& r=*region;GradientSampler sampler(spec);std::vector<Pixel> row(r.width);
+  for(int y=r.y;y<r.y+r.height;++y){sampler.row(y,r.x,r.x+r.width,row.data());for(int x=r.x;x<r.x+r.width;++x){if(!selectionContains(region,x,y)||(g.selection&&!selectionContains(g.selection,x,y)))continue;const auto i=std::size_t(y)*width_+x;const auto source=row[x-r.x];
+   // applyGradient expands first, so new storage contains real indexed zero.
+   // recordPixel normalizes even an alpha-zero source's unchanged raw ID.
+   packed[i]=colors.packedValue(timeline::RasterFormat::Indexed,raster::paintValue(timeline::RasterFormat::Indexed,baseline[i],{},source,colors,true));
+   // canvas-render-gradient reads the original layer, where out-of-bounds is
+   // transparent, then resolves the replacement back to a visible palette color.
+   const auto local=surface?raster::worldIndex(*surface,x,y):std::nullopt;
+   const auto current=local?colors.toolColor(surface->format,surface->pixels[*local]):0;
+   const auto replacement=raster::selectionRgbaOver(current,source);
+   display[i]=colors.toolColor(timeline::RasterFormat::Indexed,colors.colorId(replacement));
+  }}
+ }
+ g.preview=std::move(packed);g.indexedDisplay=std::move(display);g.region=std::move(region);g.options=options;++gradientRevision_;return true;
+}
 // Reuse the live preview's captured context instead of cloning/hash-scanning a
 // second selection at the file dialog. IO decisions cannot authorize a new target.
 bool Document::gradientContextValid()const{
@@ -59,10 +115,10 @@ bool Document::commitSparseGradient(){
  const auto resolved=timeline_.resolveSurface(g.celId);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)throw std::logic_error("Invalid gradient owner");const auto& source=*resolved.surface;
  constexpr std::size_t limit=256*1024*1024;std::size_t used=0;
  auto account=[&](std::size_t count){if(count>(limit-used)/sizeof(Pixel))throw std::length_error("Gradient commit exceeds document pixel budget");used+=count*sizeof(Pixel);};
- for(const auto& c:timeline_.state().cels)if(c.surface)account(c.surface->pixels.size());account(g.sparse->canvas.size());account(g.preview.size());
+ for(const auto& c:timeline_.state().cels)if(c.surface)account(c.surface->pixels.size());account(g.sparse->canvas.size());account(g.preview.size());if(g.indexedDisplay)account(g.indexedDisplay->size());
  auto candidate=raster::expanded(source,{left,top,right,bottom},limit-used);if(candidate)account(candidate->pixels.size());
  const auto& prepared=candidate?*candidate:source;
- const bool placeholder=source.width==1&&source.height==1&&(source.pixels[0]>>24)==0;
+ const bool placeholder=source.width==1&&source.height==1&&(source.format==timeline::RasterFormat::Indexed?source.pixels[0]==0:(source.pixels[0]>>24)==0);
  auto afterAt=[&](int x,int y){const auto i=std::size_t(y)*width_+x;const auto after=g.preview[i];return placeholder&&x==source.offsetX&&y==source.offsetY&&after==g.sparse->canvas[i]?Pixel(0):after;};
  auto beforeAt=[&](int x,int y){return raster::readWorld(prepared,x,y);};
  int dirtyLeft=width_,dirtyTop=height_,dirtyRight=0,dirtyBottom=0;

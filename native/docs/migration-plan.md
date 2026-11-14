@@ -7198,3 +7198,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy tools-fill、document-model、history 与 canvas-input-fill 的真实行为迁移桶／选区填充：容差零比较原始 ID，其它容差查色比较 RGBA，写回可见色板 ID；保留稀疏扩张、占位、缺失 Cel、storage origin 和点／run／dense 历史差异。可见层参考固定初始边界并读取实时像素，沿用旧版绘制后检查邻点的顺序；对称事务共用一次采样边界。关联图层继续共享存储并保留独立位置。
 
 1332 组真实旧版填充及172组关联／链接／裁切／占位事务通过，16项定向CTest全部通过23.69秒。旧版三个真实文件36项通过、77项跳过（22.18秒）。唯一正式Release及受影响目标构建成功，正式exe于01:52更新（30,638,080bytes）；来源952文件及快照、Editor593源码、架构593源码／251targets、diff通过，strict因其它缺口退出1。无UI、性能优化、人工图像或完整桌面验收；生产indexed新建／转换／可编辑导入继续关闭，整体INCOMPLETE。详见[索引色填充迁移](indexed-fill-transactions-migration-20261115.md)。阶段保存推送dev，保留全部用户数据、缓存和日志。
+
+
+### 2026-11-15 索引色渐变事务（阶段验收）
+
+按 legacy gradientRegionSelection、applyGradient、canvas-render-gradient 与 history 的真实语义迁移普通 indexed 栅格渐变：区域按解析后的颜色匹配，预览 RGBA 与提交 ID 分别计算，透明源提交仍执行 packed 归一化，保留稀疏扩张、零／非零占位、缺失 Cel format、storage origin 和点／dense 历史差异。
+
+620 组真实旧版事务及每组两次预览、取消／提交／Undo／Redo 逐像素通过，另有 48 组关联图层和链接帧检查；旧版三个实际渐变测试文件 34 项通过（13.65 秒）。七项定向 CTest 全部通过（60.45 秒）。唯一正式 Release 已于 02:49:15 更新（30,647,296 bytes）；后续测试目标名拼写纠正后构建成功。来源覆盖 954 文件及快照、Editor593源码、架构593源码／252targets通过；strict因其它缺口继续失败。生产 indexed 新建／转换／可编辑导入及其它工具仍未完成，整体 INCOMPLETE。无 UI 修改、性能优化、人工图像或完整桌面验收。详见[索引色渐变迁移](indexed-gradient-transactions-migration-20261115.md)。阶段提交推送 dev，保留所有用户数据、缓存和日志。
