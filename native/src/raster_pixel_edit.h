@@ -1,5 +1,6 @@
 #pragma once
 #include "raster_color_context.h"
+#include "brush.h"
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -53,6 +54,28 @@ inline Pixel paintValue(Format format,Pixel current,std::optional<Pixel> origina
  const auto base=colors.toolColor(format,useCurrentDestination?current:original.value_or(current));
  const auto blended=selectionRgbaOver(base,color);
  return format==Format::Rgba?blended:colors.colorId(blended);
+}
+
+// tools-brush::paintBrush resolves RGBA ink against palette colors, then
+// recordPixel normalizes the resulting ID. null is a genuine ink no-op.
+inline std::optional<Pixel> indexedBrushValue(Pixel current,Pixel before,Pixel source,int coverage,int opacity,InkMode ink,const RasterColorContext& colors,bool erase=false,bool direct=false,bool compositeTransparent=false,bool useCurrentDestination=false,int eraseAlpha=255){
+ const int amount=ink==InkMode::CopyAlphaColor?coverage:int(std::floor(coverage*std::clamp(opacity,0,100)/100.0+.5));
+ if(!amount)return {};
+ const auto store=[&](Pixel color){return colors.packedValue(Format::Indexed,color>>24?colors.colorId(color):0);};
+ const auto stamped=resolveInkStampColor(ink,source,coverage,opacity);
+ if(ink!=InkMode::Simple){
+  const auto destination=colors.toolColor(Format::Indexed,ink==InkMode::LockAlpha?before:current);
+  if(ink==InkMode::LockAlpha&&(!(destination>>24)||!(stamped>>24)))return {};
+  return store(applyInkColor(ink,destination,stamped));
+ }
+ if(erase){
+  const int erased=int(std::floor(amount*eraseAlpha/255.0+.5));if(!erased)return {};
+  if(erased==255)return Pixel(0);
+  const auto base=colors.toolColor(Format::Indexed,before);
+  return store((base&0xffffff)|(Pixel(std::floor((base>>24)*(1-erased/255.0)+.5))<<24));
+ }
+ if(direct)return store(stamped);
+ return colors.packedValue(Format::Indexed,paintValue(Format::Indexed,current,before,stamped,colors,compositeTransparent,useCurrentDestination));
 }
 
 // legacy tools-pixel-edit::compositeSelectionPixelOver/ForEdit. Masks copy the

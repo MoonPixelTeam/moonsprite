@@ -7186,3 +7186,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy commitPixelEdit 与 writeLayerPacked/Run 迁移 indexed 的 runs→dense→points 顺序、当前可见色板 ID 归一化、dense 原始 uint32、当前目标行截断与 storage origin 映射。元数据草稿保留 Surface format，失败补偿捕获实际写入跨度，原非索引规则保留。
 
 48组真实旧版三次回放逐像素一致，快照／回滚／关联图层与链接帧检查和96组正反向失败补偿通过。8项定向CTest全部通过13.09秒；旧版真实history.test.ts的15项通过8.55秒。唯一正式Release构建成功；来源覆盖948文件及证据快照、Editor593源码、架构593源码／249targets、diff检查通过，strict因其它缺口退出1。仅同格式索引历史，生产工具事务、模式转换／新建／可编辑导入及sourceArchive准入继续迁移，整体INCOMPLETE。没有性能优化、UI修改、人工图像或完整桌面验收。详见[索引色历史回放迁移](indexed-history-replay-migration-20261114.md)。阶段保存推送dev，保留所有用户数据、缓存与日志。
+
+### 2026-11-15 索引色笔刷事务（阶段验收）
+
+直接承接 legacy paintBrush、paintLayerValue、笔刷底色／完美像素尾部和 revertPixelEdit：普通、图像、动态笔刷及预览按色板解析底色再写回索引 ID；覆盖、擦除、墨水、继承底色、取消／ISO 重算的 packed 归一化保持旧版规则。复用当前 Document 事务，缺失 Cel 与偏移存储保留 indexed format。
+
+真实旧版 oracle 的1200组普通事务、24组动态／继承底色、96组普通与动态完美像素尾部、48组ISO重算、12组链接事务及108组稀疏／偏移检查通过。14项定向CTest全部通过（14.13秒和2.83秒），旧版筛选14项及两个笔刷文件11项通过。唯一正式Release构建退出0并更新；来源覆盖950文件和快照、Editor593源码、架构593源码／250targets、diff检查通过，strict因其它缺口退出1。生产索引色新建／转换／可编辑导入继续关闭，填充及其它工具事务继续迁移；整体INCOMPLETE，无性能优化或人工桌面验收。详见[索引色笔刷事务迁移](indexed-brush-transactions-migration-20261114.md)。阶段保存推送dev，保留所有用户数据、缓存与日志。

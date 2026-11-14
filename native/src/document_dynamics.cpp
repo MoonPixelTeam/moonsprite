@@ -1,6 +1,7 @@
 #include "document.h"
 #include "brush_dynamics.h"
 #include "selection_tools.h"
+#include "raster_pixel_edit.h"
 namespace moon {
 void Document::paintAlignedStrokePath(const std::vector<BrushPathPoint>& path,bool reset){
  if(auto edit=freeTileSourceStrokeDocument()){
@@ -15,7 +16,7 @@ void Document::paintAlignedStrokePath(const std::vector<BrushPathPoint>& path,bo
  change_={};
  try{
   if(reset){
-   for(const auto& delta:pending_){strokePixel(delta.index)=delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}
+   for(const auto& delta:pending_){strokePixel(delta.index)=strokeColors_?strokeColors_->packedValue(timeline::RasterFormat::Indexed,delta.before):delta.before;change_.include(int(delta.index%width_),int(delta.index/width_));}
    // Keep the transaction, inherited baseline, image origin and source target.
    pending_.clear();pendingLookup_.clear();imageEraseCoverage_.clear();inkStampCoverage_.clear();perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=perfectPendingStart_=0;capturingPerfectTail_=false;hasPreviousStamp_=false;
   }
@@ -49,13 +50,14 @@ void Document::dynamicStamp(BrushPathPoint sample){
   const auto index=std::size_t(y)*width_+x;if(plotStrokeColorReplacement(index,dynamics::rounded(coverage*b.opacity/100.)))return;capturePerfectPixel(index);const auto found=pendingLookup_[index];const Pixel current=strokePixel(index);auto inherited=inheritedStrokeBaseline_.find(index);const Pixel before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found<0?current:pending_[found].before;
   const bool intrinsic=dynamicImage_&&dynamicImage_->intrinsicSize;const bool transparentGradient=sample.gradient&&(!(dynamicGradientStart_>>24)||!(dynamicGradientEnd_>>24)||!(source>>24));
   const bool direct=intrinsic&&b.imagePaintMode==PatternPaintMode::Paint&&b.ink==InkMode::Simple&&(color_>>24)&&!transparentGradient;
-  const std::uint64_t key=(std::uint64_t(index)<<32)|(sample.gradient?0u:source);auto seen=inkStampCoverage_.find(key);if(!direct&&seen!=inkStampCoverage_.end()&&(seen->second>amount||(seen->second==amount&&!sample.gradient&&b.ink!=InkMode::LockAlpha)))return;
+  const std::uint64_t key=(std::uint64_t(index)<<32)|(sample.gradient||(strokeColors_&&!(color_>>24))?0u:source);auto seen=inkStampCoverage_.find(key);if(!direct&&seen!=inkStampCoverage_.end()&&(seen->second>amount||(seen->second==amount&&!sample.gradient&&b.ink!=InkMode::LockAlpha)))return;
   capturePerfectInkCoverage(key);inkStampCoverage_[key]=amount;Pixel value;
-  if(!sample.gradient&&!(color_>>24)){int erase=amount;if(imageColor)erase=dynamics::rounded(erase*(*imageColor>>24)/255.);value=erase==255?0:(before&0xffffff)|(Pixel(dynamics::rounded((before>>24)*(1-erase/255.)))<<24);}
+  if(strokeColors_){const auto next=raster::indexedBrushValue(current,before,source,coverage,b.opacity,b.ink,*strokeColors_,!sample.gradient&&!(color_>>24),direct,bool(sample.gradient),transparentGradient,imageColor?*imageColor>>24:255);if(!next)return;value=*next;}
+  else if(!sample.gradient&&!(color_>>24)){int erase=amount;if(imageColor)erase=dynamics::rounded(erase*(*imageColor>>24)/255.);value=erase==255?0:(before&0xffffff)|(Pixel(dynamics::rounded((before>>24)*(1-erase/255.)))<<24);}
   else if(direct)value=imageBrushDirectPixel(source,coverage,b.opacity);
   else if(sample.gradient&&!(source>>24))value=current;
   else {const auto destination=b.ink==InkMode::LockAlpha?before:transparentGradient||b.ink==InkMode::CopyAlphaColor?current:before;value=inkBrushComposite(destination,source,b.opacity,b.ink,coverage);}
-  value=normalizeCanvasPacked(value,bool(maskStroke_));if(current==value)return;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(x,y);
+  if(!strokeColors_)value=normalizeCanvasPacked(value,bool(maskStroke_));if(current==value)return;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(x,y);
  };
  if(image){for(const auto& offset:image->samples)for(auto q:strokeSymmetryPoints({sample.x-image->width/2+offset.x,sample.y-image->height/2+offset.y}))paint(q.x,q.y,offset.coverage,offset.color);}
  else for(const auto& row:footprint.spans)for(int x=sample.x-footprint.width/2+row.left;x<=sample.x-footprint.width/2+row.right;++x)for(auto q:strokeSymmetryPoints({x,sample.y-footprint.height/2+row.y}))paint(q.x,q.y,255,{});

@@ -56,6 +56,7 @@ namespace moon {
 namespace script {struct RasterBatch;struct CreatedLayer;}
 namespace local_history {class CommittedCapture;class PixelHistory;struct PixelHistoryEdit;}
 struct SymmetryRotationRaster;
+class RasterColorContext;
 namespace timelapse {class Session;}
 using Pixel = std::uint32_t; // RGBA: red in the low byte; transparent is zero.
 struct Point { int x, y; };
@@ -1115,6 +1116,7 @@ private:
   // Resolve the selected owned surface once per stroke, retaining the direct pixel hot path.
   std::vector<Pixel>& pixelStorage() {return strokePixels_?*strokePixels_:timeline_.mutableOwnedSurface(timeline_.resolveSurface(cel().id).source->id)->pixels;}
   std::vector<Pixel>* strokePixels_=nullptr;
+  std::shared_ptr<const RasterColorContext> strokeColors_;
   std::optional<timeline::Surface> absentStrokeSurface_;
   bool strokeCanvasStorage_=true;
   int strokeStride_=0,strokeOffsetX_=0,strokeOffsetY_=0;
@@ -1229,7 +1231,7 @@ private:
   liquify::Context liquifyContext();
   std::vector<Delta> pending_;
   StrokePixelLookup pendingLookup_;
-  void clearPendingStroke(){strokeRepeat_=repeat::Mode::Off;imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;pendingLookup_.clear();pending_.clear();}
+  void clearPendingStroke(){strokeColors_.reset();strokeRepeat_=repeat::Mode::Off;imagePattern_.reset();dynamicStroke_=false;dynamicImage_.reset();capturingPerfectTail_=false;perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;pendingLookup_.clear();pending_.clear();}
   PixelRegion change_;
   PixelRegion recordingDirty_;std::uint64_t recordingDirtyFrom_=0,recordingDirtyTo_=0;bool recordingDirtyValid_=true;
   timelapse::Settings timelapseSettings_;

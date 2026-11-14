@@ -1233,7 +1233,7 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
  std::optional<timeline::Surface> absent;
  if(!slot){
   const auto used=adjustmentStorageBudget(timeline_,1);const auto count=std::uint64_t(width_)*height_;if(count>(adjustmentByteLimit-used)/sizeof(Pixel))throw std::length_error("Brush preview exceeds document pixel budget");
-  absent.emplace();absent->width=width_;absent->height=height_;absent->pixels.resize(std::size_t(width_)*height_);}
+  absent.emplace();absent->format=colorMode_==color_mode::Mode::Indexed?timeline::RasterFormat::Indexed:timeline::RasterFormat::Rgba;absent->width=width_;absent->height=height_;absent->pixels.resize(std::size_t(width_)*height_);}
  const auto resolved=slot?timeline_.resolveSurface(slot->id):decltype(timeline_.resolveSurface(std::string{})){};
  if(slot&&(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface))throw std::logic_error("Invalid brush Cel owner");if(layer().kind=="tilemap"&&tileStrokeLinked_&&!raster::fullCanvas(*resolved.surface,width_,height_)){absent.emplace();absent->width=width_;absent->height=height_;absent->pixels=canvasPixels();}
  const auto& source=absent?*absent:*resolved.surface;raster::validate(source);
@@ -1241,6 +1241,7 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
  const bool covers=source.offsetX<=0&&source.offsetY<=0&&std::int64_t(source.offsetX)+source.width>=width_&&std::int64_t(source.offsetY)+source.height>=height_;
  if(!covers){constexpr std::size_t limit=256*1024*1024;std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface){const auto count=c.surface->pixels.size();if(count>(limit-used)/sizeof(Pixel))throw std::length_error("Brush expansion exceeds document pixel budget");used+=count*sizeof(Pixel);}expansion=raster::expanded(source,{0,0,width_,height_},limit-used);}
  const auto& prepared=expansion?*expansion:source;
+ auto colors=prepared.format==timeline::RasterFormat::Indexed?std::make_shared<const RasterColorContext>(palette_.entries,palette_.order(),colorMode_,pixelFormat_):nullptr;
  const PixelAddressSpace address{width_,height_,raster::coordinate(std::int64_t(prepared.storageOriginX.value_or(0))-prepared.offsetX),raster::coordinate(std::int64_t(prepared.storageOriginY.value_or(0))-prepared.offsetY)};
  // Allocate preparation before installing geometry; retain old storage for failure rollback.
  auto inherited=baseline?*baseline:std::unordered_map<std::size_t,Pixel>{};
@@ -1250,7 +1251,7 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
  if(absent)absentStrokeSurface_=std::move(absent);
  auto* owner=absentStrokeSurface_?&*absentStrokeSurface_:timeline_.mutableOwnedSurface(resolved.source->id);if(!owner)throw std::logic_error("Missing writable brush owner");
  if(expansion)std::swap(*owner,*expansion);
- strokePixels_=&static_cast<std::vector<Pixel>&>(owner->pixels);strokeCanvasStorage_=raster::fullCanvas(*owner,width_,height_);strokeStride_=owner->width;strokeOffsetX_=owner->offsetX;strokeOffsetY_=owner->offsetY;strokeAddress_=address;
+ strokeColors_=std::move(colors);strokePixels_=&static_cast<std::vector<Pixel>&>(owner->pixels);strokeCanvasStorage_=raster::fullCanvas(*owner,width_,height_);strokeStride_=owner->width;strokeOffsetX_=owner->offsetX;strokeOffsetY_=owner->offsetY;strokeAddress_=address;
  inheritedStrokeBaseline_=std::move(inherited);imageStamp_=std::move(imageStamp);imageEraseCoverage_.clear();inkStampCoverage_.clear();stampSpans_=std::move(spans);perfectPath_.clear();perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();perfectStable_=0;capturingPerfectTail_=false;active_=true;last_=p;color_=color;brush_=brush;hasPreviousStamp_=false;
  try{if(brush_.perfectPixels){perfectPath_.push_back({p.x,p.y,brush.size,brush.opacity});perfectPendingStart_=pending_.size();capturingPerfectTail_=true;}if(stampInitial)stamp(p.x,p.y);publishChange();}
  catch(...){for(const auto& delta:pending_)strokePixel(delta.index)=delta.before;clearPendingStroke();active_=false;strokePixels_=nullptr;if(expansion)std::swap(*owner,*expansion);absentStrokeSurface_.reset();change_={};throw;}
@@ -1258,7 +1259,7 @@ void Document::beginStroke(Point p,Pixel color,BrushOptions brush,const PatternB
 }
 void Document::capturePerfectPixel(std::size_t i){if(!capturingPerfectTail_||perfectTailPixels_.count(i))return;const int found=pendingLookup_[i];perfectTailPixels_.emplace(i,PerfectTailPixel{strokePixel(i),found,found<0?Pixel{}:pending_[found].after});auto erase=imageEraseCoverage_.find(i);perfectTailErase_[i]=erase==imageEraseCoverage_.end()?std::nullopt:std::optional<int>{erase->second};}
 void Document::capturePerfectInkCoverage(std::uint64_t key){if(!capturingPerfectTail_||perfectTailInk_.count(key))return;auto it=inkStampCoverage_.find(key);perfectTailInk_[key]=it==inkStampCoverage_.end()?std::nullopt:std::optional<int>{it->second};}
-void Document::rollbackPerfectTail(){capturingPerfectTail_=false;for(const auto& [i,v]:perfectTailPixels_){strokePixel(i)=v.value;pendingLookup_.set(i,v.pending);if(v.pending>=0)pending_[v.pending].after=v.after;change_.include(int(i%width_),int(i/width_));}pending_.resize(perfectPendingStart_);for(const auto& [i,v]:perfectTailErase_){if(v)imageEraseCoverage_[i]=*v;else imageEraseCoverage_.erase(i);}for(const auto& [i,v]:perfectTailInk_){if(v)inkStampCoverage_[i]=*v;else inkStampCoverage_.erase(i);}perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();hasPreviousStamp_=false;}
+void Document::rollbackPerfectTail(){capturingPerfectTail_=false;for(const auto& [i,v]:perfectTailPixels_){const bool changed=strokePixel(i)!=v.value;strokePixel(i)=strokeColors_&&changed?strokeColors_->packedValue(timeline::RasterFormat::Indexed,v.value):v.value;pendingLookup_.set(i,v.pending);if(v.pending>=0)pending_[v.pending].after=v.after;change_.include(int(i%width_),int(i/width_));}pending_.resize(perfectPendingStart_);for(const auto& [i,v]:perfectTailErase_){if(v)imageEraseCoverage_[i]=*v;else imageEraseCoverage_.erase(i);}for(const auto& [i,v]:perfectTailInk_){if(v)inkStampCoverage_[i]=*v;else inkStampCoverage_.erase(i);}perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();hasPreviousStamp_=false;}
 bool Document::applySmoothBrush(const std::vector<std::size_t>& visited,int strength,std::optional<std::chrono::steady_clock::time_point> started){
  if(active()||!rasterToolsAvailable()||!layer().kind.empty()||!activeMaskId_.empty()||visited.empty())return false;
  for(auto key:visited)if(key>=std::size_t(width_)*height_)throw std::invalid_argument("Invalid smooth coverage");
@@ -1279,11 +1280,12 @@ bool Document::plotStrokeColorReplacement(std::size_t index,int coverage){
  coverage=std::clamp(coverage,0,255);if(!coverage)return true;
  const int found=pendingLookup_[index];const Pixel current=strokePixel(index);
  const auto inherited=inheritedStrokeBaseline_.find(index);const Pixel before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found<0?current:pending_[found].before;
- if(before!=strokeColorReplacement_->first)return true;
+ const auto beforeColor=strokeColors_?strokeColors_->toolColor(timeline::RasterFormat::Indexed,before):before;
+ if(beforeColor!=strokeColorReplacement_->first)return true;
  const auto seen=imageEraseCoverage_.find(index);if(seen!=imageEraseCoverage_.end()&&seen->second>=coverage)return true;
  capturePerfectPixel(index);imageEraseCoverage_[index]=coverage;const Pixel target=strokeColorReplacement_->second;Pixel value=0;
- for(int shift=0;shift<32;shift+=8){const int a=(before>>shift)&255,b=(target>>shift)&255;value|=Pixel(std::floor(a+(b-a)*coverage/255.0+.5))<<shift;}
- value=normalizeCanvasPacked(value,bool(maskStroke_));if(value==current)return true;
+ for(int shift=0;shift<32;shift+=8){const int a=(beforeColor>>shift)&255,b=(target>>shift)&255;value|=Pixel(std::floor(a+(b-a)*coverage/255.0+.5))<<shift;}
+ value=strokeColors_?strokeColors_->packedValue(timeline::RasterFormat::Indexed,value>>24?strokeColors_->colorId(value):0):normalizeCanvasPacked(value,bool(maskStroke_));if(value==current)return true;
  if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;
  strokePixel(index)=value;change_.include(int(index%width_),int(index/width_));return true;
 }
@@ -1295,7 +1297,8 @@ void Document::plot(int x, int y) {
   const auto current=strokePixel(index);
   if(pendingLookup_[index]>=0) return;
   const auto inherited=inheritedStrokeBaseline_.find(index);
-  auto value=inkBrushComposite(inherited==inheritedStrokeBaseline_.end()?current:inherited->second,color_,brush_.opacity,brush_.ink);value=normalizeCanvasPacked(value,bool(maskStroke_));
+  const auto before=inherited==inheritedStrokeBaseline_.end()?current:inherited->second;
+  Pixel value;if(strokeColors_){const auto next=raster::indexedBrushValue(current,before,color_,255,brush_.opacity,brush_.ink,*strokeColors_,!(color_>>24));if(!next)return;value=*next;}else value=normalizeCanvasPacked(inkBrushComposite(before,color_,brush_.opacity,brush_.ink),bool(maskStroke_));
   if(current==value) return;
   // legacy core/history.ts recordPixelKnownCurrent: record only touched pixels.
   pending_.push_back({index,current,value});
@@ -1312,11 +1315,17 @@ void Document::stamp(int x,int y) {
 
   if(imageStamp_){const auto& stamp=imagePattern_?imagePattern_->at(x,y,brush_.size,strokeImageAngle_):*imageStamp_;for(const auto& sample:stamp.samples)for(const auto& p:strokeSymmetryPoints({x-stamp.width/2+sample.x,y-stamp.height/2+sample.y})){
    if(selection_ && !selectionContains(selection_,p.x,p.y))continue;const auto index=std::size_t(p.y)*width_+p.x;if(plotStrokeColorReplacement(index,int(std::floor(sample.coverage*brush_.opacity/100.0+.5))))continue;capturePerfectPixel(index);auto current=strokePixel(index);const int found=pendingLookup_[index];const auto inherited=inheritedStrokeBaseline_.find(index);const auto before=inherited!=inheritedStrokeBaseline_.end()?inherited->second:found<0?current:pending_[found].before;Pixel value;
-   if(brush_.ink!=InkMode::Simple){const auto source=sample.color.value_or(color_);const int coverage=brush_.ink==InkMode::CopyAlphaColor?sample.coverage:int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(!coverage)continue;const auto key=(std::uint64_t(index)<<32)|source;auto seen=inkStampCoverage_.find(key);if(seen!=inkStampCoverage_.end()&&seen->second>=coverage)continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;value=applyInkColor(brush_.ink,brush_.ink==InkMode::LockAlpha?before:current,resolveInkStampColor(brush_.ink,source,sample.coverage,brush_.opacity));}
+   if(strokeColors_){
+    const auto source=sample.color.value_or(color_);const int coverage=brush_.ink==InkMode::CopyAlphaColor?sample.coverage:int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(!coverage)continue;
+    const bool erase=brush_.ink==InkMode::Simple&&!(color_>>24),direct=brush_.ink==InkMode::Simple&&(color_>>24)&&stamp.intrinsicSize;
+    if(!direct){const auto key=(std::uint64_t(index)<<32)|((color_>>24)?source:0u);auto seen=inkStampCoverage_.find(key);if(seen!=inkStampCoverage_.end()&&(seen->second>coverage||(seen->second==coverage&&brush_.ink!=InkMode::LockAlpha)))continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;}
+    const auto next=raster::indexedBrushValue(current,before,source,sample.coverage,brush_.opacity,brush_.ink,*strokeColors_,erase,direct,false,false,sample.color?*sample.color>>24:255);if(!next)continue;value=*next;
+   }
+   else if(brush_.ink!=InkMode::Simple){const auto source=sample.color.value_or(color_);const int coverage=brush_.ink==InkMode::CopyAlphaColor?sample.coverage:int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(!coverage)continue;const auto key=(std::uint64_t(index)<<32)|source;auto seen=inkStampCoverage_.find(key);if(seen!=inkStampCoverage_.end()&&seen->second>=coverage)continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;value=applyInkColor(brush_.ink,brush_.ink==InkMode::LockAlpha?before:current,resolveInkStampColor(brush_.ink,source,sample.coverage,brush_.opacity));}
    else if((color_>>24)==0){int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));if(sample.color)coverage=int(std::floor(coverage*(*sample.color>>24)/255.0+.5));auto seen=imageEraseCoverage_.find(index);if(!coverage || (seen!=imageEraseCoverage_.end() && seen->second>=coverage))continue;imageEraseCoverage_[index]=coverage;value=coverage==255?0:(before&0xffffff)|(Pixel(std::floor((before>>24)*(1-coverage/255.0)+.5))<<24);}
    else if(!stamp.intrinsicSize){const auto source=sample.color.value_or(color_);const int coverage=int(std::floor(sample.coverage*brush_.opacity/100.0+.5));const auto key=(std::uint64_t(index)<<32)|source;auto seen=inkStampCoverage_.find(key);if(!coverage||(seen!=inkStampCoverage_.end()&&seen->second>=coverage))continue;capturePerfectInkCoverage(key);inkStampCoverage_[key]=coverage;value=inkBrushComposite(before,source,brush_.opacity,InkMode::Simple,sample.coverage);}
    else {if(int(std::floor(sample.coverage*brush_.opacity/100.0+.5))==0)continue;value=imageBrushDirectPixel(sample.color.value_or(color_),sample.coverage,brush_.opacity);}
-   value=normalizeCanvasPacked(value,bool(maskStroke_));if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(p.x,p.y);
+   if(!strokeColors_)value=normalizeCanvasPacked(value,bool(maskStroke_));if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(p.x,p.y);
   }return;}
   const auto anchor=brush_.size/2;
   for(const auto& span:stampSpans_) {
@@ -1349,10 +1358,18 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
   const auto spans=brushSpans(brush);const auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
   std::optional<ImageBrushPatternSampler> imagePattern;if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint)imagePattern.emplace(*image,brush.imagePaintMode,from.x,from.y);
   const auto* mask=activeMask();const auto* previewSurface=mask?&mask->surface:activeSurfaceIfPresent();const bool direct=previewSurface&&raster::fullCanvas(*previewSurface,width_,height_);
+  const auto colors=!mask&&(previewSurface?previewSurface->format==timeline::RasterFormat::Indexed:colorMode_==color_mode::Mode::Indexed)?std::optional<RasterColorContext>{std::in_place,palette_.entries,palette_.order(),colorMode_,pixelFormat_}:std::nullopt;
   auto plot=[&](int x,int y,int coverage,std::optional<Pixel> sample){
     const auto local=repeat::wrap({double(x),double(y)},width_,height_,repeatMode);x=int(local.x);y=int(local.y);
     if(x<0 || y<0 || x>=width_ || y>=height_ || (clipSelection && selection_ && !selectionContains(selection_,x,y)))return;
     const auto i=std::size_t(y)*width_+x;Pixel base=previewSurface?(direct?previewSurface->pixels[i]:raster::readWorld(*previewSurface,x,y)):Pixel{};if(baseline){auto it=baseline->find(i);if(it!=baseline->end())base=it->second;}
+    if(colors){
+     const auto current=result.count(i)?result.at(i):base;const auto source=sample.value_or(color);const int amount=brush.ink==InkMode::CopyAlphaColor?coverage:int(std::floor(coverage*brush.opacity/100.0+.5));if(!amount)return;
+     const bool erase=brush.ink==InkMode::Simple&&!(color>>24),overwrite=imageStamp&&imageStamp->intrinsicSize&&!imagePattern&&brush.ink==InkMode::Simple&&!erase;
+     if(!imageStamp){if(result.count(i))return;}
+     else if(!overwrite){const auto key=(std::uint64_t(i)<<32)|((color>>24)?source:0u);const auto seen=inkCoverage.find(key);if(seen!=inkCoverage.end()&&(seen->second>amount||(seen->second==amount&&brush.ink!=InkMode::LockAlpha)))return;inkCoverage[key]=amount;}
+     if(const auto next=raster::indexedBrushValue(current,base,source,coverage,brush.opacity,brush.ink,*colors,erase,overwrite,false,false,sample?*sample>>24:255))result[i]=*next;return;
+    }
     if(!imageStamp){if(!result.count(i))result.emplace(i,normalizeCanvasPacked(inkBrushComposite(base,color,brush.opacity,brush.ink),bool(mask)));return;}
     if(brush.ink!=InkMode::Simple){const auto source=sample.value_or(color);const int c=brush.ink==InkMode::CopyAlphaColor?coverage:int(std::floor(coverage*brush.opacity/100.0+.5));if(!c)return;const auto key=(std::uint64_t(i)<<32)|source;if(inkCoverage[key]>=c)return;inkCoverage[key]=c;const auto destination=brush.ink==InkMode::LockAlpha?base:result.count(i)?result.at(i):base;const auto value=applyInkColor(brush.ink,destination,resolveInkStampColor(brush.ink,source,coverage,brush.opacity));result[i]=normalizeCanvasPacked(value,bool(mask));return;}
     if(!(color>>24)){int c=int(std::floor(coverage*brush.opacity/100.0+.5));if(sample)c=int(std::floor(c*(*sample>>24)/255.0+.5));if(c<=eraseCoverage[i])return;eraseCoverage[i]=c;result[i]=c==255?0:(base&0xffffff)|(Pixel(std::floor((base>>24)*(1-c/255.0)+.5))<<24);}
@@ -1374,7 +1391,7 @@ bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& po
  // transaction. Never run a pending stroke against the live document.
  std::size_t bytes=0;for(const auto& cel:timeline_.state().cels)if(cel.surface)bytes+=cel.surface->pixels.size()*sizeof(Pixel);for(const auto& mask:timeline_.state().masks)bytes+=mask.mask.surface.pixels.size()*sizeof(Pixel);for(const auto& set:timeline_.state().tilesets)bytes+=set.pixels.size()*sizeof(Pixel);
  if(bytes>64*1024*1024||std::uint64_t(width_)*height_*24>256*1024*1024-bytes*2)throw std::length_error("Curve preview exceeds document pixel budget");
- auto draft=std::make_unique<Document>(width_,height_);draft->pixelFormat_=pixelFormat_;draft->colorMode_=colorMode_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
+ auto draft=std::make_unique<Document>(width_,height_);draft->palette_=palette_;draft->pixelFormat_=pixelFormat_;draft->colorMode_=colorMode_;draft->timeline_=timeline_;draft->activeLayerId_=activeLayerId_;draft->activeFrameId_=activeFrameId_;draft->setSelectionValue(selection_);draft->activeMaskId_=activeMaskId_;draft->symmetryAxes=symmetryAxes;draft->symmetryCenter_=symmetryCenter_;draft->tileSelection_=tileSelection_;draft->freeInstanceSelected_=freeInstanceSelected_;draft->freeInstancePrimary_=freeInstancePrimary_;draft->freeInstanceSelectionFrame_=freeInstanceSelectionFrame_;
  const bool changed=draft->paintGeometricBrushPath(points,color,brush,image,angle,initial.sourceShapeSeed);
  auto& g=*gradient_;g.preview=draft->canvasPixels();g.region=layer().kind=="free-tile"&&!changed?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{0,0,width_,height_,{}}};
  if(g.mask){const auto* mask=draft->mutableActiveMask();if(!mask)throw std::logic_error("Missing curve mask preview");g.mask->display=*mask;}
@@ -1443,7 +1460,7 @@ bool Document::commitStroke() {
   std::optional<std::pair<std::string,std::string>> insertedSlot;
   std::string insertedId,oldDirtyOwner;
   bool inserted=false;
-  auto borrow=[](const timeline::Surface& source){timeline::Surface out;out.width=source.width;out.height=source.height;out.offsetX=source.offsetX;out.offsetY=source.offsetY;out.storageOriginX=source.storageOriginX;out.storageOriginY=source.storageOriginY;out.pixels.share(source.pixels);return out;};
+  auto borrow=[](const timeline::Surface& source){timeline::Surface out;out.format=source.format;out.width=source.width;out.height=source.height;out.offsetX=source.offsetX;out.offsetY=source.offsetY;out.storageOriginX=source.storageOriginX;out.storageOriginY=source.storageOriginY;out.pixels.share(source.pixels);return out;};
   auto invalidate=[&]{timeline_.resolved_.clear();timeline_.selectionContent_.clear();timeline_.visibleContent_.clear();timeline_.thumbnailStorage_.clear();timeline_.invalidateCompositeOrder();};
   auto rollback=[&]{
     if(!inserted)return;
@@ -1489,7 +1506,8 @@ void Document::cancelStroke() {
   change_={};
   for(const auto& delta:pending_) {
     const auto index=delta.index;
-    if(strokePixel(index)!=delta.before) {strokePixel(index)=delta.before;change_.include(int(index%width_),int(index/width_));}
+    const auto before=strokeColors_?strokeColors_->packedValue(timeline::RasterFormat::Indexed,delta.before):delta.before;
+    if(strokePixel(index)!=before) {strokePixel(index)=before;change_.include(int(index%width_),int(index/width_));}
   }
   rollbackMaskStroke();publishChange();clearPendingStroke();
   active_ = false;strokePixels_=nullptr;absentStrokeSurface_.reset();
