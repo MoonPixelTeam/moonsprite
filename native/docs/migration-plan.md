@@ -7205,3 +7205,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy gradientRegionSelection、applyGradient、canvas-render-gradient 与 history 的真实语义迁移普通 indexed 栅格渐变：区域按解析后的颜色匹配，预览 RGBA 与提交 ID 分别计算，透明源提交仍执行 packed 归一化，保留稀疏扩张、零／非零占位、缺失 Cel format、storage origin 和点／dense 历史差异。
 
 620 组真实旧版事务及每组两次预览、取消／提交／Undo／Redo 逐像素通过，另有 48 组关联图层和链接帧检查；旧版三个实际渐变测试文件 34 项通过（13.65 秒）。七项定向 CTest 全部通过（60.45 秒）。唯一正式 Release 已于 02:49:15 更新（30,647,296 bytes）；后续测试目标名拼写纠正后构建成功。来源覆盖 954 文件及快照、Editor593源码、架构593源码／252targets通过；strict因其它缺口继续失败。生产 indexed 新建／转换／可编辑导入及其它工具仍未完成，整体 INCOMPLETE。无 UI 修改、性能优化、人工图像或完整桌面验收。详见[索引色渐变迁移](indexed-gradient-transactions-migration-20261115.md)。阶段提交推送 dev，保留所有用户数据、缓存和日志。
+
+
+### 2026-11-15 索引色非线形状事务
+
+按 legacy paintShape／paintShapePixelPoints、unboundedShapePreview、history regionPatchFromPoints 完成六种非线形状的独立 RGBA 预览／ID 提交、对称裁切、稀疏扩张、占位、缺失 Cel、storage origin、点／dense 历史及链接语义。用户明确采用 0° 半像素起点取整修复，避免旧版不写像素却破坏 Undo 的缺陷；原四组缺陷保留证据。1,186 组真实旧版事务与 174 组链接检查通过；旧版三文件 29 项和 tools 筛选 7 项通过。来源 956、Editor593、架构593／253通过。唯一正式 Release 于 04:30:32 更新（30,657,536 bytes），最后几何预算拒绝检查及九项定向 CTest 全部通过（123.13秒）；strict按现有缺口退出1。直线／曲线独立笔刷路径和生产 indexed 准入仍未完成，整体 INCOMPLETE。详见 [形状迁移](indexed-shape-transactions-migration-20261115.md)。

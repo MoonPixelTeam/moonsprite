@@ -1,5 +1,6 @@
 #include "document.h"
 #include "raster_geometry.h"
+#include "raster_pixel_edit.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -11,6 +12,81 @@ void shapeBytes(std::size_t& used,std::size_t n){if(n>shapeLimit-used)throw std:
 void shapePixels(std::size_t& used,std::size_t n){if(n>(shapeLimit-used)/sizeof(Pixel))throw std::length_error("Shape exceeds document pixel budget");used+=n*sizeof(Pixel);}
 raster::Rect64 shapeUnion(raster::Rect64 a,raster::Rect64 b){return {std::min(a.left,b.left),std::min(a.top,b.top),std::max(a.right,b.right),std::max(a.bottom,b.bottom)};}
 bool shapeEmpty(raster::Rect64 r){return r.right<=r.left||r.bottom<=r.top;}
+void indexedShapeGeometry(std::size_t& used,int width,int height){
+ if(width<1||height<1)return;
+ const auto count=std::uint64_t(width)*height;
+ if(count>(shapeLimit-used)/4)throw std::length_error("Shape raster exceeds document pixel budget");
+ shapeBytes(used,std::size_t(count)*4);
+}
+std::optional<SelectionMask> indexedShapeMask(const ShapeSpec& spec,int cw,int ch,std::size_t& used){
+ const double angle=std::fmod(std::fmod(spec.bounds.angle,360)+360,360);
+ if(spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform||angle>1e-9){indexedShapeGeometry(used,cw,ch);return shapeMask(spec,cw,ch);}
+ // rotatedShapePixelPoints delegates to shapePixelPoints at zero rotation:
+ // its source points are unbounded and symmetry clips the destinations.
+ const auto bounds=transformBounds(spec.bounds);auto local=spec;
+ indexedShapeGeometry(used,bounds.width,bounds.height);
+ local.bounds.x-=bounds.x;local.bounds.y-=bounds.y;
+ auto mask=shapeMask(local,bounds.width,bounds.height);if(mask){mask->x+=bounds.x;mask->y+=bounds.y;}return mask;
+}
+// unboundedShapePreview: rasterize in a translated domain with two spare
+// pixels, so the canvas edge cannot manufacture a contour through the fill.
+std::optional<SelectionMask> indexedShapeContour(const ShapeSpec& spec,std::size_t& used){
+ if(spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)return {};
+ const auto bounds=transformBounds(spec.bounds);auto local=spec;
+ const int x=bounds.x-2,y=bounds.y-2,w=bounds.width+4,h=bounds.height+4;
+ indexedShapeGeometry(used,w,h);
+ local.bounds.x-=x;local.bounds.y-=y;
+ local.kind=(spec.kind==ShapeKind::Ellipse||spec.kind==ShapeKind::EllipseOutline)?ShapeKind::EllipseOutline:ShapeKind::RectangleOutline;
+ if(spec.kind==ShapeKind::Rectangle||spec.kind==ShapeKind::Ellipse)local.strokeWidth=1;
+ auto mask=shapeMask(local,w,h);if(mask){mask->x+=x;mask->y+=y;}return mask;
+}
+}
+bool Document::beginIndexedShape(){
+ const auto* source=activeSurfaceIfPresent();std::size_t used=0;
+ for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());
+ for(int i=0;i<(gradient_?8:4);++i)shapePixels(used,std::size_t(width_)*height_);
+ auto baseline=source?sparseFillCanvas(*source):std::vector<Pixel>(std::size_t(width_)*height_);
+ GradientPreview pending{{},source?cel().id:std::string{},layer().id,frame().id,baseline,selection_,{},{},contentRevision_,true};
+ pending.indexedDisplay=std::vector<Pixel>(baseline.size());
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ if(source){
+  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(const auto i=raster::worldIndex(*source,x,y))(*pending.indexedDisplay)[std::size_t(y)*width_+x]=colors.rgba(source->format,source->pixels[*i]);
+  const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source)throw std::logic_error("Invalid indexed shape owner");
+  pending.sparse=SparseGradientBaseline{std::move(baseline),r.source->id,source->width,source->height,source->offsetX,source->offsetY,source->storageOriginX,source->storageOriginY};
+ }else{pending.absentRaster=true;pending.absentRasterBaseline=std::move(baseline);}
+ gradient_=std::move(pending);++gradientRevision_;return true;
+}
+bool Document::updateIndexedShape(const ShapeSpec& input,Pixel color){
+ auto spec=input;
+ const double angle=std::fmod(std::fmod(spec.bounds.angle,360)+360,360);
+ // User-approved correction: zero-rotation fractional coordinates must not
+ // become fractional typed-array indices (legacy records destructive undo).
+ if(spec.kind!=ShapeKind::Line&&spec.kind!=ShapeKind::Curve&&spec.kind!=ShapeKind::Polygon&&spec.kind!=ShapeKind::Freeform&&angle<1e-9){spec.bounds.x=std::floor(spec.bounds.x+.5);spec.bounds.y=std::floor(spec.bounds.y+.5);}
+ if(spec.kind==ShapeKind::Line)return false; // Indexed brush-path shape integration is a separate migration stage.
+ if(spec.kind==ShapeKind::Curve)return false;
+ if(gradient_->sparse&&!sparseGradientSourceValid()){cancelGradient();return false;}
+ auto& g=*gradient_;const auto* source=activeSurfaceIfPresent();const auto& baseline=g.sparse?g.sparse->canvas:previewBaseline();
+ std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());
+ // Retained candidates, replacement candidates, geometry and point history.
+ for(int i=0;i<9;++i)shapePixels(used,baseline.size());
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ auto packed=baseline;std::vector<Pixel> display(baseline.size());
+ if(source)for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(const auto i=raster::worldIndex(*source,x,y))display[std::size_t(y)*width_+x]=colors.rgba(source->format,source->pixels[*i]);
+ auto mask=indexedShapeMask(spec,width_,height_,used);PixelRegion all,touched,visible;
+ auto each=[&](const std::optional<SelectionMask>& m,bool clip,auto&& emit){if(m)for(int y=m->y;y<m->y+m->height;++y)for(int x=m->x;x<m->x+m->width;++x)if(selectionContains(m,x,y))for(auto p:symmetryPoints({x,y},width_,height_,symmetryAxes,symmetryCenter(),clip))if(p.x>=0&&p.y>=0&&p.x<width_&&p.y<height_)emit(p.x,p.y);};
+ each(mask,true,[&](int x,int y){all.include(x,y);if(g.selection&&!selectionContains(g.selection,x,y))return;const auto i=std::size_t(y)*width_+x;packed[i]=colors.packedValue(timeline::RasterFormat::Indexed,raster::paintValue(timeline::RasterFormat::Indexed,baseline[i],baseline[i],color,colors));touched.include(x,y);});
+ std::optional<SelectionMask> painted;if(!touched.empty()){painted=SelectionMask{touched.x,touched.y,touched.w,touched.h,std::vector<unsigned char>(std::size_t(touched.w)*touched.h)};each(mask,true,[&](int x,int y){if(!g.selection||selectionContains(g.selection,x,y))painted->mask[std::size_t(y-painted->y)*painted->width+x-painted->x]=1;});}
+ // canvas-render-preview-pixels uses simple ink for these tools and the
+ // session brush opacity. Commit paintShape does not use either setting.
+ auto contour=(spec.kind==ShapeKind::Polygon||spec.kind==ShapeKind::Freeform)?mask:indexedShapeContour(spec,used);
+ const int coverage=int(std::floor(255*std::clamp(spec.brush.opacity,0,100)/100.0+.5));
+ each(contour,false,[&](int x,int y){if(g.selection&&!selectionContains(g.selection,x,y))return;const auto i=std::size_t(y)*width_+x;const auto local=source?raster::worldIndex(*source,x,y):std::nullopt;const auto current=local?colors.toolColor(source->format,source->pixels[*local]):g.absentRaster?colors.toolColor(timeline::RasterFormat::Indexed,0):0;const auto stamp=resolveInkStampColor(InkMode::Simple,color,coverage,100);const auto replacement=(coverage<255||((color>>24)>0&&(color>>24)<255))?raster::selectionRgbaOver(current,stamp):color;display[i]=colors.toolColor(timeline::RasterFormat::Indexed,colors.colorId(replacement));visible.include(x,y);});
+ std::optional<SelectionMask> expansion;
+ if(source&&!all.empty()&&(all.x<source->offsetX||all.y<source->offsetY||all.x+all.w>source->offsetX+source->width||all.y+all.h>source->offsetY+source->height)){
+  const int l=std::max(0,all.x-64),t=std::max(0,all.y-64),r=std::min(width_,all.x+all.w+64),b=std::min(height_,all.y+all.h+64);expansion=SelectionMask{l,t,r-l,b-t,{}};
+ }
+ g.preview=std::move(packed);g.indexedDisplay=std::move(display);g.shapePaintMask=std::move(painted);g.shapeExpansion=std::move(expansion);
+ g.region=visible.empty()?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{visible.x,visible.y,visible.w,visible.h,{}}};++gradientRevision_;return true;
 }
 bool Document::beginSparseShape(){
  const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid shape owner");const auto& s=*r.surface;raster::validate(s);
@@ -20,7 +96,7 @@ bool Document::beginSparseShape(){
 }
 bool Document::updateSparseShape(const ShapeSpec& spec,Pixel color){
  if(!sparseGradientSourceValid()){cancelGradient();return false;}auto& g=*gradient_;const auto& baseline=g.sparse->canvas;const auto resolved=timeline_.resolveSurface(g.celId);const auto& source=*resolved.surface;
- std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());shapePixels(used,baseline.size());shapePixels(used,g.preview.size());if(g.shapePaintMask)shapeBytes(used,g.shapePaintMask->mask.size());
+ std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());shapePixels(used,baseline.size());shapePixels(used,g.preview.size());if(g.indexedDisplay)shapePixels(used,g.indexedDisplay->size());if(g.shapePaintMask)shapeBytes(used,g.shapePaintMask->mask.size());
  // All new work, including symmetry allocations, precedes the first preview write.
  raster::Rect64 domain{0,0,width_,height_};const bool line=spec.kind==ShapeKind::Line;
  const bool axis=std::abs(std::fmod(spec.bounds.angle,360))<1e-9;
@@ -61,7 +137,7 @@ bool Document::updateSparseShape(const ShapeSpec& spec,Pixel color){
 }
 bool Document::commitSparseShape(){
  if(!sparseGradientSourceValid()){cancelGradient();return false;}const auto& g=*gradient_;const auto resolved=timeline_.resolveSurface(g.celId);if(resolved.issue!=timeline::LinkIssue::None||!resolved.source||!resolved.surface)throw std::logic_error("Invalid shape owner");const auto& source=*resolved.surface;
- std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());shapePixels(used,g.sparse->canvas.size());shapePixels(used,g.preview.size());if(g.shapePaintMask)shapeBytes(used,g.shapePaintMask->mask.size());
+ std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());shapePixels(used,g.sparse->canvas.size());shapePixels(used,g.preview.size());if(g.indexedDisplay)shapePixels(used,g.indexedDisplay->size());if(g.shapePaintMask)shapeBytes(used,g.shapePaintMask->mask.size());
  std::optional<timeline::Surface> candidate;
  if(g.shapeExpansion){const auto& r=*g.shapeExpansion;candidate=raster::expanded(source,{r.x,r.y,std::int64_t(r.x)+r.width,std::int64_t(r.y)+r.height},shapeLimit-used);if(candidate)shapePixels(used,candidate->pixels.size());}
  const auto& prepared=candidate?*candidate:source;
@@ -72,7 +148,7 @@ bool Document::commitSparseShape(){
  const bool changed=!dirty.empty();Edit edit{{},state_,nextState_};
  if(changed){
   edit.contentHistory.targetCelId=g.celId;edit.beforeSelection=edit.afterSelection=selectedFrames_;edit.contentHistory.pixelAddress=PixelAddressSpace{width_,height_,raster::coordinate(std::int64_t(prepared.storageOriginX.value_or(0))-prepared.offsetX),raster::coordinate(std::int64_t(prepared.storageOriginY.value_or(0))-prepared.offsetY)};
-  if(std::size_t(dirty.w)*dirty.h>=512*512){DensePixels dense{dirty.x,dirty.y,dirty.w,dirty.h,{},{}};const auto count=std::size_t(dirty.w)*dirty.h;shapePixels(used,count);shapePixels(used,count);dense.before.reserve(count);dense.after.reserve(count);for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.contentHistory.dense=std::move(dense);}
+  if(g.indexedDisplay?(changedCount>=256&&std::size_t(dirty.w)*dirty.h<=changedCount*3):std::size_t(dirty.w)*dirty.h>=512*512){DensePixels dense{dirty.x,dirty.y,dirty.w,dirty.h,{},{}};const auto count=std::size_t(dirty.w)*dirty.h;shapePixels(used,count);shapePixels(used,count);dense.before.reserve(count);dense.after.reserve(count);for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x){dense.before.push_back(beforeAt(x,y));dense.after.push_back(afterAt(x,y));}edit.contentHistory.dense=std::move(dense);}
   else{if(changedCount>(shapeLimit-used)/sizeof(Delta))throw std::length_error("Shape history exceeds document pixel budget");shapeBytes(used,changedCount*sizeof(Delta));edit.pixels.reserve(changedCount);const auto& m=*g.shapePaintMask;for(int y=m.y;y<m.y+m.height;++y)for(int x=m.x;x<m.x+m.width;++x)if(selectionContains(g.shapePaintMask,x,y)){const auto before=beforeAt(x,y),after=afterAt(x,y);if(before!=after)edit.pixels.push_back({std::size_t(y)*width_+x,before,after});}}
   reserveHistoryEntries();
  }

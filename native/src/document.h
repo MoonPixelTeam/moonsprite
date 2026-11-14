@@ -1324,6 +1324,8 @@ private:
   bool commitSparseFloatingPaste();
   struct SparseGradientBaseline {std::vector<Pixel> canvas;std::string ownerId;int width=0,height=0,offsetX=0,offsetY=0;std::optional<int> originX,originY;};
   bool beginSparseShape();
+  bool beginIndexedShape();
+  bool updateIndexedShape(const ShapeSpec&,Pixel);
   bool updateSparseShape(const ShapeSpec&,Pixel);
   bool commitSparseShape();
   bool indexedGradientAvailable()const;
