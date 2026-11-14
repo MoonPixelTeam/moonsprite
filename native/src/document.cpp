@@ -1384,9 +1384,10 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
   else visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off);
   return result;
 }
-bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle){
+bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,bool curve,repeat::Mode repeatMode){
  if(!shapeActive())return false;const auto& initial=*gradient_;
  if(initial.contentRevision!=contentRevision_||initial.layerId!=layer().id||initial.frameId!=frame().id||!selectionEqual(initial.selection,selection_)){cancelGradient();return false;}
+ if(initial.indexedDisplay)return updateIndexedBrushPath(points,color,brush,image,angle,curve,repeatMode);
  // Reuse native isolated timeline previews and the actual brush stamp/authority
  // transaction. Never run a pending stroke against the live document.
  std::size_t bytes=0;for(const auto& cel:timeline_.state().cels)if(cel.surface)bytes+=cel.surface->pixels.size()*sizeof(Pixel);for(const auto& mask:timeline_.state().masks)bytes+=mask.mask.surface.pixels.size()*sizeof(Pixel);for(const auto& set:timeline_.state().tilesets)bytes+=set.pixels.size()*sizeof(Pixel);

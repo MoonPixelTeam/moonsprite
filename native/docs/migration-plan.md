@@ -7210,3 +7210,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ### 2026-11-15 索引色非线形状事务
 
 按 legacy paintShape／paintShapePixelPoints、unboundedShapePreview、history regionPatchFromPoints 完成六种非线形状的独立 RGBA 预览／ID 提交、对称裁切、稀疏扩张、占位、缺失 Cel、storage origin、点／dense 历史及链接语义。用户明确采用 0° 半像素起点取整修复，避免旧版不写像素却破坏 Undo 的缺陷；原四组缺陷保留证据。1,186 组真实旧版事务与 174 组链接检查通过；旧版三文件 29 项和 tools 筛选 7 项通过。来源 956、Editor593、架构593／253通过。唯一正式 Release 于 04:30:32 更新（30,657,536 bytes），最后几何预算拒绝检查及九项定向 CTest 全部通过（123.13秒）；strict按现有缺口退出1。直线／曲线独立笔刷路径和生产 indexed 准入仍未完成，整体 INCOMPLETE。详见 [形状迁移](indexed-shape-transactions-migration-20261115.md)。
+
+
+### 2026-11-15 索引色直线／曲线笔刷路径事务（阶段验收）
+
+按 legacy endLine／endCurve、commitBrushPath、paintBrushPath 与 drawBrushPathPreview 迁移普通 indexed 几何笔刷路径。保留间距、整路径及逐 stamp 扩张、预览 first-wins／原尺寸图像倒序、Line 墨水与 Curve simple 的区别、预览会话透明度及提交满透明度、选区／对称／重复、稀疏／占位／缺失 Cel、storage origin 与点／dense 历史。补齐缩放彩色／遮罩图案的旋转采样和四相位 FIFO，普通笔刷独立缺口继续登记。
+
+1,074 组实际旧版事务及两次预览／取消／提交／Undo／Redo、102 组关联／链接检查通过；旧版筛选两项通过、93 项跳过。七项定向 CTest 全部通过（16.84 秒）。唯一正式 Release 于 05:43:48 更新（30,679,552 bytes）。生产 indexed 新建／转换／可编辑导入仍关闭，整体 INCOMPLETE。无性能优化、布局修改、人工图像或完整桌面验收。详见 [直线／曲线路径迁移](indexed-path-transactions-migration-20261115.md)。阶段保存并推送 dev，保留用户数据、构建缓存和日志。

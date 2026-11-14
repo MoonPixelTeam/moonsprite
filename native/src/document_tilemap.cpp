@@ -1218,8 +1218,13 @@ bool Document::commitGradient(){if(!gradient_)return false;const auto& g=*gradie
 }
 
 
-bool Document::paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<Point> sourceSeed){
+bool Document::paintGeometricBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,std::optional<Point> sourceSeed,repeat::Mode repeatMode){
  if(points.empty())return false;brush.opacity=100;brush.perfectPixels=false;
+ if(indexedGradientAvailable()){
+  if(active()||!beginShapePreview())return false;
+  try{if(!updateIndexedBrushPath(points,color,brush,image,angle,false,repeatMode)){cancelShapePreview();return false;}return commitShapePreview();}
+  catch(...){cancelShapePreview();throw;}
+ }
  if(activeMaskId_.empty()&&layer().kind=="free-tile"){
   if(active()||freeTilePaintMode())return false;
   try{

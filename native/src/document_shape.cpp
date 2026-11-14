@@ -12,6 +12,26 @@ void shapeBytes(std::size_t& used,std::size_t n){if(n>shapeLimit-used)throw std:
 void shapePixels(std::size_t& used,std::size_t n){if(n>(shapeLimit-used)/sizeof(Pixel))throw std::length_error("Shape exceeds document pixel budget");used+=n*sizeof(Pixel);}
 raster::Rect64 shapeUnion(raster::Rect64 a,raster::Rect64 b){return {std::min(a.left,b.left),std::min(a.top,b.top),std::max(a.right,b.right),std::max(a.bottom,b.bottom)};}
 bool shapeEmpty(raster::Rect64 r){return r.right<=r.left||r.bottom<=r.top;}
+// tools-brush brushMaskOffsets supports pattern sampling for scaled images too.
+// The ordinary stroke sampler currently handles intrinsic images only; keep this
+// adaptation local to geometric indexed paths until that separate migration.
+ImageBrushStamp scaledPathPatternStamp(const PatternBrush& image,int size,double angle,PatternPaintMode mode,int centerX,int centerY,int targetX,int targetY,const ImageBrushStamp& geometry){
+ ImageBrushStamp out{geometry.width,geometry.height,{},false};
+ const double rad=angle*3.14159265358979323846/180,c=std::cos(rad),s=std::sin(rad);
+ const auto& colors=image.paintColors.empty()?image.colors:image.paintColors;
+ static constexpr int bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+ for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){
+  const double dx=x-(out.width-1)/2.,dy=y-(out.height-1)/2.;
+  const int sx=int(std::floor(c*dx+s*dy+(size-1)/2.+.5)),sy=int(std::floor(-s*dx+c*dy+(size-1)/2.+.5));
+  if(sx<0||sy<0||sx>=size||sy>=size)continue;
+  const auto px=std::int64_t(centerX)-out.width/2+sx-(mode==PatternPaintMode::Source?image.sourceX:targetX),py=std::int64_t(centerY)-out.height/2+sy-(mode==PatternPaintMode::Source?image.sourceY:targetY);
+  const int ix=int((px%image.width+image.width)%image.width),iy=int((py%image.height+image.height)%image.height);
+  const auto i=std::size_t(iy)*image.width+ix;
+  const int coverage=colors.empty()?(image.coverage[i]>bayer[(int(py&3)*4)+int(px&3)]*16?255:0):(colors[i]>>24?255:0);
+  if(coverage)out.samples.push_back({x,y,coverage,colors.empty()?std::optional<Pixel>{}:std::optional<Pixel>{colors[i]}});
+ }
+ return out;
+}
 void indexedShapeGeometry(std::size_t& used,int width,int height){
  if(width<1||height<1)return;
  const auto count=std::uint64_t(width)*height;
@@ -62,7 +82,7 @@ bool Document::updateIndexedShape(const ShapeSpec& input,Pixel color){
  // User-approved correction: zero-rotation fractional coordinates must not
  // become fractional typed-array indices (legacy records destructive undo).
  if(spec.kind!=ShapeKind::Line&&spec.kind!=ShapeKind::Curve&&spec.kind!=ShapeKind::Polygon&&spec.kind!=ShapeKind::Freeform&&angle<1e-9){spec.bounds.x=std::floor(spec.bounds.x+.5);spec.bounds.y=std::floor(spec.bounds.y+.5);}
- if(spec.kind==ShapeKind::Line)return false; // Indexed brush-path shape integration is a separate migration stage.
+ if(spec.kind==ShapeKind::Line){auto points=selectionLine({int(spec.start.x),int(spec.start.y)},{int(spec.end.x),int(spec.end.y)},spec.polygonBalanced);if(spec.brush.perfectPixels){const auto perfect=perfectPixelPathPoints(points);points.clear();for(auto p:perfect)points.push_back({p.x,p.y});}return updateIndexedBrushPath(points,color,spec.brush,nullptr,0,false);}
  if(spec.kind==ShapeKind::Curve)return false;
  if(gradient_->sparse&&!sparseGradientSourceValid()){cancelGradient();return false;}
  auto& g=*gradient_;const auto* source=activeSurfaceIfPresent();const auto& baseline=g.sparse?g.sparse->canvas:previewBaseline();
@@ -87,6 +107,70 @@ bool Document::updateIndexedShape(const ShapeSpec& input,Pixel color){
  }
  g.preview=std::move(packed);g.indexedDisplay=std::move(display);g.shapePaintMask=std::move(painted);g.shapeExpansion=std::move(expansion);
  g.region=visible.empty()?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{visible.x,visible.y,visible.w,visible.h,{}}};++gradientRevision_;return true;
+}
+// canvas-input-shape/useCanvasShapeCommit: Line and Curve share brush centers,
+// but their display preview and committed ink deliberately differ.
+bool Document::updateIndexedBrushPath(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,bool curve,repeat::Mode repeatMode){
+ if(!shapeActive()||!gradient_->indexedDisplay||!rasterToolsAvailable())return false;
+ if(gradient_->sparse&&!sparseGradientSourceValid()){cancelGradient();return false;}
+ if(!std::isfinite(angle))throw std::invalid_argument("Invalid geometric brush angle");
+ auto& g=*gradient_;const auto* source=activeSurfaceIfPresent();
+ std::size_t used=0;for(const auto& c:timeline_.state().cels)if(c.surface)shapePixels(used,c.surface->pixels.size());
+ const auto count=std::size_t(width_)*height_;for(int i=0;i<10;++i)shapePixels(used,count);
+ if(points.size()>(shapeLimit-used)/sizeof(SelectionPoint))throw std::length_error("Geometric path exceeds document pixel budget");shapeBytes(used,points.size()*sizeof(SelectionPoint));
+ brush.size=std::clamp(brush.size,1,64);brush.opacity=std::clamp(brush.opacity,0,100);
+ const auto imageStamp=image?std::optional<ImageBrushStamp>{prepareImageBrushStamp(*image,brush.size,angle)}:std::nullopt;
+ auto footprint=selectionBrushFootprint(brush,int(std::fmod(angle,360)));
+ if(!image&&angle!=std::trunc(angle)&&brush.size>1&&brush.shape!=BrushShape::Round){
+  const double rad=angle*3.14159265358979323846/180,c=std::cos(rad),sn=std::sin(rad);
+  footprint.width=footprint.height=brush.shape==BrushShape::Line?brush.size:std::max(1,int(std::ceil(brush.size*(std::abs(c)+std::abs(sn))-1e-9)));footprint.spans.clear();
+  if(brush.shape==BrushShape::Line){const int center=brush.size/2,dx=int(std::trunc(brush.size/2.0*c)),dy=int(std::trunc(-brush.size/2.0*sn));auto path=selectionContinuousLine({center-dx,center-dy},{center,center});const auto tail=selectionContinuousLine({center,center},{center+dx,center+dy});path.insert(path.end(),tail.begin(),tail.end());for(int y=0;y<brush.size;++y){BrushSpan row{y,brush.size,-1};for(auto q:path)if(q.y==y&&q.x>=0&&q.x<brush.size){row.left=std::min(row.left,q.x);row.right=std::max(row.right,q.x);}footprint.spans.push_back(row);}}
+  else{const double center=(footprint.width-1)/2.0,sc=(brush.size-1)/2.0;for(int y=0;y<footprint.height;++y){BrushSpan row{y,footprint.width,-1};for(int x=0;x<footprint.width;++x){const int sx=int(std::floor(c*(x-center)+sn*(y-center)+sc+.5)),sy=int(std::floor(-sn*(x-center)+c*(y-center)+sc+.5));if(sx>=0&&sy>=0&&sx<brush.size&&sy<brush.size){row.left=std::min(row.left,x);row.right=x;}}footprint.spans.push_back(row);}}
+ }
+ const int sw=imageStamp?imageStamp->width:footprint.width,sh=imageStamp?imageStamp->height:footprint.height;
+ const double rad=angle*3.14159265358979323846/180;const int spacingDimension=imageStamp?std::max(sw,sh):std::max(1,int(std::ceil(brush.size*(std::abs(std::cos(rad))+std::abs(std::sin(rad)))-1e-9)));
+ const int spacing=brush.shape==BrushShape::Line?1:std::max(1,spacingDimension/16);std::vector<SelectionPoint> centers;centers.reserve(points.size());int since=0;
+ for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;centers.push_back(points[i]);since=0;}
+ auto stampRect=[&](SelectionPoint p){return raster::Rect64{std::int64_t(p.x)-sw/2,std::int64_t(p.y)-sh/2,std::int64_t(p.x)-sw/2+sw,std::int64_t(p.y)-sh/2+sh};};
+ auto symmetric=[&](raster::Rect64 r){std::optional<raster::Rect64> result;for(auto p:std::array<SymmetryPixel,4>{{{raster::coordinate(r.left),raster::coordinate(r.top)},{raster::coordinate(r.right-1),raster::coordinate(r.top)},{raster::coordinate(r.left),raster::coordinate(r.bottom-1)},{raster::coordinate(r.right-1),raster::coordinate(r.bottom-1)}}})for(auto q:symmetryPoints(p,width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off)){const raster::Rect64 pixel{q.x,q.y,std::int64_t(q.x)+1,std::int64_t(q.y)+1};result=result?shapeUnion(*result,pixel):pixel;}auto out=result.value_or(r);if(repeatMode!=repeat::Mode::Off){const auto xs=repeat::axis(raster::coordinate(out.left),raster::coordinate(out.right-out.left),width_,repeat::includesX(repeatMode)),ys=repeat::axis(raster::coordinate(out.top),raster::coordinate(out.bottom-out.top),height_,repeat::includesY(repeatMode));std::optional<raster::Rect64> wrapped;for(auto x:xs)for(auto y:ys){raster::Rect64 part{x.start,y.start,std::int64_t(x.start)+x.length,std::int64_t(y.start)+y.length};wrapped=wrapped?shapeUnion(*wrapped,part):part;}if(wrapped)return *wrapped;}return out;};
+ raster::Rect64 geometry=source?raster::Rect64{source->offsetX,source->offsetY,std::int64_t(source->offsetX)+source->width,std::int64_t(source->offsetY)+source->height}:raster::Rect64{0,0,width_,height_};
+ std::optional<raster::Rect64> requested;bool placeholder=source&&source->width==1&&source->height==1&&source->pixels[0]==0;
+ auto ensure=[&](raster::Rect64 r){r={std::max<std::int64_t>(0,r.left),std::max<std::int64_t>(0,r.top),std::min<std::int64_t>(width_,r.right),std::min<std::int64_t>(height_,r.bottom)};if(shapeEmpty(r))return false;if(r.left>=geometry.left&&r.top>=geometry.top&&r.right<=geometry.right&&r.bottom<=geometry.bottom)return true;const raster::Rect64 padded{std::max<std::int64_t>(0,r.left-64),std::max<std::int64_t>(0,r.top-64),std::min<std::int64_t>(width_,r.right+64),std::min<std::int64_t>(height_,r.bottom+64)};requested=requested?shapeUnion(*requested,padded):padded;geometry=placeholder?padded:shapeUnion(geometry,padded);placeholder=false;return true;};
+ bool allowed=false;if(!centers.empty()){auto bounds=stampRect(centers.front());for(auto p:centers)bounds=shapeUnion(bounds,stampRect(p));allowed=ensure(symmetric(bounds));}
+ std::vector<unsigned char> enabled(centers.size());if(allowed)for(std::size_t i=0;i<centers.size();++i)enabled[i]=ensure(symmetric(stampRect(centers[i])));
+ std::optional<timeline::Surface> expanded;if(source&&requested){expanded=raster::expanded(*source,*requested,shapeLimit-used);if(expanded)shapePixels(used,expanded->pixels.size());}
+ const auto* prepared=expanded?&*expanded:source;
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ auto packed=prepared?sparseFillCanvas(*prepared):std::vector<Pixel>(count);const auto baseline=packed;std::vector<Pixel> display(count);
+ for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(source)if(const auto i=raster::worldIndex(*source,x,y))display[std::size_t(y)*width_+x]=colors.rgba(source->format,source->pixels[*i]);
+ std::optional<ImageBrushPatternSampler> pattern;if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint&&!points.empty())pattern.emplace(*image,brush.imagePaintMode,points.front().x,points.front().y);
+ struct ScaledPhase {int x,y;ImageBrushStamp stamp;};std::vector<ScaledPhase> scaledPhases;
+ auto activeImageStamp=[&](SelectionPoint p)->const ImageBrushStamp&{
+  if(pattern)return pattern->at(p.x,p.y,brush.size,angle);
+  if(image->intrinsicSize||brush.imagePaintMode==PatternPaintMode::Paint||points.empty())return *imageStamp;
+  const int px=patternWrapped(p.x,image->width),py=patternWrapped(p.y,image->height);
+  for(const auto& phase:scaledPhases)if(phase.x==px&&phase.y==py)return phase.stamp;
+  if(scaledPhases.size()>=4)scaledPhases.erase(scaledPhases.begin());
+  scaledPhases.push_back({px,py,scaledPathPatternStamp(*image,brush.size,angle,brush.imagePaintMode,p.x,p.y,points.front().x-brush.size/2,points.front().y-brush.size/2,*imageStamp)});
+  return scaledPhases.back().stamp;
+ };
+ const int previewWidth=imageStamp?sw:brush.shape==BrushShape::Line?brush.size:spacingDimension,previewHeight=imageStamp?sh:brush.shape==BrushShape::Line?brush.size:spacingDimension;
+ auto samples=[&](SelectionPoint p,bool preview,auto&& emit){if(imageStamp){const auto& stamp=activeImageStamp(p);for(const auto& sample:stamp.samples)emit(raster::coordinate(std::int64_t(p.x)-stamp.width/2+sample.x),raster::coordinate(std::int64_t(p.y)-stamp.height/2+sample.y),sample.coverage,sample.color);}else for(auto row:footprint.spans)for(int x=row.left;x<=row.right;++x){const int px=raster::coordinate(std::int64_t(p.x)-(preview?previewWidth:sw)/2+x),py=raster::coordinate(std::int64_t(p.y)-(preview?previewHeight:sh)/2+row.y);if(brushDitherContains(brush,px,py))emit(px,py,255,std::optional<Pixel>{});}};
+ std::vector<unsigned char> touched(count),seen(count);std::unordered_map<std::uint64_t,int> coverage;PixelRegion dirty,visible;
+ for(std::size_t c=0;c<centers.size();++c)if(enabled[c])samples(centers[c],false,[&](int x,int y,int amount,std::optional<Pixel> sample){for(auto q:symmetryPoints({x,y},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off)){const auto local=repeat::wrap({double(q.x),double(q.y)},width_,height_,repeatMode);q={int(local.x),int(local.y)};if(q.x<0||q.y<0||q.x>=width_||q.y>=height_)continue;if((g.selection&&!selectionContains(g.selection,q.x,q.y))||(prepared&&!raster::worldIndex(*prepared,q.x,q.y)))continue;const auto i=std::size_t(q.y)*width_+q.x;const Pixel paint=sample.value_or(color);const bool erase=brush.ink==InkMode::Simple&&!(color>>24),direct=imageStamp&&imageStamp->intrinsicSize&&!pattern&&brush.ink==InkMode::Simple&&!erase;
+   if(!direct){const auto key=(std::uint64_t(i)<<32)|((color>>24)?paint:0u);auto previous=coverage.find(key);if(previous!=coverage.end()&&(previous->second>amount||(previous->second==amount&&brush.ink!=InkMode::LockAlpha)))continue;if(previous==coverage.end())shapeBytes(used,48);coverage[key]=amount;}
+   const auto value=raster::indexedBrushValue(packed[i],baseline[i],paint,amount,100,brush.ink,colors,erase,direct,false,false,sample?*sample>>24:255);if(!value)continue;packed[i]=*value;touched[i]=1;dirty.include(q.x,q.y);
+  }});
+ // drawBrushPathPreview: intrinsic image stamps are visited in reverse order,
+ // each visible destination is drawn once, erase=false even for alpha zero.
+ const bool overwrite=imageStamp&&imageStamp->intrinsicSize&&!pattern;const InkMode previewInk=curve?InkMode::Simple:brush.ink;
+ for(std::size_t c=0;c<centers.size();++c)samples(centers[overwrite?centers.size()-1-c:c],true,[&](int x,int y,int amount,std::optional<Pixel> sample){for(auto q:symmetryPoints({x,y},width_,height_,symmetryAxes,symmetryCenter())){if(g.selection&&!selectionContains(g.selection,q.x,q.y))continue;const auto i=std::size_t(q.y)*width_+q.x;if(seen[i])continue;seen[i]=1;
+   const auto local=source?raster::worldIndex(*source,q.x,q.y):std::nullopt;const auto base=local?colors.toolColor(source->format,source->pixels[*local]):g.absentRaster?colors.toolColor(timeline::RasterFormat::Indexed,0):0;const Pixel paint=sample.value_or(color);const int effective=int(std::floor(amount*brush.opacity/100.0+.5));const auto stamp=resolveInkStampColor(previewInk,paint,effective,100);
+   const Pixel replacement=previewInk!=InkMode::Simple?applyInkColor(previewInk,base,stamp):overwrite?stamp:effective<255||((paint>>24)>0&&(paint>>24)<255)?raster::selectionRgbaOver(base,stamp):paint;display[i]=colors.toolColor(timeline::RasterFormat::Indexed,colors.colorId(replacement));visible.include(q.x,q.y);
+  }});
+ std::optional<SelectionMask> painted;if(!dirty.empty()){painted=SelectionMask{dirty.x,dirty.y,dirty.w,dirty.h,std::vector<unsigned char>(std::size_t(dirty.w)*dirty.h)};for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x)painted->mask[std::size_t(y-dirty.y)*dirty.w+x-dirty.x]=touched[std::size_t(y)*width_+x];}
+ std::optional<SelectionMask> expansion;if(requested)expansion=SelectionMask{raster::coordinate(requested->left),raster::coordinate(requested->top),raster::coordinate(requested->right-requested->left),raster::coordinate(requested->bottom-requested->top),{}};
+ g.preview=std::move(packed);g.indexedDisplay=std::move(display);g.shapePaintMask=std::move(painted);g.shapeExpansion=std::move(expansion);g.region=visible.empty()?std::optional<SelectionMask>{}:std::optional<SelectionMask>{SelectionMask{visible.x,visible.y,visible.w,visible.h,{}}};++gradientRevision_;return true;
 }
 bool Document::beginSparseShape(){
  const auto r=timeline_.resolveSurface(cel().id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::logic_error("Invalid shape owner");const auto& s=*r.surface;raster::validate(s);
