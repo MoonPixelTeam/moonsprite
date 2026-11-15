@@ -843,11 +843,19 @@ void indexedSelectionSource(const SelectionClipboard& source,timeline::RasterFor
  if(captureTranslation){source.capturedOpaqueIds=source.rotationOpaqueIds;source.capturedOpaquePixels=false;for(std::size_t i=0;i<source.pixels.size();++i)if(source.mask[i]==1&&source.rotationOpaque(source.pixels[i])){source.capturedOpaquePixels=true;break;}}
 }
 // Legacy refreshes generic sampling from the current palette, but translation
-// offsets retain capture-time opacity. RotSprite invalidates only on union changes.
+// offsets retain capture-time opacity. RotSprite invalidates on union changes;
+// symmetry write rasters also depend on first-entry opacity.
 template<class Floating> void refreshIndexedFloating(Floating& floating,const PaletteState& palette){
  auto refresh=[&](SelectionClipboard& source){if(source.opaqueIds)indexedSelectionSource(source,timeline::RasterFormat::Indexed,palette);};
  refresh(floating.source);
- for(auto& target:floating.targets){const auto old=target.source.rotationOpaqueIds;refresh(target.source);if((old&&target.source.rotationOpaqueIds&&*old!=*target.source.rotationOpaqueIds)||(target.rotSprite&&!target.rotSprite->matchesOpacity(target.source))){target.rotSprite.reset();target.symmetryRotation.reset();}if(target.originalSource)refresh(*target.originalSource);}
+ for(auto& target:floating.targets){const auto old=target.source.rotationOpaqueIds,first=target.source.opaqueIds;refresh(target.source);
+  const bool unionChanged=old&&target.source.rotationOpaqueIds&&*old!=*target.source.rotationOpaqueIds;
+  const bool firstChanged=first&&target.source.opaqueIds&&*first!=*target.source.opaqueIds;
+  const bool samplerChanged=unionChanged||(target.rotSprite&&!target.rotSprite->matchesOpacity(target.source));
+  if(samplerChanged)target.rotSprite.reset();
+  if(samplerChanged||firstChanged)target.symmetryRotation.reset();
+  if(target.originalSource)refresh(*target.originalSource);
+ }
 }
 bool floatingTranslation(const SelectionTransform& t,const SelectionClipboard& source){return !t.quad&&t.shearX==0&&t.shearY==0&&t.angle==0&&t.width==source.width&&t.height==source.height&&!t.flipHorizontal&&!t.flipVertical&&std::floor(t.x)==t.x&&std::floor(t.y)==t.y;}
 // legacy tools-selection-transform-translation.ts: repeated targets read the
