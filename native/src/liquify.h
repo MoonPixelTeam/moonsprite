@@ -22,6 +22,9 @@ struct Context {
  std::function<std::optional<Pixel>(int,int)> current,baseline;
  std::function<bool(int,int)> allowed;
  std::function<bool(int,int,Pixel)> write;
+ // Indexed thin-edge occupancy uses the palette's last-ID alpha lookup.
+ // Pure RGBA callers retain their packed-alpha default.
+ std::function<int(Pixel)> alpha;
  bool contains(int px,int py)const{return px>=x&&py>=y&&px<x+w&&py<y+h;}
 };
 template<class Read> std::optional<Pixel> sample(Read read,double x,double y){
@@ -69,13 +72,14 @@ class Stroke {
   for(int y=top;y<=bottom;++y)for(int x=left;x<=right;++x){if(std::hypot(x-center.x,y-center.y)>radius||!c.allowed(x,y))continue;auto value=sample(c.baseline,x-horizontal_[y],y-vertical_[x]);if(value)changed=c.write(x,y,*value)||changed;}return changed;
  }
  template<class Read> bool preserveThin(Context& c,Read read,Point center,int radius,double strength,Mode mode){
-  auto occupied=[&](int x,int y){return (read(x,y).value_or(0)>>24)>0;};
+  auto alpha=[&](Pixel p){return c.alpha?c.alpha(p):int(p>>24);};
+  auto occupied=[&](int x,int y){const auto p=read(x,y);return p&&alpha(*p)>0;};
   auto thin=[&](int x,int y){if(!occupied(x,y))return false;for(int dy:{-1,1})for(int dx:{-1,1})if(occupied(x+dx,y)&&occupied(x,y+dy)&&occupied(x+dx,y+dy))return false;return true;};
   std::map<std::pair<int,int>,Point> transformed;
   auto forward=[&](int x,int y){const auto key=std::make_pair(x,y);auto it=transformed.find(key);if(it!=transformed.end())return it->second;const double dx=x-center.x,dy=y-center.y,d=std::hypot(dx,dy);Point result{double(x),double(y)};
    if(d>0&&d<radius){if(mode==Mode::Inflate||mode==Mode::Deflate){double low=0,high=radius;for(int i=0;i<20;++i){double mid=(low+high)/2,influence=falloff(mid,radius)*strength,mapped=mid*(mode==Mode::Inflate?1-influence*.75:1+influence);if(mapped<d)low=mid;else high=mid;}double scale=(low+high)/(2*d);result={center.x+dx*scale,center.y+dy*scale};}else{double angle=falloff(d,radius)*strength*(mode==Mode::TwistClockwise?1:-1)*1.5707963267948966;result={center.x+dx*std::cos(angle)-dy*std::sin(angle),center.y+dx*std::sin(angle)+dy*std::cos(angle)};}}
    transformed.emplace(key,result);return result;};
-  bool changed=false;auto paint=[&](int x,int y,Pixel value){if(!c.contains(x,y)||std::hypot(x-center.x,y-center.y)>radius||!c.allowed(x,y))return;if((c.current(x,y).value_or(0)>>24)==0)changed=c.write(x,y,value)||changed;};
+  bool changed=false;auto paint=[&](int x,int y,Pixel value){if(!c.contains(x,y)||std::hypot(x-center.x,y-center.y)>radius||!c.allowed(x,y))return;if(alpha(c.current(x,y).value_or(0))==0)changed=c.write(x,y,value)||changed;};
   const int left=std::max(c.x,int(std::floor(center.x-radius))),right=std::min(c.x+c.w-1,int(std::ceil(center.x+radius))),top=std::max(c.y,int(std::floor(center.y-radius))),bottom=std::min(c.y+c.h-1,int(std::ceil(center.y+radius)));
   const int edges[4][2]={{1,0},{-1,1},{0,1},{1,1}};
   for(int y=top;y<=bottom;++y)for(int x=left;x<=right;++x){if(std::hypot(x-center.x,y-center.y)>radius||!thin(x,y))continue;const Pixel color=*read(x,y);const Point from=forward(x,y);paint(jsRound(from.x),jsRound(from.y),color);

@@ -8461,6 +8461,11 @@
         "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
         "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
         "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
+      },
+      "indexedLiquify20261116": {
+        "legacyEvidence": "Actual raw-ID categorical warp and stable-source hold; last-duplicate-ID alpha for thin-edge occupancy, first-ID palette normalization for writes, current-source commit smoothing and PixelEdit point/dense replay. Legacy unlink history snapshots all cels, including the selected referenced source; cancellation reverts PixelEdit then aborts unlink compound. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Reuse RasterColorContext packedValue/rgba, optional Context alpha callback with RGBA default, indexed smooth kernel flag and existing dense history helper. Keep native reversible sparse expansion/owner-local addresses; retain source cel in unlink snapshots to preserve raw IDs after point-normalizing undo/cancel. Missing active cel is safely refused. Production indexed admission stays closed. See docs/indexed-liquify-migration-20261116.md.",
+        "validation": "3230 actual legacy indexed/RGBA preview, commit, cancel, geometry/origin and Undo/Redo cases;70 dense histories and260 native linked-source/alias/three-encoder variants passed. Legacy2 files/88 tests passed5.78s. Final9 targeted CTests passed39.11s. Official Release build exit0;sole exe2026-11-16 06:39:24,30759936bytes. New official --workspace-check --named-workspace-only --paint-tools-only exit0. Provenance992/evidence snapshots,Editor597,architecture597 sources/269targets and diff passed;strict exits1 for global known gaps. See docs/indexed-liquify-migration-20261116.md; no full manual desktop/image acceptance, UI edits or performance work. Overall migration remains incomplete."
       }
     },
     {
@@ -31368,11 +31373,22 @@
         "legacy/src/renderer/src/core/tool-preferences.ts",
         "legacy/src/renderer/src/components/app/EditorToolOptions.tsx",
         "legacy/src/renderer/src/core/liquify-effects.test.ts",
-        "legacy/src/renderer/src/core/liquify.test.ts"
+        "legacy/src/renderer/src/core/liquify.test.ts",
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts"
       ],
       "adaptation": "Native C++17 callbacks and existing pixel edit/history UI adapters.",
       "paintTools20261024": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
-      "scope": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks."
+      "scope": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
+      "indexedLiquify20261116": {
+        "legacyEvidence": "Actual raw-ID categorical warp and stable-source hold; last-duplicate-ID alpha for thin-edge occupancy, first-ID palette normalization for writes, current-source commit smoothing and PixelEdit point/dense replay. Legacy unlink history snapshots all cels, including the selected referenced source; cancellation reverts PixelEdit then aborts unlink compound. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Reuse RasterColorContext packedValue/rgba, optional Context alpha callback with RGBA default, indexed smooth kernel flag and existing dense history helper. Keep native reversible sparse expansion/owner-local addresses; retain source cel in unlink snapshots to preserve raw IDs after point-normalizing undo/cancel. Missing active cel is safely refused. Production indexed admission stays closed. See docs/indexed-liquify-migration-20261116.md.",
+        "validation": "3230 actual legacy indexed/RGBA preview, commit, cancel, geometry/origin and Undo/Redo cases;70 dense histories and260 native linked-source/alias/three-encoder variants passed. Legacy2 files/88 tests passed5.78s. Final9 targeted CTests passed39.11s. Official Release build exit0;sole exe2026-11-16 06:39:24,30759936bytes. New official --workspace-check --named-workspace-only --paint-tools-only exit0. Provenance992/evidence snapshots,Editor597,architecture597 sources/269targets and diff passed;strict exits1 for global known gaps. See docs/indexed-liquify-migration-20261116.md; no full manual desktop/image acceptance, UI edits or performance work. Overall migration remains incomplete."
+      }
     },
     {
       "remainingHistoryDomains20261113": "Four composable SnapshotHistory/TileResourceHistory/SliceHistory/ContentHistory payloads retain existing replay priority, cross-domain children and focus, existing validation and cost formulas. Shared cel storage stays single-owned inside the parent content payload; first three Edit aggregate fields remain compatible. Canonical native working-storage budget extracted once and reused. Exact inverse proof retained; runtime acceptance tracked in history-edit-contract.md.",
@@ -31402,12 +31418,19 @@
         "legacy/src/renderer/src/core/tools-outline.ts",
         "legacy/src/renderer/src/core/convolution-matrix.ts",
         "legacy/src/renderer/src/core/free-tile-edit.ts",
-        "legacy/LICENSE"
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts"
       ],
       "adaptation": "Native C++17 callbacks and existing pixel edit/history UI adapters.",
       "paintTools20261024": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
       "scope": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
-      "rgbaPixelFormats20261114": "Use legacy direct-color normalization after liquify sampling."
+      "rgbaPixelFormats20261114": "Use legacy direct-color normalization after liquify sampling.",
+      "indexedLiquify20261116": {
+        "legacyEvidence": "Actual raw-ID categorical warp and stable-source hold; last-duplicate-ID alpha for thin-edge occupancy, first-ID palette normalization for writes, current-source commit smoothing and PixelEdit point/dense replay. Legacy unlink history snapshots all cels, including the selected referenced source; cancellation reverts PixelEdit then aborts unlink compound. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Reuse RasterColorContext packedValue/rgba, optional Context alpha callback with RGBA default, indexed smooth kernel flag and existing dense history helper. Keep native reversible sparse expansion/owner-local addresses; retain source cel in unlink snapshots to preserve raw IDs after point-normalizing undo/cancel. Missing active cel is safely refused. Production indexed admission stays closed. See docs/indexed-liquify-migration-20261116.md.",
+        "validation": "3230 actual legacy indexed/RGBA preview, commit, cancel, geometry/origin and Undo/Redo cases;70 dense histories and260 native linked-source/alias/three-encoder variants passed. Legacy2 files/88 tests passed5.78s. Final9 targeted CTests passed39.11s. Official Release build exit0;sole exe2026-11-16 06:39:24,30759936bytes. New official --workspace-check --named-workspace-only --paint-tools-only exit0. Provenance992/evidence snapshots,Editor597,architecture597 sources/269targets and diff passed;strict exits1 for global known gaps. See docs/indexed-liquify-migration-20261116.md; no full manual desktop/image acceptance, UI edits or performance work. Overall migration remains incomplete."
+      }
     },
     {
       "couplingRefreshPlaybackRemoval20261112": {
@@ -40191,6 +40214,52 @@
         "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
         "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
         "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
+      }
+    },
+    {
+      "file": "scripts/make-liquify-oracle.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/liquify.ts",
+        "legacy/src/renderer/src/core/liquify.test.ts",
+        "legacy/src/renderer/src/core/liquify-effects.test.ts",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts",
+        "legacy/src/renderer/src/components/canvas-input-stroke.ts",
+        "legacy/src/renderer/src/components/useCanvasStrokeClock.ts"
+      ],
+      "scope": "Actual legacy indexed/RGBA liquify, commit/cancel and PixelEdit history verification. Overall migration remains incomplete.",
+      "indexedLiquify20261116": {
+        "legacyEvidence": "Actual raw-ID categorical warp and stable-source hold; last-duplicate-ID alpha for thin-edge occupancy, first-ID palette normalization for writes, current-source commit smoothing and PixelEdit point/dense replay. Legacy unlink history snapshots all cels, including the selected referenced source; cancellation reverts PixelEdit then aborts unlink compound. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Reuse RasterColorContext packedValue/rgba, optional Context alpha callback with RGBA default, indexed smooth kernel flag and existing dense history helper. Keep native reversible sparse expansion/owner-local addresses; retain source cel in unlink snapshots to preserve raw IDs after point-normalizing undo/cancel. Missing active cel is safely refused. Production indexed admission stays closed. See docs/indexed-liquify-migration-20261116.md.",
+        "validation": "3230 actual legacy indexed/RGBA preview, commit, cancel, geometry/origin and Undo/Redo cases;70 dense histories and260 native linked-source/alias/three-encoder variants passed. Legacy2 files/88 tests passed5.78s. Final9 targeted CTests passed39.11s. Official Release build exit0;sole exe2026-11-16 06:39:24,30759936bytes. New official --workspace-check --named-workspace-only --paint-tools-only exit0. Provenance992/evidence snapshots,Editor597,architecture597 sources/269targets and diff passed;strict exits1 for global known gaps. See docs/indexed-liquify-migration-20261116.md; no full manual desktop/image acceptance, UI edits or performance work. Overall migration remains incomplete."
+      }
+    },
+    {
+      "file": "tests/indexed_liquify_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/liquify.ts",
+        "legacy/src/renderer/src/core/liquify.test.ts",
+        "legacy/src/renderer/src/core/liquify-effects.test.ts",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts",
+        "legacy/src/renderer/src/components/canvas-input-stroke.ts",
+        "legacy/src/renderer/src/components/useCanvasStrokeClock.ts"
+      ],
+      "scope": "Actual legacy indexed/RGBA liquify, commit/cancel and PixelEdit history verification. Overall migration remains incomplete.",
+      "indexedLiquify20261116": {
+        "legacyEvidence": "Actual raw-ID categorical warp and stable-source hold; last-duplicate-ID alpha for thin-edge occupancy, first-ID palette normalization for writes, current-source commit smoothing and PixelEdit point/dense replay. Legacy unlink history snapshots all cels, including the selected referenced source; cancellation reverts PixelEdit then aborts unlink compound. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Reuse RasterColorContext packedValue/rgba, optional Context alpha callback with RGBA default, indexed smooth kernel flag and existing dense history helper. Keep native reversible sparse expansion/owner-local addresses; retain source cel in unlink snapshots to preserve raw IDs after point-normalizing undo/cancel. Missing active cel is safely refused. Production indexed admission stays closed. See docs/indexed-liquify-migration-20261116.md.",
+        "validation": "3230 actual legacy indexed/RGBA preview, commit, cancel, geometry/origin and Undo/Redo cases;70 dense histories and260 native linked-source/alias/three-encoder variants passed. Legacy2 files/88 tests passed5.78s. Final9 targeted CTests passed39.11s. Official Release build exit0;sole exe2026-11-16 06:39:24,30759936bytes. New official --workspace-check --named-workspace-only --paint-tools-only exit0. Provenance992/evidence snapshots,Editor597,architecture597 sources/269targets and diff passed;strict exits1 for global known gaps. See docs/indexed-liquify-migration-20261116.md; no full manual desktop/image acceptance, UI edits or performance work. Overall migration remains incomplete."
       }
     }
   ],

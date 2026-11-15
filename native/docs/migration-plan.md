@@ -7306,3 +7306,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy applySmoothBrush／recordPixelKnownCurrent／commitPixelEdit 承接 indexed 原始 ID 采样、候选归一化和点／密集历史。修复普通索引色被 RGBA 透明检查误判为空白；复用已有 owner-local PixelEdit 事务，避免普通笔画入口扩张稀疏图层，保留几何、storage origin、格式、当前链接帧与共享内容。覆盖仍仅在释放时提交，取消收集不改作品，绘制统计和单步撤销沿用既有契约。
 
 4,548 组真实旧版平滑／提交／Undo／Redo 对照、12 组密集历史和 135 组原生关联图层／链接帧变体通过，变化的 indexed 链接变体另验三种生产编码。旧版 29 项测试通过（3.61 秒），最终 11 项定向 CTest 全通过（20.23 秒）。唯一正式 Release 构建退出 0，exe 于 05:44:38 更新（30,755,840 bytes），新程序笔刷预览与选区交互诊断通过。来源 990／既有证据哈希、Editor597、架构597源码／268targets和diff通过；strict 因其它迁移缺口退出1。详见[平滑笔刷迁移](smooth-brush-migration-20261116.md)。生产 indexed 新建／转换／可编辑导入保持关闭，整体 INCOMPLETE；没有性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存和日志。
+
+## 2026-11-16 液化索引色与 PixelEdit 阶段
+
+按实际 legacy liquify、smoothChangedLiquifyPixels、recordPixelKnownCurrent、revertPixelEdit 与断链事务迁移五种液化模式的索引色路径。补齐原始色号写入归一化、以最终重复 ID alpha 判断细线占用、indexed 提交平滑与点／密集历史；活动源 Cel 被引用时保留完整断链快照，恢复原始色号和链接。保留既有原生稀疏扩张的可逆适配、单笔事务、当前帧及选区／蒙版约束，缺失 Cel 安全拒绝。取消沿用旧版 PixelEdit，不扩大滤镜取消修复。
+
+3,230 组实际旧版预览／提交／取消／Undo／Redo 对照、70 组密集历史和 260 组链接源／别名／编码变体通过；旧版 88 项测试通过（5.78 秒）。最终 9 项定向 CTest 全通过（39.11 秒）。正式 Release 构建退出 0，唯一 exe 于 06:39:24 更新（30,759,936 bytes），新程序绘画工具真实输入检查退出 0。来源 992／证据快照、Editor597、架构597源码／269targets及diff通过；strict 因其它缺口退出1。详见[液化迁移](indexed-liquify-migration-20261116.md)。生产 indexed 准入仍关闭，整体 INCOMPLETE；仅功能迁移，无性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存与日志。
