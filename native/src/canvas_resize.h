@@ -19,6 +19,7 @@ inline CanvasResizeSurfacePlan planCanvasResizeSurface(const timeline::Surface& 
 inline timeline::Surface canvasResizeCroppedSurface(const timeline::Surface& source,const CanvasResizeSurfacePlan& p,std::size_t& remaining){
  raster::validate(source);if(!p.clipped||p.width<1||p.height<1||std::uint64_t(p.width)*p.height>64*1024*1024||std::uint64_t(p.width)*p.height*sizeof(timeline::Pixel)!=p.bytes)throw std::invalid_argument("Invalid canvas crop plan");if(p.bytes>remaining)throw std::length_error("Canvas resize exceeds allocation budget");
  if(!p.empty&&(p.sourceX<0||p.sourceY<0||p.sourceX+p.width>source.width||p.sourceY+p.height>source.height))throw std::invalid_argument("Canvas crop is outside source storage");remaining-=p.bytes;timeline::Surface out;out.width=p.width;out.height=p.height;out.offsetX=p.offsetX;out.offsetY=p.offsetY;out.storageOriginX=p.storageOriginX;out.storageOriginY=p.storageOriginY;out.pixels.resize(std::size_t(p.width)*p.height);
+ out.format=source.format;
  if(!p.empty)for(int y=0;y<p.height;++y)std::copy_n(source.pixels.begin()+std::size_t(p.sourceY+y)*source.width+std::size_t(p.sourceX),p.width,out.pixels.begin()+std::size_t(y)*p.width);return out;
 }
 }

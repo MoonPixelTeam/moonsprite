@@ -1,6 +1,7 @@
 #include "document.h"
 #include "project_encode.h"
 #include "project_import.h"
+#include "raster_geometry.h"
 #include <iostream>
 using namespace moon;
 static void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
@@ -17,7 +18,11 @@ int main(){try{
  Document empty(4,3);auto serial=empty.selectionPivotHistory().serial;bool failed=false;try{empty.cropCanvas();}catch(const std::runtime_error&){failed=true;}check(failed&&!empty.dirty()&&empty.historySize()==0&&empty.selectionPivotHistory().serial==serial,"No selection failure unchanged");empty.previewSelection(SelectionMask{8,8,1,1,{}});failed=false;try{empty.cropCanvas();}catch(const std::runtime_error&){failed=true;}check(failed&&empty.width()==4&&!empty.dirty(),"Outside selection failure unchanged");
  // Legacy crop has no full-canvas early return, unlike trim.
  Document full(2,2);full.previewSelection(SelectionMask{0,0,2,2,{}});check(full.cropCanvas()&&full.historySize()==1,"Full canvas crop records resize history");
- Document animation(5,3);point(animation,2,1,0xff102030);animation.addLinkedFrame();animation.addFrame();point(animation,3,1,0xff405060);animation.setSelectedFramesDisabled(true);animation.addLayer();point(animation,2,1,0xff708090);animation.setLayerVisible(false);animation.previewSelection(SelectionMask{2,1,2,1,{}});auto state=animation.timeline().state();timeline::Timeline prior(state);h=animation.historySize();check(animation.cropCanvas(),"Animation crop");check(animation.width()==2&&animation.historySize()==h+1,"All cel one history");for(const auto& cel:state.cels){auto old=prior.resolveSurface(cel.id);auto now=animation.timeline().resolveSurface(cel.id);check(now.surface&&now.surface->pixels==std::vector<Pixel>{old.surface->pixels[7],old.surface->pixels[8]},"All frame/layer crop pixels");}check(animation.timeline().state().frames[2].disabled,"Disabled metadata retained");roundtrip(animation);animation.undo();check(animation.width()==5,"Animation crop undo");animation.redo();check(animation.width()==2,"Animation crop redo");
+ Document animation(5,3);point(animation,2,1,0xff102030);animation.addLinkedFrame();animation.addFrame();point(animation,3,1,0xff405060);animation.setSelectedFramesDisabled(true);animation.addLayer();point(animation,2,1,0xff708090);animation.setLayerVisible(false);animation.previewSelection(SelectionMask{2,1,2,1,{}});auto state=animation.timeline().state();timeline::Timeline prior(state);h=animation.historySize();check(animation.cropCanvas(),"Animation crop");check(animation.width()==2&&animation.historySize()==h+1,"All cel one history");for(const auto& cel:state.cels){auto old=prior.resolveSurface(cel.id);auto now=animation.timeline().resolveSurface(cel.id);check(old.surface&&now.surface,"All frame/layer crop surfaces");
+ // Independent Cel bitmaps may be sparse or the 1x1 empty placeholder.
+ // Compare both retained canvas pixels in world coordinates, without indexing
+ // their local storage as a full original canvas.
+ for(int x=0;x<2;++x)check(raster::readWorld(*now.surface,x,0)==raster::readWorld(*old.surface,x+2,1),"All frame/layer crop pixels");}check(animation.timeline().state().frames[2].disabled,"Disabled metadata retained");roundtrip(animation);animation.undo();check(animation.width()==5,"Animation crop undo");animation.redo();check(animation.width()==2,"Animation crop redo");
  Document floating(4,3);point(floating,1,1,0xff010203);floating.previewSelection(SelectionMask{1,1,1,1,{}});floating.nudgeSelectionContent(1,0);h=floating.historySize();check(floating.cropCanvas()&&floating.historySize()==h+2&&floating.pixels()[0]==0xff010203,"Floating commit before crop");floating.undo();check(floating.width()==4&&floating.pixels()[6]==0xff010203,"Undo crop retains committed move");floating.undo();check(floating.pixels()[5]==0xff010203,"Undo prior move");
  std::cout<<"Canvas crop checks passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -1693,10 +1693,11 @@ bool Document::resizeImage(int width,int height,ImageInterpolation method){
 std::optional<PixelRegion> Document::visibleContentBounds(bool allFrames) const {
  // Legacy bounds inspect the final composite, including disabled frames. Tile
  // rows bound temporary storage and reuse the admitted normal compositor.
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
  PixelRegion bounds;
  for(const auto& f:timeline_.state().frames){
   if(!allFrames && f.id!=activeFrameId_)continue;
-  for(int y=0;y<height_;y+=16){const int rows=std::min(16,height_-y);auto pixels=compositeNormalRegion(timeline_,f.id,{0,y,width_,rows});
+  for(int y=0;y<height_;y+=16){const int rows=std::min(16,height_-y);auto pixels=compositeNormalRegion(timeline_,f.id,{0,y,width_,rows},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);
    for(int row=0;row<rows;++row)for(int x=0;x<width_;++x)if(pixels[std::size_t(row)*width_+x]>>24)bounds.include(x,y+row);
   }
  }
@@ -1727,13 +1728,27 @@ bool Document::resizeCanvas(int width,int height,CanvasAnchor anchor,std::option
  if(selection_){if(selection_->mask.size()>adjustmentByteLimit/3)throw std::length_error("Canvas selection exceeds working budget");reserveBytes(3ull*(selection_->mask.size()+std::uint64_t(width)*height)+128);}
  std::size_t clipped=0;
  for(const auto& c:timeline_.state().cels){const auto r=timeline_.resolveSurface(c.id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface)throw std::invalid_argument("Invalid canvas resize owner");if(r.source->id!=c.id)continue;const auto p=planCanvasResizeSurface(*r.surface,width,height,shift.x,shift.y,trimOutside);if(p.clipped){reserveBytes(std::uint64_t(r.surface->pixels.size())*sizeof(Pixel)+2ull*p.bytes);++clipped;}plans.push_back({c.id,r.surface,p});}
+ const bool linked=timeline_.hasLinkedLayers();if(linked)for(const auto& c:timeline_.state().cels)if(c.surface)reserveBytes(3ull*c.surface->pixels.size()*sizeof(Pixel));
  auto maskBudget=adjustmentByteLimit-used;auto masks=resizedCanvasMasks(timeline_.state(),width,height,shift.x,shift.y,trimOutside,maskBudget);
  Edit edit{{},state_,nextState_};edit.snapshotHistory.beforeDimensions={{width_,height_}};edit.snapshotHistory.afterDimensions={{width,height}};edit.pixelSelectionHistory.pixelSelectionEdit=true;edit.pixelSelectionHistory.beforePixelsSelection=selection_;edit.contentHistory.surfaceChanges.reserve(clipped);edit.contentHistory.ownerOffsets.reserve(plans.size());
  if(!masks.empty()){edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=std::move(masks);}
  std::vector<timeline::Surface> install;install.reserve(clipped);std::vector<timeline::Surface*> installOwners,offsetOwners;installOwners.reserve(clipped);offsetOwners.reserve(plans.size());
- for(const auto& p:plans){const auto& s=*p.source;if(p.geometry.clipped){std::size_t available=p.geometry.bytes;auto after=canvasResizeCroppedSurface(s,p.geometry,available);edit.contentHistory.surfaceChanges.push_back({p.owner,s,std::move(after)});install.push_back(edit.contentHistory.surfaceChanges.back().after);}else if(s.offsetX!=p.geometry.offsetX||s.offsetY!=p.geometry.offsetY){edit.contentHistory.ownerOffsets.push_back({p.owner,s.offsetX,s.offsetY,p.geometry.offsetX,p.geometry.offsetY});}}
+
  if(selection_){SelectionMask shifted{0,0,width,height,{}};shifted.mask.resize(std::size_t(width)*height);for(int y=0;y<height;++y)for(int x=0;x<width;++x){const auto sx=std::int64_t(x)-shift.x,sy=std::int64_t(y)-shift.y;const bool inside=sx>=std::numeric_limits<int>::min()&&sx<=std::numeric_limits<int>::max()&&sy>=std::numeric_limits<int>::min()&&sy<=std::numeric_limits<int>::max();shifted.mask[std::size_t(y)*width+x]=inside&&selectionContains(selection_,int(sx),int(sy))?1:0;}edit.pixelSelectionHistory.afterPixelsSelection=trimSelection(std::move(shifted));}
  edit.pixelSelectionHistory.beforeTrimPivot.emplace(pivot);if(!edit.pixelSelectionHistory.afterPixelsSelection)pivot.reset();else if(pivot){pivot->x+=shift.x;pivot->y+=shift.y;}edit.pixelSelectionHistory.afterTrimPivot.emplace(pivot);
+ // Canvas snapshots choose the legacy active linked owner after each placed
+ // bitmap is cropped. General pixel-edit synchronization uses another rule.
+ if(linked){
+  edit.contentHistory.beforeCels=timeline_.state().cels;
+  edit.contentHistory.afterCels=edit.contentHistory.beforeCels;
+  for(const auto& p:plans){auto& cel=*std::find_if(edit.contentHistory.afterCels.begin(),edit.contentHistory.afterCels.end(),[&](const auto& c){return c.id==p.owner;});
+   if(p.geometry.clipped){auto bytes=p.geometry.bytes;cel.surface=canvasResizeCroppedSurface(*p.source,p.geometry,bytes);}
+   else{cel.surface->offsetX=p.geometry.offsetX;cel.surface->offsetY=p.geometry.offsetY;}
+  }
+  synchronizeImageResizeLinkedCels(timeline_,edit.contentHistory.afterCels,activeLayerId_,activeFrameId_);
+  reserveHistoryEntries();applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"画布大小");return true;
+ }
+ for(const auto& p:plans){const auto& s=*p.source;if(p.geometry.clipped){std::size_t available=p.geometry.bytes;auto after=canvasResizeCroppedSurface(s,p.geometry,available);edit.contentHistory.surfaceChanges.push_back({p.owner,s,std::move(after)});install.push_back(edit.contentHistory.surfaceChanges.back().after);}else if(s.offsetX!=p.geometry.offsetX||s.offsetY!=p.geometry.offsetY){edit.contentHistory.ownerOffsets.push_back({p.owner,s.offsetX,s.offsetY,p.geometry.offsetX,p.geometry.offsetY});}}
  auto selectionAfter=edit.pixelSelectionHistory.afterPixelsSelection;reserveHistoryEntries();
  for(const auto& c:edit.contentHistory.surfaceChanges){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas resize owner");installOwners.push_back(owner);}for(const auto& c:edit.contentHistory.ownerOffsets){auto* owner=timeline_.mutableOwnedSurface(c.ownerId);if(!owner)throw std::logic_error("Missing canvas offset owner");offsetOwners.push_back(owner);}
  for(std::size_t i=0;i<install.size();++i)std::swap(*installOwners[i],install[i]);for(std::size_t i=0;i<offsetOwners.size();++i){offsetOwners[i]->offsetX=edit.contentHistory.ownerOffsets[i].afterX;offsetOwners[i]->offsetY=edit.contentHistory.ownerOffsets[i].afterY;}
