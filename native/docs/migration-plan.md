@@ -7293,3 +7293,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy resizeDocumentAt／cropLayersToCanvas、resizeAnimationCelsAt 和四个画布命令迁移普通 indexed 画布操作。裁切保留 format、原始 uint32 ID 与存储 origin，去边使用当前色板的最终可见合成；全部帧包含 disabled 帧。关联图层裁切后沿用活动 owner／帧成员顺序同步，保留独立画布锚点，复用已有原始 Cel 快照事务与预算。选区移动只认 mask1，矩形简写保持成员一致；Undo 精确恢复原始掩码、pivot、几何、蒙版和 raw ID，并保留当前色板。
 
 954 组真实旧版命令／Undo／Redo 对照、三种生产编码及失败／预算检查通过。初轮 9 项 CTest 有一项旧裁切夹具错误地按完整画布索引稀疏表面；保留两处像素断言，改用世界坐标读取后单项通过0.23秒。最后整理事务准备顺序后重建正式程序和受影响测试退出0，最终三项通过1.98秒；本阶段合计9项不同CTest验证通过，初轮11.01秒不作为全部通过结果。旧版定向8项通过、108项筛选跳过14.15秒。唯一正式exe于2026-11-16 04:01:13更新（30,752,768bytes），新程序--canvas-resize-check和--canvas-trim-check均通过。来源986／证据快照、Editor597、架构597源码／266targets及diff通过；strict因其它缺口退出1。详见[索引色画布操作迁移](indexed-canvas-migration-20261116.md)。生产indexed新建／转换／可编辑导入仍关闭，整体INCOMPLETE。仅功能迁移，无性能优化、UI修改或完整人工桌面／图像验收。阶段保存推送dev，保留用户数据、缓存和日志。
+
+
+## 2026-11-16 笔刷对称组合阶段
+
+按真实 legacy paintBrush／paintLine、symmetry 和 brushMaskOffsets 承接普通 indexed／RGBA 笔刷的完整源印章对称映射及源坐标抖动。修复源印章提前裁切与线段预览范围遗漏，用既有矩阵逆映射补齐有界遍历，保留原 raster 相位、间距、顺序和现有覆盖／完美像素尾部／单笔历史事务。
+
+4,032 组实际旧版样本在普通、动态及两种完美像素路径中通过，另有 109 组关联图层／链接帧事务；覆盖全部 32 种轴组合、三种中心／存储场景、七种笔刷和三种墨水。最终 14 项定向 CTest 全通过（16.99 秒），旧版三文件 28 项通过（12.91 秒）。唯一正式 Release 和测试目标构建退出 0，正式 exe 于 04:58:49 更新（30,754,304 bytes）；新程序笔刷预览、ISO 和选区交互诊断通过。来源 988／证据快照、Editor597、架构597源码／267targets通过；strict 因其它缺口退出1。详见[笔刷对称组合迁移](brush-symmetry-migration-20261116.md)。生产 indexed 准入继续关闭，整体 INCOMPLETE；旋转动态、任意参数序列、其它抖动模板与特殊图层完整组合未在本阶段宣称完成。仅功能迁移，无性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存和日志。

@@ -36,6 +36,20 @@ namespace moon {
 using history_storage::adjustmentByteLimit;
 using history_storage::adjustmentStorageBudget;
 namespace {
+// Keep the existing clipped line traversal, including its original raster
+// phase/spacing, but include source centers whose symmetry orbit reaches the
+// canvas. Inverse matrices are transposes of the legacy square-group matrices.
+std::optional<std::pair<std::int64_t,std::int64_t>> brushSymmetryLineBounds(Point a,Point b,int reach,int width,int height,SymmetryAxes axes,SymmetryCenter center){
+ if(!symmetryHas(axes))return {};
+ const bool steep=std::abs(std::int64_t(b.y)-a.y)>std::abs(std::int64_t(b.x)-a.x);
+ double first=0,last=steep?height:width;
+ for(const auto m:symmetryMatrices(axes))for(double x:{0.,double(width)})for(double y:{0.,double(height)}){
+  const double value=steep?center.y+m.xy*(x-center.x)+m.yy*(y-center.y):center.x+m.xx*(x-center.x)+m.yx*(y-center.y);
+  first=std::min(first,value);last=std::max(last,value);
+ }
+ const auto bounded=[](double value){return std::int64_t(std::clamp(value,double(std::numeric_limits<int>::min()),double(std::numeric_limits<int>::max())));};
+ return std::pair<std::int64_t,std::int64_t>{bounded(std::floor(first)-reach-1),bounded(std::ceil(last)+reach+1)};
+}
 // A failed replay must retain pending invalidation as well as any damage
 // already produced by an earlier domain/child. This does not roll back content.
 template<class Replay> void replayHistoryWithDamage(PixelRegion& damage,int width,int height,Replay replay){
@@ -1465,12 +1479,13 @@ void Document::stamp(int x,int y) {
    if(!strokeColors_)value=normalizeCanvasPacked(value,bool(maskStroke_));if(current==value)continue;if(found<0){pending_.push_back({index,current,value});pendingLookup_.set(index,int(pending_.size()-1));}else pending_[found].after=value;strokePixel(index)=value;change_.include(p.x,p.y);
   }return;}
   const auto anchor=brush_.size/2;
+  const bool symmetric=symmetryMatrices(symmetryAxes).size()>1;
   for(const auto& span:stampSpans_) {
-    const auto sourceY=std::int64_t(y)-anchor+span.y;
-    if(!repeat::includesY(strokeRepeat_)&&(sourceY<0 || sourceY>=height_)) continue;
-    const auto py=std::int64_t(y)-anchor+span.y;if(!repeat::includesY(strokeRepeat_)&&(py<0 || py>=height_)) continue;
-    const auto left=repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.left:std::max<std::int64_t>(0,std::int64_t(x)-anchor+span.left);
-    const auto right=repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.right:std::min<std::int64_t>(width_-1,std::int64_t(x)-anchor+span.right);
+    // Legacy transforms the whole source stamp before clipping each orbit.
+    const auto py=std::int64_t(y)-anchor+span.y;
+    if(!symmetric&&!repeat::includesY(strokeRepeat_)&&(py<0 || py>=height_)) continue;
+    const auto left=symmetric||repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.left:std::max<std::int64_t>(0,std::int64_t(x)-anchor+span.left);
+    const auto right=symmetric||repeat::includesX(strokeRepeat_)?std::int64_t(x)-anchor+span.right:std::min<std::int64_t>(width_-1,std::int64_t(x)-anchor+span.right);
     // legacy solidBrushPreviewRowSpans: subtract the preceding stamp's row.
     // The incremental edit remains the coverage record for all earlier stamps.
     std::int64_t previousLeft=right+1,previousRight=right;
@@ -1487,7 +1502,8 @@ void Document::stamp(int x,int y) {
   previousStamp_={x,y};hasPreviousStamp_=true;
 }
 void Document::line(Point a, Point b) {
-  visitBrushLine(a.x,a.y,b.x,b.y,imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size,bool(imageStamp_),brush_.shape==BrushShape::Line,width_,height_,[&](int x,int y){stamp(x,y);},strokeRepeat_!=repeat::Mode::Off);
+  const int reach=imageStamp_?std::max(imageStamp_->width,imageStamp_->height):brush_.size;
+  visitBrushLine(a.x,a.y,b.x,b.y,reach,bool(imageStamp_),brush_.shape==BrushShape::Line,width_,height_,[&](int x,int y){stamp(x,y);},strokeRepeat_!=repeat::Mode::Off,brushSymmetryLineBounds(a,b,reach,width_,height_,symmetryAxes,symmetryCenter()));
 }
 std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool clipSelection,repeat::Mode repeatMode,bool balanced) const {
   std::unordered_map<std::size_t,Pixel> result;std::unordered_map<std::uint64_t,int> inkCoverage;
@@ -1518,10 +1534,10 @@ std::unordered_map<std::size_t,Pixel> Document::brushPreview(Point from,Point to
   };
   auto stamp=[&](int x,int y){const auto local=repeat::wrap({double(x),double(y)},width_,height_,repeatMode);x=int(local.x);y=int(local.y);
     if(imageStamp){const auto& active=imagePattern?imagePattern->at(x,y,brush.size,angle):*imageStamp;for(const auto& sample:active.samples)for(auto p:symmetryPoints({x-active.width/2+sample.x,y-active.height/2+sample.y},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(p.x,p.y,sample.coverage,sample.color);}
-    else for(auto row:spans){const int sy=y-brush.size/2+row.y;if(!repeat::includesY(repeatMode)&&(sy<0||sy>=height_))continue;for(int sx=x-brush.size/2+row.left;sx<=x-brush.size/2+row.right;++sx){if((!repeat::includesX(repeatMode)&&(sx<0||sx>=width_))||!brushDitherContains(brush,int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).x),int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).y)))continue;for(auto q:symmetryPoints({sx,sy},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(q.x,q.y,255,{});}}
+    else for(auto row:spans){const int sy=y-brush.size/2+row.y;if(symmetryMatrices(symmetryAxes).size()==1&&!repeat::includesY(repeatMode)&&(sy<0||sy>=height_))continue;for(int sx=x-brush.size/2+row.left;sx<=x-brush.size/2+row.right;++sx){if((symmetryMatrices(symmetryAxes).size()==1&&!repeat::includesX(repeatMode)&&(sx<0||sx>=width_))||!brushDitherContains(brush,int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).x),int(repeat::wrap({double(sx),double(sy)},width_,height_,repeatMode).y)))continue;for(auto q:symmetryPoints({sx,sy},width_,height_,symmetryAxes,symmetryCenter(),repeatMode==repeat::Mode::Off))plot(q.x,q.y,255,{});}}
   };
   if(balanced){const auto points=selectionLine({from.x,from.y},{to.x,to.y},true);const int reach=imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,spacing=brush.shape==BrushShape::Line?1:std::max(1,reach/16);for(std::size_t i=0;i<points.size();++i)if(!i||i+1==points.size()||i%spacing==0)stamp(points[i].x,points[i].y);}
-  else visitBrushLine(from.x,from.y,to.x,to.y,imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off);
+  else {const int reach=imageStamp?std::max(imageStamp->width,imageStamp->height):brush.size;visitBrushLine(from.x,from.y,to.x,to.y,reach,bool(imageStamp),brush.shape==BrushShape::Line,width_,height_,stamp,repeatMode!=repeat::Mode::Off,brushSymmetryLineBounds(from,to,reach,width_,height_,symmetryAxes,symmetryCenter()));}
   return result;
 }
 bool Document::updateGeometricBrushPreview(const std::vector<SelectionPoint>& points,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,bool curve,repeat::Mode repeatMode){
