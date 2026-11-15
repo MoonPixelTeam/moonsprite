@@ -185,7 +185,7 @@ void Document::copyTimelineFrames(const std::string& target,bool after){
  // either clipboard or temporarily moving a pasted block through the timeline.
  const auto clipboard=frameClipboard_;const auto metadata=frameClipboardMetadata_;const auto celClipboard=celClipboard_;
  try{if(copySelectedFrames()){
-  auto snapshot=exportFrameClipboard();
+  auto snapshot=exportFrameClipboard();snapshot.items=frameClipboard_;
   if(!hasFreeTileContent()&&!hasTilemapContent())for(auto& item:snapshot.items){for(auto& c:item.cels)c.linkedCelId.reset();for(auto& mask:item.masks)mask.mask.linkedMaskId.clear();}
   if(pasteTilemapFrames(snapshot,true,int(timeline_.frameIndex(target))+(after?1:0))){activeMaskId_.clear();maskIsolated_=false;}
  }}catch(...){frameClipboard_=clipboard;frameClipboardMetadata_=metadata;celClipboard_=celClipboard;throw;}

@@ -364,7 +364,7 @@ public:
   void moveSelectedFrames(const std::string& target,bool after);
   bool canReverseSelectedFrames() const;
   void reverseSelectedFrames();
-  struct CelClipboardItem {DocumentCel cel;int row=0,column=0;std::optional<SelectionClipboard> selectionPixels;std::optional<timeline::MaskSlot> mask;};
+  struct CelClipboardItem {DocumentCel cel;int row=0,column=0;std::optional<SelectionClipboard> selectionPixels;std::optional<timeline::MaskSlot> mask;std::optional<timeline::Surface> rgbaSnapshot;};
   struct CelClipboardSnapshot {std::vector<CelClipboardItem> items;std::uint64_t sourceIdentity=0;int width=0,height=0;std::vector<tiles::Tileset> tilesets;std::vector<DocumentLayer> layers;bool tilemapContext=false;};
   CelClipboardSnapshot exportCelClipboard()const;
   bool pasteCelClipboard(const CelClipboardSnapshot& snapshot);

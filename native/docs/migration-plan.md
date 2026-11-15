@@ -7229,3 +7229,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy 选区 capture／generic／RotSprite／translation／apply 和 clipboard 的实际契约，保留内部原始 ID、外部 RGBA、当前首项／当前并集／capture opacity 的区别，以及点／dense 历史、稀疏扩张、storage origin、关联存储和缺失 Cel format。普通、稀疏和延迟浮动复用现有事务；浮动期间色板变化使必要的 RotSprite 缓存失效。
 
 931 组实际旧版事务、26 组链接和 3 组缺失 Cel 检查通过，旧版三文件 61 项通过（15.59 秒）。部分样本另核对普通／恢复／本地历史三种生产编码与原始 ID 解码，生产可编辑 indexed 导入仍拒绝。唯一正式 Release 于 17:30:32 更新（30,694,912 bytes）；补齐剪贴板测试漏连的现有系统库后，最终 13 项定向 CTest 全部通过（7.39 秒）。来源覆盖 962 文件及快照、Editor593、架构593／256通过，strict 因其它缺口退出 1。Cel／帧剪贴板、内容居中、完整 indexed 对称矩阵及生产准入仍未完成，整体 INCOMPLETE。仅功能迁移，无 UI 改动、性能优化、人工图像或完整桌面验收。详见 [索引色选区迁移](indexed-selection-migration-20261115.md)。阶段保存并推送 dev，保留全部用户数据、缓存和日志。
+
+
+### 2026-11-15 索引色 Cel／帧剪贴板与内容居中（阶段验收）
+
+按 legacy animation Cel conversion／target、whole Cel／frame clipboard、pasteCelSelection 与 center 命令迁移：本地保留 raw ID，外部快照冻结复制时 RGBA，按目标色板／灰度转换；共同 bounds 中仅裁切表面的有 alpha 像素参与粘贴，保留共享 owner、取消、追加帧和单次历史。结构移交及空槽保留 format，drag duplicate 保留 raw。跨工程粘贴恢复目标自己的 clipboard，本地 whole Cel 不用 portable RGBA 替代失效的 raw clipboard。indexed 居中复用即时变换与点／dense 历史，RGBA 原路径保留。
+
+576 组实际旧版转换／选区粘贴／居中对照、52 组链接变体、12 组真实 pasteCelSelection 多 Cel 检查通过；涵盖目标 clipboard 隔离、源销毁、空槽 format、三种生产编码器原始 ID 校验，indexed 可编辑导入仍拒绝。旧版三文件 24 项通过（11.44 秒）。九项不同定向 CTest 最终通过：首批八项通过，修正 synthetic 选区 Cel 表面和本地源块夹具后 raster-history 单项通过（2.82 秒），全部原断言保留。唯一正式 Release 于 18:53:10 更新（30,702,592 bytes），Editor594／架构594源码与257targets通过。来源覆盖与 strict 结果见阶段文档。仅功能迁移，无性能优化、布局改造、人工图像或完整桌面验收；生产 indexed 准入及完整对称组合继续迁移，整体 INCOMPLETE。详见 [索引色动画剪贴板迁移](indexed-animation-migration-20261115.md)。阶段保存推送 dev，保留用户数据、缓存和日志。
