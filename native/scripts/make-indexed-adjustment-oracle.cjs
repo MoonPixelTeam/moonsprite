@@ -37,7 +37,7 @@ registerHooks({
  const snapshots=await import(pathToFileURL(path.join(legacy,'src/renderer/src/store/workspace-history.ts')));
  const base=[{id:0,color:0},{id:7,color:0xff0000ff},{id:19,color:0xffff0000},{id:30,color:0xffff0000},{id:41,color:0x800908a0},{id:53,color:0x40408020},{id:65,color:0xff800080},{id:77,color:0xffffffff},{id:99,color:0x00123456}];
  const ditherNames=['none','bayer-2','bayer-4','bayer-8','checker','diagonal','diagonal-reverse','horizontal','vertical'];
- const specs=[{kind:'brightness-contrast',brightness:23,contrast:-37},{kind:'brightness-contrast',brightness:-80,contrast:80},{kind:'brightness-contrast'},
+ const specs=[{kind:'curves',invert:true,curvePoints:[{x:0,y:255},{x:255,y:0}],curveRedPoints:[{x:0,y:0},{x:255,y:255}]},{kind:'brightness-contrast',brightness:23,contrast:-37},{kind:'brightness-contrast',brightness:-80,contrast:80},{kind:'brightness-contrast'},
  {kind:'hue-saturation',hue:137,saturation:42,lightness:-20},{kind:'hue-saturation',colorize:true,hue:283,saturation:57,lightness:13},
  ...[true,false].map(preserveLuminosity=>({kind:'color-balance',shadowsCyanRed:35,shadowsMagentaGreen:-17,midtonesYellowBlue:28,highlightsCyanRed:-23,preserveLuminosity})),
  {kind:'curves',curvePoints:[{x:0,y:17},{x:65,y:135},{x:193,y:90},{x:255,y:246}],curveRedPoints:[{x:0,y:255},{x:255,y:0}]},

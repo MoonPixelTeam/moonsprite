@@ -1013,18 +1013,25 @@ bool Document::beginColorReplacement(const std::vector<std::string>& celIds,bool
  }
  commitFloatingPaste();cancelStroke();if(clipSelection && !selection_)return false;std::vector<std::string> targets;
  for(const auto& id:celIds){const auto* c=timeline_.findCelById(id);if(!c)continue;const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l==timeline_.state().layers.end() || l->kind=="adjustment" || layerEffectivelyLocked(*l))continue;if(!l->kind.empty())return false;const auto r=timeline_.resolveSurface(id);if(r.source && r.surface && std::find(targets.begin(),targets.end(),r.source->id)==targets.end())targets.push_back(r.source->id);}
- if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;++gradientRevision_;return true;
+ if(targets.empty())return false;const auto bytes=adjustmentStorageBudget(timeline_,3);std::shared_ptr<const AdjustmentPalettes> palettes;
+ if(std::any_of(targets.begin(),targets.end(),[&](const auto& id){return timeline_.resolveSurface(id).surface->format==timeline::RasterFormat::Indexed;})){AdjustmentPalettes p{palette_,palette_};adjustmentPaletteBudget(p,bytes*3);palettes=std::make_shared<const AdjustmentPalettes>(std::move(p));}
+ adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;adjustment_->palettes=std::move(palettes);adjustment_->colorReplacement=true;++gradientRevision_;return true;
 }
 bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enabled){
  if(!adjustment_)return false;auto& p=*adjustment_;
  if(p.maskContext!=activeMaskId_){cancelColorAdjustment();return false;}
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
- adjustmentStorageBudget(p.baseline,4);auto preview=p.baseline;
+ const auto bytes=adjustmentStorageBudget(p.baseline,4);if(p.palettes){if(!indexed_adjustment::samePaletteData(palette_,p.palettes->baseline)){cancelColorAdjustment();return false;}const auto used=adjustmentPaletteBudget(*p.palettes,bytes*4);if(p.palettes->baseline.entries.size()>(adjustmentByteLimit-used)/128)throw std::length_error("Replacement lookup exceeds palette budget");}
+ auto preview=p.baseline;std::unordered_set<Pixel> sourceIds;std::optional<RasterColorContext> colors;std::optional<Pixel> replacementId;
+ if(p.palettes){const auto& palette=p.palettes->baseline;colors.emplace(palette.entries,palette.order(),colorMode_,pixelFormat_);for(const auto& e:palette.entries)if(e.color==source)sourceIds.insert(Pixel(e.id));}
  if(enabled && source!=replacement)for(const auto& id:p.targets){
   timeline::Surface* s=nullptr;const bool mask=adjustmentMask(p.baseline,id)!=nullptr;if(mask){for(auto& slot:preview.state_.masks)if(slot.mask.id==id)s=&slot.mask.surface;}else s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing replacement owner");
   for(int y=0;y<s->height;++y)for(int x=0;x<s->width;++x){auto& value=s->pixels[std::size_t(y)*s->width+x];
    const auto wx=std::int64_t(x)+s->offsetX,wy=std::int64_t(y)+s->offsetY;
-   if(value==source && (!p.clipSelection || (wx>=0&&wy>=0&&wx<width_&&wy<height_&&selectionContains(p.selection,int(wx),int(wy)))))value=normalizeCanvasPacked(replacement,mask);
+   const bool indexed=!mask&&s->format==timeline::RasterFormat::Indexed;
+   if((indexed?sourceIds.count(value)!=0:value==source) && (!p.clipSelection || (wx>=0&&wy>=0&&wx<width_&&wy<height_&&selectionContains(p.selection,int(wx),int(wy))))){
+    if(indexed){if(!replacementId)replacementId=colors->packedValue(s->format,colors->colorId(replacement));value=*replacementId;}else value=normalizeCanvasPacked(replacement,mask);
+   }
   }
  }
  p.preview=std::move(preview);++gradientRevision_;return true;
@@ -1251,7 +1258,8 @@ bool Document::publishConvolutionTask(const ConvolutionTask& task,const std::vec
 void Document::cancelColorAdjustment(){if(adjustment_){adjustment_.reset();++gradientRevision_;}}
 bool Document::commitColorAdjustment(){
  if(!adjustment_)return false;auto& p=*adjustment_;
- if(p.palettes){p.convolutionTargets=p.targets;return commitSurfaceAdjustment(U"颜色调整");}
+ if(p.palettes&&!p.colorReplacement){p.convolutionTargets=p.targets;return commitSurfaceAdjustment(U"颜色调整");}
+ if(p.palettes&&!indexed_adjustment::samePaletteData(palette_,p.palettes->baseline)){cancelColorAdjustment();return false;}
  if(!p.maskContext.empty()&&p.maskContext!=activeMaskId_){cancelColorAdjustment();return false;}
  if(!p.targets.empty()&&adjustmentMask(p.baseline,p.targets.front())){
   if(p.contentRevision!=contentRevision_||p.maskContext!=activeMaskId_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
@@ -1265,6 +1273,7 @@ bool Document::commitColorAdjustment(){
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  const auto storageBytes=adjustmentStorageBudget(p.baseline,3);
  std::size_t available=adjustmentByteLimit-3*storageBytes;
+ if(p.palettes)available=adjustmentByteLimit-adjustmentPaletteBudget(*p.palettes,3*storageBytes);
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;
  if(!p.maskContext.empty())e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});
  e.children.reserve(p.targets.size());
@@ -1273,11 +1282,25 @@ bool Document::commitColorAdjustment(){
   const auto live=timeline_.resolveSurface(id),base=p.baseline.resolveSurface(id),next=p.preview.resolveSurface(id);
   if(live.issue!=timeline::LinkIssue::None || base.issue!=timeline::LinkIssue::None || next.issue!=timeline::LinkIssue::None || !live.source || !base.source || !next.source || !live.surface || !base.surface || !next.surface || live.source->id!=id || base.source->id!=id || next.source->id!=id)throw std::logic_error("Invalid adjustment owner");
   const auto& b=*base.surface;const auto& a=*next.surface;const auto& current=*live.surface;raster::validate(b);raster::validate(a);raster::validate(current);
-  auto sameGeometry=[](const timeline::Surface& l,const timeline::Surface& r){return l.width==r.width&&l.height==r.height&&l.offsetX==r.offsetX&&l.offsetY==r.offsetY&&l.storageOriginX==r.storageOriginX&&l.storageOriginY==r.storageOriginY;};
+  auto sameGeometry=[](const timeline::Surface& l,const timeline::Surface& r){return l.format==r.format&&l.width==r.width&&l.height==r.height&&l.offsetX==r.offsetX&&l.offsetY==r.offsetY&&l.storageOriginX==r.storageOriginX&&l.storageOriginY==r.storageOriginY;};
   if(!sameGeometry(b,a)||!sameGeometry(b,current))throw std::logic_error("Adjustment owner geometry changed");
   const auto layerIt=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==live.source->layerId;});
   if(layerIt==timeline_.state().layers.end())throw std::logic_error("Missing adjustment layer");
   if(layerEffectivelyLocked(*layerIt))continue;
+  if(p.colorReplacement&&b.format==timeline::RasterFormat::Indexed){
+   // replaceLayerColor records points. commitPixelEdit promotes a compact
+   // set of >=256 points to a raw region patch; sparse replay normalizes IDs.
+   PixelRegion bounds;std::size_t points=0;for(std::size_t i=0;i<b.pixels.size();++i)if(b.pixels[i]!=a.pixels[i]){++points;bounds.include(int(i%b.width),int(i/b.width));}if(!points)continue;
+   Edit child{{},state_,nextState_};child.contentHistory.targetCelId=id;child.contentHistory.pixelAddress=PixelAddressSpace{b.width,b.height,b.storageOriginX.value_or(0),b.storageOriginY.value_or(0)};
+   const auto area=std::size_t(bounds.w)*bounds.h;
+   if(points>=256&&area<=points*3){
+    if(area>available/(2*sizeof(Pixel)))throw std::length_error("Replacement region history exceeds pixel budget");available-=area*2*sizeof(Pixel);DensePixels dense{bounds.x,bounds.y,bounds.w,bounds.h,{},{}};dense.before.reserve(area);dense.after.reserve(area);
+    for(int y=bounds.y;y<bounds.y+bounds.h;++y)for(int x=bounds.x;x<bounds.x+bounds.w;++x){const auto i=std::size_t(y)*b.width+x;dense.before.push_back(b.pixels[i]);dense.after.push_back(a.pixels[i]);}child.contentHistory.dense=std::move(dense);
+   }else{
+    if(points>available/sizeof(Delta))throw std::length_error("Replacement point history exceeds pixel budget");available-=points*sizeof(Delta);child.pixels.reserve(points);for(std::size_t i=0;i<b.pixels.size();++i)if(b.pixels[i]!=a.pixels[i])child.pixels.push_back({i,b.pixels[i],a.pixels[i]});
+   }
+   e.children.push_back(std::move(child));continue;
+  }
   // Stage the complete multi-owner history before changing any live pixels.
   std::size_t count=0;
   for(std::size_t i=0;i<b.pixels.size();++i)if(b.pixels[i]!=a.pixels[i]){
@@ -1293,8 +1316,11 @@ bool Document::commitColorAdjustment(){
   e.children.push_back(std::move(child));
  }
  if(e.children.empty()){cancelColorAdjustment();return false;}
+ // Legacy replacement replays palette/roles before redo pixels and after
+ // undo pixels, without restoring visible order, slots or swatch selection.
+ if(p.palettes){Edit palette{{},state_,nextState_};palette.paletteHistory.paletteKind=6;palette.paletteHistory.beforePalette=p.palettes->baseline;palette.paletteHistory.afterPalette=p.palettes->preview;e.children.insert(e.children.begin(),std::move(palette));}
  reserveHistoryEntries();
- for(const auto& child:e.children){auto* live=timeline_.mutableOwnedSurface(child.contentHistory.targetCelId);auto* preview=p.preview.mutableOwnedSurface(child.contentHistory.targetCelId);if(!live||!preview)throw std::logic_error("Missing adjustment install owner");install.push_back({live,preview});}
+ for(const auto& child:e.children){if(child.contentHistory.targetCelId.empty())continue;auto* live=timeline_.mutableOwnedSurface(child.contentHistory.targetCelId);auto* preview=p.preview.mutableOwnedSurface(child.contentHistory.targetCelId);if(!live||!preview)throw std::logic_error("Missing adjustment install owner");install.push_back({live,preview});}
  // Preflight is complete; vector swaps preserve current metadata and cannot allocate.
  for(const auto& target:install)target.live->pixels.swap(target.preview->pixels);
  cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"亮度/对比度");return true;

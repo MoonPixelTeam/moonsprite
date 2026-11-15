@@ -1351,7 +1351,7 @@ private:
 
   bool commitSurfaceAdjustment(const std::u32string& label);
   inline static std::atomic<std::uint64_t> adjustmentSessionClock_{0};
-  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;std::uint64_t session=++adjustmentSessionClock_;std::shared_ptr<const AdjustmentPalettes> palettes;};
+  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;std::uint64_t session=++adjustmentSessionClock_;std::shared_ptr<const AdjustmentPalettes> palettes;bool colorReplacement=false;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};
   std::optional<PaletteReplacementPreview> paletteReplacement_;

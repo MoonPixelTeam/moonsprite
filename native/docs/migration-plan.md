@@ -7245,3 +7245,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy applyColorAdjustmentDirect 和 adjustment snapshot 迁移普通 indexed 栅格的亮度／对比、色相／饱和度／着色、色彩平衡、曲线、渐变映射与直方图。保留最后 ID／最先 RGBA 查找、隐藏资源分配、渐变扩展可见顺序及局部模 8 抖动缓存。预览和后台任务携带独立色板，提交以现有原始 SurfaceChange 与色板资源形成单次历史，Undo／Redo 保留隐藏 ID、共享链接及当前色板 UI 状态。
 
 1836 组实际旧版快照、31 组关联图层／链接帧变体和后台取消／过期／预算／多 owner 检查通过；补验同步渐变映射确认路径及提交／Undo／Redo 的三种生产编码。旧版三文件 24 项通过（11.80 秒），合计五项不同定向 CTest 通过（首批 8.16 秒、最终补验 11.25 秒）。唯一正式 Release 于 20:31:37 更新（30,715,904 bytes），正式 selection-interactions 入口通过。来源 970 文件及证据快照、Editor595、架构595源码／259targets通过；strict 因整体缺口退出1。仅功能迁移，无性能优化、布局改造、人工图像或完整桌面验收。生产 indexed 新建／转换／可编辑导入保持关闭，完整渲染入口及其他工具组合继续迁移，整体 INCOMPLETE。详见 [索引色颜色调整迁移](indexed-adjustment-migration-20261115.md)。阶段保存推送 dev，保留用户数据、日志与缓存。
+
+
+## 2026-11-15 索引色替色与反相阶段
+
+按 legacy replaceLayerColor、commitPixelEdit、workspace-commands-color 和反向曲线命令迁移普通 indexed 栅格替色：匹配同 RGBA 的全部资源 ID，目标只取可见色板最近色，保留 offset／storage origin／format、共享 owner、选区裁切及单次事务。历史沿用点归一化与 raw dense patch 的区别，色板／角色按旧版顺序回放；用户明确采用取消预览完整恢复原 ID 的修复，避免旧版修改隐藏 ID。
+
+1050 组真实旧版事务及不同当前色板顺序的回放、20 组链接变体和三种生产编码检查通过；反相使实际颜色调整对照扩至1944组及32组链接。旧版10项测试通过，八项不同定向CTest通过。首轮17.58秒、补充19.34秒；历史测试生成前的旧二进制结果未作为最新验证，新生成程序另验通过4.66秒。唯一正式Release于21:44:13更新（30,721,024bytes），构建退出0。来源972、Editor595、架构595／260及diff通过，strict因其它迁移缺口退出1。无性能优化、UI改造或新增人工桌面验收；生产indexed准入仍关闭，滤镜等继续迁移，整体INCOMPLETE。详见[索引色替色迁移](indexed-replacement-migration-20261115.md)。阶段保存推送dev，保留用户数据、缓存和日志。
