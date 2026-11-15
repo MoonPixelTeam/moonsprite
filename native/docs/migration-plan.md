@@ -7217,3 +7217,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy endLine／endCurve、commitBrushPath、paintBrushPath 与 drawBrushPathPreview 迁移普通 indexed 几何笔刷路径。保留间距、整路径及逐 stamp 扩张、预览 first-wins／原尺寸图像倒序、Line 墨水与 Curve simple 的区别、预览会话透明度及提交满透明度、选区／对称／重复、稀疏／占位／缺失 Cel、storage origin 与点／dense 历史。补齐缩放彩色／遮罩图案的旋转采样和四相位 FIFO，普通笔刷独立缺口继续登记。
 
 1,074 组实际旧版事务及两次预览／取消／提交／Undo／Redo、102 组关联／链接检查通过；旧版筛选两项通过、93 项跳过。七项定向 CTest 全部通过（16.84 秒）。唯一正式 Release 于 05:43:48 更新（30,679,552 bytes）。生产 indexed 新建／转换／可编辑导入仍关闭，整体 INCOMPLETE。无性能优化、布局修改、人工图像或完整桌面验收。详见 [直线／曲线路径迁移](indexed-path-transactions-migration-20261115.md)。阶段保存并推送 dev，保留用户数据、构建缓存和日志。
+
+### 2026-11-15 缩放图像笔刷三种绘制模式（阶段验收）
+
+完成普通／动态／预览的缩放图像笔刷 Paint、Source、Target 采样，接续上一阶段几何路径的局部适配，统一复用既有 sampler。保留初始工具尺寸锚点、旋转逆采样、Bayer 与四相位 FIFO，修正 RGBA 原始覆盖去重、透明前景墨水优先级和半透明字节舍入。自由瓦片临时栅格扩张与悬停锚点同步接入，无性能优化或布局改造。
+
+450 组实际旧版事务、144 组采样序列及 27 组关联／链接检查通过，旧版定向 9 项通过。综合回归补齐帧删除显式蒙版上下文在 Undo／Redo 的优先级，修正 2×1 测试夹具；最终 12 项不同 CTest 全部通过（46.02 秒及 9.15 秒）。唯一正式 Release 于 15:14:29 更新（30,674,944 bytes），来源 960 文件及快照、Editor593、架构593／255和 diff 检查通过，strict 保持 INCOMPLETE。生产 indexed 新建／转换／可编辑导入继续关闭，无人工图像或完整桌面验收。详见 [缩放图像笔刷模式迁移](scaled-image-brush-modes-migration-20261115.md)。阶段保存推送 dev，保留全部用户数据、缓存和日志。

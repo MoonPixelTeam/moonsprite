@@ -12,26 +12,6 @@ void shapeBytes(std::size_t& used,std::size_t n){if(n>shapeLimit-used)throw std:
 void shapePixels(std::size_t& used,std::size_t n){if(n>(shapeLimit-used)/sizeof(Pixel))throw std::length_error("Shape exceeds document pixel budget");used+=n*sizeof(Pixel);}
 raster::Rect64 shapeUnion(raster::Rect64 a,raster::Rect64 b){return {std::min(a.left,b.left),std::min(a.top,b.top),std::max(a.right,b.right),std::max(a.bottom,b.bottom)};}
 bool shapeEmpty(raster::Rect64 r){return r.right<=r.left||r.bottom<=r.top;}
-// tools-brush brushMaskOffsets supports pattern sampling for scaled images too.
-// The ordinary stroke sampler currently handles intrinsic images only; keep this
-// adaptation local to geometric indexed paths until that separate migration.
-ImageBrushStamp scaledPathPatternStamp(const PatternBrush& image,int size,double angle,PatternPaintMode mode,int centerX,int centerY,int targetX,int targetY,const ImageBrushStamp& geometry){
- ImageBrushStamp out{geometry.width,geometry.height,{},false};
- const double rad=angle*3.14159265358979323846/180,c=std::cos(rad),s=std::sin(rad);
- const auto& colors=image.paintColors.empty()?image.colors:image.paintColors;
- static constexpr int bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
- for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){
-  const double dx=x-(out.width-1)/2.,dy=y-(out.height-1)/2.;
-  const int sx=int(std::floor(c*dx+s*dy+(size-1)/2.+.5)),sy=int(std::floor(-s*dx+c*dy+(size-1)/2.+.5));
-  if(sx<0||sy<0||sx>=size||sy>=size)continue;
-  const auto px=std::int64_t(centerX)-out.width/2+sx-(mode==PatternPaintMode::Source?image.sourceX:targetX),py=std::int64_t(centerY)-out.height/2+sy-(mode==PatternPaintMode::Source?image.sourceY:targetY);
-  const int ix=int((px%image.width+image.width)%image.width),iy=int((py%image.height+image.height)%image.height);
-  const auto i=std::size_t(iy)*image.width+ix;
-  const int coverage=colors.empty()?(image.coverage[i]>bayer[(int(py&3)*4)+int(px&3)]*16?255:0):(colors[i]>>24?255:0);
-  if(coverage)out.samples.push_back({x,y,coverage,colors.empty()?std::optional<Pixel>{}:std::optional<Pixel>{colors[i]}});
- }
- return out;
-}
 void indexedShapeGeometry(std::size_t& used,int width,int height){
  if(width<1||height<1)return;
  const auto count=std::uint64_t(width)*height;
@@ -143,17 +123,8 @@ bool Document::updateIndexedBrushPath(const std::vector<SelectionPoint>& points,
  const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
  auto packed=prepared?sparseFillCanvas(*prepared):std::vector<Pixel>(count);const auto baseline=packed;std::vector<Pixel> display(count);
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(source)if(const auto i=raster::worldIndex(*source,x,y))display[std::size_t(y)*width_+x]=colors.rgba(source->format,source->pixels[*i]);
- std::optional<ImageBrushPatternSampler> pattern;if(image&&image->intrinsicSize&&brush.imagePaintMode!=PatternPaintMode::Paint&&!points.empty())pattern.emplace(*image,brush.imagePaintMode,points.front().x,points.front().y);
- struct ScaledPhase {int x,y;ImageBrushStamp stamp;};std::vector<ScaledPhase> scaledPhases;
- auto activeImageStamp=[&](SelectionPoint p)->const ImageBrushStamp&{
-  if(pattern)return pattern->at(p.x,p.y,brush.size,angle);
-  if(image->intrinsicSize||brush.imagePaintMode==PatternPaintMode::Paint||points.empty())return *imageStamp;
-  const int px=patternWrapped(p.x,image->width),py=patternWrapped(p.y,image->height);
-  for(const auto& phase:scaledPhases)if(phase.x==px&&phase.y==py)return phase.stamp;
-  if(scaledPhases.size()>=4)scaledPhases.erase(scaledPhases.begin());
-  scaledPhases.push_back({px,py,scaledPathPatternStamp(*image,brush.size,angle,brush.imagePaintMode,p.x,p.y,points.front().x-brush.size/2,points.front().y-brush.size/2,*imageStamp)});
-  return scaledPhases.back().stamp;
- };
+ std::optional<ImageBrushPatternSampler> pattern;if(image&&brush.imagePaintMode!=PatternPaintMode::Paint&&!points.empty())pattern.emplace(*image,brush.imagePaintMode,points.front().x,points.front().y,brush.size);
+ auto activeImageStamp=[&](SelectionPoint p)->const ImageBrushStamp&{return pattern?pattern->at(p.x,p.y,brush.size,angle):*imageStamp;};
  const int previewWidth=imageStamp?sw:brush.shape==BrushShape::Line?brush.size:spacingDimension,previewHeight=imageStamp?sh:brush.shape==BrushShape::Line?brush.size:spacingDimension;
  auto samples=[&](SelectionPoint p,bool preview,auto&& emit){if(imageStamp){const auto& stamp=activeImageStamp(p);for(const auto& sample:stamp.samples)emit(raster::coordinate(std::int64_t(p.x)-stamp.width/2+sample.x),raster::coordinate(std::int64_t(p.y)-stamp.height/2+sample.y),sample.coverage,sample.color);}else for(auto row:footprint.spans)for(int x=row.left;x<=row.right;++x){const int px=raster::coordinate(std::int64_t(p.x)-(preview?previewWidth:sw)/2+x),py=raster::coordinate(std::int64_t(p.y)-(preview?previewHeight:sh)/2+row.y);if(brushDitherContains(brush,px,py))emit(px,py,255,std::optional<Pixel>{});}};
  std::vector<unsigned char> touched(count),seen(count);std::unordered_map<std::uint64_t,int> coverage;PixelRegion dirty,visible;

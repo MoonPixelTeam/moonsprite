@@ -133,6 +133,9 @@ auto animationReplay=animationChangeBinding_.replayHistory();if(applyTerminalHis
  applyHistoryProjection(edit,forward);
  finishHistorySources(edit,forward,freePaintBefore,sourceEdit,sourceEditLayer,sourceEditFrame);
  if(edit.beforeAnimationSelection&&edit.afterAnimationSelection){const auto& selection=forward?*edit.afterAnimationSelection:*edit.beforeAnimationSelection;if(!restoreAnimationSelection(selection))throw std::logic_error("Missing animation selection history context");}
+ // A command's explicit mask context wins over the general row snapshot.
+ // Frame deletion exits mask editing on both Undo and Redo in legacy.
+ applyMaskHistoryContext(edit.maskHistory,forward);
 
  }catch(...){
   auto failure=std::current_exception();

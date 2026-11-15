@@ -906,7 +906,7 @@ Point Document::FreeTileSourceStroke::local(Point point){
   auto shift=[&](auto& p){p.x+=dx;p.y+=dy;};shift(edit.last_);shift(edit.dynamicLast_);shift(edit.previousStamp_);for(auto& p:edit.perfectPath_)shift(p);if(edit.selection_)shift(*edit.selection_);if(!edit.change_.empty())shift(edit.change_);shift(scan);
   origin.x-=dx;origin.y-=dy;edit.width_=width;edit.height_=height;auto& surface=*edit.timeline_.state_.cels.front().surface;surface.width=width;surface.height=height;surface.pixels=std::move(pixels);edit.timeline_.state_.canvasWidth=width;edit.timeline_.state_.canvasHeight=height;edit.timeline_.buildIndex();
   if(edit.active_){edit.strokePixels_=&static_cast<std::vector<Pixel>&>(surface.pixels);edit.strokeCanvasStorage_=true;edit.strokeStride_=width;edit.strokeOffsetX_=edit.strokeOffsetY_=0;edit.strokeAddress_={width,height,0,0};}edit.hasPreviousStamp_=false;
-  if(image&&image->intrinsicSize&&edit.brush_.imagePaintMode!=PatternPaintMode::Paint)edit.imagePattern_.emplace(*image,edit.brush_.imagePaintMode,start.x-origin.x,start.y-origin.y);
+  if(image&&edit.brush_.imagePaintMode!=PatternPaintMode::Paint)edit.imagePattern_.emplace(*image,edit.brush_.imagePaintMode,start.x-origin.x,start.y-origin.y,baseSize);
  }
  return {point.x-origin.x,point.y-origin.y};
 }
@@ -992,7 +992,7 @@ bool Document::paintFreeTileSourceLine(Point from,Point to,Pixel color,BrushOpti
    // Growing may shift the temporary origin. Resolve both endpoints before
    // deriving the path, and preserve the unwrapped pattern anchor from legacy.
    edit.last_=d.local({int(segment.from.x),int(segment.from.y)});const Point end=d.local({int(segment.to.x),int(segment.to.y)}),start=edit.last_;
-   if(edit.imagePattern_&&image)edit.imagePattern_.emplace(*image,brush.imagePaintMode,from.x-d.origin.x,from.y-d.origin.y);
+   if(edit.imagePattern_&&image)edit.imagePattern_.emplace(*image,brush.imagePaintMode,from.x-d.origin.x,from.y-d.origin.y,brush.size);
    auto points=freeSourceLinePoints(start,end,balanced);if(bridge){const auto continuous=selectionContinuousLine({start.x,start.y},{end.x,end.y},true);points.clear();for(auto p:continuous)points.push_back({p.x,p.y});}
    int since=0;edit.hasPreviousStamp_=false;for(std::size_t i=0;i<points.size();++i){if(i)++since;if(i&&i+1<points.size()&&since<spacing)continue;if(dynamics){auto sample=*dynamics;sample.x=points[i].x;sample.y=points[i].y;edit.dynamicStamp(sample);}else edit.stamp(points[i].x,points[i].y);since=0;}
    if(dynamics){edit.dynamicLast_=*dynamics;edit.dynamicLast_.x=end.x;edit.dynamicLast_.y=end.y;}edit.last_=end;

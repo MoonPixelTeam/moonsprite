@@ -1209,7 +1209,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
       std::set<std::pair<int,int>> mask;
 
-      if(currentTools().pencilImageBrush){const auto stamp=prepareImageBrushStamp(*currentTools().pencilImageBrush,brush.size,currentTools().pencilImageBrushAngle,brush.imagePaintMode,p.x,p.y,p.x-currentTools().pencilImageBrush->width/2,p.y-currentTools().pencilImageBrush->height/2);for(auto sample:stamp.samples)mask.emplace(p.x-stamp.width/2+sample.x,p.y-stamp.height/2+sample.y);}
+      if(currentTools().pencilImageBrush){const auto stamp=prepareImageBrushStamp(*currentTools().pencilImageBrush,brush.size,currentTools().pencilImageBrushAngle,brush.imagePaintMode,p.x,p.y,p.x-(currentTools().pencilImageBrush->intrinsicSize?currentTools().pencilImageBrush->width:brush.size)/2,p.y-(currentTools().pencilImageBrush->intrinsicSize?currentTools().pencilImageBrush->height:brush.size)/2);for(auto sample:stamp.samples)mask.emplace(p.x-stamp.width/2+sample.x,p.y-stamp.height/2+sample.y);}
 
       else for(auto span:brushSpans(brush))for(int x=span.left;x<=span.right;++x)mask.emplace(p.x-brush.size/2+x,p.y-brush.size/2+span.y);
 
