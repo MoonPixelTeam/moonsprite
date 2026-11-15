@@ -1617,6 +1617,9 @@ bool Document::commitStroke() {
   edit.pixels.reserve(pending_.size());
   for(const auto& delta:pending_) if(delta.before!=delta.after) edit.pixels.push_back(delta);
   if(edit.pixels.empty()) {active_=false;strokePixels_=nullptr;absentStrokeSurface_.reset();clearPendingStroke();return false;}
+  // Legacy commitPixelEdit stores dense points as raw region patches. Keep
+  // strokeAddress_ so sparse/offcanvas owners replay the same capture space.
+  pixelEditDenseHistory(edit,width_,height_,[&](int x,int y){return strokePixel(std::size_t(y)*width_+x);});
   // Keep only storage bindings for rollback. Linked-layer synchronization can
   // replace geometry/bindings, but does not mutate their pixel payloads.
   struct Binding {std::size_t index;timeline::Surface surface;};
