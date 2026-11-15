@@ -7252,3 +7252,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按 legacy replaceLayerColor、commitPixelEdit、workspace-commands-color 和反向曲线命令迁移普通 indexed 栅格替色：匹配同 RGBA 的全部资源 ID，目标只取可见色板最近色，保留 offset／storage origin／format、共享 owner、选区裁切及单次事务。历史沿用点归一化与 raw dense patch 的区别，色板／角色按旧版顺序回放；用户明确采用取消预览完整恢复原 ID 的修复，避免旧版修改隐藏 ID。
 
 1050 组真实旧版事务及不同当前色板顺序的回放、20 组链接变体和三种生产编码检查通过；反相使实际颜色调整对照扩至1944组及32组链接。旧版10项测试通过，八项不同定向CTest通过。首轮17.58秒、补充19.34秒；历史测试生成前的旧二进制结果未作为最新验证，新生成程序另验通过4.66秒。唯一正式Release于21:44:13更新（30,721,024bytes），构建退出0。来源972、Editor595、架构595／260及diff通过，strict因其它迁移缺口退出1。无性能优化、UI改造或新增人工桌面验收；生产indexed准入仍关闭，滤镜等继续迁移，整体INCOMPLETE。详见[索引色替色迁移](indexed-replacement-migration-20261115.md)。阶段保存推送dev，保留用户数据、缓存和日志。
+
+
+## 2026-11-15 索引色预设与LCD滤镜阶段
+
+按 legacy 两个实际滤镜命令迁移普通 indexed 的六种预设与LCD：RGBA生成后按可见色板选ID、源按首项ID查色、越界直接透明，按全部有alpha资源的并集判定链接。保留默认参数、图层说明、混合模式、父组、源可见性、逐帧结果与单次历史；补齐预设选中组归属和提交后的组选择恢复。后台任务捕获色板并拒绝过期结果，内存预算涵盖色板及实际owner数；结构历史复用kind13恢复资源、顺序、布局和分配器。
+
+756组实际旧版命令对照、19组关联源变体及三种生产编码检查通过；九项不同定向CTest全部通过（5.41／10.11／9.83／3.91秒），最后selection-interactions在新正式程序生成后运行。旧版两个真实文件定向9项通过、93项跳过（15.58秒）。最终唯一正式Release及测试目标构建退出0，正式exe于22:57:46更新（30,725,120bytes）；来源974、Editor595、架构595源码／261targets及diff检查通过，strict因整体缺口退出1。生产indexed新建／转换／可编辑导入继续关闭，整体INCOMPLETE。仅功能迁移，无性能优化、UI改造或人工完整桌面验收。详见[索引色滤镜迁移](indexed-filter-migration-20261115.md)。阶段保存推送dev，保留用户数据、缓存和日志。

@@ -656,7 +656,7 @@ public:
   bool publishConvolutionTask(const ConvolutionTask& task,const std::vector<std::vector<Pixel>>& results);
   bool restoreAdjustmentBaseline();
   bool commitColorAdjustment();void cancelColorAdjustment();
-  struct FilterPreviewTask{int width=0,height=0;std::uint64_t identity=0,revision=0,contentRevision=0,generation=0;FilterPreset preset=FilterPreset::CrtSubtle;double opacity=1;bool lcd=false;LcdScreenFilterOptions lcdOptions;std::vector<timeline::Pixel> layerDisplayColors;std::string sourceLayerId,sourceFrameId,groupId;std::string layerId;timeline::State source;std::optional<timeline::Timeline> result;bool completed=false;};
+  struct FilterPreviewTask{int width=0,height=0;std::uint64_t identity=0,revision=0,contentRevision=0,generation=0;FilterPreset preset=FilterPreset::CrtSubtle;double opacity=1;bool lcd=false;LcdScreenFilterOptions lcdOptions;std::vector<timeline::Pixel> layerDisplayColors;std::string sourceLayerId,sourceFrameId,groupId;std::string layerId;std::optional<std::string> parentGroup; color_mode::Mode colorMode=color_mode::Mode::Rgba;std::shared_ptr<const PaletteState> palette;timeline::State source;std::optional<timeline::Timeline> result;bool completed=false;};
   bool beginFilterPreview();
   std::optional<FilterPreviewTask> captureFilterPreviewTask(FilterPreset,std::optional<double> opacity={},bool lcd=false,int lcdWidth=1,int lcdHeight=1);
   static bool runFilterPreviewTask(FilterPreviewTask&,const std::function<bool()>& cancelled);

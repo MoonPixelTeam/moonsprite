@@ -1,6 +1,7 @@
 #pragma once
 #include "timeline_model.h"
 #include "raster_geometry.h"
+#include "raster_color_context.h"
 #include <limits>
 #include <algorithm>
 #include <array>
@@ -38,9 +39,10 @@ inline LcdScreenFilterOptions normalizeLcdScreenFilterOptions(double width=1,dou
 inline timeline::Pixel lcdChannelColorAt(timeline::Pixel c,unsigned channel){if((c>>24)==0)return 0;if(channel>2)throw std::invalid_argument("Invalid LCD channel");return (c&0xff000000u)|(c&(0xffu<<(channel*8)));}
 inline std::pair<int,int> lcdChannelOffset(unsigned channel,const LcdScreenFilterOptions& o){if(channel>2)throw std::invalid_argument("Invalid LCD channel");const int direction=channel==0?-1:channel==2?1:0;return {direction*o.width,direction*o.height};}
 inline timeline::Pixel lcdScanlineColorAt(int x,int y){return timeline::Pixel(x%4==0?112:y%4==0?36:0)<<24;}
-inline bool renderLcdScreen(const timeline::Surface& source,LcdScreenFilterOptions o,std::array<timeline::Surface,4>& output,const std::function<bool()>& cancelled={},std::size_t maxPixels=64*1024*1024){
+inline bool renderLcdScreen(const timeline::Surface& source,LcdScreenFilterOptions o,std::array<timeline::Surface,4>& output,const std::function<bool()>& cancelled={},std::size_t maxPixels=64*1024*1024,const RasterColorContext* colors=nullptr,timeline::RasterFormat format=timeline::RasterFormat::Rgba){
+ if((source.format==timeline::RasterFormat::Indexed||format==timeline::RasterFormat::Indexed)&&!colors)throw std::invalid_argument("Missing LCD palette");
  raster::validate(source);if(std::uint64_t(source.width)*source.height>maxPixels)throw std::length_error("LCD source exceeds pixel budget");o=normalizeLcdScreenFilterOptions(o.width,o.height);auto stop=[&]{return cancelled&&cancelled();};if(stop())return false;std::array<timeline::Surface,4> candidate;
- for(unsigned channel=0;channel<4;++channel){auto& result=candidate[channel];result.width=source.width;result.height=source.height;result.offsetX=source.offsetX;result.offsetY=source.offsetY;result.storageOriginX=source.storageOriginX;result.storageOriginY=source.storageOriginY;result.pixels.resize(source.pixels.size());const auto offset=channel<3?lcdChannelOffset(channel,o):std::pair<int,int>{0,0};for(int y=0;y<source.height;++y){if(stop())return false;for(int x=0;x<source.width;++x)result.pixels[std::size_t(y)*source.width+x]=channel==3?lcdScanlineColorAt(x,y):lcdChannelColorAt(raster::readLocal(source,std::int64_t(x)-offset.first,std::int64_t(y)-offset.second),channel);}}
+ for(unsigned channel=0;channel<4;++channel){auto& result=candidate[channel];result.format=format;result.width=source.width;result.height=source.height;result.offsetX=source.offsetX;result.offsetY=source.offsetY;result.storageOriginX=source.storageOriginX;result.storageOriginY=source.storageOriginY;result.pixels.resize(source.pixels.size());const auto offset=channel<3?lcdChannelOffset(channel,o):std::pair<int,int>{0,0};for(int y=0;y<source.height;++y){if(stop())return false;for(int x=0;x<source.width;++x){const auto index=raster::localIndex(source,std::int64_t(x)-offset.first,std::int64_t(y)-offset.second);const auto sourceColor=index?(colors?colors->toolColor(source.format,source.pixels[*index]):source.pixels[*index]):0;const auto color=channel==3?lcdScanlineColorAt(x,y):lcdChannelColorAt(sourceColor,channel);result.pixels[std::size_t(y)*source.width+x]=format==timeline::RasterFormat::Indexed?colors->colorId(color):color;}}}
  if(stop())return false;output=std::move(candidate);return true;
 }
 
