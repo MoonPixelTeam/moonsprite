@@ -80,6 +80,7 @@ struct PaletteState {
   std::vector<int> order() const {if(independentOrder)return *independentOrder;std::vector<int> ids;for(int id:slots) if(id!=EmptyPaletteSlot) ids.push_back(id);return ids;}
   void setOrder(std::vector<int> ids){independentOrder.reset();if(ids!=order())independentOrder=std::move(ids);}
 };
+struct AdjustmentPalettes {PaletteState baseline,preview;};
 using DocumentLayer=timeline::Layer;
 using DocumentFrame=timeline::Frame;
 using DocumentCel=timeline::Cel;
@@ -313,7 +314,7 @@ public:
   std::size_t historySize() const { return history_.size(); }
   void setHistoryEntryLimit(std::size_t limit);
   const PaletteState& palette() const {return palette_;}
-  const PaletteState& displayPalette() const {return paletteReplacement_?paletteReplacement_->preview:palette_;}
+  const PaletteState& displayPalette() const {return paletteReplacement_?paletteReplacement_->preview:adjustment_&&adjustment_->palettes?adjustment_->palettes->preview:palette_;}
   const PaletteEntry* displayPaletteEntry(int id) const;
   bool beginPaletteReplacement(std::optional<Pixel> restorePrimary={});
   bool updatePaletteReplacement(Pixel source,Pixel replacement,bool enabled=true);
@@ -620,6 +621,7 @@ public:
     std::string layerId,frameId;std::optional<SelectionMask> selection;
     std::size_t documentBytes=0;std::vector<Target> targets;bool completed=false;
     color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;color_mode::Mode colorMode=color_mode::Mode::Rgba;
+    std::shared_ptr<const AdjustmentPalettes> palettes;
   };
   std::optional<GradientMapTask> captureGradientMapTask() const;
   static bool runGradientMapTask(GradientMapTask&,const GradientMapSettings&,const std::function<bool()>& cancelled);
@@ -1349,7 +1351,7 @@ private:
 
   bool commitSurfaceAdjustment(const std::u32string& label);
   inline static std::atomic<std::uint64_t> adjustmentSessionClock_{0};
-  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;std::uint64_t session=++adjustmentSessionClock_;};
+  struct AdjustmentPreview {timeline::Timeline baseline,preview;std::vector<std::string> targets;std::optional<SelectionMask> selection;std::string layerId,frameId;std::uint64_t contentRevision;bool clipSelection=true;std::vector<std::string> targetFrames;std::vector<std::string> convolutionTargets;std::string maskContext;std::uint64_t session=++adjustmentSessionClock_;std::shared_ptr<const AdjustmentPalettes> palettes;};
   std::optional<AdjustmentPreview> adjustment_;
   struct PaletteReplacementPreview {PaletteState baseline,preview;std::uint64_t contentRevision;std::optional<Pixel> restorePrimary;};
   std::optional<PaletteReplacementPreview> paletteReplacement_;

@@ -20,6 +20,12 @@ std::unique_ptr<Document::PaletteReplay> Document::preparePaletteEdit(const Edit
  const auto& view=redo?edit.paletteHistory.afterPaletteView:edit.paletteHistory.beforePaletteView;
  if(view){target.view.emplace(view);target.viewSerial=paletteViewRestoreSerial_+1;}
  const int kind=edit.paletteHistory.paletteKind;
+ if(kind==14){
+  // Adjustment snapshots restore legacy palette resources/order/allocator.
+  // Layout, selected swatches and role colors belong to the current UI.
+  target.entries=state.entries;target.order.emplace(state.independentOrder);target.nextId=state.nextId;
+  return prepared;
+ }
  if(kind==13){
   // Color-mode history owns palette data, not selected swatches or role colors.
   target.entries=state.entries;target.order.emplace(state.independentOrder);

@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <iterator>
 #include "document.h"
+#include "indexed_color_adjustment.h"
 #include "raster_geometry.h"
 #include "raster_pixel_edit.h"
 #include "cel_properties.h"
@@ -776,13 +777,17 @@ void Document::commitLayerOpacity() {
 namespace {
 const timeline::MaskSlot* adjustmentMask(const timeline::Timeline& t,const std::string& id){for(const auto& m:t.state().masks)if(m.mask.id==id)return &m;return nullptr;}
 bool adjustmentMaskLocked(const timeline::Timeline& t,const timeline::MaskSlot& m){if(m.mask.locked)return true;if(m.group){for(const auto& g:t.state().groups)if(g.id==m.ownerId)return timeline::isGroupEffectivelyLocked(t.state(),g);return true;}if(!t.hasLayer(m.ownerId))return true;return timeline::isLayerEffectivelyLocked(t.state(),t.state().layers[t.layerIndex(m.ownerId)]);}
-bool adjustmentSameGeometry(const timeline::Surface& a,const timeline::Surface& b){return a.width==b.width&&a.height==b.height&&a.offsetX==b.offsetX&&a.offsetY==b.offsetY&&a.storageOriginX==b.storageOriginX&&a.storageOriginY==b.storageOriginY;}
+bool adjustmentSameGeometry(const timeline::Surface& a,const timeline::Surface& b){return a.format==b.format&&a.width==b.width&&a.height==b.height&&a.offsetX==b.offsetX&&a.offsetY==b.offsetY&&a.storageOriginX==b.storageOriginX&&a.storageOriginY==b.storageOriginY;}
+std::size_t adjustmentPaletteBudget(const AdjustmentPalettes& palettes,std::size_t used){
+ for(const auto* p:{&palettes.baseline,&palettes.preview}){const auto bytes=indexed_adjustment::paletteBytes(*p);if(bytes>(adjustmentByteLimit-used)/3)throw std::length_error("Adjustment palette snapshots exceed budget");used+=bytes*3;}return used;
+}
 void gradientMapTaskStorage(const Document::GradientMapTask& task){
  if(task.documentBytes>adjustmentByteLimit/4)throw std::length_error("Gradient map snapshots exceed pixel budget");
  auto remaining=adjustmentByteLimit-4*task.documentBytes;
  for(const auto& target:task.targets){const auto& s=target.surface;raster::validate(s);raster::coordinate(std::int64_t(s.offsetX)+s.width);raster::coordinate(std::int64_t(s.offsetY)+s.height);
   if(s.pixels.size()>64*1024*1024 || s.pixels.size()>remaining/sizeof(Pixel))throw std::length_error("Gradient map worker exceeds pixel budget");remaining-=s.pixels.size()*sizeof(Pixel);
  }
+ if(task.palettes)adjustmentPaletteBudget(*task.palettes,adjustmentByteLimit-remaining);
 }
 
 std::size_t convolutionSnapshotBytes(const timeline::Timeline& live,const timeline::Timeline& baseline,const timeline::Timeline& preview){std::size_t used=0;for(const auto* t:{&live,&baseline,&preview,&baseline}){const auto bytes=adjustmentStorageBudget(*t,1);if(bytes>adjustmentByteLimit-used)throw std::length_error("Convolution snapshots exceed pixel budget");used+=bytes;}return used;}
@@ -997,7 +1002,9 @@ bool Document::applyLcdScreenFilter(int width,int height){if(!beginFilterPreview
 bool Document::beginColorAdjustment(const std::vector<std::string>& layers){
  commitFloatingPaste();cancelStroke();auto ids=selection_ || layers.empty()?std::vector<std::string>{layer().id}:layers;std::vector<std::string> targets;
  for(const auto& id:ids){const auto it=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==id;});if(it==timeline_.state().layers.end() || !it->kind.empty() || layerEffectivelyLocked(*it))continue;const auto* c=timeline_.findCel(id,frame().id);if(!c)continue;const auto resolved=timeline_.resolveSurface(c->id);if(!resolved.source || !resolved.surface)continue;if(std::find(targets.begin(),targets.end(),resolved.source->id)==targets.end())targets.push_back(resolved.source->id);}
- if(targets.empty())return false;adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_};++gradientRevision_;return true;
+ if(targets.empty())return false;const auto bytes=adjustmentStorageBudget(timeline_,3);std::shared_ptr<const AdjustmentPalettes> palettes;
+ if(std::any_of(targets.begin(),targets.end(),[&](const auto& id){return timeline_.resolveSurface(id).surface->format==timeline::RasterFormat::Indexed;})){AdjustmentPalettes p{palette_,palette_};adjustmentPaletteBudget(p,bytes*3);palettes=std::make_shared<const AdjustmentPalettes>(std::move(p));}
+ adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_};adjustment_->palettes=std::move(palettes);++gradientRevision_;return true;
 }
 bool Document::beginColorReplacement(const std::vector<std::string>& celIds,bool clipSelection){
  if(!activeMaskId_.empty()&&celIds==std::vector<std::string>{activeMaskId_}){
@@ -1025,9 +1032,11 @@ bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enable
 bool Document::updateColorAdjustment(const ColorAdjustment& a,bool enabled){
  if(!adjustment_)return false;auto& p=*adjustment_;
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
- adjustmentStorageBudget(p.baseline,4);ColorAdjustmentSampler sample(a);auto preview=p.baseline;
+ const auto bytes=adjustmentStorageBudget(p.baseline,4);ColorAdjustmentSampler sample(a);auto preview=p.baseline;std::shared_ptr<AdjustmentPalettes> palettes;
+ if(p.palettes){if(!indexed_adjustment::samePaletteData(palette_,p.palettes->baseline)){cancelColorAdjustment();return false;}palettes=std::make_shared<AdjustmentPalettes>(AdjustmentPalettes{p.palettes->baseline,p.palettes->baseline});adjustmentPaletteBudget(*palettes,bytes*4);}
  if(enabled)for(const auto& id:p.targets){
   std::unordered_map<Pixel,Pixel> repeated;bool cache=true;auto* s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing adjustment owner");
+  if(s->format==timeline::RasterFormat::Indexed){if(!palettes)throw std::logic_error("Missing adjustment palette");indexed_adjustment::apply(palettes->preview,*s,p.selection,a,colorMode_,pixelFormat_,{},adjustmentByteLimit-adjustmentPaletteBudget(*palettes,bytes*4));continue;}
   // Legacy visits owned pixels, including outside the canvas; selection uses world coordinates.
   for(int y=0;y<s->height;++y)for(int x=0;x<s->width;++x){
    const int wx=s->offsetX+x,wy=s->offsetY+y;
@@ -1041,7 +1050,7 @@ bool Document::updateColorAdjustment(const ColorAdjustment& a,bool enabled){
    value=normalizeCanvasPacked(value);
   }
  }
- p.preview=std::move(preview);++gradientRevision_;return true;
+ if(palettes)adjustmentPaletteBudget(*palettes,bytes*4);p.preview=std::move(preview);p.palettes=std::move(palettes);++gradientRevision_;return true;
 }
 bool Document::beginAntiAliasPreview(const std::vector<MaskSlotKey>& maskSlots){
  if(!maskSlots.empty()||!activeMaskId_.empty()){
@@ -1143,23 +1152,26 @@ std::optional<Document::GradientMapTask> Document::captureGradientMapTask()const
  // Budget every owner before copying the first target surface.
  for(const auto& id:p.targets){const auto r=p.baseline.resolveSurface(id);if(r.issue!=timeline::LinkIssue::None||!r.source||!r.surface||r.source->id!=id)throw std::logic_error("Invalid gradient map owner");if(r.surface->pixels.size()>remaining/sizeof(Pixel))throw std::length_error("Gradient map worker exceeds pixel budget");remaining-=r.surface->pixels.size()*sizeof(Pixel);}
  GradientMapTask task{width_,height_,identity_,contentRevision_,gradientRevision_,p.layerId,p.frameId,p.selection,bytes,{}};task.pixelFormat=pixelFormat_;task.colorMode=colorMode_;task.targets.reserve(p.targets.size());
- for(const auto& id:p.targets)task.targets.push_back({id,*p.baseline.resolveSurface(id).surface});return task;
+ task.palettes=p.palettes;for(const auto& id:p.targets)task.targets.push_back({id,*p.baseline.resolveSurface(id).surface});gradientMapTaskStorage(task);return task;
 }
 bool Document::runGradientMapTask(GradientMapTask& task,const GradientMapSettings& settings,const std::function<bool()>& cancelled){
  task.completed=false;gradientMapTaskStorage(task);auto stop=[&]{return cancelled&&cancelled();};if(stop())return false;
- GradientMapSampler sampler(settings);
+ GradientMapSampler sampler(settings);std::shared_ptr<AdjustmentPalettes> palettes;if(task.palettes)palettes=std::make_shared<AdjustmentPalettes>(AdjustmentPalettes{task.palettes->baseline,task.palettes->baseline});
  for(auto& target:task.targets){auto& s=target.surface;
+  if(s.format==timeline::RasterFormat::Indexed){if(!palettes)throw std::logic_error("Missing gradient map palette");ColorAdjustment a;a.kind=ColorAdjustmentKind::GradientMap;a.gradientMap=settings;std::size_t used=task.documentBytes*4;for(const auto& t:task.targets)used+=t.surface.pixels.size()*sizeof(Pixel);if(!indexed_adjustment::apply(palettes->preview,s,task.selection,a,task.colorMode,task.pixelFormat,cancelled,adjustmentByteLimit-adjustmentPaletteBudget(*palettes,used)))return false;continue;}
   for(int y=0;y<s.height;++y){const int wy=s.offsetY+y;const auto row=std::size_t(y)*s.width;
    for(int x=0;x<s.width;++x){const auto i=row+x;if((i&1023)==0&&stop())return false;const int wx=s.offsetX+x;
     if(!task.selection||selectionContains(task.selection,wx,wy))s.pixels[i]=color_mode::normalizePackedValue(task.colorMode,task.pixelFormat,sampler(s.pixels[i],wx,wy));
    }
   }
  }
- if(stop())return false;task.completed=true;return true;
+ if(stop())return false;task.palettes=std::move(palettes);gradientMapTaskStorage(task);task.completed=true;return true;
 }
 bool Document::publishGradientMapTask(GradientMapTask&& task){
  if(!adjustment_||!task.completed||task.identity!=identity_||task.revision!=contentRevision_||task.previewRevision!=gradientRevision_||task.width!=width_||task.height!=height_||task.layerId!=layer().id||task.frameId!=frame().id||!selectionEqual(task.selection,selection_))return false;
  auto& p=*adjustment_;if(p.contentRevision!=contentRevision_||p.layerId!=task.layerId||p.frameId!=task.frameId||!selectionEqual(p.selection,task.selection)||p.targets.size()!=task.targets.size())return false;
+ if(bool(p.palettes)!=bool(task.palettes)||task.colorMode!=colorMode_||task.pixelFormat!=pixelFormat_)return false;
+ if(p.palettes&&(!indexed_adjustment::samePaletteData(p.palettes->baseline,task.palettes->baseline)||!indexed_adjustment::samePaletteData(palette_,task.palettes->baseline)))return false;
  // Metadata-only rewiring may not advance contentRevision; unrelated flags remain valid.
  if(timeline_.state().cels.size()!=p.baseline.state().cels.size())return false;
  for(const auto& c:p.baseline.state().cels){const auto* live=timeline_.findCelById(c.id);if(!live||live->layerId!=c.layerId||live->frameId!=c.frameId)return false;const auto old=p.baseline.resolveSurface(c.id),now=timeline_.resolveSurface(c.id);if(old.issue!=now.issue||bool(old.source)!=bool(now.source)||(old.source&&old.source->id!=now.source->id))return false;}
@@ -1169,7 +1181,7 @@ bool Document::publishGradientMapTask(GradientMapTask&& task){
  for(const auto& t:task.targets){auto* s=preview.mutableOwnedSurface(t.ownerId);if(!s)throw std::logic_error("Missing gradient map preview owner");owners.push_back(s);}
  // All allocations and validation precede noexcept publication.
  for(std::size_t i=0;i<owners.size();++i)owners[i]->pixels.swap(task.targets[i].surface.pixels);
- p.preview=std::move(preview);task.completed=false;++gradientRevision_;return true;
+ p.preview=std::move(preview);p.palettes=std::move(task.palettes);task.completed=false;++gradientRevision_;return true;
 }
 std::optional<Document::ConvolutionSurfaceTask> Document::captureConvolutionSurfaceTask(const ConvolutionOptions& options)const{
  if(!adjustment_)return {};const auto& p=*adjustment_;if(p.contentRevision!=contentRevision_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_))return {};
@@ -1205,7 +1217,9 @@ bool Document::commitSurfaceAdjustment(const std::u32string& label){
  if(!adjustment_)return false;auto& p=*adjustment_;
  if(p.contentRevision!=contentRevision_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
  if(p.convolutionTargets.empty()){cancelColorAdjustment();return false;}
+ if(p.palettes&&!indexed_adjustment::samePaletteData(palette_,p.palettes->baseline)){cancelColorAdjustment();return false;}
  std::size_t used=0;for(const auto* t:{&timeline_,&p.baseline,&p.preview}){const auto bytes=adjustmentStorageBudget(*t,1);if(bytes>adjustmentByteLimit-used)throw std::length_error("Convolution history exceeds pixel budget");used+=bytes;}
+ if(p.palettes)used=adjustmentPaletteBudget(*p.palettes,used);
  std::vector<std::string> targets;targets.reserve(p.convolutionTargets.size());
  for(const auto& id:p.convolutionTargets){const auto live=timeline_.resolveSurface(id),b=p.baseline.resolveSurface(id),a=p.preview.resolveSurface(id);
   if(live.issue!=timeline::LinkIssue::None||b.issue!=timeline::LinkIssue::None||a.issue!=timeline::LinkIssue::None||!live.source||!b.source||!a.source||!live.surface||!b.surface||!a.surface||live.source->id!=id||b.source->id!=id||a.source->id!=id)throw std::logic_error("Invalid convolution commit owner");
@@ -1216,17 +1230,19 @@ bool Document::commitSurfaceAdjustment(const std::u32string& label){
  if(targets.empty()){cancelColorAdjustment();return false;}
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=layer().id;e.beforeFrame=e.afterFrame=frame().id;e.beforeSelection=e.afterSelection=selectedFrames_;e.contentHistory.surfaceChanges.reserve(targets.size());
  for(const auto& id:targets)e.contentHistory.surfaceChanges.push_back({id,*p.baseline.resolveSurface(id).surface,*p.preview.resolveSurface(id).surface});
+ std::unique_ptr<PaletteReplay> paletteInstall;if(p.palettes){e.paletteHistory.paletteKind=14;e.paletteHistory.beforePalette=p.palettes->baseline;e.paletteHistory.afterPalette=p.palettes->preview;for(auto* palette:{&*e.paletteHistory.beforePalette,&*e.paletteHistory.afterPalette})palette->independentOrder=palette->order();paletteInstall=preparePaletteEdit(e,true);}
  reserveHistoryEntries();struct Install{timeline::Surface* live;timeline::Surface* preview;};std::vector<Install> install;install.reserve(targets.size());
  for(const auto& id:targets){auto* live=timeline_.mutableOwnedSurface(id);auto* preview=p.preview.mutableOwnedSurface(id);if(!live||!preview)throw std::logic_error("Missing convolution install owner");install.push_back({live,preview});}
  for(const auto& t:install)std::swap(*t.live,*t.preview);
+ if(paletteInstall)exchangePaletteEdit(*paletteInstall);
  cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),label);return true;
 }
 std::optional<Document::ConvolutionTask> Document::captureConvolutionTask() const {
  if(!adjustment_)return {};const auto& p=*adjustment_;if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_))return {};
  ConvolutionTask task{width_,height_,identity_,contentRevision_,p.layerId,p.frameId,p.selection,{}};task.pixelFormat=pixelFormat_;task.colorMode=colorMode_;for(const auto& id:p.targets){const auto* s=p.baseline.resolveSurface(id).surface;if(!s || s->width!=width_ || s->height!=height_ || s->offsetX || s->offsetY)throw std::runtime_error("Convolution requires native full canvas RGBA surface");task.targets.emplace_back(id,s->pixels);}return task;
 }
-bool Document::restoreGradientMapBaseline(){if(!adjustment_)return false;adjustmentStorageBudget(adjustment_->baseline,4);auto baseline=adjustment_->baseline;adjustment_->preview=std::move(baseline);++gradientRevision_;return true;}
-bool Document::restoreAdjustmentBaseline(){if(!adjustment_)return false;adjustment_->preview=adjustment_->baseline;++gradientRevision_;return true;}
+bool Document::restoreGradientMapBaseline(){if(!adjustment_)return false;adjustmentStorageBudget(adjustment_->baseline,4);return restoreAdjustmentBaseline();}
+bool Document::restoreAdjustmentBaseline(){if(!adjustment_)return false;auto baseline=adjustment_->baseline;std::shared_ptr<const AdjustmentPalettes> palettes;if(adjustment_->palettes)palettes=std::make_shared<const AdjustmentPalettes>(AdjustmentPalettes{adjustment_->palettes->baseline,adjustment_->palettes->baseline});adjustment_->preview=std::move(baseline);adjustment_->palettes=std::move(palettes);++gradientRevision_;return true;}
 bool Document::publishConvolutionTask(const ConvolutionTask& task,const std::vector<std::vector<Pixel>>& results){
  if(!adjustment_ || task.identity!=identity_ || task.revision!=contentRevision_ || task.layerId!=layer().id || task.frameId!=frame().id || !selectionEqual(task.selection,selection_))return false;auto& p=*adjustment_;if(results.size()!=task.targets.size() || p.targets.size()!=task.targets.size())return false;
  for(std::size_t i=0;i<results.size();++i)if(p.targets[i]!=task.targets[i].first || results[i].size()!=std::size_t(width_)*height_)return false;
@@ -1235,6 +1251,7 @@ bool Document::publishConvolutionTask(const ConvolutionTask& task,const std::vec
 void Document::cancelColorAdjustment(){if(adjustment_){adjustment_.reset();++gradientRevision_;}}
 bool Document::commitColorAdjustment(){
  if(!adjustment_)return false;auto& p=*adjustment_;
+ if(p.palettes){p.convolutionTargets=p.targets;return commitSurfaceAdjustment(U"颜色调整");}
  if(!p.maskContext.empty()&&p.maskContext!=activeMaskId_){cancelColorAdjustment();return false;}
  if(!p.targets.empty()&&adjustmentMask(p.baseline,p.targets.front())){
   if(p.contentRevision!=contentRevision_||p.maskContext!=activeMaskId_||p.frameId!=frame().id||p.layerId!=layer().id||!selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
