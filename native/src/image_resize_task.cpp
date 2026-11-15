@@ -3,25 +3,27 @@
 #include "image_import_limits.h"
 #include "sheet_import_storage.h"
 #include "image_scale_detection.h"
+#include "indexed_color_adjustment.h"
 namespace moon {
 ImageResizeTask::ImageResizeTask(const Document& d,int w,int h,ImageInterpolation method,Executor executor,bool detectOnly)
- :identity_(d.identity()),revision_(d.revision()),content_(d.contentRevision()),layer_(d.layer().id),frame_(d.frame().id),sw_(d.width()),sh_(d.height()),width_(w),height_(h),method_(method),detection_(detectOnly),executor_(std::move(executor)){
+ :identity_(d.identity()),revision_(d.revision()),content_(d.contentRevision()),layer_(d.layer().id),frame_(d.frame().id),sw_(d.width()),sh_(d.height()),width_(w),height_(h),method_(method),detection_(detectOnly),colorMode_(d.colorMode()),pixelFormat_(d.pixelFormat()),executor_(std::move(executor)){
  if(d.active())throw std::runtime_error("Finish active edit before image resize");validateImportedImageDimensions(w,h);
  std::uint64_t bytes=sheetImportResourceBytes(d.timeline().state());for(const auto& c:d.timeline().state().cels)if(c.surface)bytes+=c.surface->pixels.size()*sizeof(Pixel);for(const auto& m:d.timeline().state().masks)bytes+=m.mask.surface.pixels.size()*sizeof(Pixel);if(d.selection()){const auto& s=*d.selection();bytes+=s.mask.size();selection_=SelectionMask{s.x,s.y,s.width,s.height,{}};selectionData_=s.mask.data();selectionSize_=s.mask.size();}if(bytes>256ull*1024*1024)throw std::length_error("Image resize snapshot exceeds working pixel budget");
+ if(colorMode_==color_mode::Mode::Indexed){const auto paletteBytes=indexed_adjustment::paletteBytes(d.palette());if(paletteBytes>(256ull*1024*1024-bytes)/3||d.palette().entries.size()>(256ull*1024*1024-bytes-paletteBytes*3)/128)throw std::length_error("Image resize palette exceeds working budget");palette_=std::make_shared<const PaletteState>(d.palette());}
  capture_=std::make_unique<RasterSnapshot>(d.timeline().state());
  if(!executor_)executor_=[](std::function<void()> fn){std::thread(std::move(fn)).detach();};
 }
 ImageResizeTask::~ImageResizeTask(){if(work_)work_->cancelled=true;}
-bool ImageResizeTask::matches(const Document& d)const{return !d.active()&&d.identity()==identity_&&d.revision()==revision_&&d.contentRevision()==content_&&d.width()==sw_&&d.height()==sh_&&d.layer().id==layer_&&d.frame().id==frame_&&bool(d.selection())==bool(selection_)&&(!selection_||(d.selection()->x==selection_->x&&d.selection()->y==selection_->y&&d.selection()->width==selection_->width&&d.selection()->height==selection_->height&&d.selection()->mask.size()==selectionSize_&&d.selection()->mask.data()==selectionData_));}
+bool ImageResizeTask::matches(const Document& d)const{return !d.active()&&d.identity()==identity_&&d.revision()==revision_&&d.contentRevision()==content_&&d.colorMode()==colorMode_&&d.pixelFormat()==pixelFormat_&&(!palette_||indexed_adjustment::samePaletteData(*palette_,d.palette()))&&d.width()==sw_&&d.height()==sh_&&d.layer().id==layer_&&d.frame().id==frame_&&bool(d.selection())==bool(selection_)&&(!selection_||(d.selection()->x==selection_->x&&d.selection()->y==selection_->y&&d.selection()->width==selection_->width&&d.selection()->height==selection_->height&&d.selection()->mask.size()==selectionSize_&&d.selection()->mask.data()==selectionData_));}
 void ImageResizeTask::cancel(){if(work_)work_->cancelled=true;capture_.reset();phase_=Phase::Cancelled;}
 void ImageResizeTask::tick(const Document& d){
  if(!busy())return;if(!matches(d)){cancel();error_="Document changed during image resize";phase_=Phase::Failed;return;}
  try{
   if(phase_==Phase::Capturing){if(selectionCopied_<selectionSize_){auto& target=selection_->mask;if(!selectionCopied_)target.reserve(selectionSize_);const auto count=std::min(selectionSize_-selectionCopied_,RasterSnapshot::tickPixels*sizeof(Pixel));target.insert(target.end(),selectionData_+selectionCopied_,selectionData_+selectionCopied_+count);selectionCopied_+=count;return;}if(!capture_->advance(d.timeline().state(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;
-   auto state=capture_->take();capture_.reset();auto work=std::make_shared<Work>();work_=work;const auto layer=layer_,frame=frame_;const auto sw=sw_,sh=sh_,w=width_,h=height_;const auto method=method_;const bool detection=detection_;auto selection=selection_;phase_=Phase::Working;
-   executor_([work,state=std::move(state),selection=std::move(selection),layer,frame,sw,sh,w,h,method,detection]()mutable{
-    try{if(work->cancelled)throw ImageResizeCancelled{};auto source=std::make_unique<Document>(1,1);source->width_=sw;source->height_=sh;source->timeline_=timeline::Timeline(std::move(state));source->activeLayerId_=layer;source->activeFrameId_=frame;source->setSelectionValue(std::move(selection));
-     ImageResizeCancellationScope cancellation(&work->cancelled);if(detection)work->detectedScale=detectDocumentPixelScale(source->timeline_,frame,sw,sh,[work]{return work->cancelled.load();});else source->resizeImage(w,h,method);if(work->cancelled)throw ImageResizeCancelled{};work->result=std::move(source);
+   auto state=capture_->take();capture_.reset();auto work=std::make_shared<Work>();work_=work;const auto layer=layer_,frame=frame_;const auto sw=sw_,sh=sh_,w=width_,h=height_;const auto method=method_;const bool detection=detection_;const auto mode=colorMode_;const auto precision=pixelFormat_;auto palette=palette_;auto selection=selection_;phase_=Phase::Working;
+   executor_([work,state=std::move(state),selection=std::move(selection),palette=std::move(palette),layer,frame,sw,sh,w,h,method,detection,mode,precision]()mutable{
+    try{if(work->cancelled)throw ImageResizeCancelled{};auto source=std::make_unique<Document>(1,1);source->width_=sw;source->height_=sh;source->colorMode_=mode;source->pixelFormat_=precision;if(palette)source->palette_=*palette;source->timeline_=timeline::Timeline(std::move(state));source->activeLayerId_=layer;source->activeFrameId_=frame;source->setSelectionValue(std::move(selection));
+     ImageResizeCancellationScope cancellation(&work->cancelled);if(detection){const RasterColorContext colors(source->palette_.entries,source->palette_.order(),mode,precision);work->detectedScale=detectDocumentPixelScale(source->timeline_,frame,sw,sh,[work]{return work->cancelled.load();},colors);}else source->resizeImage(w,h,method);if(work->cancelled)throw ImageResizeCancelled{};work->result=std::move(source);
     }catch(const ImageResizeCancelled&){}catch(const std::exception& error){work->error=error.what();}work->ready=true;
    });return;
   }

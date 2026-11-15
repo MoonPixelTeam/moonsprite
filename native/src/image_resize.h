@@ -43,8 +43,12 @@ inline ImageResizeSurfacePlan planImageResizeSurface(const timeline::Surface& so
  const int w=std::max(1,raster::coordinate(std::int64_t(right)-x)),h=std::max(1,raster::coordinate(std::int64_t(bottom)-y));const auto count=std::uint64_t(w)*h;if(count>64*1024*1024)throw std::length_error("Image resize surface exceeds pixel limit");return {x,y,w,h,sx,sy,std::size_t(count)*sizeof(timeline::Pixel)};
 }
 inline timeline::Surface imageResizedSurface(const timeline::Surface& source,const ImageResizeSurfacePlan& p,ImageInterpolation method,bool mask=false){
- timeline::Surface out;out.offsetX=p.x;out.offsetY=p.y;out.width=p.width;out.height=p.height;out.storageOriginX=out.storageOriginY=0;
- out.pixels=resizeImagePixels(source.pixels,source.width,source.height,p.width,p.height,method,p.scaleX,p.scaleY,double(p.x)/p.scaleX-source.offsetX,double(p.y)/p.scaleY-source.offsetY);
+ timeline::Surface out;out.format=source.format;out.offsetX=p.x;out.offsetY=p.y;out.width=p.width;out.height=p.height;out.storageOriginX=out.storageOriginY=0;
+ // Legacy indexed storage always samples raw IDs with nearest-neighbor,
+ // including when the dialog requests smooth interpolation. Keep world-space
+ // arithmetic in the same order at fractional/negative surface boundaries.
+ if(source.format==timeline::RasterFormat::Indexed){out.pixels.resize(std::size_t(p.width)*p.height);std::vector<int> columns(std::min(p.width,4096));for(int begin=0;begin<p.width;begin+=int(columns.size())){const int count=std::min(p.width-begin,int(columns.size()));for(int i=0;i<count;++i)columns[i]=std::clamp(int(std::floor((double(p.x)+begin+i+.5)/p.scaleX-source.offsetX)),0,source.width-1);for(int y=0;y<p.height;++y){checkImageResizeCancellation();const int sy=std::clamp(int(std::floor((double(p.y)+y+.5)/p.scaleY-source.offsetY)),0,source.height-1);for(int i=0;i<count;++i)out.pixels[std::size_t(y)*p.width+begin+i]=source.pixels[std::size_t(sy)*source.width+columns[i]];}}}
+ else out.pixels=resizeImagePixels(source.pixels,source.width,source.height,p.width,p.height,method,p.scaleX,p.scaleY,double(p.x)/p.scaleX-source.offsetX,double(p.y)/p.scaleY-source.offsetY);
  if(mask)for(auto& pixel:out.pixels)pixel=timeline::normalizedMaskPixel(pixel);return out;
 }
 // free-tile.ts uses premultiplied bilinear samples; ordinary document surfaces
@@ -73,6 +77,6 @@ inline int roundedImageResizeCoordinate(double n){const double value=std::floor(
 inline std::optional<SelectionMask> resizeImageSelection(const std::optional<SelectionMask>& source,int sw,int sh,int tw,int th){
  if(!source)return {};const auto& s=*source;const double sx=double(tw)/sw,sy=double(th)/sh;
  SelectionMask out;out.x=int(std::floor(s.x*sx));out.y=int(std::floor(s.y*sy));out.width=std::max(1,int(std::ceil((s.x+s.width)*sx))-out.x);out.height=std::max(1,int(std::ceil((s.y+s.height)*sy))-out.y);
- if(!s.mask.empty()){out.mask.resize(std::size_t(out.width)*out.height);for(int y=0;y<out.height;++y){checkImageResizeCancellation();for(int x=0;x<out.width;++x){const int px=int(std::floor((out.x+x+.5)/sx))-s.x,py=int(std::floor((out.y+y+.5)/sy))-s.y;if(px>=0&&py>=0&&px<s.width&&py<s.height)out.mask[std::size_t(y)*out.width+x]=s.mask[std::size_t(py)*s.width+px];}}}return out;
+ if(!s.mask.empty()){out.mask.resize(std::size_t(out.width)*out.height);for(int y=0;y<out.height;++y){checkImageResizeCancellation();for(int x=0;x<out.width;++x){const int px=int(std::floor((out.x+x+.5)/sx))-s.x,py=int(std::floor((out.y+y+.5)/sy))-s.y;if(px>=0&&py>=0&&px<s.width&&py<s.height)out.mask[std::size_t(y)*out.width+x]=s.mask[std::size_t(py)*s.width+px]?1:0;}}}return out;
 }
 }

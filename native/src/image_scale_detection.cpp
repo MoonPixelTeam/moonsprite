@@ -39,7 +39,7 @@ struct Detection {
 };
 }
 int detectRepeatedPixelScale(const std::vector<timeline::Pixel>& pixels,int width,int height){if(width<1||height<1||pixels.size()<std::uint64_t(width)*height)return 0;Detection state(width,height);state.scan(pixels,width,height,0);return state.result(width,height);}
-int detectDocumentPixelScale(const timeline::Timeline& timeline,const std::string& frame,int width,int height,const std::function<bool()>& cancelled){
- if(width<1||height<1)return 0;Detection state(width,height);for(int y=0;y<height;y+=64){if(cancelled&&cancelled())throw ImageResizeCancelled{};const int rows=std::min(64,height-y);auto pixels=compositeNormalRegion(timeline,frame,{0,y,width,rows});state.scan(pixels,width,rows,y);}if(cancelled&&cancelled())throw ImageResizeCancelled{};return state.result(width,height);
+int detectDocumentPixelScale(const timeline::Timeline& timeline,const std::string& frame,int width,int height,const std::function<bool()>& cancelled,const RasterColorContext& colors){
+ if(width<1||height<1)return 0;Detection state(width,height);for(int y=0;y<height;y+=64){if(cancelled&&cancelled())throw ImageResizeCancelled{};const int rows=std::min(64,height-y);auto pixels=compositeNormalRegion(timeline,frame,{0,y,width,rows},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);state.scan(pixels,width,rows,y);}if(cancelled&&cancelled())throw ImageResizeCancelled{};return state.result(width,height);
 }
 }

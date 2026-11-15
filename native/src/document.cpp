@@ -8,6 +8,7 @@
 #include "relative_luminance.h"
 #include "symmetry_content_translation.h"
 #include "mask_resize.h"
+#include "image_resize_links.h"
 #include "image_import_limits.h"
 #include <unordered_set>
 #include <iterator>
@@ -1684,6 +1685,7 @@ bool Document::resizeImage(int width,int height,ImageInterpolation method){
  auto masks=resizedImageMasks(timeline_.state(),width_,height_,width,height,method,remaining);
  Edit e{{},state_,nextState_};e.snapshotHistory.beforeDimensions={{width_,height_}};e.snapshotHistory.afterDimensions={{width,height}};e.contentHistory.beforeCels=timeline_.state().cels;e.contentHistory.afterCels=e.contentHistory.beforeCels;
  for(auto& c:e.contentHistory.afterCels)if(c.surface)c.surface=imageResizedSurface(*c.surface,planImageResizeSurface(*c.surface,width_,height_,width,height),method);
+ synchronizeImageResizeLinkedCels(timeline_,e.contentHistory.afterCels,activeLayerId_,activeFrameId_);
  if(!masks.empty()){e.maskHistory.beforeMasks=timeline_.state().masks;e.maskHistory.afterMasks=std::move(masks);}
  e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=selection_;e.pixelSelectionHistory.afterPixelsSelection=resizeImageSelection(selection_,width_,height_,width,height);
  reserveHistoryEntries();applyEdit(e,true);publishChange();pushEdit(std::move(e),U"图像大小");return true;

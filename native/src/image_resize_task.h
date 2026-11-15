@@ -12,6 +12,7 @@ public:
 private:
  struct Work {std::atomic<bool> cancelled{false},ready{false};int detectedScale=0;std::unique_ptr<Document> result;std::string error;};
  std::uint64_t identity_,revision_,content_;std::string layer_,frame_;int sw_,sh_,width_,height_;ImageInterpolation method_;bool detection_=false;
+ color_mode::Mode colorMode_;color_mode::PixelFormat pixelFormat_;std::shared_ptr<const PaletteState> palette_;
  std::optional<SelectionMask> selection_;const unsigned char* selectionData_=nullptr;std::size_t selectionSize_=0,selectionCopied_=0;std::unique_ptr<RasterSnapshot> capture_;std::shared_ptr<Work> work_;Executor executor_;Phase phase_=Phase::Capturing;std::string error_;
 public:
  ImageResizeTask(const Document&,int,int,ImageInterpolation,Executor={},bool detectOnly=false);
