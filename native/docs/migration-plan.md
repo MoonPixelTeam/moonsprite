@@ -7223,3 +7223,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 完成普通／动态／预览的缩放图像笔刷 Paint、Source、Target 采样，接续上一阶段几何路径的局部适配，统一复用既有 sampler。保留初始工具尺寸锚点、旋转逆采样、Bayer 与四相位 FIFO，修正 RGBA 原始覆盖去重、透明前景墨水优先级和半透明字节舍入。自由瓦片临时栅格扩张与悬停锚点同步接入，无性能优化或布局改造。
 
 450 组实际旧版事务、144 组采样序列及 27 组关联／链接检查通过，旧版定向 9 项通过。综合回归补齐帧删除显式蒙版上下文在 Undo／Redo 的优先级，修正 2×1 测试夹具；最终 12 项不同 CTest 全部通过（46.02 秒及 9.15 秒）。唯一正式 Release 于 15:14:29 更新（30,674,944 bytes），来源 960 文件及快照、Editor593、架构593／255和 diff 检查通过，strict 保持 INCOMPLETE。生产 indexed 新建／转换／可编辑导入继续关闭，无人工图像或完整桌面验收。详见 [缩放图像笔刷模式迁移](scaled-image-brush-modes-migration-20261115.md)。阶段保存推送 dev，保留全部用户数据、缓存和日志。
+
+### 2026-11-15 索引色选区与普通剪贴板
+
+按 legacy 选区 capture／generic／RotSprite／translation／apply 和 clipboard 的实际契约，保留内部原始 ID、外部 RGBA、当前首项／当前并集／capture opacity 的区别，以及点／dense 历史、稀疏扩张、storage origin、关联存储和缺失 Cel format。普通、稀疏和延迟浮动复用现有事务；浮动期间色板变化使必要的 RotSprite 缓存失效。
+
+931 组实际旧版事务、26 组链接和 3 组缺失 Cel 检查通过，旧版三文件 61 项通过（15.59 秒）。部分样本另核对普通／恢复／本地历史三种生产编码与原始 ID 解码，生产可编辑 indexed 导入仍拒绝。唯一正式 Release 于 17:30:32 更新（30,694,912 bytes）；补齐剪贴板测试漏连的现有系统库后，最终 13 项定向 CTest 全部通过（7.39 秒）。来源覆盖 962 文件及快照、Editor593、架构593／256通过，strict 因其它缺口退出 1。Cel／帧剪贴板、内容居中、完整 indexed 对称矩阵及生产准入仍未完成，整体 INCOMPLETE。仅功能迁移，无 UI 改动、性能优化、人工图像或完整桌面验收。详见 [索引色选区迁移](indexed-selection-migration-20261115.md)。阶段保存并推送 dev，保留全部用户数据、缓存和日志。

@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <memory>
+#include <unordered_set>
 #include <vector>
 #include "brush.h"
 namespace moon {
@@ -23,5 +25,15 @@ inline std::optional<SelectionMask> rectangleSelection(int x,int y,int width,int
 // 0 replace, 1 add, 2 subtract, 3 intersect; legacy combineSelection.
 inline std::optional<SelectionMask> combineSelection(const std::optional<SelectionMask>& a,const std::optional<SelectionMask>& b,int mode){if(mode==0)return b;if(!a)return mode==1?b:std::optional<SelectionMask>{};if(!b)return mode==2?a:std::optional<SelectionMask>{};const int x=std::min(a->x,b->x),y=std::min(a->y,b->y),right=std::max(a->x+a->width,b->x+b->width),bottom=std::max(a->y+a->height,b->y+b->height);SelectionMask s{x,y,right-x,bottom-y,{}};s.mask.resize(s.width*s.height);for(int row=0;row<s.height;++row)for(int col=0;col<s.width;++col){const bool av=selectionContains(a,x+col,y+row),bv=selectionContains(b,x+col,y+row);s.mask[row*s.width+col]=mode==1?(av||bv):mode==2?(av&&!bv):(av&&bv);}return trimSelection(std::move(s));}
 inline std::optional<SelectionMask> invertSelection(const std::optional<SelectionMask>& selection,int width,int height){if(!selection)return {};SelectionMask out{0,0,width,height,{}};out.mask.resize(width*height);bool any=false;for(int y=0;y<height;++y)for(int x=0;x<width;++x){out.mask[y*width+x]=!selectionContains(selection,x,y);any|=out.mask[y*width+x]!=0;}return any?std::optional<SelectionMask>{std::move(out)}:std::optional<SelectionMask>{};}
-struct SelectionClipboard {int width=0,height=0;std::optional<int> originX,originY;std::vector<std::uint32_t> pixels;std::vector<unsigned char> mask;};
+struct SelectionClipboard {
+ int width=0,height=0;std::optional<int> originX,originY;std::vector<std::uint32_t> pixels;std::vector<unsigned char> mask;
+ // Internal indexed transform sources retain IDs. External clipboards remain
+ // RGBA. Generic sampling uses the first palette entry; RotSprite uses the
+ // current opaque-ID union, while translation retains capture-time offsets.
+ mutable std::shared_ptr<const std::unordered_set<std::uint32_t>> opaqueIds, rotationOpaqueIds, capturedOpaqueIds;
+ mutable bool capturedOpaquePixels=false;
+ bool opaque(std::uint32_t value)const{return opaqueIds?value!=0&&opaqueIds->count(value)!=0:(value>>24)!=0;}
+ bool rotationOpaque(std::uint32_t value)const{return rotationOpaqueIds?value!=0&&rotationOpaqueIds->count(value)!=0:opaque(value);}
+ bool translationOpaque(std::uint32_t value,bool repeat=false,bool deferred=false)const{if(deferred)return repeat?opaque(value):rotationOpaque(value);return capturedOpaqueIds&&(!repeat||capturedOpaquePixels)?value!=0&&capturedOpaqueIds->count(value)!=0:opaque(value);}
+};
 }
