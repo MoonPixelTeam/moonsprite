@@ -7266,3 +7266,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按legacy convolveLayer和真实预览／历史命令迁移全部40种卷积预设：索引色按首项ID取色、全部有alpha资源并集规划内容范围、可见色板最近色回写，无资源分配。稀疏扩张保留format、offset、storage origin和画布外原始ID；越界直接透明。卷积专用选区判断承接旧版非零掩码语义。复用既有后台SurfaceTask、色板快照和SurfaceChange／kind14历史，拒绝过期色板、模式、身份与代数，预览取消完整恢复。
 
 10080组实际旧版结果、104组真实旧版预览／历史事务、52组原生链接变体及三个生产编码器检查通过；七项不同定向CTest全部通过（4.74秒及9.81秒），旧版两个测试文件8项通过（11.27秒）。首轮对照发现mask2语义差异，修正后重建受影响测试并通过最终验证。正式Release与最终测试重建均退出0，正式exe于2026-11-15 23:59:46更新（30,726,144bytes），新程序selection-interactions通过。来源976、Editor595、架构595源码／262targets与diff通过，strict因整体缺口退出1。生产indexed新建／转换／可编辑导入继续关闭；自动抗锯齿及其它索引色路径仍需迁移，整体INCOMPLETE。仅功能迁移，无性能优化、UI改造或人工完整桌面验收。详见[索引色卷积迁移](indexed-convolution-migration-20261115.md)。阶段保存推送dev，保留用户数据、缓存和日志。
+
+
+## 2026-11-16 索引色自动抗锯齿阶段
+
+按实际legacy算法、合成采样、选中目标和PixelEdit迁移普通indexed抗锯齿，涵盖三种来源、内部颜色、自定义颜色、选区、背景排除、共享去重和多目标顺序模拟。保留format／几何／原始ID；蒙版采样捕获色板。按用户确认取消完整恢复，Undo／Redo保留当前色板点历史及raw dense patch语义，不套用卷积kind14历史。
+
+2268组实际旧版结果／历史／取消、38组关联变体、45个真实命令场景、两种色板变化历史及三个生产编码器检查通过。七项定向CTest全部通过85.47秒，旧版定向8项通过、90项跳过9.19秒。正式Release构建退出0；唯一正式产物native/build/Release/moonsprite-native.exe于2026-11-16 00:58:42更新，30737408bytes。新正式程序selection-interactions通过（2.74秒）。来源978文件及证据快照、Editor595、架构595源码／263targets和diff检查通过；strict因整体已知迁移缺口退出1。详见[索引色自动抗锯齿迁移](indexed-antialias-migration-20261116.md)。生产indexed准入继续关闭，整体INCOMPLETE。仅功能迁移，无性能优化、UI改造或人工完整桌面验收。阶段保存推送dev，保留用户数据、缓存和日志。
