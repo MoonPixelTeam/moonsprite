@@ -206,23 +206,36 @@ bool Document::eraseMatchingColor(Point point,WandOptions options,bool preview){
  const auto* slot=timeline_.findCel(layer().id,frame().id);if(!slot&&!mask)return false;
  const auto resolved=slot?timeline_.resolveSurface(slot->id):timeline::Resolution{};if(!mask&&(resolved.issue!=timeline::LinkIssue::None||!resolved.surface||!resolved.source))return false;
  const auto& targetSurface=mask?mutableActiveMask()->surface:*resolved.surface;
- const auto source=!mask&&options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):mask?attachedMaskCanvas(targetSurface):canvasPixels();
+ raster::validate(targetSurface);
+ const auto colors=std::make_shared<const RasterColorContext>(fillColors(*this));
+ std::vector<Pixel> source;
+ if(!mask&&options.visibleLayers){const auto sampling=compileCompositeSamplingBounds(timeline_,frame().id,*colors);source=compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,colors.get(),&sampling);}
+ else if(mask)source=attachedMaskCanvas(targetSurface);
+ else{source.resize(std::size_t(width_)*height_);for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto index=raster::worldIndex(targetSurface,x,y);if(index)source[std::size_t(y)*width_+x]=colors->toolColor(targetSurface.format,targetSurface.pixels[*index]);}}
  // Legacy matches the full source first, then intersects the existing selection.
  // A selection must not become an artificial connectivity barrier.
  const auto matched=magicWandSelection(source,width_,height_,point.x,point.y,options);if(!matched)return false;
+ // Legacy clearSelection clips to the original visible content bounds. Hidden
+ // or unknown words inside those bounds are cleared too; outside words stay.
+ int left=targetSurface.width,top=targetSurface.height,right=0,bottom=0;
+ for(int y=0;y<targetSurface.height;++y)for(int x=0;x<targetSurface.width;++x)if(colors->contentVisible(targetSurface.format,targetSurface.pixels[std::size_t(y)*targetSurface.width+x])){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x+1);bottom=std::max(bottom,y+1);}
+ if(right<=left||bottom<=top)return false;
+ const auto contentLeft=std::int64_t(targetSurface.offsetX)+left,contentTop=std::int64_t(targetSurface.offsetY)+top,contentRight=std::int64_t(targetSurface.offsetX)+right,contentBottom=std::int64_t(targetSurface.offsetY)+bottom;
  std::vector<Delta> deltas;
  for(int y=matched->y;y<matched->y+matched->height;++y)for(int x=matched->x;x<matched->x+matched->width;++x){
+  if(x<contentLeft||y<contentTop||x>=contentRight||y>=contentBottom)continue;
   if(!selectionContains(matched,x,y)||(selection_&&!selectionContains(selection_,x,y)))continue;
   const auto before=raster::readWorld(targetSurface,x,y);if(before)deltas.push_back({std::size_t(y)*width_+x,before,0});
  }
  if(deltas.empty())return false;
  // Clear existing storage only; unlike a brush, erasing cannot expand a sparse Cel.
  auto* owner=mask?&mutableActiveMask()->surface:timeline_.mutableOwnedSurface(resolved.source->id);if(!owner)return false;
- pendingLookup_.reset(width_,height_);
+ const PixelAddressSpace address{width_,height_,raster::coordinate(std::int64_t(owner->storageOriginX.value_or(0))-owner->offsetX),raster::coordinate(std::int64_t(owner->storageOriginY.value_or(0))-owner->offsetY)};
+ clearPendingStroke();pendingLookup_.reset(width_,height_);
  if(mask)prepareMaskStroke(false);
  strokePixels_=&static_cast<std::vector<Pixel>&>(owner->pixels);strokeCanvasStorage_=raster::fullCanvas(*owner,width_,height_);strokeStride_=owner->width;strokeOffsetX_=owner->offsetX;strokeOffsetY_=owner->offsetY;
- strokeAddress_={width_,height_,raster::coordinate(std::int64_t(owner->storageOriginX.value_or(0))-owner->offsetX),raster::coordinate(std::int64_t(owner->storageOriginY.value_or(0))-owner->offsetY)};
- clearPendingStroke();imageStamp_.reset();inheritedStrokeBaseline_.clear();imageEraseCoverage_.clear();inkStampCoverage_.clear();brush_={};active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();change_={};pending_=std::move(deltas);
+ strokeAddress_=address;strokeColors_=!mask&&owner->format==timeline::RasterFormat::Indexed?colors:nullptr;
+ imageStamp_.reset();inheritedStrokeBaseline_.clear();imageEraseCoverage_.clear();inkStampCoverage_.clear();brush_={};active_=true;projectStrokeStarted_=std::chrono::steady_clock::now();change_={};pending_=std::move(deltas);
  for(std::size_t i=0;i<pending_.size();++i){const auto& d=pending_[i];pendingLookup_.set(d.index,int(i));strokePixel(d.index)=0;change_.include(int(d.index%width_),int(d.index/width_));}publishChange();
  if(preview)return true;HistoryLabelScope label(*this,U"魔术橡皮擦");return commitStroke();
 }

@@ -7319,3 +7319,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy generateAirbrushParticles、paintBrush、输入与计时调用链核对普通 indexed／RGBA 喷枪。既有粒子位置、独立盖章、旋转、源像素对称、重复画布和选区行为通过实际对照。补齐普通笔画提交时的 256 点／包围面积不超过点数三倍的密集区域历史，修复大面积喷涂 Undo 对隐藏原始色号的错误重映射；复用原 helper，并以读取回调保留笔画画布地址和选区／液化 owner-local 地址。取消继续遵循旧版 PixelEdit，不扩大滤镜取消修复。
 
 1,470 组真实旧版逐批结果／取消／Undo／Redo 对照（含 126 组密集历史）、197 组原生关联图层／链接帧／三个生产编码器变体通过。旧版三文件 19 项通过（4.13 秒）；最终 22 项定向 CTest 全通过（150.12 秒）。正式 Release 构建退出 0，唯一 exe 于 07:02:20 更新（30,760,960 bytes），新正式程序绘画工具实际输入诊断通过（1.68 秒）。来源 994／证据快照、Editor597、架构597源码／270targets及diff通过；strict 因其它缺口退出1。详见[喷枪迁移](airbrush-migration-20261116.md)。生产 indexed 准入仍关闭，整体 INCOMPLETE；没有性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存与日志。
+
+## 2026-11-16 魔术橡皮擦阶段
+
+按实际 legacy workspace-magic-eraser、magicWandSelection、clearSelection 和 PixelEdit 迁移 indexed／RGBA 匹配与擦除。修复 indexed 源字未解析颜色、可见合成缺少色板上下文、擦除未裁切到原始可见内容边界及 pending lookup 初始化顺序。保留完整源匹配后求选区交集、稀疏／负偏移／画布外存储、关联图层与链接帧、点／密集历史和旧版取消规则。蒙版按实际解码后的标量存储核对；实际输入诊断补齐独立设置目录，生产 UI 与设置逻辑不变。
+
+2,492 组实际旧版对照（含 60 组密集历史）、144 组链接／编码变体和 48 组蒙版事务全部通过；旧版两文件 25 项测试通过（8.32 秒），9 项定向 CTest 通过（21.30 秒）。正式 Release 构建退出 0，唯一 exe 于 07:32:45 更新（30,764,544 bytes），新正式程序 `--magic-eraser-only` 实际输入检查退出 0。来源 996／证据快照、Editor597、架构597源码／271targets及diff通过；strict 因其它缺口退出1。详见[魔术橡皮擦迁移](magic-eraser-migration-20261116.md)。生产 indexed 准入仍关闭，全仓 INCOMPLETE；仅功能迁移，没有完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存与日志。

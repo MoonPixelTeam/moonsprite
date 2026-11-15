@@ -10063,6 +10063,10 @@ void Editor::smokePolygonShape(){
  replaceDocumentForSmoke(Document(8,6));currentDocument().beginStroke({1,1},0xff998877);currentDocument().commitStroke();require(currentDocument().convertLayerToTilemap(2,2,U"Polygon tiles"),"Polygon tile fixture");currentDocument().setTilemapMode(tiles::Mode::Create);fitCanvas();refresh();auto h=currentDocument().historyPosition();click(0,0);click(4,0);click(4,4);key(ui::kKeyEnter);require(currentDocument().historyPosition()==h+1&&currentDocument().canvasPixels()[1*8+3]!=0,"Polygon actual tile authority single edit");currentDocument().undo();currentDocument().setTilemapMode(tiles::Mode::Paint);runShortcutCommand("tool.pencil");useShapeTool(ShapeKind::Polygon);require(!currentTools().shapeTool,"Polygon Paint gate");replaceDocumentForSmoke(Document(48,32));fitCanvas();refresh();runShortcutCommand("tool.pencil");
 }
 void Editor::smokeMagicEraser(){
+ const auto previousDirectory=workspacePresetTestDirectory_;
+ const auto testDirectory=assets_.parent_path()/"magic-eraser-test-owned"/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));
+ std::filesystem::create_directories(testDirectory);workspacePresetTestDirectory_=testDirectory;
+ struct RestoreDirectory{std::function<void()> restore;~RestoreDirectory(){restore();}}restoreDirectory{[&]{workspacePresetTestDirectory_=previousDirectory;}};
  smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;paletteFocused_=false;replaceDocumentForSmoke(Document(3,1));requestFocus();
  auto require=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
  currentDocument().beginStroke({0,0},0xff0000ff);currentDocument().commitStroke();currentDocument().beginStroke({1,0},0xffff0000);currentDocument().commitStroke();currentDocument().beginStroke({2,0},0xff0000ff);currentDocument().commitStroke();const auto source=currentDocument().pixels();const auto start=currentDocument().historySize();currentTools().magicEraserContiguous=false;currentTools().wandOptions={};
