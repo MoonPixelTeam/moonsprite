@@ -540,7 +540,7 @@ public:
   bool fillSelectionOrCanvas(Pixel color);
   const std::optional<OutlineSettings>& outlineSettings()const{return outlineSettings_;}
   void setImportedOutlineSettings(std::optional<OutlineSettings> value){outlineSettings_=std::move(value);}
-  struct OutlineTask {std::shared_ptr<Document> draft;std::uint64_t identity=0,revision=0;OutlineSettings settings;std::vector<MaskSlotKey> masks;bool boundary=false,changed=false;};
+  struct OutlineTask {std::shared_ptr<Document> draft;std::uint64_t identity=0,revision=0;OutlineSettings settings;std::vector<MaskSlotKey> masks;bool boundary=false,changed=false,completed=false;};
   OutlineTask captureOutlineTask(const OutlineSettings&,const std::vector<MaskSlotKey>& masks={},bool boundary=false);
   static bool runOutlineTask(OutlineTask&,const std::function<bool()>& cancelled);
   bool publishOutlineTask(const OutlineTask&);

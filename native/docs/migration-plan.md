@@ -7273,3 +7273,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际legacy算法、合成采样、选中目标和PixelEdit迁移普通indexed抗锯齿，涵盖三种来源、内部颜色、自定义颜色、选区、背景排除、共享去重和多目标顺序模拟。保留format／几何／原始ID；蒙版采样捕获色板。按用户确认取消完整恢复，Undo／Redo保留当前色板点历史及raw dense patch语义，不套用卷积kind14历史。
 
 2268组实际旧版结果／历史／取消、38组关联变体、45个真实命令场景、两种色板变化历史及三个生产编码器检查通过。七项定向CTest全部通过85.47秒，旧版定向8项通过、90项跳过9.19秒。正式Release构建退出0；唯一正式产物native/build/Release/moonsprite-native.exe于2026-11-16 00:58:42更新，30737408bytes。新正式程序selection-interactions通过（2.74秒）。来源978文件及证据快照、Editor595、架构595源码／263targets和diff检查通过；strict因整体已知迁移缺口退出1。详见[索引色自动抗锯齿迁移](indexed-antialias-migration-20261116.md)。生产indexed准入继续关闭，整体INCOMPLETE。仅功能迁移，无性能优化、UI改造或人工完整桌面验收。阶段保存推送dev，保留用户数据、缓存和日志。
+
+
+## 2026-11-16 索引色描边阶段
+
+按实际legacy描边采样／选区边界／命令和PixelEdit迁移普通indexed描边：保留三种位置、四种kernel、八方向、厚度、背景排除、智能色相、跟随透明度与参考颜色顺序。采样按首项ID颜色和有alpha资源并集，写回当前可见色板最近ID，无资源分配。复用OutlineTask、稀疏扩张及提取共享的点／dense历史helper；保留format、offset、storage origin、画布外raw ID、关联owner与缺失Cel身份。候选Timeline统一安装，后台携带色板并拒绝未完成／取消／过期结果，标量蒙版保持隔离。Undo／Redo沿旧版当前色板点归一化及raw dense patch语义；取消保持原作品。无修改保留既有原生几何的适配差异已明示。
+
+4732组真实旧版结果／历史、60组链接变体、三种生产编码和事务边界检查通过。重建后12项定向CTest通过39.58秒，旧版14项通过、85项跳过7.43秒（另一个文件因筛选跳过）。补验蒙版夹具被已有内容准入拒绝后，改用既有测试的直接蒙版构造，不扩展本阶段生产入口。正式Release构建退出0，唯一正式exe于2026-11-16 02:06:15更新（30,740,480bytes）；新程序--outline-check通过1.93秒、selection-interactions通过2.91秒。本阶段合计13项不同CTest及一个直接界面诊断通过。来源981文件及快照、Editor596、架构596源码／264targets和diff检查通过；strict因整体已知缺口退出1。生产indexed新建／转换／可编辑导入继续关闭，整体INCOMPLETE。详见[索引色描边迁移](indexed-outline-migration-20261116.md)。仅功能迁移，无性能优化、UI改造或人工完整桌面／图像验收。阶段保存推送dev，保留用户数据、缓存和日志。

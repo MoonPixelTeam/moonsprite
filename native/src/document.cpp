@@ -15,6 +15,7 @@
 #include "indexed_color_adjustment.h"
 #include "raster_geometry.h"
 #include "raster_pixel_edit.h"
+#include "indexed_pixel_history.h"
 #include "cel_properties.h"
 #include <limits>
 #include "layer_blend.h"
@@ -905,20 +906,6 @@ SelectionMask checkedFloatingBounds(const SelectionTransform& t){
 std::size_t floatingDestinationArea(const SelectionMask& b,int width,int height){const auto l=std::max<std::int64_t>(0,b.x),t=std::max<std::int64_t>(0,b.y),r=std::min<std::int64_t>(width,std::int64_t(b.x)+b.width),bottom=std::min<std::int64_t>(height,std::int64_t(b.y)+b.height);return r>l&&bottom>t?std::size_t(r-l)*std::size_t(bottom-t):0;}
 
 struct ImmediateTransformPlan {std::string owner;const timeline::Surface* before=nullptr;ConvolutionSurfacePlan allocation;};
-// commitPixelEdit retains expanded storage and replays small indexed edits via
-// writeLayerPacked. Dense patches keep raw IDs, including hidden palette IDs.
-template<class Edit> void indexedSelectionDenseHistory(Edit& edit,const timeline::Surface& after){
- if(edit.pixels.size()<256)return;PixelRegion dirty;for(const auto& delta:edit.pixels)dirty.include(int(delta.index%after.width),int(delta.index/after.width));
- if(std::size_t(dirty.w)*dirty.h>edit.pixels.size()*3)return;
- auto& dense=edit.contentHistory.dense.emplace();dense.x=dirty.x;dense.y=dirty.y;dense.width=dirty.w;dense.height=dirty.h;
- for(int y=dirty.y;y<dirty.y+dirty.h;++y)for(int x=dirty.x;x<dirty.x+dirty.w;++x)dense.after.push_back(after.pixels[std::size_t(y)*after.width+x]);dense.before=dense.after;
- for(const auto& delta:edit.pixels)dense.before[(delta.index/after.width-dirty.y)*dirty.w+delta.index%after.width-dirty.x]=delta.before;edit.pixels.clear();
-}
-template<class Edit> void indexedSelectionHistory(Edit& edit,const std::string& celId,const timeline::Surface& before,const timeline::Surface& after){
- edit.contentHistory.targetCelId=celId;edit.contentHistory.pixelAddress={after.width,after.height,after.storageOriginX.value_or(0),after.storageOriginY.value_or(0)};
- for(int y=0;y<after.height;++y)for(int x=0;x<after.width;++x){const auto i=std::size_t(y)*after.width+x;const auto old=raster::readWorld(before,std::int64_t(after.offsetX)+x,std::int64_t(after.offsetY)+y);if(old!=after.pixels[i])edit.pixels.push_back({i,old,after.pixels[i]});}
- indexedSelectionDenseHistory(edit,after);
-}
 // legacy tools-selection-transform-apply.ts: owner-local flip or world capture.
 timeline::Surface immediateTransformCandidate(const timeline::Surface& before,const std::optional<SelectionMask>& capture,const SelectionTransform& transform,bool wholeFlip,bool packedFlip,bool horizontal,int width,int height,color_mode::PixelFormat format,color_mode::Mode mode,const PaletteState& palette){
  const RasterColorContext colors(palette.entries,palette.order(),mode,format);auto normalize=[&](Pixel value){return colors.packedValue(before.format,value);};
