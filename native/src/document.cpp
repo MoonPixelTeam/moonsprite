@@ -1407,16 +1407,23 @@ void Document::capturePerfectInkCoverage(std::uint64_t key){if(!capturingPerfect
 void Document::rollbackPerfectTail(){capturingPerfectTail_=false;for(const auto& [i,v]:perfectTailPixels_){const bool changed=strokePixel(i)!=v.value;strokePixel(i)=strokeColors_&&changed?strokeColors_->packedValue(timeline::RasterFormat::Indexed,v.value):v.value;pendingLookup_.set(i,v.pending);if(v.pending>=0)pending_[v.pending].after=v.after;change_.include(int(i%width_),int(i/width_));}pending_.resize(perfectPendingStart_);for(const auto& [i,v]:perfectTailErase_){if(v)imageEraseCoverage_[i]=*v;else imageEraseCoverage_.erase(i);}for(const auto& [i,v]:perfectTailInk_){if(v)inkStampCoverage_[i]=*v;else inkStampCoverage_.erase(i);}perfectTailPixels_.clear();perfectTailErase_.clear();perfectTailInk_.clear();hasPreviousStamp_=false;}
 bool Document::applySmoothBrush(const std::vector<std::size_t>& visited,int strength,std::optional<std::chrono::steady_clock::time_point> started){
  if(active()||!rasterToolsAvailable()||!layer().kind.empty()||!activeMaskId_.empty()||visited.empty())return false;
+ const auto began=started.value_or(std::chrono::steady_clock::now());
  for(auto key:visited)if(key>=std::size_t(width_)*height_)throw std::invalid_argument("Invalid smooth coverage");
  // Legacy smooth-brush reads a missing active display as transparent; with no
  // opaque neighbors the smoothing kernel cannot produce any changed pixel.
  const auto* slot=timeline_.findCel(layer().id,frame().id);if(!slot)return false;
  const auto resolved=timeline_.resolveSurface(slot->id);if(resolved.issue!=timeline::LinkIssue::None||!resolved.surface)throw std::logic_error("Invalid smooth source");const auto& surface=*resolved.surface;raster::validate(surface);
- auto changed=smoothBrushPixels(width_,height_,visited,selection_,strength,[&](int x,int y){return raster::readWorld(surface,x,y);},[&](int x,int y){return x>=surface.offsetX&&y>=surface.offsetY&&std::int64_t(x)<std::int64_t(surface.offsetX)+surface.width&&std::int64_t(y)<std::int64_t(surface.offsetY)+surface.height;});
- for(auto it=changed.begin();it!=changed.end();){it->second=normalizeCanvasPacked(it->second);const int x=int(it->first%width_),y=int(it->first/width_);if((selection_&&!selectionContains(selection_,x,y))||raster::readWorld(surface,x,y)==it->second)it=changed.erase(it);else ++it;}
+ const bool indexed=surface.format==timeline::RasterFormat::Indexed;
+ auto changed=smoothBrushPixels(width_,height_,visited,selection_,strength,[&](int x,int y){return raster::readWorld(surface,x,y);},[&](int x,int y){return raster::worldIndex(surface,x,y).has_value();},indexed);
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ for(auto it=changed.begin();it!=changed.end();){it->second=colors.packedValue(surface.format,it->second);const int x=int(it->first%width_),y=int(it->first/width_);if((selection_&&!selectionContains(selection_,x,y))||raster::readWorld(surface,x,y)==it->second)it=changed.erase(it);else ++it;}
  if(changed.empty())return false;
- beginStroke({0,0},0,{},nullptr,0,nullptr,false);if(!active_)return false;if(started)projectStrokeStarted_=*started;
- try{pending_.reserve(changed.size());for(const auto& entry:changed){const auto index=entry.first;const auto before=strokePixel(index);if(before==entry.second)continue;pending_.push_back({index,before,entry.second});pendingLookup_.set(index,int(pending_.size()-1));strokePixel(index)=entry.second;change_.include(int(index%width_),int(index/width_));}HistoryLabelScope label(*this,U"平滑");return commitStroke();}catch(...){cancelStroke();throw;}
+ // Legacy smoothing records only existing storage. Ordinary beginStroke expands
+ // sparse owners; use the existing owner-local PixelEdit replay instead.
+ Edit edit{{},state_,nextState_};edit.contentHistory.targetCelId=slot->id;edit.contentHistory.pixelAddress=PixelAddressSpace{surface.width,surface.height,surface.storageOriginX.value_or(0),surface.storageOriginY.value_or(0)};edit.pixels.reserve(changed.size());
+ for(const auto& [key,value]:changed){const auto index=raster::worldIndex(surface,int(key%width_),int(key/width_));if(!index)throw std::logic_error("Smooth result outside storage");edit.pixels.push_back({*index,surface.pixels[*index],value});}
+ indexedSelectionDenseHistory(edit,surface,true);
+ reserveHistoryEntries();applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"平滑");projectInformation_.drawing(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-began).count()));return true;
 }
 bool Document::plotStrokeColorReplacement(std::size_t index,int coverage){
  if(!strokeColorReplacement_)return false;

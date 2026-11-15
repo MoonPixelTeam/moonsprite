@@ -7300,3 +7300,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按真实 legacy paintBrush／paintLine、symmetry 和 brushMaskOffsets 承接普通 indexed／RGBA 笔刷的完整源印章对称映射及源坐标抖动。修复源印章提前裁切与线段预览范围遗漏，用既有矩阵逆映射补齐有界遍历，保留原 raster 相位、间距、顺序和现有覆盖／完美像素尾部／单笔历史事务。
 
 4,032 组实际旧版样本在普通、动态及两种完美像素路径中通过，另有 109 组关联图层／链接帧事务；覆盖全部 32 种轴组合、三种中心／存储场景、七种笔刷和三种墨水。最终 14 项定向 CTest 全通过（16.99 秒），旧版三文件 28 项通过（12.91 秒）。唯一正式 Release 和测试目标构建退出 0，正式 exe 于 04:58:49 更新（30,754,304 bytes）；新程序笔刷预览、ISO 和选区交互诊断通过。来源 988／证据快照、Editor597、架构597源码／267targets通过；strict 因其它缺口退出1。详见[笔刷对称组合迁移](brush-symmetry-migration-20261116.md)。生产 indexed 准入继续关闭，整体 INCOMPLETE；旋转动态、任意参数序列、其它抖动模板与特殊图层完整组合未在本阶段宣称完成。仅功能迁移，无性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存和日志。
+
+## 2026-11-16 平滑笔刷索引色与存储语义阶段
+
+按实际 legacy applySmoothBrush／recordPixelKnownCurrent／commitPixelEdit 承接 indexed 原始 ID 采样、候选归一化和点／密集历史。修复普通索引色被 RGBA 透明检查误判为空白；复用已有 owner-local PixelEdit 事务，避免普通笔画入口扩张稀疏图层，保留几何、storage origin、格式、当前链接帧与共享内容。覆盖仍仅在释放时提交，取消收集不改作品，绘制统计和单步撤销沿用既有契约。
+
+4,548 组真实旧版平滑／提交／Undo／Redo 对照、12 组密集历史和 135 组原生关联图层／链接帧变体通过，变化的 indexed 链接变体另验三种生产编码。旧版 29 项测试通过（3.61 秒），最终 11 项定向 CTest 全通过（20.23 秒）。唯一正式 Release 构建退出 0，exe 于 05:44:38 更新（30,755,840 bytes），新程序笔刷预览与选区交互诊断通过。来源 990／既有证据哈希、Editor597、架构597源码／268targets和diff通过；strict 因其它迁移缺口退出1。详见[平滑笔刷迁移](smooth-brush-migration-20261116.md)。生产 indexed 新建／转换／可编辑导入保持关闭，整体 INCOMPLETE；没有性能优化、UI 修改或完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存和日志。

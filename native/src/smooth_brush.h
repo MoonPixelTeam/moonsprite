@@ -21,13 +21,15 @@ struct SmoothBrushArea {
  }
 };
 // Direct port of legacy core/smooth-brush.ts applySmoothBrush. Read is the immutable
-// stroke-start RGBA source in world coordinates. Keep insertion order for JS Map/Set ties.
-template<class Read> std::unordered_map<std::size_t,std::uint32_t> smoothBrushPixels(int width,int height,const std::vector<std::size_t>& visited,const std::optional<SelectionMask>& selection,int strength,Read read,std::function<bool(int,int)> stored={}){
+// stroke-start packed source in world coordinates. Indexed samples compare raw
+// IDs (including hidden/unknown IDs); only RGBA discards invisible RGB.
+// Keep insertion order for JS Map/Set ties.
+template<class Read> std::unordered_map<std::size_t,std::uint32_t> smoothBrushPixels(int width,int height,const std::vector<std::size_t>& visited,const std::optional<SelectionMask>& selection,int strength,Read read,std::function<bool(int,int)> stored={},bool indexed=false){
  using Color=std::uint32_t;const double amount=std::clamp(strength,0,100);std::unordered_map<std::size_t,Color> working;if(amount==0)return working;
  static constexpr int dx[8]={0,1,1,1,0,-1,-1,-1},dy[8]={-1,-1,0,1,1,1,0,-1};
  const int passes=1+int(std::ceil(std::max(0.0,amount-50)/8));const double radius=1+3*std::max(0.0,amount-50)/50;struct Kernel{int x,y;double weight;};std::vector<Kernel> kernel;const int reach=int(std::ceil(radius));for(int y=-reach;y<=reach;++y)for(int x=-reach;x<=reach;++x){const double distance=(x*x+y*y)/((radius+.5)*(radius+.5));if(distance<1)kernel.push_back({x,y,(1-distance)*(1-distance)});}
  const std::unordered_set<std::size_t> included(visited.begin(),visited.end());auto allowed=[&](int x,int y){return x>=0&&y>=0&&x<width&&y<height;};auto writable=[&](int x,int y){return allowed(x,y)&&(!stored||stored(x,y));};
- auto source=[&](int x,int y)->Color{if(!allowed(x,y))return 0;const Color p=read(x,y);return (p>>24)==0?0:p;};
+ auto source=[&](int x,int y)->Color{if(!allowed(x,y))return 0;const Color p=read(x,y);return !indexed&&(p>>24)==0?0:p;};
  auto original=[&](int x,int y)->Color{if(!allowed(x,y))return 0;auto it=working.find(std::size_t(y)*width+x);return it==working.end()?source(x,y):it->second;};
  auto touchesBody=[&](int x,int y){for(int sx:{-1,1})for(int sy:{-1,1})if(source(x+sx,y)&&source(x,y+sy)&&source(x+sx,y+sy))return true;return false;};
  std::unordered_set<std::size_t> spur;const int maxSpur=1+int(std::floor(amount/50));

@@ -5634,6 +5634,11 @@
       "brushSymmetry20261116": {
         "legacyEvidence": "Actual paintBrush/paintLine transform the complete source footprint before clipping destinations; brushMaskOffsets filters dither in source coordinates before symmetryPoints. Actual perfect-tail beginBrushTailEdit/revertPixelEdit/mergePixelEdits and commit history closures are the semantic oracle. Internal reuse under legacy/LICENSE reviewed.",
         "nativeAdaptation": "Retain existing Document stroke, palette context, coverage, shared owners and history. Admit offcanvas source stamp pixels and conservatively inverse-map canvas corners for the existing bounded line traversal without changing raster phase/order/spacing; dynamic solid dither is tested before symmetry. New actual legacy oracle compares 4032 indexed/RGBA cases across four ordinary/dynamic/perfect paths plus 109 linked variants, canvas preview/update/cancel/commit/Undo/Redo, format and storage mapping. Sparse allocation timing remains the previous native adaptation. See docs/brush-symmetry-migration-20261116.md; global migration and production indexed admission remain incomplete. Final official Release and test targets built successfully; exe 2026-11-16 04:58:49 / 30754304 bytes. Fourteen targeted CTests passed in 16.99s, including official brush-preview/isometric-ui/selection-interactions. Three actual legacy test files / 28 tests passed in 12.91s. Provenance 988 and evidence snapshots, Editor 597 and architecture 597 sources / 267 targets passed; strict remains INCOMPLETE (exit 1). No manual full desktop/image acceptance or performance work."
+      },
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
       }
     },
     {
@@ -8451,6 +8456,11 @@
       "brushSymmetry20261116": {
         "legacyEvidence": "Actual paintBrush/paintLine transform the complete source footprint before clipping destinations; brushMaskOffsets filters dither in source coordinates before symmetryPoints. Actual perfect-tail beginBrushTailEdit/revertPixelEdit/mergePixelEdits and commit history closures are the semantic oracle. Internal reuse under legacy/LICENSE reviewed.",
         "nativeAdaptation": "Retain existing Document stroke, palette context, coverage, shared owners and history. Admit offcanvas source stamp pixels and conservatively inverse-map canvas corners for the existing bounded line traversal without changing raster phase/order/spacing; dynamic solid dither is tested before symmetry. New actual legacy oracle compares 4032 indexed/RGBA cases across four ordinary/dynamic/perfect paths plus 109 linked variants, canvas preview/update/cancel/commit/Undo/Redo, format and storage mapping. Sparse allocation timing remains the previous native adaptation. See docs/brush-symmetry-migration-20261116.md; global migration and production indexed admission remain incomplete. Final official Release and test targets built successfully; exe 2026-11-16 04:58:49 / 30754304 bytes. Fourteen targeted CTests passed in 16.99s, including official brush-preview/isometric-ui/selection-interactions. Three actual legacy test files / 28 tests passed in 12.91s. Provenance 988 and evidence snapshots, Editor 597 and architecture 597 sources / 267 targets passed; strict remains INCOMPLETE (exit 1). No manual full desktop/image acceptance or performance work."
+      },
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
       }
     },
     {
@@ -31332,11 +31342,20 @@
         "legacy/src/renderer/src/store/workspace-commands-tool.ts",
         "legacy/src/renderer/src/core/tool-preferences.ts",
         "legacy/src/renderer/src/components/app/EditorToolOptions.tsx",
-        "legacy/src/renderer/src/components/app/EditorToolRail.memory.test.tsx"
+        "legacy/src/renderer/src/components/app/EditorToolRail.memory.test.tsx",
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts"
       ],
       "adaptation": "Native C++17 callbacks and existing pixel edit/history UI adapters.",
       "paintTools20261024": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
-      "scope": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks."
+      "scope": "Exact legacy airbrush uniform-disk random particles, bounded clock catchup and stationary timer, simple full-opacity particles; native Timer/capture and text preferences. Smooth legacy spur/contour/component stages, ordered coverage with commit-only transaction and purple overlay, independent size/shape/angle/strength. Liquify legacy categorical warp, stable local-source hold, arc-length provisional push, mask/selection destination constraints, native owner-local sparse deltas and reversible unlink/geometry/pixel compound history. Default optimized rotation footprint uses existing native legacy spans. No pressure/speed framework claimed migrated. Focused legacy fixtures and actual UI checks.",
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
+      }
     },
     {
       "file": "src/liquify.h",
@@ -39914,12 +39933,21 @@
         "legacy/src/renderer/src/core/tools.test.ts",
         "legacy/src/renderer/src/core/outline-color-preferences.test.ts",
         "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
-        "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        "legacy/src/renderer/src/store/workspace-selection-effects-support.ts",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/smooth-brush.test.ts",
+        "legacy/src/renderer/src/components/canvas-input-stroke.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts"
       ],
       "indexedOutline20261116": {
         "legacyEvidence": "Actual outlineSelection/outlineSelectionBoundary/outlinePixelSamples expand indexed canvas coverage, scan the union of opaque resource IDs for content bounds, read first matching ID colors and write nearest visible palette IDs without allocating resources. Preserve three positions, four kernels, eight directions, reference-color tie ordering, smartHue/followOpacity, background exclusion and selection boundary behavior. commitPixelEdit/history.ts replay small edits through the current palette; at least256 points with region area at most3x point count use raw dense patches. Undo retains expanded geometry and current palette. MoonSprite Source-Available License1.0 checked.",
         "nativeAdaptation": "Reuse OutlineTask, RasterColorContext, sparse expanded surfaces and existing point/dense history helper extracted without changing its contract into indexed_pixel_history.h. Preserve indexed format, offset, storage origin, outside raw IDs, linked shared owners and missing Cel identity. Stage complete candidate Timeline before installing indexed edits; worker commits its validated expanded draft with PixelEdit history. Capture palette and reject unfinished, cancelled, stale identity/revision/mode/precision/palette results. Scalar masks retain coverage semantics and isolated owner data. Preview cancellation retains original IDs/palette/geometry as already approved by user. Existing native no-change transactions retain original geometry; legacy may expand storage without producing a PixelEdit, so no byte-equivalent no-op geometry claim. Production indexed new/convert/editable import remains gated. See docs/indexed-outline-migration-20261116.md.",
         "validation": "4732 actual legacy indexed outline results and PixelEdit histories,60 linked variants,preview/cancel/repeat/direct/worker commit,three production encoders,scalar mask isolation,stale identity/revision/mode/palette,unfinished/in-flight cancelled tasks,budget rejection atomicity,shared dedup/multi-owner/locked batch/missing Cel checks passed. Twelve rebuilt targeted CTest tests passed39.58s. Initial mask fixture rejected by existing public content gate; replaced with direct mask fixture as in earlier indexed tests, without expanding production admission. Legacy tools.test.ts14 passed85 skipped; outline-color-preferences.test.ts skipped by filter,7.43s. Provenance981,evidence snapshots,Editor596,architecture596 sources/264targets and diff passed; strict exits1 for known overall gaps. Official Release build exit0; sole executable updated2026-11-16 02:06:15,30740480bytes. New official --outline-check passed1.93s and selection-interactions passed2.91s (CTest total2.95s);13 distinct CTest tests and one direct GUI diagnostic passed in this stage. No new manual image/full desktop acceptance. See docs/indexed-outline-migration-20261116.md."
+      },
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
       }
     },
     {
@@ -40123,6 +40151,46 @@
       "brushSymmetry20261116": {
         "legacyEvidence": "Actual paintBrush/paintLine transform the complete source footprint before clipping destinations; brushMaskOffsets filters dither in source coordinates before symmetryPoints. Actual perfect-tail beginBrushTailEdit/revertPixelEdit/mergePixelEdits and commit history closures are the semantic oracle. Internal reuse under legacy/LICENSE reviewed.",
         "nativeAdaptation": "Retain existing Document stroke, palette context, coverage, shared owners and history. Admit offcanvas source stamp pixels and conservatively inverse-map canvas corners for the existing bounded line traversal without changing raster phase/order/spacing; dynamic solid dither is tested before symmetry. New actual legacy oracle compares 4032 indexed/RGBA cases across four ordinary/dynamic/perfect paths plus 109 linked variants, canvas preview/update/cancel/commit/Undo/Redo, format and storage mapping. Sparse allocation timing remains the previous native adaptation. See docs/brush-symmetry-migration-20261116.md; global migration and production indexed admission remain incomplete. Final official Release and test targets built successfully; exe 2026-11-16 04:58:49 / 30754304 bytes. Fourteen targeted CTests passed in 16.99s, including official brush-preview/isometric-ui/selection-interactions. Three actual legacy test files / 28 tests passed in 12.91s. Provenance 988 and evidence snapshots, Editor 597 and architecture 597 sources / 267 targets passed; strict remains INCOMPLETE (exit 1). No manual full desktop/image acceptance or performance work."
+      }
+    },
+    {
+      "file": "scripts/make-smooth-brush-oracle.cjs",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/smooth-brush.test.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/renderer/src/components/canvas-input-stroke.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts"
+      ],
+      "scope": "Actual legacy smooth brush indexed/RGBA sampling and PixelEdit transaction verification. Overall migration remains incomplete.",
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
+      }
+    },
+    {
+      "file": "tests/smooth_brush_test.cpp",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/core/smooth-brush.ts",
+        "legacy/src/renderer/src/core/smooth-brush.test.ts",
+        "legacy/src/renderer/src/core/document-model.ts",
+        "legacy/src/renderer/src/core/history.ts",
+        "legacy/src/renderer/src/core/animation.ts",
+        "legacy/src/renderer/src/components/canvas-input-stroke.ts",
+        "legacy/src/renderer/src/store/workspace-commands-history.ts"
+      ],
+      "scope": "Actual legacy smooth brush indexed/RGBA sampling and PixelEdit transaction verification. Overall migration remains incomplete.",
+      "smoothBrush20261116": {
+        "legacyEvidence": "Actual applySmoothBrush compares raw indexed IDs including nonzero hidden/unknown/transparent IDs; only RGBA discards invisible RGB. recordPixelKnownCurrent normalizes before comparison. Existing storage only, ordered coverage, release-only commit, current-palette point history and raw dense region threshold256/areaFactor3. Internal reuse under legacy/LICENSE reviewed.",
+        "nativeAdaptation": "Pass indexed format to existing smooth kernel; normalize candidates with RasterColorContext. Reuse owner-local PixelEdit replay without ordinary brush expansion; preserve active alias slot, sparse geometry/origin/format and shared content. Extend existing dense history helper to prepare before/after from an unchanged owner. Preserve existing RGBA liquify default and coverage cancellation; no new palette or indexed admission. See docs/smooth-brush-migration-20261116.md.",
+        "validation": "4548 actual legacy indexed/RGBA sampling, commit, geometry and Undo/Redo cases, including12 dense histories;135 native linked variants with current alias/shared storage checks and three production encoders for changed indexed variants passed. Legacy29 tests passed3.61s. Final11 targeted CTests passed20.23s, including rebuilt indexed-outline/indexed-antialias and new official brush-preview/selection-interactions. Official Release build exit0;sole exe2026-11-16 05:44:38,30755840bytes. Provenance990/unchanged evidence hashes,Editor597,architecture597 sources/268targets and diff passed;strict remains1 for global known gaps. Global migration remains incomplete;no full manual desktop/image acceptance or performance work. See docs/smooth-brush-migration-20261116.md."
       }
     }
   ],
