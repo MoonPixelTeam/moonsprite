@@ -55,6 +55,7 @@
 #include "pixel_clipboard.h"
 #include "native_color_picker.h"
 #include "color_editor_popup.h"
+#include "native_palette_selection.h"
 #include "about_dialog.h"
 #include "ui/tooltips.h"
 #include <commdlg.h>
@@ -944,7 +945,7 @@ private:
 
   gfx::Rect paletteSelectionBorder_;
 
-  struct PaletteEdge {gfx::Rect border,clip;std::vector<gfx::Rect> pieces;int side=0;};
+  using PaletteEdge=PaletteSelectionEdge;
 
   std::vector<PaletteEdge> paletteSelectionEdges_;
 

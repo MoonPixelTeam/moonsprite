@@ -2,6 +2,8 @@
 #include "color_value_model.h"
 #include "color_editor_modes.h"
 #include "native_widgets.h"
+#include "native_status_toast.h"
+#include "native_palette_selection.h"
 #include "ui/message.h"
 #include "ui/manager.h"
 #include "ui/resize_event.h"
@@ -13,6 +15,61 @@ namespace moon {
 // edits are live, closing commits valid HEX (invalid text resets), never reverts.
 class ColorEditorPopup final : public PixelDialog {
   const PixelFont& font_;const Skin& skin_;const Skin& icons_;
+  PixelStatusToast copyToast_;
+  ui::Timer copyFeedback_{900,this};int copiedSwatch_=0;
+  std::function<void(const std::string&)> clipboard_=[](const auto& text){clip::set_text(text);};
+  PixelScrollBar* paletteBar_=nullptr;
+  gfx::Rect paletteViewport_;int paletteScroll_=0,paletteTotal_=0;
+  std::vector<PaletteSelectionEdge> paletteContour_;
+  bool paletteHover_=false;
+  bool paletteFilters_=false;
+  void paintPaletteSelection(ui::Graphics& g,gfx::Point origin)const{
+    if(mode_==ColorValueMode::Palette)paintPaletteContour(skin_,paletteContour_,g,origin,paletteViewport_,paletteHover_);
+  }
+  class ComparisonSwatch final:public StatusToastControl<PixelButton>{
+  public:
+    using StatusToastControl<PixelButton>::StatusToastControl;
+    void onPaint(ui::PaintEvent& ev)override{
+      PixelButton::onPaint(ev);
+      if(active){auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());
+        g.fillRect(skin_["accent"],{r.x,r.y,r.w,1});g.fillRect(skin_["accent"],{r.x,r.y2()-1,r.w,1});
+        if(!(swatchOpenEdges&1))g.fillRect(skin_["accent"],{r.x,r.y,1,r.h});
+        if(!(swatchOpenEdges&2))g.fillRect(skin_["accent"],{r.x2()-1,r.y,1,r.h});}
+      toast().paint(*ev.graphics(),bounds().origin());
+    }
+  };
+  class PaletteChoice final:public StatusToastControl<PixelButton>{
+    bool held_=false;
+  public:
+    std::function<void()> reveal;
+    std::function<void(ui::Graphics&,gfx::Point)> paintSelection;
+    std::function<bool(gfx::Point)> outlineContains;
+    std::function<void(gfx::Point)> pointerMoved;
+    using StatusToastControl<PixelButton>::StatusToastControl;
+    gfx::Rect border()const{return gfx::Rect(*paletteMaterialRect).offset(bounds().origin());}
+    bool selectionHit(gfx::Point point)const{return active&&outlineContains(point);}
+    void onPaint(ui::PaintEvent& ev)override{
+      // The shared palette cell paints the original full swatch. Selection owns
+      // the external material, with the same helper used by pointer hit tests.
+      PixelButton::onPaint(ev);
+      if(paintSelection)paintSelection(*ev.graphics(),bounds().origin());
+      toast().paint(*ev.graphics(),bounds().origin());
+    }
+    bool onProcessMessage(ui::Message* msg)override{
+      if(msg->type()==ui::kFocusEnterMessage&&reveal)reveal();
+      if(pointerMoved&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseEnterMessage||msg->type()==ui::kMouseLeaveMessage))pointerMoved(static_cast<ui::MouseMessage*>(msg)->position());
+      if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseUpMessage){
+        auto mouse=static_cast<ui::MouseMessage*>(msg);if(!mouse->left())return false;
+        const bool inside=paletteViewport().contains(mouse->position())&&(border().contains(mouse->position())||selectionHit(mouse->position()));
+        if(msg->type()==ui::kMouseDownMessage){if(!isEnabled()||!inside)return false;held_=true;requestFocus();captureMouse();setSelected(true);return true;}
+        if(held_){held_=false;releaseMouse();setSelected(false);if(inside&&isEnabled())Click();return true;}
+        return false;
+      }
+      if(held_&&msg->type()==ui::kFocusLeaveMessage){held_=false;releaseMouse();setSelected(false);}
+      if(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc&&held_){held_=false;releaseMouse();setSelected(false);return true;}
+      return PixelButton::onProcessMessage(msg);
+    }
+  };
   ColorValueMode mode_=ColorValueMode::Hsv;
   ColorValues values_{};std::uint32_t previous_=0,current_=0;
   bool updating_=false,resident_=false,sampling_=false;
@@ -28,15 +85,53 @@ class ColorEditorPopup final : public PixelDialog {
   std::function<void(std::uint32_t)> changed_;
   std::function<void(bool)> samplingChanged_;
   inline static constexpr ColorValueMode modes_[]{ColorValueMode::Hsv,ColorValueMode::Rgb,ColorValueMode::Lab,ColorValueMode::Gray,ColorValueMode::Palette,ColorValueMode::Hsl,ColorValueMode::Cmyk};
-  PixelButton* button(std::u32string text,std::function<void()> action){auto b=new PixelButton(font_,skin_,std::move(text),std::move(action));addChild(b);return b;}
+  PixelButton* button(std::u32string text,std::function<void()> action){auto b=new StatusToastControl<PixelButton>(copyToast_,font_,skin_,std::move(text),std::move(action));addChild(b);return b;}
+  void refreshCopyFeedback(){
+    copyToast_.text=copiedSwatch_?U"已复制 "+unicodeText(colorValueHex(copiedSwatch_==1?previous_:current_)):U"";
+    previousButton_->active=copiedSwatch_==1;currentButton_->active=copiedSwatch_==2;
+    previousButton_->invalidate();currentButton_->invalidate();
+    if(!bounds().isEmpty())copyToast_.place(currentButton_->bounds(),bounds());
+    invalidate();
+  }
+  void copySwatch(bool previous){
+    clipboard_(colorValueHex(previous?previous_:current_));
+    copiedSwatch_=previous?1:2;copyFeedback_.stop();copyFeedback_.start();refreshCopyFeedback();
+  }
+  void paletteFilters(bool enabled){
+    if(paletteFilters_==enabled)return;paletteFilters_=enabled;
+    for(auto type:{ui::kMouseWheelMessage,ui::kMouseDownMessage}){
+      if(type==ui::kMouseDownMessage&&samplingFilters_)continue;
+      if(enabled)ui::Manager::getDefault()->addMessageFilter(type,this);
+      else ui::Manager::getDefault()->removeMessageFilter(type,this);
+    }
+  }
+  void replacePalette(const std::vector<std::uint32_t>& palette){
+    for(auto b:paletteButtons_){removeChild(b);delete b;}paletteButtons_.clear();
+    for(auto c:palette){const int index=int(paletteButtons_.size());
+      auto b=new PaletteChoice(copyToast_,font_,skin_,U"",[this,c]{apply(c);});addChild(b);
+      b->paletteCell=true;b->paletteSharedSelection=true;b->swatch=c;b->paletteViewport=[this]{return paletteViewport_;};
+      b->reveal=[this,index]{revealPalette(index);};
+      b->outlineContains=[this](gfx::Point point){return paletteViewport_.contains(point)&&paletteContourContains(skin_,paletteContour_,point);};
+      b->paintSelection=[this](ui::Graphics& g,gfx::Point origin){paintPaletteSelection(g,origin);};
+      b->pointerMoved=[this](gfx::Point point){const bool hover=paletteViewport_.contains(point)&&paletteContourContains(skin_,paletteContour_,point);if(hover!=paletteHover_){paletteHover_=hover;invalidate();}};
+      paletteButtons_.push_back(b);
+    }
+  }
+  void revealPalette(int index){
+    if(mode_!=ColorValueMode::Palette||index<0||index>=int(paletteButtons_.size()))return;
+    const auto cell=gfx::Rect(*paletteButtons_[index]->paletteMaterialRect).offset(paletteButtons_[index]->bounds().origin());
+    if(cell.y<paletteViewport_.y)paletteScroll_-=paletteViewport_.y-cell.y;
+    else if(cell.y2()>paletteViewport_.y2())paletteScroll_+=cell.y2()-paletteViewport_.y2();
+    layout();invalidate();
+  }
   void sync(bool derive){
     if(derive)values_=colorToValues(current_,mode_);
     updating_=true;const auto fields=colorValueFields(mode_);
     for(int i=0;i<5;++i){const bool show=i<int(fields.size());entries_[i]->setVisible(show);sliders_[i]->setVisible(show);if(show){sliders_[i]->minimum=fields[i].minimum;sliders_[i]->maximum=fields[i].maximum;sliders_[i]->percentage=fields[i].percentage;sliders_[i]->value=int(std::floor(values_[i]+.5));if(!entries_[i]->hasFocus())entries_[i]->setText(std::to_string(int(std::floor(values_[i]+.5))));sliders_[i]->invalidate();}}
     for(int i=0;i<7;++i){tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));tabs_[i]->active=mode_==modes_[i];tabs_[i]->invalidate();}
-    for(auto b:paletteButtons_){b->setVisible(mode_==ColorValueMode::Palette);b->active=b->swatch==current_;b->invalidate();}
+    for(auto b:paletteButtons_){b->active=b->swatch==current_;b->invalidate();}
     if(!hex_->hasFocus())hex_->setText(colorValueHex(current_));
-    previousButton_->swatch=previous_;currentButton_->swatch=current_;previousButton_->invalidate();currentButton_->invalidate();updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();invalidate();
+    previousButton_->swatch=previous_;currentButton_->swatch=current_;updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();refreshCopyFeedback();
   }
   void apply(std::uint32_t color,bool derive=true){current_=color;sync(derive);if(changed_)changed_(color);}
   void updateField(int i,double value){const auto fields=colorValueFields(mode_);if(i>=int(fields.size())||!std::isfinite(value))return;values_[i]=std::clamp(value,double(fields[i].minimum),double(fields[i].maximum));apply(colorFromValues(mode_,values_,current_),false);}
@@ -46,6 +141,7 @@ class ColorEditorPopup final : public PixelDialog {
     if(enabled==samplingFilters_)return;samplingFilters_=enabled;
     auto manager=ui::Manager::getDefault();
     for(auto type:{ui::kMouseDownMessage,ui::kMouseMoveMessage,ui::kMouseUpMessage,ui::kFocusLeaveMessage,ui::kKeyDownMessage}){
+      if(type==ui::kMouseDownMessage&&paletteFilters_)continue;
       if(enabled)manager->addMessageFilter(type,this);else manager->removeMessageFilter(type,this);
     }
   }
@@ -64,25 +160,47 @@ class ColorEditorPopup final : public PixelDialog {
     at+=hexWidth+gap;place(previousButton_,{at,y,20,textControlHeight});place(currentButton_,{at+20,y,20,textControlHeight});
     place(sample_,{at+40+gap,y,22,textControlHeight});
     const auto fields=colorValueFields(mode_);for(int i=0;i<int(fields.size());++i){const int width=std::max(entries_[i]->widthForValue(unicodeText(std::to_string(fields[i].minimum))),entries_[i]->widthForValue(unicodeText(std::to_string(fields[i].maximum))));entries_[i]->setFixedContentWidth(width);place(sliders_[i],{x+27,y+22+i*22,w-27-width-2,textControlHeight});place(entries_[i],{x+w-width,y+22+i*22,width,textControlHeight});}
-    const int columns=std::max(1,w/15);for(int i=0;i<int(paletteButtons_.size());++i){place(paletteButtons_[i],{x+(i%columns)*15,y+22+(i/columns)*15,16,16});paletteButtons_[i]->setVisible(mode_==ColorValueMode::Palette && y+22+(i/columns)*15+16<=r.y2()-6);}
+    const auto body=uiDisplayRect({x,y+22,w,std::max(16,r.h-6-y-22)},origin);
+    paletteViewport_=body;
+    auto columns=[&]{return std::max(1,(paletteViewport_.w-uiScale)/(15*uiScale));};
+    auto total=[&]{const int rows=(int(paletteButtons_.size())+columns()-1)/columns();return rows?((rows-1)*15+16)*uiScale:0;};
+    const bool overflow=total()>body.h;if(overflow)paletteViewport_.w-=7*uiScale;
+    paletteTotal_=total();paletteScroll_=std::clamp(paletteScroll_,0,std::max(0,paletteTotal_-body.h));
+    paletteBar_->setDockBounds(PixelScrollBar::edgeBounds(body,true));paletteBar_->configure(paletteTotal_,body.h,paletteScroll_);
+    paletteBar_->setVisible(mode_==ColorValueMode::Palette&&overflow);
+    const int paletteColumns=columns();for(int i=0;i<int(paletteButtons_.size());++i){
+      const auto full=uiDisplayRect({(i%paletteColumns)*15,(i/paletteColumns)*15,16,16},paletteViewport_.origin()).offset(0,-paletteScroll_);
+      auto clipped=(paletteButtons_[i]->active?skin_.selectionMaterialBounds(full):full)&paletteViewport_;if(clipped.isEmpty())clipped={paletteViewport_.x,paletteViewport_.y,0,0};
+      auto b=paletteButtons_[i];b->paletteMaterialRect=gfx::Rect(full).offset(-clipped.origin());b->setBounds(clipped);
+      // Empty visible bounds keep offscreen buttons in the native Tab order;
+      // focus entry reveals them before the next paint, like browser overflow.
+      b->setVisible(mode_==ColorValueMode::Palette);
+    }
+    std::vector<bool> selected;for(auto b:paletteButtons_)selected.push_back(b->active);
+    paletteContour_=paletteSelectionContour(skin_,selected,paletteColumns,
+      {paletteViewport_.x,paletteViewport_.y-paletteScroll_,16*uiScale,16*uiScale},15,16);
+    copyToast_.place(currentButton_->bounds(),bounds());
   }
 public:
   std::function<bool(ui::Message*)> canvasSamplingInput;
-  ~ColorEditorPopup(){instances_.erase(std::remove(instances_.begin(),instances_.end(),this),instances_.end());samplingFilters(false);if(sampling_)try{setSampling(false);}catch(...){}}
+  ~ColorEditorPopup(){copyFeedback_.stop();paletteFilters(false);instances_.erase(std::remove(instances_.begin(),instances_.end(),this),instances_.end());samplingFilters(false);if(sampling_)try{setSampling(false);}catch(...){}}
   ColorEditorPopup(const PixelFont& font,const Skin& skin,const Skin& icons,std::filesystem::path storage)
-    :PixelDialog(skin,"",ClickBehavior::CloseOnClickInOtherWindow,EnterBehavior::DoNothingOnEnter),font_(font),skin_(skin),icons_(icons),storage_(std::move(storage)){
+    :PixelDialog(skin,"",ClickBehavior::CloseOnClickInOtherWindow,EnterBehavior::DoNothingOnEnter),font_(font),skin_(skin),icons_(icons),copyToast_(font,skin),storage_(std::move(storage)){
     setAutoRemap(false);setWantFocus(true);setTransparent(true);
     close_=button(U"",[this]{commitHex();closeWindow(nullptr);});close_->iconSkin=&icons_;
     const char32_t* names[]{U"HSV",U"RGB",U"LAB",U"GRAY",U"PLT",U"HSL",U"CMYK"};
-    for(int i=0;i<7;++i)tabs_[i]=button(names[i],[this,i]{commitHex();if(color_editor::enabled(sharedModes_,i)){mode_=modes_[i];sync(true);}});
-    hex_=new PixelEntry(font_,skin_);addChild(hex_);hex_->accept=[this]{commitHex();};hex_->blur=[this]{commitHex();};hex_->cancel=[this]{commitHex();closeWindow(nullptr);};
-    auto copy=[this](bool previous){clip::set_text(colorValueHex(previous?previous_:current_));};
-    previousButton_=button(U"",[copy]{copy(true);});currentButton_=button(U"",[copy]{copy(false);});previousButton_->recentColorSwatch=currentButton_->recentColorSwatch=true;previousButton_->swatchOpenEdges=2;currentButton_->swatchOpenEdges=1;
+    for(int i=0;i<7;++i)tabs_[i]=button(names[i],[this,i]{commitHex();if(color_editor::enabled(sharedModes_,i)){if(mode_!=modes_[i])paletteScroll_=0;mode_=modes_[i];sync(true);}});
+    hex_=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(hex_);hex_->accept=[this]{commitHex();};hex_->blur=[this]{commitHex();};hex_->cancel=[this]{commitHex();closeWindow(nullptr);};
+    previousButton_=new ComparisonSwatch(copyToast_,font_,skin_,U"",[this]{copySwatch(true);});addChild(previousButton_);
+    currentButton_=new ComparisonSwatch(copyToast_,font_,skin_,U"",[this]{copySwatch(false);});addChild(currentButton_);
+    previousButton_->recentColorSwatch=currentButton_->recentColorSwatch=true;previousButton_->swatchOpenEdges=2;currentButton_->swatchOpenEdges=1;
     sample_=button(U"",[this]{setSampling(!sampling_);});sample_->iconSkin=&icons_;sample_->icon="tool-eyedropper-normal";
-    for(int i=0;i<5;++i){auto slider=new PixelSlider(font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};
+    paletteBar_=new StatusToastControl<PixelScrollBar>(copyToast_,skin_,true);addChild(paletteBar_);paletteBar_->wheelStep=15*uiScale;paletteBar_->changed=[this](int value){paletteScroll_=value;layout();invalidate();};
+    copyFeedback_.Tick.connect([this]{copyFeedback_.stop();copiedSwatch_=0;refreshCopyFeedback();});
+    for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};
       slider->colorGradient=[this,i](double t){auto next=values_;const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return current_;next[i]=fields[i].minimum+t*(fields[i].maximum-fields[i].minimum);return colorFromValues(mode_,next,current_);};
-      auto entry=new PixelEntry(font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->Change.connect([this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size())updateField(i,v);}catch(...){}});entry->blur=[this]{sync(false);};entry->accept=[this]{sync(false);};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
-    Close.connect([this](ui::CloseEvent&){commitHex();if(sampling_)setSampling(false);changed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
+      auto entry=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->Change.connect([this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size())updateField(i,v);}catch(...){}});entry->blur=[this]{sync(false);};entry->accept=[this]{sync(false);};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
+    Close.connect([this](ui::CloseEvent&){commitHex();if(sampling_)setSampling(false);paletteFilters(false);changed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
     mode_=modes_[availableModes().front()];instances_.push_back(this);
     for(int i=0;i<7;++i)tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));
   }
@@ -93,7 +211,7 @@ public:
   static const std::vector<color_editor::Mode>& modePreferences(){return sharedModes_;}
   std::vector<int> availableModes()const{std::vector<int> result;for(const auto& item:sharedModes_)if(item.enabled)result.push_back(color_editor::catalogIndex(item.id));return result;}
   void refreshModePreferences(){
-    if(!color_editor::enabled(sharedModes_,int(mode_)))mode_=modes_[availableModes().front()];
+    if(!color_editor::enabled(sharedModes_,int(mode_))){mode_=modes_[availableModes().front()];paletteScroll_=0;}
     if(!bounds().isEmpty())sync(true);
   }
   ColorValueMode mode()const{return mode_;}
@@ -105,10 +223,10 @@ public:
   }
   void open(gfx::Rect trigger,gfx::Rect viewport,std::uint32_t color,std::u32string role,const std::vector<std::uint32_t>& palette,std::function<void(std::uint32_t)> changed,std::function<void(bool)> samplingChanged){
     previous_=current_=color;role_=std::move(role);changed_=std::move(changed);samplingChanged_=std::move(samplingChanged);sample_->setEnabled(bool(samplingChanged_));resident_=sampling_=false;setClickBehavior(ClickBehavior::CloseOnClickInOtherWindow);
-    for(auto b:paletteButtons_){removeChild(b);delete b;}paletteButtons_.clear();for(auto c:palette){auto b=button(U"",[this,c]{apply(c);});b->paletteCell=true;b->swatch=c;paletteButtons_.push_back(b);}
+    paletteScroll_=0;replacePalette(palette);
     int w=320,h=preferredHeight();std::ifstream in(storage_);in>>w>>h;w=std::clamp(w,1,640);h=std::clamp(h,1,500);const auto floor=minimumDialogSize(w*uiScale);w=std::max(floor.w,std::min(w*uiScale,viewport.w));h=std::max(floor.h,std::min(h*uiScale,viewport.h));
     const int x=std::clamp(trigger.x,viewport.x,std::max(viewport.x,viewport.x2()-w)),y=trigger.y2()+h<=viewport.y2()?trigger.y2():std::max(viewport.y,trigger.y-h);
-    setBounds({x,y,w,h});sync(true);openWindow();
+    setBounds({x,y,w,h});sync(true);openWindow();paletteFilters(true);
   }
   bool sampling()const{return sampling_;}
   void sampled(std::uint32_t color){apply(color);}
@@ -118,8 +236,24 @@ public:
     const auto visible=availableModes();int tabs=1-int(visible.size());for(int i:visible)tabs+=font_.measure(tabs_[i]->caption)+8;
     return {(12+tabs+hex_->widthForValue(U"#FFFFFFFF")+40+22+6)*uiScale,preferredHeight()*uiScale};
   }
-  void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,U"颜色编辑 "+role_);const auto fields=colorValueFields(mode_);for(int i=0;i<int(fields.size());++i)font_.draw(g,unicodeText(fields[i].label),r.x+6,r.y+DialogLayout::bodyTop+DialogLayout::rowStep+i*DialogLayout::rowStep+5,skin_["text"]);if(mode_==ColorValueMode::Palette&&paletteButtons_.empty())font_.draw(g,U"颜色板为空",r.x+6,r.y+49,skin_["muted"]);}
+  void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();{UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,U"颜色编辑 "+role_);const auto fields=colorValueFields(mode_);for(int i=0;i<int(fields.size());++i)font_.draw(g,unicodeText(fields[i].label),r.x+6,r.y+DialogLayout::bodyTop+DialogLayout::rowStep+i*DialogLayout::rowStep+5,skin_["text"]);if(mode_==ColorValueMode::Palette&&paletteButtons_.empty())font_.draw(g,U"颜色板为空",r.x+6,r.y+49,skin_["muted"]);}paintPaletteSelection(g,bounds().origin());copyToast_.paint(g,bounds().origin());}
   bool onProcessMessage(ui::Message* msg)override{
+    if(msg->type()==ui::kMouseDownMessage&&msg->fromFilter()&&isVisible()&&mode_==ColorValueMode::Palette){
+      const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto recipient=msg->recipient();
+      if(mouse->left()&&(!recipient||recipient->window()==this)&&paletteViewport_.contains(mouse->position())&&paletteContourContains(skin_,paletteContour_,mouse->position())){
+        for(auto b:paletteButtons_)if(b->active&&b->bounds().contains(mouse->position()))return b->onProcessMessage(msg);
+      }
+    }
+    if(msg->type()==ui::kMouseDownMessage&&msg->fromFilter()&&!sampling_)return false;
+    if(msg->type()==ui::kMouseMoveMessage&&!msg->fromFilter()){
+      const bool hover=isVisible()&&mode_==ColorValueMode::Palette&&paletteViewport_.contains(static_cast<ui::MouseMessage*>(msg)->position())&&paletteContourContains(skin_,paletteContour_,static_cast<ui::MouseMessage*>(msg)->position());
+      if(hover!=paletteHover_){paletteHover_=hover;invalidate();}
+    }
+    if(msg->type()==ui::kMouseWheelMessage&&isVisible()&&mode_==ColorValueMode::Palette){
+      const auto mouse=static_cast<ui::MouseMessage*>(msg);const auto recipient=msg->recipient();
+      if((!recipient||recipient->window()==this)&&paletteViewport_.contains(mouse->position()))return paletteBar_->onProcessMessage(msg);
+    }
+    if(msg->fromFilter()&&msg->type()==ui::kMouseWheelMessage)return false;
     if(sampling_&&canvasSamplingInput&&canvasSamplingInput(msg))return true;
     if(msg->type()==ui::kMouseDownMessage&&!msg->fromFilter()){auto m=static_cast<ui::MouseMessage*>(msg);if(m->left()&&m->position().y<bounds().y+20*uiScale){titlePress_=m->position();titleHeld_=true;}}
     if(titleHeld_&&msg->type()==ui::kMouseMoveMessage&&hasCapture()){auto p=static_cast<ui::MouseMessage*>(msg)->position()-titlePress_;if(std::hypot(double(p.x),double(p.y))>=3*uiScale){resident_=true;setClickBehavior(ClickBehavior::DoNothingOnClick);}}
@@ -129,6 +263,60 @@ public:
   }
   std::uint32_t color()const{return current_;}
   void testSampling(){setSampling(true);}
+  void smokeFeedbackAndPalette(const std::function<void(ColorEditorPopup*,const char*)>& snapshot){
+    auto check=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+    const auto savedClipboard=clipboard_;std::vector<std::string> copied;clipboard_=[&](const auto& text){copied.push_back(text);};
+    const auto savedChanged=changed_;int changes=0;changed_=[&](auto){++changes;};
+    const auto initial=current_;const auto frame=bounds();
+    previousButton_->Click();check(copied==std::vector<std::string>{colorValueHex(previous_)}&&copiedSwatch_==1&&previousButton_->active&&!currentButton_->active&&copyFeedback_.isRunning()&&copyFeedback_.interval()==900,"Previous clipboard feedback lifecycle");
+    currentButton_->Click();check(copied.back()==colorValueHex(current_)&&copiedSwatch_==2&&currentButton_->active&&!previousButton_->active&&changes==0&&current_==initial,"Repeated clipboard copy color isolation");
+    check(copyToast_.text==U"已复制 "+unicodeText(copied.back()),"Copy toast actual HEX");
+    const auto focused=manager()->getFocus();snapshot(this,"color-editor-copy-smoke.bmp");check(manager()->getFocus()==focused,"Copy toast stole focus");
+    copyFeedback_.Tick();check(!copiedSwatch_&&copyToast_.text.empty()&&!previousButton_->active&&!currentButton_->active&&!copyFeedback_.isRunning(),"Copy feedback expiry");
+    tabs_[4]->Click();setBounds({frame.x+1,frame.y+1,frame.w,preferredHeight()*uiScale});
+    const auto toolbar=hex_->bounds();const auto primary=current_;check(paletteBar_->isVisible()&&paletteTotal_>paletteViewport_.h,"Compact palette missing overflow");
+    auto wheel=[&](int amount,gfx::Point at,ui::Widget* recipient=nullptr){ui::MouseMessage message(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,at,{0,amount});message.setFromFilter(true);message.setRecipient(recipient?recipient:paletteButtons_[0]);return onProcessMessage(&message);};
+    check(wheel(1,paletteViewport_.center())&&paletteScroll_==15*uiScale,"Palette wheel over color did not scroll down");
+    check(wheel(-1,paletteViewport_.center())&&paletteScroll_==0,"Palette reverse wheel");
+    check(!wheel(1,hex_->bounds().center())&&paletteScroll_==0,"Palette wheel escaped viewport");
+    check(!wheel(1,paletteViewport_.center(),parent())&&paletteScroll_==0,"Palette wheel intercepted another window");
+    auto pointer=[&](auto* widget,ui::MessageType type,gfx::Point at){ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);return widget->onProcessMessage(&message);};
+    auto thumb=paletteBar_->thumbBounds();pointer(paletteBar_,ui::kMouseDownMessage,thumb.center());check(paletteBar_->hasCapture(),"Palette scrollbar thumb capture");
+    pointer(paletteBar_,ui::kMouseMoveMessage,{thumb.center().x,paletteBar_->bounds().y2()+40});pointer(paletteBar_,ui::kMouseUpMessage,{thumb.center().x,paletteBar_->bounds().y2()+40});
+    check(!paletteBar_->hasCapture()&&paletteScroll_==paletteTotal_-paletteViewport_.h,"Palette scrollbar drag/release");
+    wheel(-100000,paletteViewport_.center());pointer(paletteBar_,ui::kMouseDownMessage,{paletteBar_->bounds().center().x,paletteBar_->bounds().y2()-2});
+    check(paletteScroll_==paletteViewport_.h/2&&!paletteBar_->hasCapture(),"Palette scrollbar page click");
+    check(wheel(100000,paletteViewport_.center())&&paletteScroll_==paletteTotal_-paletteViewport_.h,"Palette bottom clamp");
+    check(!paletteButtons_.back()->bounds().isEmpty()&&hex_->bounds()==toolbar&&changes==0&&current_==primary,"Palette scrolling changed color or toolbar");
+    snapshot(this,"color-editor-palette-bottom-smoke.bmp");
+    auto last=paletteButtons_.back();const auto lastColor=last->swatch;const auto point=last->bounds().center();
+    pointer(last,ui::kMouseDownMessage,point);check(last->hasCapture()&&current_==primary&&changes==0,"Palette press prematurely applied color");
+    pointer(last,ui::kMouseUpMessage,point);check(!last->hasCapture()&&current_==lastColor&&changes==1,"Palette last color release binding");
+    const auto held=current_;pointer(last,ui::kMouseDownMessage,last->bounds().center());pointer(last,ui::kMouseUpMessage,{bounds().x,bounds().y});check(current_==held&&changes==1&&!last->hasCapture(),"Palette outside release cancellation");
+    wheel(-100000,paletteViewport_.center());check(paletteScroll_==0&&last->bounds().isEmpty(),"Palette top clamp");
+    manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
+    manager()->setFocus(last,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
+    check(last->hasFocus()&&!last->bounds().isEmpty()&&paletteScroll_>0,"Offscreen palette keyboard focus reveal");
+    ui::KeyMessage press(ui::kKeyDownMessage,ui::kKeySpace,ui::kKeyNoneModifier,0,0),release(ui::kKeyUpMessage,ui::kKeySpace,ui::kKeyNoneModifier,0,0);
+    last->onProcessMessage(&press);last->onProcessMessage(&release);check(changes==2&&current_==lastColor,"Palette keyboard activation");
+    const int oldScroll=paletteScroll_;tabs_[1]->Click();tabs_[4]->Click();check(oldScroll>0&&paletteScroll_==0,"Palette mode remount resets overflow");
+    setBounds({frame.x+1,frame.y+1,640*uiScale,400*uiScale});check(!paletteBar_->isVisible()&&paletteScroll_==0&&!paletteButtons_.back()->bounds().isEmpty(),"Palette resize did not reveal all colors");
+    setBounds({frame.x+1,frame.y+1,frame.w,preferredHeight()*uiScale});
+    current_=paletteButtons_.front()->swatch;sync(true);
+    check(paletteButtons_[0]->active&&paletteButtons_[1]->active,"Duplicate palette selection fixture");
+    paletteScroll_=1;layout();check(paletteScroll_==1,"Partial physical-pixel scroll");
+    for(bool hover:{false,true}){
+      paletteHover_=hover;auto mask=os::instance()->makeRgbaSurface(bounds().w,bounds().h);mask->clear();{ui::Graphics g(mask);paintPaletteSelection(g,bounds().origin());}
+      int visible=0;os::SurfaceLock lock(mask.get());for(int y=0;y<mask->height();++y)for(int x=0;x<mask->width();++x){const gfx::Point at(x+bounds().x,y+bounds().y);const bool painted=gfx::geta(mask->getPixel(x,y))!=0;visible+=painted;check((paletteViewport_.contains(at)&&paletteContourContains(skin_,paletteContour_,at))==painted,"Compact palette contour alpha/hit mismatch");}
+      check(visible>0,"Compact palette contour test had no visible selection");
+      const auto first=static_cast<PaletteChoice*>(paletteButtons_[0])->border();check(!paletteContourContains(skin_,paletteContour_,{first.x2()-uiScale,first.center().y}),"Duplicate selected colors retained internal outline");
+    }
+    currentButton_->Click();snapshot(this,"color-editor-palette-copy-smoke.bmp");copyFeedback_.Tick();
+    replacePalette({});sync(true);check(!paletteBar_->isVisible()&&paletteScroll_==0&&paletteContour_.empty(),"Empty palette retained scrolling/selection");
+    snapshot(this,"color-editor-palette-empty-smoke.bmp");
+    check(changes==2,"Palette layout or copy published a color");
+    changed_=savedChanged;clipboard_=savedClipboard;
+  }
   void smoke(){
     auto check=[](bool v,const char* why){if(!v)throw std::runtime_error(why);};
     check(icons_.assets.patches.count(sample_->icon)!=0,"Missing legacy eyedropper icon");

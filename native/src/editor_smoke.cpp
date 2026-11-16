@@ -8478,8 +8478,24 @@ void Editor::smokeColorEditor(){
     other.open({10,10,20,20},{0,0,1280,960},0x80443322,U"CMYK",{},[&](auto){++changes;},{});
     other.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);active->setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
     require(other.mode()==ColorValueMode::Cmyk,"Nested popup initial mode follows first enabled");
-    auto snapshot=[&](ColorEditorPopup* popup,const char* name){auto surface=os::instance()->makeRgbaSurface(popup->bounds().w,popup->bounds().h);surface->clear();{ui::Graphics g(surface);ui::PaintEvent ev(popup,&g);popup->onPaint(ev);}for(auto child:popup->children())if(child->isVisible()){const auto at=child->bounds().origin()-popup->bounds().origin();ui::Graphics g(nullptr,surface,at.x,at.y);ui::PaintEvent ev(child,&g);if(auto e=dynamic_cast<PixelEntry*>(child))e->onPaint(ev);else if(auto b=dynamic_cast<PixelButton*>(child))b->onPaint(ev);else if(auto slider=dynamic_cast<PixelSlider*>(child))slider->onPaint(ev);}writeSmokeFrame(surface.get(),assets_.parent_path()/name);};
+    auto snapshot=[&](ColorEditorPopup* popup,const char* name){
+      auto surface=os::instance()->makeRgbaSurface(popup->bounds().w,popup->bounds().h);surface->clear();
+      {ui::Graphics g(surface);ui::PaintEvent ev(popup,&g);popup->onPaint(ev);}
+      for(auto child:popup->children())if(child->isVisible()&&!child->bounds().isEmpty()){
+        const auto at=child->bounds().origin()-popup->bounds().origin();ui::Graphics g(nullptr,surface,at.x,at.y);
+        PhysicalViewportClip clip(g,gfx::Rect(child->bounds().size()));ui::PaintEvent ev(child,&g);
+        if(auto e=dynamic_cast<PixelEntry*>(child))e->onPaint(ev);else if(auto b=dynamic_cast<PixelButton*>(child))b->onPaint(ev);
+        else if(auto slider=dynamic_cast<PixelSlider*>(child))slider->onPaint(ev);else if(auto bar=dynamic_cast<PixelScrollBar*>(child))bar->onPaint(ev);
+      }
+      writeSmokeFrame(surface.get(),assets_.parent_path()/name);
+    };
     snapshot(&other,"color-editor-cmyk-smoke.bmp");other.testMode(ColorValueMode::Hsl);snapshot(&other,"color-editor-hsl-smoke.bmp");other.testMode(ColorValueMode::Cmyk);
+    {
+      std::vector<std::uint32_t> palette;for(unsigned i=0;i<128;++i)palette.push_back(0xff000000u|((i*37)&255)|(((i*71)&255)<<8)|(((i*13)&255)<<16));palette[1]=palette[0];
+      ColorEditorPopup overflow(font_,skin_,toolIcons_,assets_.parent_path()/"color-modes-test-owned"/"overflow-size.txt");overflow.setDisplay(display(),false);
+      overflow.open({20,20,20,20},{0,0,1280,960},0x80443322,U"色板",palette,{},{});overflow.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
+      overflow.smokeFeedbackAndPalette(snapshot);overflow.closeWindow(nullptr);
+    }
     showPreferences();toggle(6)->Click();require(applyPreferences(),"Disable active CMYK mode");resolve(false);
     require(active->mode()==ColorValueMode::Hsv&&other.mode()==ColorValueMode::Hsv&&changes==0&&currentDocument().palette().primary==before,"Live mode fallback changed color or missed common popup");
     other.testMode(ColorValueMode::Hsl);showPreferences();toggle(0)->Click();require(applyPreferences(),"Disable different mode");resolve(false);require(other.mode()==ColorValueMode::Hsl,"Valid current mode was reset");
