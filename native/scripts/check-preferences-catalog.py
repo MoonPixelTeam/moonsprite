@@ -15,10 +15,15 @@ body = source[source.index("{section === 'general'"):]
 labels = set()
 for match in re.finditer(r"toggle\(t\('([^']+)'|<(?:FormField|PreferenceToggle)\b[\s\S]*?label=\{t\('([^']+)'|<ColorValueControl\b[\s\S]*?roleLabel=\{t\('([^']+)'", body):
     labels.add(next(value for value in match.groups() if value))
-missing = [key for key in labels if 'U' + json.dumps(translations.get(key, key), ensure_ascii=False) not in catalog]
+# Explicit user scope change, 2026-11-16; raw legacy evidence remains intact.
+removed_labels = {'preferences.viewDragSensitivity', 'preferences.localHistoryEnabled', 'preferences.localHistoryLimit'}
+assert removed_labels <= labels, 'Retired legacy label evidence changed'
+missing = [key for key in labels - removed_labels if 'U' + json.dumps(translations.get(key, key), ensure_ascii=False) not in catalog]
 assert not missing, f'Missing legacy controls: {missing}'
 rows = re.findall(r'^  \{"([^"]+)",(\d+),', catalog, re.M)
 assert len(rows) == len({key for key, section in rows}), 'Duplicate preference IDs'
+removed_ids = {'editing.viewDragSensitivity.Select', 'undo.localHistoryEnabled', 'undo.localHistoryLimit.Number', 'tools.toolRail'}
+assert removed_ids.isdisjoint(key for key, section in rows), 'Removed preferences reintroduced'
 assert {int(section) for key, section in rows} == set(range(14)), 'Missing preference category'
 formats_source = (legacy / 'core/pixel-format.ts').read_text(encoding='utf-8')
 formats = re.search(r'PIXEL_FORMATS[^=]*=\s*\[([^\]]+)\]', formats_source).group(1)
@@ -34,4 +39,4 @@ for bar in range(4):
     commands = re.findall(r"id: '([^']+)'[^\n]*?label: '([^']+)'", (legacy / 'components/app/quick-command-registry.ts').read_text(encoding='utf-8'))
     for command, label in commands:
         assert any(key == f'quickCommands.bar{bar}.command.{command}' for key, section in rows), 'Missing quick command row'
-print(f'Preferences catalog: {len(rows)} component rows, 14 categories, {len(labels)} static labels and all quick command entries verified.')
+print(f'Preferences catalog: {len(rows)} component rows, 14 categories, {len(labels - removed_labels)} retained static labels and all quick command entries verified; 3 features explicitly removed by user.')

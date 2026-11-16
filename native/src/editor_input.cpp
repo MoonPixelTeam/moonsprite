@@ -755,9 +755,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
         if(msg->type()==ui::kMouseMoveMessage || (msg->type()==ui::kMouseUpMessage && mouse->button()==navigation_.panButton_)) {
 
-          const double sensitivity[]{.5,.75,1,1.5,2};const double factor=sensitivity[runtimePreferences_.index("editing.viewDragSensitivity.Select")];
-
-          const auto origin=navigation_.pan_.move({navigation_.pan_.pointer.x+int(std::lround((mouse->position().x-navigation_.pan_.pointer.x)*factor)),navigation_.pan_.pointer.y+int(std::lround((mouse->position().y-navigation_.pan_.pointer.y)*factor))});
+          const auto origin=navigation_.pan_.move({mouse->position().x,mouse->position().y});
 
           const auto previous=currentView().canvas;
 

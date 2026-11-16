@@ -69,7 +69,7 @@ class PreviewPanel : public ui::Widget {
 public:
 
   CheckerboardSettings checkerboard;
-  bool timelineAvailable=true,eyedropper=false;double dragSensitivity=1;
+  bool timelineAvailable=true,eyedropper=false;
   std::function<void(timeline::Pixel,bool)> sampled;
   void configurePreviewSource(std::function<preview::Point()> source);
   void togglePreviewFollow();

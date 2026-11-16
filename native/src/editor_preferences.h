@@ -10,6 +10,11 @@
 #include <stdexcept>
 
 namespace moon::preferences {
+// User scope decision 2026-11-16: retired settings must not survive as future records.
+inline bool removedSetting(const std::string& key) {
+  return key=="editing.viewDragSensitivity.Select" || key=="tools.toolRail" ||
+         key=="undo.localHistoryEnabled" || key=="undo.localHistoryLimit.Number";
+}
 // Actual consumers are in Editor. Entries without consumers stay unavailable.
 // Legacy: file-preferences.ts parsers/defaults and PreferencesDialog.persist.
 inline bool runtimeSetting(const std::string& key) {
@@ -18,7 +23,7 @@ inline bool runtimeSetting(const std::string& key) {
   static const std::vector<std::string> keys{
     "general.timelapseRecordingEnabled", "general.diagnostics.mode", "general.preferences.usageStatisticsEnabled", "appearance.pixelGridColor", "appearance.gridColor", "editing.pasteTarget.Select", "editing.brushSizeWheelReversed", "editing.canvasViewScrollbarsEnabled",
     "editing.wheelZoomEnabled", "editing.wheelZoomMode.Select",
-    "editing.rotationIndicatorPosition.Select", "editing.viewDragSensitivity.Select", "tools.gradientApplicationMode.Select",
+    "editing.rotationIndicatorPosition.Select", "tools.gradientApplicationMode.Select",
     "tools.moveLayerContentPreviewEnabled", "tools.moveLayerClickFlashEnabled", "tools.moveLayerClickFlashDuration.Select", "tablet.assistPanel", "tablet.tablet.pressureEnabled", "tools.gridAlignmentEnabled", "tools.smartAlignmentEnabled", "tools.alignmentGuidesVisible", "tools.alignmentThreshold.Number", "tools.shiftLinePreviewEnabled", "tools.balancedShiftLineEnabled", "tools.lineDirectionStep.Number", "tools.lassoPreviewClosed",
     "tools.eyedropperSwitchToPencil", "tools.eyedropperQuickSelect", "tools.eyedropperMagnifierStyle.Select", "tools.eyedropperMagnifierDistortionEnabled", "cursor.selectionSizeVisible",
     "cursor.selectionPreviewColorMode.Select", "cursor.selectionPreviewColor.Color",
@@ -44,6 +49,7 @@ struct RuntimeSettings {
     throw std::invalid_argument("Unknown preference: "+key);
   }
   std::string get(const std::string& key) const {
+    if(removedSetting(key))throw std::invalid_argument("Removed preference: "+key);
     if(const int i=color_editor::preferenceIndex(key);i>=0)return color_editor::enabled(colorEditorModes,i)?"true":"false";
     auto found=values.find(key);if(found!=values.end())return found->second;
     static const auto defaults=[] {std::map<std::string,std::string> result;for(const auto& entry:catalog())result[entry.id]=entry.kind==Kind::Select?std::to_string(entry.selected):entry.kind==Kind::Text?std::string():std::string(entry.value);return result;}();
@@ -72,7 +78,7 @@ struct RuntimeSettings {
   }
   std::string encode() const {
     std::ostringstream out;out<<"MoonSprite editor-preferences 1\n";
-    for(const auto& [key,value]:values)out<<std::quoted(key)<<' '<<std::quoted(value)<<'\n';
+    for(const auto& [key,value]:values)if(!removedSetting(key))out<<std::quoted(key)<<' '<<std::quoted(value)<<'\n';
     std::ostringstream scales;for(int value:exportScales)scales<<value<<' ';out<<std::quoted("presets.exportScales")<<' '<<std::quoted(scales.str())<<'\n';
     out<<std::quoted("presets.layerDisplayColors")<<' '<<std::quoted(encodeLayerDisplayColors(layerDisplayColors))<<'\n';
     out<<std::quoted("colorLayers.modes")<<' '<<std::quoted(color_editor::encode(colorEditorModes))<<'\n';
@@ -84,6 +90,7 @@ struct RuntimeSettings {
     while(std::getline(input,line)){
       if(line.empty())continue;std::istringstream row(line);std::string key,value;
       if(!(row>>std::quoted(key)>>std::quoted(value)) || !(row>>std::ws).eof())throw std::runtime_error("Invalid editor preference record");
+      if(removedSetting(key))continue;
       if(key=="presets.layerDisplayColors"){next.layerDisplayColors=decodeLayerDisplayColors(value);continue;}
       if(key=="presets.exportScales"){next.exportScales=decodeExportScales(value);continue;}
       if(key=="colorLayers.modes"){next.colorEditorModes=color_editor::decode(value);continue;}

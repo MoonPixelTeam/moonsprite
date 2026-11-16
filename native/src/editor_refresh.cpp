@@ -92,7 +92,7 @@ void Editor::refresh(RefreshScope scope){
     if(advancedActive()&&(homeOpen_||!documentOpen_)){const auto oldView=canvasViewport();advancedMode_=0;currentView().canvas.offset(canvasViewport().center()-oldView.center());layoutToolRail();}
   }
   if(previewPanel_)previewPanel_->syncRelativeLuminance(currentView().relativeLuminance,false);
-  if(previewPanel_){const double values[]{.5,.75,1,1.5,2};previewPanel_->eyedropper=currentTools().eyedropperTool||eyedropperHeld_;previewPanel_->dragSensitivity=values[std::clamp(runtimePreferences_.index("editing.viewDragSensitivity.Select"),0,4)];previewPanel_->timelineAvailable=columnShown(2)&&!timelineHidden_;}
+  if(previewPanel_){previewPanel_->eyedropper=currentTools().eyedropperTool||eyedropperHeld_;previewPanel_->timelineAvailable=columnShown(2)&&!timelineHidden_;}
   // Canvas damage does not rebuild panel models or launch resource scans.
   const bool structure=needs(RefreshScope::Timeline)||needs(RefreshScope::Layout);
   const bool controls=structure||needs(RefreshScope::Tools)||needs(RefreshScope::Commands);

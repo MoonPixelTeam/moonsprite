@@ -12,13 +12,25 @@ int main(){try{
  RuntimeSettings prefs;check(prefs.index("files.exportProtection.Select")==0);prefs.set("files.exportProtection.Select","2");check(prefs.flag("files.exportSoundEnabled"));prefs.set("files.exportSoundEnabled","false");
  check(RuntimeSettings::normalizeExportScales({250.4,100,250,0,6401,6400,1.5})==std::vector<int>({250,100,6400,2}));check(RuntimeSettings::normalizeExportScales({})==std::vector<int>({100,200,400,1000,2000}));check(RuntimeSettings::decodeExportScales("bad")==prefs.exportScales);prefs.exportScales={150,250};check(prefs.defaultExportScale()==150);prefs.exportScales={250,100,150};check(prefs.defaultExportScale()==100);
  check(prefs.flag("editing.canvasViewScrollbarsEnabled"));check(prefs.flag("editing.wheelZoomEnabled"));
- check(prefs.index("editing.wheelZoomMode.Select")==1);check(prefs.index("editing.viewDragSensitivity.Select")==2);
- prefs.set("editing.wheelZoomEnabled","false");prefs.set("editing.viewDragSensitivity.Select","4");
+ check(prefs.index("editing.wheelZoomMode.Select")==1);check(prefs.index("editing.rotationIndicatorPosition.Select")==2);
+ prefs.set("editing.wheelZoomEnabled","false");prefs.set("editing.rotationIndicatorPosition.Select","0");
  prefs.layerDisplayColors={0xff112233u,0xff445566u};
  prefs.set("files.exportFormat.Select","6");prefs.set("cursor.selectionPreviewColor.Color","#123456");prefs.set("files.saveDirectory.Text",R"(D:\作品 目录\save)");
  std::istringstream input(prefs.encode());auto loaded=RuntimeSettings::decode(input);
  check(loaded.values==prefs.values&&loaded.exportScales==prefs.exportScales&&loaded.layerDisplayColors==prefs.layerDisplayColors);check(loaded.index("files.exportProtection.Select")==2);check(!loaded.flag("files.exportSoundEnabled"));check(loaded.index("files.exportFormat.Select")==6);check(!loaded.flag("editing.wheelZoomEnabled"));
- for(auto text:{"-1","5","1.5","NaN","2x"}){bool rejected=false;try{loaded.set("editing.viewDragSensitivity.Select",text);}catch(const std::exception&){rejected=true;}check(rejected);}
+ for(auto text:{"-1","3","1.5","NaN","2x"}){bool rejected=false;try{loaded.set("editing.rotationIndicatorPosition.Select",text);}catch(const std::exception&){rejected=true;}check(rejected);}
+ // Retired controls cannot be activated by an older native preferences file.
+ RuntimeSettings retired;std::ostringstream oldPreferences;oldPreferences<<"MoonSprite editor-preferences 1\n";
+ for(const auto key:{"editing.viewDragSensitivity.Select","tools.toolRail","undo.localHistoryEnabled","undo.localHistoryLimit.Number"}){
+  check(!runtimeSetting(key));check(std::none_of(catalog().begin(),catalog().end(),[&](const auto& entry){return std::string(entry.id)==key;}));
+  bool rejected=false;try{retired.set(key,"true");}catch(const std::exception&){rejected=true;}check(rejected);
+  retired.values[key]="true";rejected=false;try{retired.get(key);}catch(const std::exception&){rejected=true;}check(rejected);check(retired.encode().find(key)==std::string::npos);
+  oldPreferences<<std::quoted(key)<<" \"old value\"\n";
+ }
+ oldPreferences<<"\"undo.historyLimitEnabled\" \"true\"\n\"undo.historyLimit.Number\" \"250\"\n";
+ std::istringstream oldInput(oldPreferences.str());auto upgraded=RuntimeSettings::decode(oldInput);
+ check(upgraded.values.size()==2&&upgraded.flag("undo.historyLimitEnabled")&&upgraded.index("undo.historyLimit.Number")==250);
+ check(upgraded.encode().find("old value")==std::string::npos);
  loaded.set("cursor.brushEdgeThickness.Number","100");check(loaded.index("cursor.brushEdgeThickness.Number")==8);
  for(auto text:{"bad","#12345","#GG0000"}){bool rejected=false;try{loaded.set("cursor.selectionPreviewColor.Color",text);}catch(const std::exception&){rejected=true;}check(rejected);}
  loaded.set("undo.historyLimit.Number","999999");check(loaded.index("undo.historyLimit.Number")==10000);check(!loaded.flag("undo.historyLimitEnabled"));

@@ -20,7 +20,7 @@ void Editor::initializeReferencePanel(){
 }
 void Editor::syncReferencePanels(){
  if(!referencePanel_)return;referenceSession().synchronize(currentDocument().referenceImages());
- const double sensitivity[]{.5,.75,1,1.5,2};auto update=[&](ReferenceImagePanel& panel){panel.eyedropper=currentTools().eyedropperTool||eyedropperHeld_;panel.dragSensitivity=sensitivity[std::clamp(runtimePreferences_.index("editing.viewDragSensitivity.Select"),0,4)];if(previewPanel_)panel.checkerboard=previewPanel_->checkerboard;panel.sync();};update(*referencePanel_);
+ auto update=[&](ReferenceImagePanel& panel){panel.eyedropper=currentTools().eyedropperTool||eyedropperHeld_;if(previewPanel_)panel.checkerboard=previewPanel_->checkerboard;panel.sync();};update(*referencePanel_);
  for(auto& item:referenceWindows_){const bool show=item.identity==currentDocument().identity()&&!item.window->closed()&&referenceSession().window(item.window->id());item.window->setVisible(show);if(show)update(item.window->panel());}
  const auto windows=referenceSession().windows;for(const auto& window:windows)if(std::none_of(referenceWindows_.begin(),referenceWindows_.end(),[&](const auto& item){return item.identity==currentDocument().identity()&&!item.window->closed()&&item.window->id()==window.id;}))openReferenceWindow(window.id);
 }
