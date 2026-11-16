@@ -7332,3 +7332,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy eyedropper-source、document-model、cursor normal sampler、compositeRegion 及输入／镜头调用链迁移 indexed／RGBA／混合格式取样。补齐首项重复 ID 的 raw 当前层取色、末项 ID 的合成取色、活动层／组蒙版白底灰度、颜色调整预览和背景排除规则；点取样先裁切画布，镜头区域保留 raw 快路径、隐藏 RGB 与画布外存储。效果仅以画布内像素求样式，画布外保留原始存储。复用既有合成器与采样元数据，不复制整份文档；镜头缓存增加蒙版与预览代数，输入及绘制合并沿用。
 
 840 组实际旧版案例、84 组颜色调整预览、120 组原生链接帧变体和 6 组层／组蒙版全部通过。旧版吸管来源和按下取样两文件 23 项测试通过（6.25 秒）。最终 6 项定向 CTest 通过（1.86 秒）：eyedropper、eyedropper-legacy-oracle、eyedropper-legacy、layer-compositor、layer-group-compositor、attached-masks。正式 Release 与受影响测试目标构建退出 0；唯一正式 exe 于 2026-11-16 08:20:41 更新，30,767,104 bytes。新正式程序 --sampling-zoom-check 退出 0，包含两种来源的实际蒙版取样、镜头稳定缓存、进入／退出蒙版刷新、越界透明及内容／历史隔离。来源覆盖 998 文件与既有哈希、Editor 597 源码、架构 597 源码／272 targets 和 diff 检查通过；strict 因整体已知缺口按要求退出 1。 详见[吸管迁移](eyedropper-migration-20261116.md)。生产 indexed 新建／转换／可编辑导入继续关闭，整体 INCOMPLETE。仅功能迁移，没有性能优化或完整人工桌面／图像验收。阶段保存推送 dev，生成物与用户数据不提交。
+
+
+## 2026-11-16 画布取色放大镜显示阶段
+
+依据实际 legacy eyedropper-magnifier helper、useCanvasEyedropperMagnifier、CSS 与原始 SVG／PNG，完成旋转镜像、连续亚像素场、204／256 画布与外壳几何、四档尺寸／小视口定位、线条样式和边缘失真。复用现有画布逆变换、来源缓存及待绘合并；保留素材 alpha、指针亮度／透明度、主题描边与阴影，并接入已有样式／效果设置及持久化。
+
+320 组实际旧版对照共 3,329,280 像素、64 组定位和原始素材检查通过；旧版两文件 23 测试、七项定向 CTest 均通过。正式 Release 构建退出 0；唯一程序 native/build/Release/moonsprite-native.exe 于 2026-11-16 09:05:58 更新（30,782,464 bytes）。正式程序 --sampling-zoom-check 退出 0，覆盖 16 组样式／失真／旋转镜像实际输入、四档显示尺寸、待绘合并、稳定来源缓存、活动手势中切换视图、释放清理及像素／历史隔离。已查看正式程序生成的 1024×1024 镜头图集（native/build/Release/build/eyedropper-lens-styles.bmp），核对两种样式、原始素材轮廓、旋转镜像和边缘色散；图集只验证镜头本体，不代表完整工作区／多显示器／1× 实机验收。此前三项 CTest 通过（3.88 秒），关联 eyedropper、eyedropper-legacy-oracle、eyedropper-legacy、tile-repeat 四项通过（1.88 秒）。来源覆盖 1001 文件及既有快照、Editor 598 源码、架构 598 源码／273 targets、360 条偏好目录与 diff 检查通过；strict 因全仓剩余迁移缺口按要求退出 1。 详见[取色放大镜显示迁移](eyedropper-lens-migration-20261116.md)。生产 indexed 准入继续关闭；本阶段仅功能迁移，全仓 INCOMPLETE。阶段保存推送 dev，生成物和用户数据不提交。

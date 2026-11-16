@@ -1,4 +1,6 @@
 #include "editor.h"
+#include "eyedropper_lens.h"
+#include "include/effects/SkImageFilters.h"
 #include "recent_export_paths.h"
 #include "palette_layout.h"
 #include "legacy_tools.h"
@@ -1627,45 +1629,27 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
     }
     const auto& pixels=work->pixels;++work->renders;
 
-    // Legacy 256px shell / 204px field; adapt CSS pixels to native 2x UI.
-
-    eyedropperLensSurface_=os::instance()->makeRgbaSurface(128,128);eyedropperLensSurface_->clear();
-
-    const double pixelScale=std::max(12.0,currentView().zoom*1.5)/2;
-
-    auto over=[](Pixel background,Pixel color){const unsigned a=color>>24;auto c=[&](int shift){return (((color>>shift)&255)*a+((background>>shift)&255)*(255-a)+127)/255;};return Pixel(c(0)|(c(8)<<8)|(c(16)<<16)|0xff000000);};
-
-    const auto& pointerBitmap=*eyedropperLensPointers_[(299*(sampled&255)+587*((sampled>>8)&255)+114*((sampled>>16)&255))/1000<145?1:0].bitmap;
-
-    os::SurfaceLock lock(eyedropperLensSurface_.get());
-
-    for(int y=0;y<128;++y)for(int x=0;x<128;++x){
-
-      const int at=(y/2)*64+x/2;Pixel color=0;
-
-      if(eyedropperLensMasks_[0].bitmap->pixels[at]>>24){
-
-        const int dx=int(std::floor(px+(x+.5-64)/pixelScale)),dy=int(std::floor(py+(y+.5-64)/pixelScale));
-
-        const auto checker=checkerboard_.at(dx,dy);
-
-        const Pixel bg=Pixel(gfx::getr(checker)|(gfx::getg(checker)<<8)|(gfx::getb(checker)<<16)|0xff000000);
-
-        color=over(bg,dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
-
-        if(x>=56 && x<72 && y>=56 && y<72){const auto p=pointerBitmap.pixels[(y-56)*2*32+(x-56)*2];color=over(color,(p&0xffffff)|((p>>25)<<24));}
-
-      }
-
-      if(eyedropperLensMasks_[1].bitmap->pixels[at]>>24)color=color?over(color,sampled):sampled;
-
-      if(eyedropperLensMasks_[2].bitmap->pixels[at]>>24)color=color?over(color,eyedropperLensPrevious_):eyedropperLensPrevious_;
-
-      const auto frame=eyedropperLensMasks_[3].bitmap->pixels[at];if(frame>>24)color=frame;
-
-      eyedropperLensSurface_->putPixel(gfx::rgba(color&255,(color>>8)&255,(color>>16)&255,color>>24),x,y);
-
+    // CSS 256/204 becomes logical 128/102; native view.zoom is logical,
+    // so convert it to CSS pixels before applying relative magnification.
+    std::vector<Pixel> displayPixels(pixels.size());
+    for(int y=0;y<25;++y)for(int x=0;x<25;++x){
+      const auto c=checkerboard_.at(sx+x,sy+y);
+      const Pixel bg=Pixel(gfx::getr(c)|(gfx::getg(c)<<8)|(gfx::getb(c)<<16)|0xff000000);
+      displayPixels[y*25+x]=eyedropper_lens::over(bg,pixels[y*25+x]);
     }
+    // Native themes expose a subset of legacy seed colors. Match darkestSeed
+    // using their existing equivalents, including user skin overrides.
+    Pixel ink=0;double darkest=1e9;
+    for(const auto key:{"background","panel","button","border","text","muted","accent"}){
+      const auto c=skin_[key];const Pixel p=Pixel(gfx::getr(c)|(gfx::getg(c)<<8)|(gfx::getb(c)<<16)|(gfx::geta(c)<<24));
+      if(eyedropper_lens::themeLuminance(p)<darkest){ink=p;darkest=eyedropper_lens::themeLuminance(p);}
+    }
+    const eyedropper_lens::Field field{displayPixels,{px,py},sx,sy,currentView().zoom*2,currentView().rotation,runtimePreferences_.flag("tools.eyedropperMagnifierDistortionEnabled")};
+    const auto& pointerBitmap=*eyedropperLensPointers_[eyedropper_lens::luminance(sampled)<145?1:0].bitmap;
+    const auto shell=eyedropper_lens::shell(field,{eyedropperLensMasks_[0].bitmap.get(),eyedropperLensMasks_[1].bitmap.get(),eyedropperLensMasks_[2].bitmap.get(),eyedropperLensMasks_[3].bitmap.get()},pointerBitmap,sampled,eyedropperLensPrevious_,ink,runtimePreferences_.index("tools.eyedropperMagnifierStyle.Select")==1);
+    eyedropperLensSurface_=os::instance()->makeRgbaSurface(128,128);
+    os::SurfaceLock lock(eyedropperLensSurface_.get());
+    for(int y=0;y<128;++y)for(int x=0;x<128;++x){const auto c=shell[y*128+x];eyedropperLensSurface_->putPixel(gfx::rgba(c&255,(c>>8)&255,(c>>16)&255,c>>24),x,y);}
 
   }
 
@@ -1682,12 +1666,14 @@ void Editor::paintEyedropperLens(ui::Graphics& g) {
 
     const double lensSizes[]{.5,.75,1,1.25};const int size=int(128*lensSizes[eyedropperLensSize_]);const gfx::Point pointer((eyedropperLensPointer_.x-bounds().x)/uiScale,(eyedropperLensPointer_.y-bounds().y)/uiScale);
 
-    const int x=std::clamp(pointer.x-size/2,viewport.x+3,std::max(viewport.x+3,viewport.x2()-size-3));
-
-    const int y=pointer.y-size-9>=viewport.y+3?pointer.y-size-9:std::clamp(pointer.y+9,viewport.y+3,std::max(viewport.y+3,viewport.y2()-size-3));
+    const auto placement=eyedropper_lens::position({double(pointer.x-viewport.x)*2,double(pointer.y-viewport.y)*2},{double(viewport.w)*2,double(viewport.h)*2},size*2);
+    const int x=viewport.x+int(std::floor(placement.x/2)),y=viewport.y+int(std::floor(placement.y/2));
 
     ui::Paint composite;composite.blendMode(os::BlendMode::SrcOver);
-
+    // Legacy drop-shadow(3px 4px 4px): CSS blur radius is twice sigma.
+    const bool dark=gfx::getr(skin_["background"])*.2126+gfx::getg(skin_["background"])*.7152+gfx::getb(skin_["background"])*.0722<gfx::getr(skin_["text"])*.2126+gfx::getg(skin_["text"])*.7152+gfx::getb(skin_["text"])*.0722;
+    const float factor=float(lensSizes[eyedropperLensSize_]);
+    composite.skPaint().setImageFilter(SkImageFilters::DropShadow(1.5f*factor,2*factor,factor,factor,dark?SkColorSetARGB(158,0,0,0):SkColorSetARGB(82,24,32,43),nullptr));
     g.saveClip();g.clipRect(viewport);g.drawSurface(eyedropperLensSurface_.get(),gfx::Rect(0,0,128,128),gfx::Rect(x,y,size,size),os::Sampling(),&composite);g.restoreClip();
 
   }

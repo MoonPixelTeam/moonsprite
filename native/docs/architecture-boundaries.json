@@ -313,6 +313,7 @@
         "dialog_background.h",
         "floating_panel_geometry.h",
         "legacy_cursors.h",
+        "eyedropper_lens.h",
         "ui_*.h",
         "*_dialog.h",
         "*_panel.h",

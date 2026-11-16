@@ -24,6 +24,7 @@
 #include "gradient_stops_track.h"
 #include "ui_frame_capture.h"
 #include "legacy_cursors.h"
+#include "eyedropper_lens.h"
 #include "native_document_open.h"
 #include "project_restore_report.h"
 #include "timelapse_session.h"
@@ -5400,6 +5401,46 @@ void Editor::smokeEyedropper(){
       if(currentDocument().palette().primary!=0||currentDocument().historySize()!=maskHistory||currentDocument().dirty()||currentDocument().maskDisplayRegion({0,0,4,3})!=maskPixels||currentDocument().pixels()!=pixels)throw std::runtime_error("Eyedropper mask bounds and content isolation");
     }
     currentDocument().exitAttachedMask();
+    // Real Editor path: settings are available, views rerender without source
+    // reads, pending input coalesces, and display-only changes never enter history.
+    const auto savedPreferences=runtimePreferences_.values;const int savedLensSize=eyedropperLensSize_;
+    auto restoreLens=[&]{runtimePreferences_.values=savedPreferences;eyedropperLensSize_=savedLensSize;currentView().rotation={};finishEyedropper();};
+    try{
+      for(const auto id:{"tools.eyedropperMagnifierStyle.Select","tools.eyedropperMagnifierDistortionEnabled"})if(!preferenceRowEnabled(preferences::RuntimeSettings::item(id)))throw std::runtime_error("Magnifier setting must be available");
+      replaceDocumentForSmoke(Document(32,32));currentView().zoom=4;currentView().rotation={};
+      for(int y=0;y<32;++y)for(int x=0;x<32;++x){const Pixel color=0xff000000u|((unsigned(x*19+y*37)&255)<<16)|((unsigned(x*71+y*23)&255)<<8)|(unsigned(x*47+y*31)&255);currentDocument().beginStroke({x,y},color,BrushOptions{1,100,BrushShape::Round});currentDocument().commitStroke();}
+      currentDocument().markSaved();fitCanvas();currentView().zoom=4;
+      const auto area=canvasViewport();currentView().canvas={area.center().x-128,area.center().y-128,256,256};refresh();useEyedropperTool();
+      const auto raster=currentDocument().pixels();const auto baselineHistory=currentDocument().historySize(),baselineRevision=currentDocument().contentRevision();
+      auto target=os::instance()->makeRgbaSurface(4*256,4*256);target->clear();
+      auto lensWords=[&]{std::vector<gfx::Color> out;os::SurfaceLock lock(eyedropperLensSurface_.get());for(int y=0;y<128;++y)for(int x=0;x<128;++x)out.push_back(eyedropperLensSurface_->getPixel(x,y));return out;};
+      int variant=0;std::vector<gfx::Color> first;
+      for(int style=0;style<2;++style)for(bool distortion:{false,true})for(const auto rotation:{view::Rotation{},view::Rotation{90,true,false},view::Rotation{37.25,false,true},view::Rotation{180,true,true}}){
+        runtimePreferences_.set("tools.eyedropperMagnifierStyle.Select",std::to_string(style));runtimePreferences_.set("tools.eyedropperMagnifierDistortionEnabled",distortion?"true":"false");currentView().rotation=rotation;
+        // An exact document point at the rotation pivot avoids rounding
+        // changing the 25x25 region while checking view-only cache reuse.
+        const auto at=canvasDocumentToDisplay({16,16});
+        ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);onProcessMessage(&down);enableFlags(ui::HAS_CAPTURE);
+        flushLens();const auto before=eyedropperLensWorkCounts(*this);
+        for(int i=0;i<20;++i)updateEyedropperLens(at,currentDocument().palette().primary);
+        if(eyedropperLensWorkCounts(*this)!=before)throw std::runtime_error("Lens queued input must not synchronously render");
+        flushLens();const auto after=eyedropperLensWorkCounts(*this);
+        if(after.first!=before.first+1||after.second!=before.second)throw std::runtime_error("Lens pending coalescing / stable source cache");
+        const auto image=lensWords();if(variant==0)first=image;else if(image==first)throw std::runtime_error("Lens view/style/distortion must affect display");
+        {ui::Graphics g(target);g.drawSurface(eyedropperLensSurface_.get(),{0,0,128,128},{variant%4*256,variant/4*256,256,256},os::Sampling(),nullptr);}
+        for(int size=0;size<4;++size){eyedropperLensSize_=size;flushLens();}
+        ui::MouseMessage up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);onProcessMessage(&up);disableFlags(ui::HAS_CAPTURE);
+        if(eyedropperLensSurface_||eyedropperGesture_.active())throw std::runtime_error("Lens end releases display and pending state");
+        if(currentDocument().pixels()!=raster||currentDocument().historySize()!=baselineHistory||currentDocument().contentRevision()!=baselineRevision||currentDocument().dirty())throw std::runtime_error("Lens changes must not edit document");
+        ++variant;
+      }
+      writeSmokeFrame(target.get(),assets_.parent_path()/"build/eyedropper-lens-styles.bmp");
+      // A view change in an active gesture must reuse the same source region.
+      currentView().rotation={};const auto at=canvasDocumentToDisplay({16,16});eyedropperGesture_.begin(false,false);updateEyedropperLens(at,currentDocument().palette().primary);flushLens();const auto before=eyedropperLensWorkCounts(*this);const auto flat=lensWords();
+      currentView().rotation={37.25,true,true};updateEyedropperLens(at,currentDocument().palette().primary);flushLens();
+      if(eyedropperLensWorkCounts(*this).second!=before.second||lensWords()==flat)throw std::runtime_error("Lens active view transform reuses source and updates raster");
+      restoreLens();
+    }catch(...){restoreLens();throw;}
     replaceDocumentForSmoke(Document());currentTools().eyedropperTool=eyedropperHeld_=paletteSamplingHeld_=false;currentTools().eyedropperSource=EyedropperSource::Composite;refresh();
 
   }
