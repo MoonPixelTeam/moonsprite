@@ -1,4 +1,5 @@
 #pragma once
+#include "native_global_color_drag.h"
 #include "animation_settings.h"
 #include "native_widgets.h"
 #include "native_color_picker.h"
@@ -56,7 +57,7 @@ public:
   enabled_=new PixelSwitch(font,skin,U"启用洋葱皮",settings_.onion.enabled,[this](bool value){auto& o=settings_.onion;o.enabled=value;if(value)o.showDuringPlayback=true;else closeRange();apply();});addChild(enabled_);
   playback_=new PixelSwitch(font,skin,U"播放动画时显示洋葱皮",settings_.onion.showDuringPlayback,[this](bool value){settings_.onion.showDuringPlayback=value;apply();});addChild(playback_);
   tips_=new ui::TooltipManager;addChild(tips_);tips_->addTooltipFor(skip_,utf8Text(U"使用左右方向键或“，/。”切换帧时，自动跳过停用的帧。"));
-  for(int i=0;i<2;++i){scope_[i]=button(i?U"所有图层":U"当前图层",[this,i]{if(settings_.onion.allLayers==(i!=0))return;settings_.onion.allLayers=i!=0;apply();});colors_[i]=button(U"",[this,i]{color(i);});colors_[i]->skinStyle="color-value";colors_[i]->colorRole=true;}
+  for(int i=0;i<2;++i){scope_[i]=button(i?U"所有图层":U"当前图层",[this,i]{if(settings_.onion.allLayers==(i!=0))return;settings_.onion.allLayers=i!=0;apply();});colors_[i]=button(U"",[this,i]{color(i);});colors_[i]->skinStyle="color-value";colors_[i]->colorRole=true;bindGlobalColorDrag(*colors_[i],[this,i](std::uint32_t c){(i?settings_.onion.nextColor:settings_.onion.previousColor)=c;apply();});}
   for(int i=0;i<4;++i){auto e=new AnimationSettingNumber(font,skin);values_[i]=e;e->numeric=true;e->maximum=i<2?8:100;e->suffix=i<2?U"":U"%";addChild(e);e->committed=[this,i](double v){commitNumeric(i,v);};e->blur=[e]{e->commit();};e->wheel=[this,i,e](int delta){commitNumeric(i,numeric(i)+delta);e->sync(numeric(i));};if(i>=2)e->focus=[this,i]{openRange(i-2);};}
   for(int i=0;i<2;++i){auto slider=new PixelSlider(font,skin);opacity_[i]=slider;slider->minimum=0;slider->maximum=100;slider->changed=[this,i](int value){commitNumeric(i+2,value);values_[i+2]->sync(numeric(i+2));};addChild(slider);}
   sync();

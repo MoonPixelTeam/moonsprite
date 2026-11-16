@@ -151,7 +151,8 @@
     "moon-raster-io": "codec",
     "moon-recovery": "codec",
     "moon-timelapse-io": "codec",
-    "moon-atomic-file": "platform"
+    "moon-atomic-file": "platform",
+    "moon-screen-color": "platform"
   },
   "testTargets": [
     "*-tests"
@@ -268,7 +269,8 @@
         "mfplat",
         "mfreadwrite",
         "mfuuid",
-        "*skia.lib"
+        "*skia.lib",
+        "dwmapi"
       ],
       "module": "platform"
     }
@@ -298,7 +300,8 @@
         "system_clipboard_size.h",
         "system_string_compare.h",
         "system_winrt_apartment.h",
-        "system_atomic_file.h"
+        "system_atomic_file.h",
+        "system_screen_color.h"
       ],
       "module": "platform"
     },

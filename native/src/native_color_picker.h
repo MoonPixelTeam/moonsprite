@@ -28,6 +28,7 @@ class NativeColorPicker : public ui::Widget {
   gfx::Rect fieldBounds() const;
   gfx::Rect stripBounds(int zone) const;
   void sample(const ui::MouseMessage& mouse);
+  void samplePoint(PickerRole&,int zone,double x,double y,bool shift,PickerMoonGesture&);
   void queue();void flush();
   void drawMarker(ui::Graphics& g,const gfx::Rect& area,double x,double y,const os::SurfaceRef& background);
 public:
@@ -47,8 +48,11 @@ public:
   void setQuantization(PickerQuantization q);
   void syncColors(std::uint32_t primary,std::uint32_t secondary);
   void finishInteraction();
+  std::optional<std::uint32_t> sampleExternal(gfx::Point displayPoint);
+  void finishExternal();
   void smokeSurfacePixels();
   void onPaint(ui::PaintEvent& ev) override;
   bool onProcessMessage(ui::Message* msg) override;
 };
+void finishGlobalColorPickerSampling();
 }

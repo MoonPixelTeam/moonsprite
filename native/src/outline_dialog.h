@@ -1,4 +1,5 @@
 #pragma once
+#include "native_global_color_drag.h"
 #include "native_widgets.h"
 #include "ui/message.h"
 #include "ui/resize_event.h"
@@ -35,6 +36,8 @@ public:
  auto entry=[&](std::string text){auto e=new PixelEntry(f,skin);addChild(e);e->setText(text);e->accept=[this]{this->apply();};e->cancel=[this]{cancel();};return e;};
  auto editColor=[this](bool background){if(busy_)return;if(!colorPopup_)colorPopup_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,colorStorage_);auto b=background?backgroundButton_:colorButton_;colorPopup_->setDisplay(display(),false);colorPopup_->open(b->bounds(),display()->bounds(),background?draft_.sampling.background:draft_.color,background?U"背景色":U"描边颜色",palette_,[this,background](Pixel c){auto e=background?background_:color_;e->setText(hex_(c));e->Change();},{});};
  colorButton_=button(U"",[editColor]{editColor(false);});backgroundButton_=button(U"",[editColor]{editColor(true);});colorButton_->paletteCell=backgroundButton_->paletteCell=true;
+ bindGlobalColorDrag(*colorButton_,[this](Pixel c){color_->setText(hex_(c));color_->Change();});
+ bindGlobalColorDrag(*backgroundButton_,[this](Pixel c){background_->setText(hex_(c));background_->Change();});
  color_=entry(hex_(draft_.color));background_=entry(hex_(draft_.sampling.background));width_=entry(std::to_string(int(draft_.sampling.thickness)));darkness_=entry(std::to_string(int(draft_.darkness)));width_->numeric=darkness_->numeric=true;width_->suffix=U"px";darkness_->suffix=U"%";
  color_->Change.connect([this]{Pixel c;if(parse_(color_->text(),c)){draft_.color=c;try{colorPreference_(remember_,c);}catch(const std::exception& e){error_=unicodeText(e.what());}changed();}});background_->Change.connect([this]{Pixel c;if(parse_(background_->text(),c)){draft_.sampling.background=c;changed();}});
  width_->Change.connect([this]{number(width_,draft_.sampling.thickness,1,64);});darkness_->Change.connect([this]{number(darkness_,draft_.darkness,0,100);});

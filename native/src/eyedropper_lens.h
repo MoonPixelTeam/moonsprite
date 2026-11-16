@@ -61,7 +61,7 @@ struct Field {
 };
 // Original SVG/PNG alpha is retained. Line mode translates legacy CSS circles,
 // borders and radial mask; it is geometry, not a replacement icon.
-inline std::vector<Pixel> shell(const Field& field,const std::array<const SkinBitmap*,4>& masks,
+template<class SampleField> inline std::vector<Pixel> shell(const SampleField& field,const std::array<const SkinBitmap*,4>& masks,
  const SkinBitmap& pointer,Pixel sampled,Pixel previous,Pixel ink,bool line){
  std::vector<Pixel> output(128*128);
  for(int y=0;y<128;++y)for(int x=0;x<128;++x){

@@ -829,6 +829,27 @@ add_executable(color-picker-tests tests/color_picker_test.cpp)
 target_include_directories(color-picker-tests PRIVATE src)
 add_test(NAME color-picker COMMAND color-picker-tests)
 
+add_executable(global-color-sampling-tests tests/global_color_sampling_test.cpp)
+target_include_directories(global-color-sampling-tests PRIVATE src)
+add_test(NAME global-color-sampling COMMAND global-color-sampling-tests)
+if(MOON_NODE_EXECUTABLE)
+  add_test(NAME global-color-sampling-oracle COMMAND "${MOON_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make-global-color-sampling-oracle.cjs" "${CMAKE_CURRENT_SOURCE_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/global-color-sampling-oracle.txt")
+  set_tests_properties(global-color-sampling-oracle PROPERTIES FIXTURES_SETUP global-color-sampling-oracle)
+  add_test(NAME global-color-sampling-contract COMMAND global-color-sampling-tests "${CMAKE_CURRENT_BINARY_DIR}/global-color-sampling-oracle.txt")
+  set_tests_properties(global-color-sampling-contract PROPERTIES FIXTURES_REQUIRED global-color-sampling-oracle)
+endif()
+if(WIN32)
+  add_library(moon-screen-color STATIC src/system_screen_color.cpp)
+  target_include_directories(moon-screen-color PUBLIC src)
+  target_compile_definitions(moon-screen-color PRIVATE NOMINMAX)
+  target_link_libraries(moon-screen-color PRIVATE gdi32 user32)
+  add_executable(screen-color-tests tests/system_screen_color_test.cpp)
+  target_compile_definitions(screen-color-tests PRIVATE NOMINMAX)
+  target_link_libraries(screen-color-tests PRIVATE moon-screen-color dwmapi)
+  add_test(NAME screen-color COMMAND screen-color-tests)
+  set_tests_properties(screen-color PROPERTIES RUN_SERIAL TRUE)
+endif()
+
 add_executable(timeline-model-tests tests/timeline_model_test.cpp)
 target_link_libraries(timeline-model-tests PRIVATE moon-core)
 add_test(NAME timeline-model COMMAND timeline-model-tests)
@@ -1556,6 +1577,7 @@ endif()
 if(TARGET moonsprite-native)
   add_dependencies(moonsprite-native architecture-checks)
   target_sources(moonsprite-native PRIVATE src/preview_panel.cpp src/floating_column_surface.cpp
+    src/native_global_color_drag.cpp
     src/pixel_theme.cpp
     src/curve_editor_native.cpp
     src/sprite_sheet_preview.cpp
@@ -1564,4 +1586,5 @@ if(TARGET moonsprite-native)
     src/frame_duration_palette_entry.cpp
     src/layer_label_separator.cpp
   )
+  target_link_libraries(moonsprite-native PRIVATE moon-screen-color)
 endif()

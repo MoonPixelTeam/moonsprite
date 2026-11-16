@@ -192,6 +192,7 @@ public:
   bool tabAdd=false,bareTabIcon=false;
   std::uint32_t swatch=0;
   PixelButton(const PixelFont& font,const Skin& skin,std::u32string label,std::function<void()> action);
+  ~PixelButton() override;
   bool isCheckbox() const {return skinStyle=="checkbox" || (bareIconWithCaption && (icon=="check" || icon=="checkboxChecked" || icon=="checkboxUnchecked"));}
   gfx::Rect iconContentBounds(const std::string& state="normal") const;
   gfx::Rect switchToggleBounds() const; // Physical display coordinates, also used for hover.

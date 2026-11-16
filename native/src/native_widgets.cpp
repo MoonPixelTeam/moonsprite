@@ -4,6 +4,7 @@
 #include <cmath>
 #include <chrono>
 #include "native_widgets.h"
+#include "native_global_color_drag.h"
 #include "native_text_clipboard.h"
 #include "pixel_input_menu.h"
 #include "entry_edit_history.h"
@@ -1047,6 +1048,8 @@ PixelButton::PixelButton(const PixelFont& font,const Skin& skin,std::u32string l
     releaseMouse();setSelected(false);invalidate();openGroup();
   });
 }
+PixelButton::~PixelButton(){unbindGlobalColorDrag(*this);}
+
 gfx::Rect PixelButton::switchToggleBounds() const {
   const auto rc=uiLogical(clientBounds());
   return uiPhysical(gfx::Rect(rc.x2()-4-18,rc.y+(rc.h-9)/2,18,9)).offset(bounds().origin());
@@ -1056,6 +1059,7 @@ void PixelButton::onResize(ui::ResizeEvent& ev) {
   else ui::Button::onResize(ev);
 }
 bool PixelButton::onProcessMessage(ui::Message* msg) {
+  if(processGlobalColorDrag(*this,msg))return true;
   if(msg->type()==ui::kMouseLeaveMessage){if(contentPointerInside_){contentPointerInside_=false;invalidate();}}
   else if(msg->type()==ui::kMouseEnterMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseUpMessage){
     const auto point=static_cast<ui::MouseMessage*>(msg)->position();

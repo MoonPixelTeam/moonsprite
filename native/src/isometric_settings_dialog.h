@@ -1,4 +1,5 @@
 #pragma once
+#include "native_global_color_drag.h"
 #include "isometric_settings.h"
 #include "native_widgets.h"
 #include "color_editor_popup.h"
@@ -33,6 +34,7 @@ public:
   fields_[0]->numericMinimum=fields_[3]->numericMinimum=fields_[4]->numericMinimum=1;fields_[0]->numericMaximum=16;fields_[3]->numericMaximum=256;fields_[4]->numericMaximum=8;
   styles_[0]=button(U"实线",[this]{if(colorPopup_)colorPopup_->closeWindow(nullptr);draft_.pixel=false;changed();});styles_[1]=button(U"像素线条",[this]{if(colorPopup_)colorPopup_->closeWindow(nullptr);draft_.pixel=true;changed();});
   color_=button(U"",[this]{if(colorPopup_)colorPopup_->closeWindow(nullptr);auto storage=colorStorage_;storage.replace_filename(storage.stem().wstring()+(draft_.pixel?L"-pixel":L"-solid")+storage.extension().wstring());colorPopup_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,storage);colorPopup_->setDisplay(display(),false);const bool pixel=draft_.pixel;colorPopup_->open(color_->bounds(),display()->bounds(),draft_.color(),U"网格颜色",palette_,[this,pixel](std::uint32_t c){(pixel?draft_.pixelColor:draft_.solidColor)=c;changed();},{});});color_->paletteCell=true;
+  bindGlobalColorDrag(*color_,[this](std::uint32_t c){(draft_.pixel?draft_.pixelColor:draft_.solidColor)=c;changed();});
   alignment_=new PixelCheckbox(f,s,U"强制线条对齐",draft_.forceLineAlignment,[this](bool v){draft_.forceLineAlignment=v;changed();});addChild(alignment_);
   snap_=new PixelCheckbox(f,s,U"吸附网格",draft_.snapToGrid,[this](bool v){draft_.snapToGrid=v;changed();});addChild(snap_);
   liveControl_=new PixelSwitch(f,s,U"实时预览",true,[this](bool v){live_=v;preview_(live_?draft_:baseline_);sync();});liveControl_->iconSkin=&icons_;liveControl_->icon="eye";addChild(liveControl_);

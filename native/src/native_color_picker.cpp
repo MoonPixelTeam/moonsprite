@@ -1,15 +1,24 @@
 #include "native_color_picker.h"
 #include "ui_scale.h"
 #include "ui/message.h"
+#include "ui/property.h"
 #include "os/skia/skia_surface.h"
 #include <stdexcept>
 
 namespace moon {
+namespace {
+NativeColorPicker* externalPicker=nullptr;
+struct ExternalPickerState:ui::Property {
+ PickerRole role;int index;
+ ExternalPickerState(PickerRole initial,int source):ui::Property("moon.external-picker"),role(initial),index(source){}
+};
+}
+void finishGlobalColorPickerSampling(){if(externalPicker)externalPicker->finishExternal();}
 NativeColorPicker::NativeColorPicker(const PixelFont& font,const Skin& skin,const std::filesystem::path& markerDir)
   :ui::Widget(ui::kGenericWidget),font_(font),skin_(skin),frameTimer_(16,this) {
   loadMarkers(markerDir);setFocusStop(true);frameTimer_.Tick.connect([this]{flush();});
 }
-NativeColorPicker::~NativeColorPicker() {frameTimer_.stop();}
+NativeColorPicker::~NativeColorPicker() {finishExternal();frameTimer_.stop();}
 void NativeColorPicker::setScheme(ColorPickerScheme scheme){if(scheme_==scheme)return;finishInteraction();scheme_=scheme;field_.reset();hueStrip_.reset();alphaStrip_.reset();fieldHue_=fieldValue_=stripHue_=stripSaturation_=-1;invalidate();}
 void NativeColorPicker::setQuantization(PickerQuantization q){q=pickerNormalizeQuantization(q);if(q.hueSteps==quantization_.hueSteps&&q.colorSteps==quantization_.colorSteps)return;finishInteraction();const bool ringChange=q.hueSteps!=quantization_.hueSteps;quantization_=q;field_.reset();hueStrip_.reset();alphaStrip_.reset();if(ringChange)moonRing_.reset();invalidate();}
 void NativeColorPicker::setMoonField(PickerMoonField field){if(moonField_==field)return;finishInteraction();moonField_=field;field_.reset();invalidate();}
@@ -38,8 +47,12 @@ gfx::Rect NativeColorPicker::regionBounds(Region region) const {
 }
 void NativeColorPicker::syncColors(std::uint32_t primary,std::uint32_t secondary) {
   const std::uint32_t colors[]{primary,secondary};
+  auto external=std::dynamic_pointer_cast<ExternalPickerState>(getProperty("moon.external-picker"));
   bool change=false;
-  for(int i=0;i<2;++i) if(!(zone_ && role_==i) && roles_[i].color!=colors[i]) {roles_[i].sync(colors[i]);change=true;}
+  for(int i=0;i<2;++i) if(!(zone_ && role_==i) && roles_[i].color!=colors[i]) {
+    if(external&&external->index==i&&external->role.color==colors[i])roles_[i]=external->role;
+    else roles_[i].sync(colors[i]);change=true;
+  }
   if(change) invalidate();
 }
 void NativeColorPicker::queue() {
@@ -58,18 +71,43 @@ void NativeColorPicker::sample(const ui::MouseMessage& mouse) {
   // Match legacy's raw field coordinates, independent of rounded RGB output.
   const auto local=mouse.position()-bounds().origin();
   const double x=double(local.x)/uiScale,y=double(local.y)/uiScale;
-  auto& role=roles_[role_];
-  if(zone_==3) {
-    const auto field=fieldBounds();if(pickerQuantized(quantization_)){const double xx=(x-field.x)/std::max(1,field.w),yy=(y-field.y)/std::max(1,field.h);if(scheme_==ColorPickerScheme::MoonRing)pickerQuantMoonSample(moonGesture_,role,moonField_,xx,yy,quantization_);else{role.hsv=pickerQuantInput(scheme_,role.hsv,xx,yy,quantization_);role.emit();}}else if(scheme_==ColorPickerScheme::MoonRing)moonGesture_.sample(role,moonField_,pickerUnit((x-field.x)/std::max(1,field.w)),pickerUnit((y-field.y)/std::max(1,field.h)));else if(scheme_==ColorPickerScheme::Wheel||scheme_==ColorPickerScheme::NormalMap)pickerSchemeSetField(role,scheme_,(x-field.x)/std::max(1,field.w-1),(y-field.y)/std::max(1,field.h-1));else pickerSchemeSetField(role,scheme_,pickerCoordinate(x,field.x,field.w),pickerCoordinate(y,field.y,field.h));
+  samplePoint(roles_[role_],zone_,x,y,mouse.shiftPressed(),moonGesture_);queue();
+}
+void NativeColorPicker::samplePoint(PickerRole& role,int zone,double x,double y,bool shift,PickerMoonGesture& gesture){
+  if(zone==3) {
+    const auto field=fieldBounds();if(pickerQuantized(quantization_)){const double xx=(x-field.x)/std::max(1,field.w),yy=(y-field.y)/std::max(1,field.h);if(scheme_==ColorPickerScheme::MoonRing)pickerQuantMoonSample(gesture,role,moonField_,xx,yy,quantization_);else{role.hsv=pickerQuantInput(scheme_,role.hsv,xx,yy,quantization_);role.emit();}}else if(scheme_==ColorPickerScheme::MoonRing)gesture.sample(role,moonField_,pickerUnit((x-field.x)/std::max(1,field.w)),pickerUnit((y-field.y)/std::max(1,field.h)));else if(scheme_==ColorPickerScheme::Wheel||scheme_==ColorPickerScheme::NormalMap)pickerSchemeSetField(role,scheme_,(x-field.x)/std::max(1,field.w-1),(y-field.y)/std::max(1,field.h-1));else pickerSchemeSetField(role,scheme_,pickerCoordinate(x,field.x,field.w),pickerCoordinate(y,field.y,field.h));
   } else {
-    const auto strip=stripBounds(zone_);
+    const auto strip=stripBounds(zone);
     // Joined strips have no independent thumb padding; sample the same span
     // that the gradient and value marker use, including both endpoint pixels.
     const double position=pickerCoordinate(x,strip.x,strip.w);
-    if(zone_==1){if(pickerSchemeUsesValue(scheme_))pickerQuantSetStrip(role,scheme_,pickerShiftStep(position*100,100,true,mouse.shiftPressed())/100,quantization_);else role.hue(pickerQuantHue(pickerShiftStep(position*359,359,false,mouse.shiftPressed()),quantization_));}
-    else role.alpha(pickerQuantColor(pickerShiftStep(position*100,100,true,mouse.shiftPressed())/100,quantization_)*255);
+    if(zone==1){if(pickerSchemeUsesValue(scheme_))pickerQuantSetStrip(role,scheme_,pickerShiftStep(position*100,100,true,shift)/100,quantization_);else role.hue(pickerQuantHue(pickerShiftStep(position*359,359,false,shift),quantization_));}
+    else role.alpha(pickerQuantColor(pickerShiftStep(position*100,100,true,shift)/100,quantization_)*255);
   }
-  queue();
+}
+void NativeColorPicker::finishExternal(){
+ if(externalPicker==this)externalPicker=nullptr;
+ if(hasProperty("moon.external-picker")){removeProperty("moon.external-picker");invalidate();}
+}
+std::optional<std::uint32_t> NativeColorPicker::sampleExternal(gfx::Point point){
+ if(externalPicker!=this){finishGlobalColorPickerSampling();externalPicker=this;setProperty(std::make_shared<ExternalPickerState>(roles_[role_],role_));}
+ auto state=std::static_pointer_cast<ExternalPickerState>(getProperty("moon.external-picker"));
+ const auto local=point-bounds().origin();const double x=double(local.x)/uiScale,y=double(local.y)/uiScale;
+ const auto field=fieldBounds();const gfx::Point logical{int(x),int(y)};
+ const int zone=field.contains(logical)?3:stripBounds(1).contains(logical)?1:stripBounds(2).contains(logical)?2:0;
+ if(!zone)return {};
+ if(zone==3){const bool quant=pickerQuantized(quantization_);const double xx=(x-field.x)/std::max(1,quant?field.w:field.w-1),yy=(y-field.y)/std::max(1,quant?field.h:field.h-1);
+  if(scheme_==ColorPickerScheme::Wheel&&(quant?!pickerQuantWheelBeginHit(xx,yy,quantization_):!pickerWheelBeginHit(xx,yy)))return {};
+  if(scheme_==ColorPickerScheme::NormalMap&&!pickerNormalMapBeginHit(xx,yy))return {};
+ }
+ // External positions each begin their own hit/zone; never capture or emit the
+ // source picker's role callback. Its precise HSV and alpha survive echoes.
+ PickerMoonGesture gesture;samplePoint(state->role,zone,x,y,false,gesture);
+ // legacy emitPointerColor retains source HSV state even when a different
+ // editor owns the color write. Alpha alone does not change that HSV state.
+ if(zone!=2)roles_[state->index].hsv=state->role.hsv;
+ invalidate();
+ return state->role.color;
 }
 bool NativeColorPicker::onProcessMessage(ui::Message* msg) {
   if(msg->type()==ui::kFocusLeaveMessage) finishInteraction();
@@ -91,7 +129,7 @@ bool NativeColorPicker::onProcessMessage(ui::Message* msg) {
     sample(*mouse);if(msg->type()==ui::kMouseUpMessage) finishInteraction();return true;
   }
   if(msg->type()==ui::kMouseWheelMessage) {
-    const auto mouse=static_cast<ui::MouseMessage*>(msg);if(zone_) return true;
+    const auto mouse=static_cast<ui::MouseMessage*>(msg);if(zone_||externalPicker==this) return true;
     const int delta=mouse->wheelDelta().y;if(!delta) return true;
     const auto local=mouse->position()-bounds().origin();const gfx::Point point(local.x/uiScale,local.y/uiScale);
     const int hit=stripBounds(2).contains(point)?2:stripBounds(1).contains(point)?1:3;
@@ -168,7 +206,7 @@ void NativeColorPicker::smokeSurfacePixels() {
 }
 void NativeColorPicker::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
-  g.fillRect(skin_["background"],rc);const auto field=fieldBounds();const auto& role=roles_[role_];
+  g.fillRect(skin_["background"],rc);const auto field=fieldBounds();auto external=std::dynamic_pointer_cast<ExternalPickerState>(getProperty("moon.external-picker"));const auto& role=external?external->role:roles_[role_];
   if(field.w==0 || field.h==0) return;
   // One outside panel frame belongs to the parent. These three colored regions
   // touch directly, and share the full available width without local borders.

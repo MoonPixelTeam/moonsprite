@@ -1,4 +1,5 @@
 #pragma once
+#include "native_global_color_drag.h"
 #include "document.h"
 #include "native_widgets.h"
 #include "color_editor_popup.h"
@@ -27,7 +28,7 @@ public:
   locked_=new PixelSwitch(font,skin,U"锁定瓦片实例",source.locked,[this](bool value){changes_.locked=value;preview_(changes_);});addChild(locked_);
   auto tips=new ui::TooltipManager;addChild(tips);tips->addTooltipFor(visible_,"控制该源瓦片的全部实例是否在画布中显示；关闭后实例不会删除，重新打开即可恢复。");tips->addTooltipFor(locked_,"锁定该源瓦片后，画布中的实例不能移动，源瓦片内容也不能编辑；已有实例不会被删除。");
   for(std::size_t n=0;n<=colors_.size();++n){auto b=new PixelButton(font,skin,n?U"":U"无",[this,n]{choose(n?std::optional<Pixel>{colors_[n-1]}:std::nullopt);});if(n){b->colorRole=true;b->swatch=colors_[n-1];}b->active=n?color_==std::optional<Pixel>{colors_[n-1]}:!color_;presets_.push_back(b);addChild(b);}
-  custom_=new PixelButton(font,skin,U"",[this]{if(!picker_){picker_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,storage_);picker_->Close.connect([this](ui::CloseEvent&){setClickBehavior(ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow);});}setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);picker_->canvasSamplingInput=[this](ui::Message* msg){if(auto mouse=dynamic_cast<ui::MouseMessage*>(msg);mouse&&bounds().contains(mouse->positionForDisplay(display())))return false;return samplingInput&&samplingInput(msg);};picker_->setDisplay(display(),false);picker_->open(custom_->bounds(),display()->bounds(),color_.value_or(0xffff7929),U"源瓦片颜色",paletteColors,[this](Pixel color){choose(color);},[this](bool active){if(samplingChanged)samplingChanged(active,picker_.get());});});custom_->colorRole=true;custom_->swatch=color_.value_or(0xffff7929);addChild(custom_);
+  custom_=new PixelButton(font,skin,U"",[this]{if(!picker_){picker_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,storage_);picker_->Close.connect([this](ui::CloseEvent&){setClickBehavior(ui::PopupWindow::ClickBehavior::CloseOnClickInOtherWindow);});}setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);picker_->canvasSamplingInput=[this](ui::Message* msg){if(auto mouse=dynamic_cast<ui::MouseMessage*>(msg);mouse&&bounds().contains(mouse->positionForDisplay(display())))return false;return samplingInput&&samplingInput(msg);};picker_->setDisplay(display(),false);picker_->open(custom_->bounds(),display()->bounds(),color_.value_or(0xffff7929),U"源瓦片颜色",paletteColors,[this](Pixel color){choose(color);},[this](bool active){if(samplingChanged)samplingChanged(active,picker_.get());});});custom_->colorRole=true;custom_->swatch=color_.value_or(0xffff7929);addChild(custom_);bindGlobalColorDrag(*custom_,[this](Pixel c){choose(c);});
   tips->addTooltipFor(custom_,"自定义颜色");
   headerClose_=new PixelButton(font,skin,U"",[this]{finish();});headerClose_->iconSkin=&icons;headerClose_->icon="close";headerClose_->skinStyle="icon_button";addChild(headerClose_);
  }

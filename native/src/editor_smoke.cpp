@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_global_color_drag.h"
 #include "legacy_tools.h"
 #include "quick_command_drag_handle.h"
 
@@ -8473,6 +8474,51 @@ void Editor::smokeSkinResize(const std::filesystem::path& directory) {
 void Editor::smokeColorEditor(){
 
     smoke_=true;setBounds({0,0,1280,960});homeOpen_=false;documentOpen_=true;replaceDocumentForSmoke(Document::withBuiltinPalette());paletteLocked_=true;refresh();
+
+    // Actual native ColorValueControl trigger events, source picker isolation,
+    // canvas alpha, pointer-transparent UI layers and lifecycle cancellation.
+    {
+      docking_=panels::Model{};palettePanelOpen_=colorPickerOpen_=layersPanelOpen_=true;previewPanelOpen_=false;eyedropperLensEnabled_=true;refresh();fitCanvas();refresh();
+      auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+      auto send=[&](PixelButton* b,ui::MessageType type,gfx::Point p,ui::MouseButton button=ui::kButtonLeft){ui::MouseMessage message(type,os::PointerType::Mouse,button,ui::kKeyNoneModifier,p);message.setDisplay(display());b->onProcessMessage(&message);};
+      const auto h=currentDocument().historySize();const auto baseline=currentDocument().pixels();const auto secondary=currentDocument().palette().secondary;
+      const auto layers=display()->layers().size();
+      check(pickerPrimary_->isVisible()&&colorPicker_->isVisible(),"Global sampling fixture uses visible picker controls");
+      const auto click=pickerPrimary_->bounds().center();send(pickerPrimary_,ui::kMouseDownMessage,click);
+      check(pickerPrimary_->hasCapture()&&!globalColorDragActive(),"Color trigger captures without sampling on down");
+      send(pickerPrimary_,ui::kMouseMoveMessage,{pickerPrimary_->bounds().x2(),click.y});check(!globalColorDragActive(),"Inclusive right trigger edge must not start sampling");
+      send(pickerPrimary_,ui::kMouseUpMessage,click);check(!pickerPrimary_->hasCapture()&&colorEditorPopup_&&colorEditorPopup_->isVisible(),"Undragged trigger opens editor once");colorEditorPopup_->closeWindow(nullptr);
+      auto field=colorPicker_->regionBounds(NativeColorPicker::Region::Field);const auto at=field.center();
+      send(pickerPrimary_,ui::kMouseDownMessage,click);send(pickerPrimary_,ui::kMouseMoveMessage,at);pollGlobalColorDrag(*pickerPrimary_);
+      check(globalColorDragActive()&&pickerPrimary_->hasCapture()&&currentDocument().palette().secondary==secondary,"Global picker drag writes only initiating role");
+      check(display()->layers().size()==layers,"Picker suppresses global magnifier");
+      const auto picked=currentDocument().palette().primary;send(pickerPrimary_,ui::kMouseUpMessage,at);
+      check(!globalColorDragActive()&&!pickerPrimary_->hasCapture()&&!colorEditorPopup_->isVisible()&&currentDocument().palette().primary==picked,"Drag release suppresses click and keeps sampled role");
+      // Each scheme resets field membership at each external position. Direct
+      // reads must never run the picker's regular changed callback.
+      const auto scheme=colorPicker_->scheme();const auto quant=colorPicker_->quantization();auto changed=colorPicker_->changed;int emitted=0;colorPicker_->changed=[&](Pixel,bool){++emitted;};
+      for(auto mode:{ColorPickerScheme::SvSquare,ColorPickerScheme::HsSquare,ColorPickerScheme::Wheel,ColorPickerScheme::NormalMap,ColorPickerScheme::MoonRing})for(auto q:{PickerQuantization{},PickerQuantization{12,5}}){
+        colorPicker_->finishExternal();colorPicker_->setScheme(mode);colorPicker_->setQuantization(q);colorPicker_->syncColors(0x80332211,secondary);
+        const auto f=colorPicker_->regionBounds(NativeColorPicker::Region::Field),a=colorPicker_->regionBounds(NativeColorPicker::Region::Alpha);auto first=colorPicker_->sampleExternal(f.center());check(first&&(*first>>24)==128,"External picker source alpha");
+        if(mode==ColorPickerScheme::Wheel||mode==ColorPickerScheme::NormalMap)check(!colorPicker_->sampleExternal(f.origin()),"External wheel transparent corner must block fallback");
+        const auto alpha=colorPicker_->sampleExternal({a.x+a.w-1,a.center().y});check(alpha&&(*alpha>>24)==255,"External alpha strip preserves precision across field transition");
+        auto next=colorPicker_->sampleExternal(f.center());check(next&&(*next>>24)==255,"External field retains sampled alpha");
+      }
+      colorPicker_->finishExternal();colorPicker_->setScheme(scheme);colorPicker_->setQuantization(quant);colorPicker_->changed=changed;check(emitted==0,"External picker emitted unrelated source role callback");refresh();
+      const auto canvas=canvasDocumentToDisplay({4.25,4.25});check(canvasViewport().contains(canvas),"Canvas sample fixture visibility");
+      send(pickerPrimary_,ui::kMouseDownMessage,pickerPrimary_->bounds().center());send(pickerPrimary_,ui::kMouseMoveMessage,canvas);pollGlobalColorDrag(*pickerPrimary_);
+      check(globalColorDragActive()&&currentDocument().palette().primary==sampleEyedropper(currentDocument(),4,4,currentTools().eyedropperSource),"Global drag samples document source before display checker");
+      check(display()->layers().size()==layers+1,"Canvas drag shows one global lens UI layer");
+      const auto screen=display()->nativeWindow()->pointToScreen(canvas);check(manager()->pickFromScreenPos(screen)==this,"Global lens does not block canvas hit testing");
+      auto layer=display()->layers().back();writeSmokeFrame(layer->surface().get(),assets_.parent_path()/"global-color-lens-smoke.bmp");
+      auto composed=os::instance()->makeRgbaSurface(bounds().w,bounds().h);composed->clear();{ui::Graphics g(composed);ui::PaintEvent ev(this,&g);onPaint(ev);}os::Paint over;over.blendMode(os::BlendMode::SrcOver);composed->drawSurface(layer->surface().get(),{0,0,layer->surface()->width(),layer->surface()->height()},layer->bounds(),os::Sampling(),&over);writeSmokeFrame(composed.get(),assets_.parent_path()/"global-color-drag-smoke.bmp");
+      ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);pickerPrimary_->onProcessMessage(&escape);
+      check(!globalColorDragActive()&&!pickerPrimary_->hasCapture()&&display()->layers().size()==layers,"Escape clears global capture and lens");
+      send(pickerPrimary_,ui::kMouseDownMessage,pickerPrimary_->bounds().center());send(pickerPrimary_,ui::kMouseMoveMessage,canvas);pollGlobalColorDrag(*pickerPrimary_);pickerPrimary_->setEnabled(false);pollGlobalColorDrag(*pickerPrimary_);check(!globalColorDragActive()&&!pickerPrimary_->hasCapture(),"Disabled trigger cancels global capture");pickerPrimary_->setEnabled(true);
+      send(pickerPrimary_,ui::kMouseDownMessage,pickerPrimary_->bounds().center());send(pickerPrimary_,ui::kMouseMoveMessage,canvas);pollGlobalColorDrag(*pickerPrimary_);send(pickerPrimary_,ui::kMouseUpMessage,canvas,ui::kButtonNone);check(!globalColorDragActive()&&!pickerPrimary_->hasCapture(),"Lost capture cancels sampling without final click");
+      check(currentDocument().historySize()==h&&currentDocument().pixels()==baseline&&currentDocument().palette().secondary==secondary,"Global role sampling changed document pixels/history/other role");
+      refresh();
+    }
 
     primaryRole_->Click();if(!colorEditorPopup_||!colorEditorPopup_->isVisible()||pending_!=Pending::None||!menuBar_->isEnabled())throw std::runtime_error("Color component must open a modeless editor");
 

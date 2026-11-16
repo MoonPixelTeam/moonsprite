@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_global_color_drag.h"
 #include "interaction_profile.h"
 #include "task_poll_schedule.h"
 #include "animation_settings.h"
@@ -33,7 +34,7 @@ public:
 };
 }
 
-Editor::~Editor() {ColorEditorPopup::clearPaletteProvider(this);panelStateTimer_.stop();flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngProgress_)framePngProgress_.cancel();floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(currentRecovery().worker.valid())currentRecovery().worker.wait();}
+Editor::~Editor() {clearGlobalColorDragEnvironment(this);ColorEditorPopup::clearPaletteProvider(this);panelStateTimer_.stop();flushColorRoles();colorRolesTimer_.stop();stopScripts();imageResizeTimer_.stop();imageResizeTask_.reset();importSheetTimer_.stop();importSheetTask_.reset();saveLayerPanelState(true);closeParameterRange();if(dynamicsPopup_){dynamicsPopup_->closeWindow(nullptr);dynamicsPopup_.reset();}workspacePresetTimer_.stop();flushWorkspacePresetSave();diagnosticTimer_.stop();if(diagnostics_){diagnostics_->record("session","native.stopped");diagnostics_->flush();diagnostics_.reset();}saveDocumentView();usageStatistics_.flush();persistUsageStatistics();advancedNoticeTimer_.stop();thumbnailQueue_.reset();thumbnailTimer_.stop();if(colorEditorPopup_){colorEditorPopup_->closeWindow(nullptr);colorEditorPopup_.reset();}flushBrushSizePreferences();if(framePngProgress_)framePngProgress_.cancel();floatingViewportSaveTimer_.stop();cancelGradientMapJob();stopAntiAlias();stopConvolution();if(propertyRangePopup_){propertyRangePopup_->closeWindow(nullptr);propertyRangePopup_.reset();}celNavigationTimer_.stop();if(toolFlyout_){toolFlyout_->closeWindow(nullptr);toolFlyout_.reset();}antsTimer_.stop();sizeTimer_.stop();if(recoveryTimer_){recoveryTimer_->stop();delete recoveryTimer_;}if(currentRecovery().worker.valid())currentRecovery().worker.wait();}
 
 Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std::function<void()> refreshCursor,std::filesystem::path recoveryRoot,bool skipWorkspaceRestore)
 
@@ -264,6 +265,8 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
     primaryRole_=button(U"",[this]{showRoleColorEditor(false);});
 
     secondaryRole_=button(U"",[this]{showRoleColorEditor(true);});
+    bindGlobalColorDrag(*primaryRole_,[this](Pixel c){setSharedColor(c,false);refresh();});
+    bindGlobalColorDrag(*secondaryRole_,[this](Pixel c){setSharedColor(c,true);refresh();});
 
     primaryRole_->hover=[this]{status_=U"前景色 · 点击编辑 HEX";invalidate();};
 
@@ -356,6 +359,8 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
     pickerPrimary_=button(U"",[this]{showRoleColorEditor(false);});pickerPrimary_->colorRole=true;
 
     pickerSecondary_=button(U"",[this]{showRoleColorEditor(true);});pickerSecondary_->colorRole=true;
+    bindGlobalColorDrag(*pickerPrimary_,[this](Pixel c){setSharedColor(c,false);refresh();});
+    bindGlobalColorDrag(*pickerSecondary_,[this](Pixel c){setSharedColor(c,true);refresh();});
 
     pickerAdd_=button(U"",[this]{try{currentDocument().addPaletteColor(currentDocument().palette().primary,paletteLocked_);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}refresh();});
 
@@ -385,6 +390,7 @@ Editor::Editor(const PixelFont& font,Skin& skin,std::filesystem::path assets,std
     layerDescription_=new PixelTextArea(font_,skin_);addChild(layerDescription_);layerDescription_->setVisible(false);layerDescription_->changed=[this](const std::u32string& text){currentDocument().previewLayerDescription(text);refresh();};layerDescription_->cancel=[this]{resolve(false);};
 
     layerDisplayColor_=button(U"",[this]{if(pending_!=Pending::LayerOpacity)return;if(!colorEditorPopup_)colorEditorPopup_=std::make_unique<ColorEditorPopup>(font_,skin_,toolIcons_,smoke_?assets_.parent_path()/"color-editor-smoke-size.txt":palettePreferencePath().parent_path()/"color-editor-role-size.txt");std::vector<Pixel> colors;for(const auto& c:currentDocument().palette().entries)if(c.id)colors.push_back(c.color);colorEditorPopup_->open(layerDisplayColor_->bounds(),bounds(),layerDisplayColor_->swatch,U"图层显示颜色",colors,[this](Pixel color){if(pending_==Pending::LayerOpacity){currentDocument().previewLayerDisplayColor(color);layerDisplayColor_->swatch=color;refresh();}},{});});layerDisplayColor_->colorRole=true;layerDisplayColor_->setVisible(false);
+    bindGlobalColorDrag(*layerDisplayColor_,[this](Pixel c){if(pending_==Pending::LayerOpacity){currentDocument().previewLayerDisplayColor(c);layerDisplayColor_->swatch=c;refresh();}});
 
     layerNoColor_=button(U"无色",[this]{currentDocument().previewLayerDisplayColor({});layerDisplayColor_->swatch=0;refresh();});layerNoColor_->setVisible(false);
 

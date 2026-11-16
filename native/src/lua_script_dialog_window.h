@@ -1,4 +1,5 @@
 #pragma once
+#include "native_global_color_drag.h"
 #include "lua_script_dialog_state.h"
 #include "lua_script_numeric_widgets.h"
 #include "color_editor_popup.h"
@@ -51,7 +52,7 @@ class ScriptDialogWindow final:public PixelDialog {
    else if(kind==L"button")row.widget=new PixelButton(font_,skin_,label,[this,key]{click(key);});
    else if(kind==L"check"||kind==L"radio"){auto check=new PixelCheckbox(font_,skin_,label,v.ValueType()==Type::Boolean&&v.GetBoolean(),[this,key,kind](bool selected){if(kind==L"check")draft(key,selected?"true":"false");click(key);});row.widget=check;}
    else if(kind==L"combobox"){auto d=new PixelDropdown(font_,skin_);std::vector<std::u32string> options;int selected=0;for(const auto& option:c.GetNamedArray(L"options")){if(v.ValueType()==Type::String&&option.GetString()==v.GetString())selected=int(options.size());options.push_back(unicodeText(winrt::to_string(option.GetString())));}d->setOptions(options);d->setSelectedIndex(selected);d->changed=[this,key,c](int i){auto options=c.GetNamedArray(L"options");if(i<0||i>=int(options.Size()))return;draft(key,winrt::to_string(options.GetAt(i).Stringify()));commit(key,script::DialogState::Commit::Change);};row.widget=d;}
-   else if(kind==L"color"){auto b=new PixelButton(font_,skin_,U"",[]{});b->paletteCell=true;b->swatch=packed(v);b->Click.connect([this,key,b]{openColor(key,b);});row.widget=b;}
+   else if(kind==L"color"){auto b=new PixelButton(font_,skin_,U"",[]{});b->paletteCell=true;b->swatch=packed(v);b->Click.connect([this,key,b]{openColor(key,b);});bindGlobalColorDrag(*b,[this,key,b](Pixel p){if(busy_)return;draft(key,colorJson(p));b->swatch=p;b->invalidate();commit(key,script::DialogState::Commit::Change);});row.widget=b;}
    else if(kind!=L"label"&&kind!=L"separator")throw std::invalid_argument("Unsupported Lua dialog control");
    if(row.widget)viewport_->addChild(row.widget);rows_.push_back(std::move(row));
   }

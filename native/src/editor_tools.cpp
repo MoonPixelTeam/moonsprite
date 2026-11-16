@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_global_color_drag.h"
 #include "eyedropper_lens.h"
 #include "eyedropper_quick_select.h"
 #include "shortcut_input.h"
@@ -1025,6 +1026,7 @@ void Editor::showGradientStopsMenu(bool verify){
       };
     });
     colorValue->colorRole=true;
+    bindGlobalColorDrag(*colorValue,[&,this](Pixel next){if(closingStops||currentTools().gradientStops.empty())return;gradientStop_=std::clamp(gradientStop_,0,int(currentTools().gradientStops.size())-1);currentTools().gradientStops[gradientStop_].color=next;colorValue->swatch=next;if(!color->hasFocus())color->setText(paletteHex(next));colorValue->invalidate();track->invalidate();gradientChanged();});
     popup.place(colorValue,{166,55,72,textControlHeight});
     popup.Close.connect([&](ui::CloseEvent&){closingStops=true;if(stopColorEditor)stopColorEditor->closeWindow(nullptr);});
 
@@ -2009,6 +2011,19 @@ void Editor::createEyedropperOptions(){
 
     eyedropperLensPointers_[0]=importSkinPng(assets_/"cursors/02-Slice-2.png",32);eyedropperLensPointers_[1]=importSkinPng(assets_/"cursors/03-Slice-3.png",32);
 
+    setGlobalColorDragEnvironment(this,[this]{
+      GlobalColorDragEnvironment e;e.skin=&skin_;e.magnifier=eyedropperLensEnabled_;e.line=runtimePreferences_.index("tools.eyedropperMagnifierStyle.Select")==1;e.distortion=runtimePreferences_.flag("tools.eyedropperMagnifierDistortionEnabled");
+      const double sizes[]{.5,.75,1,1.25};e.size=sizes[std::clamp(eyedropperLensSize_,0,3)];e.masks=eyedropperLensMasks_;e.pointers=eyedropperLensPointers_;
+      const auto identity=currentDocument().identity();e.valid=[this,identity]{return identity==currentDocument().identity();};e.cursor=[this](bool){updateNavigationCursor();};
+      e.hideAt=[this](ui::Widget* w){const int id=widgetColumn(w);return id==1||(id>=4&&id<=7);};
+      e.canvas=[this,identity](gfx::Point screen,ui::Widget* target)->std::optional<Pixel>{
+        if(identity!=currentDocument().identity()||!documentOpen_||homeOpen_||!display()||target!=this)return {};
+        const auto p=display()->nativeWindow()->pointFromScreen(screen);if(!canvasViewport().contains(p))return {};
+        auto at=canvasDocumentPoint(p);if(tileRepeatIdentity_==identity&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return Pixel(0);at={mapped->local.x,mapped->local.y};}
+        if(at.x<0||at.y<0||at.x>=currentDocument().width()||at.y>=currentDocument().height())return Pixel(0);
+        return sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
+      };return e;
+    });
     {std::ifstream in(palettePreferencePath().parent_path()/"zoom-tool-drag-mode.txt");std::string mode;if(in>>mode)navigation_.zoomSmooth_=mode=="smooth";}
 
     // localStorage preference becomes the existing native preference directory.
@@ -2021,6 +2036,8 @@ void Editor::createEyedropperOptions(){
     eyedropperForegroundButton_=button(U"",[this]{showRoleColorEditor(false,eyedropperForegroundButton_);});
     eyedropperBackgroundButton_=button(U"",[this]{showRoleColorEditor(true,eyedropperBackgroundButton_);});
     for(auto control:{eyedropperForegroundButton_,eyedropperBackgroundButton_})control->colorRole=true;
+    bindGlobalColorDrag(*eyedropperForegroundButton_,[this](Pixel c){setSharedColor(c,false);refresh();});
+    bindGlobalColorDrag(*eyedropperBackgroundButton_,[this](Pixel c){setSharedColor(c,true);refresh();});
     eyedropperForegroundButton_->hover=[this]{status_=U"前景色 · 点击编辑颜色";invalidate();};
     eyedropperBackgroundButton_->hover=[this]{status_=U"背景色 · 点击编辑颜色";invalidate();};
     eyedropperReplaceButton_=button(U"替换颜色",[this]{openReplaceColor();});
