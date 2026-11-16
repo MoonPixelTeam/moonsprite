@@ -70,6 +70,9 @@ public:
 
   bool onProcessMessage(ui::Message* msg) override {
     if(msg->fromFilter()&&desktop&&desktop->editor)desktop->editor->observeDiagnosticInput(msg);
+    if(msg->fromFilter()&&desktop&&desktop->editor&&
+       (msg->type()==ui::kKeyDownMessage||msg->type()==ui::kFocusLeaveMessage||msg->type()==ui::kFocusEnterMessage))
+      desktop->editor->processQuickEyedropper(msg);
 
     if(msg->fromFilter() && msg->type()==ui::kFocusLeaveMessage && desktop && desktop->editor)desktop->editor->observeTabletInput(msg);
     if(msg->fromFilter() && msg->type()==ui::kMouseWheelMessage){

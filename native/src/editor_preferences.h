@@ -18,7 +18,7 @@ inline bool runtimeSetting(const std::string& key) {
     "editing.wheelZoomEnabled", "editing.wheelZoomMode.Select",
     "editing.rotationIndicatorPosition.Select", "editing.viewDragSensitivity.Select", "tools.gradientApplicationMode.Select",
     "tools.moveLayerContentPreviewEnabled", "tools.moveLayerClickFlashEnabled", "tools.moveLayerClickFlashDuration.Select", "tablet.assistPanel", "tablet.tablet.pressureEnabled", "tools.gridAlignmentEnabled", "tools.smartAlignmentEnabled", "tools.alignmentGuidesVisible", "tools.alignmentThreshold.Number", "tools.shiftLinePreviewEnabled", "tools.balancedShiftLineEnabled", "tools.lineDirectionStep.Number", "tools.lassoPreviewClosed",
-    "tools.eyedropperSwitchToPencil", "tools.eyedropperMagnifierStyle.Select", "tools.eyedropperMagnifierDistortionEnabled", "cursor.selectionSizeVisible",
+    "tools.eyedropperSwitchToPencil", "tools.eyedropperQuickSelect", "tools.eyedropperMagnifierStyle.Select", "tools.eyedropperMagnifierDistortionEnabled", "cursor.selectionSizeVisible",
     "cursor.selectionPreviewColorMode.Select", "cursor.selectionPreviewColor.Color",
     "cursor.brushPreviewMode.Select", "cursor.drawingBrushPreviewEnabled",
     "cursor.brushEdgeThickness.Number", "colorLayers.recentColorsVisible", "colorLayers.pixelFormat.Select",

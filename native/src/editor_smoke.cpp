@@ -5441,6 +5441,7 @@ void Editor::smokeEyedropper(){
       if(eyedropperLensWorkCounts(*this).second!=before.second||lensWords()==flat)throw std::runtime_error("Lens active view transform reuses source and updates raster");
       restoreLens();
     }catch(...){restoreLens();throw;}
+    smokeQuickEyedropper();
     replaceDocumentForSmoke(Document());currentTools().eyedropperTool=eyedropperHeld_=paletteSamplingHeld_=false;currentTools().eyedropperSource=EyedropperSource::Composite;refresh();
 
   }

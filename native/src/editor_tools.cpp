@@ -1,5 +1,7 @@
 #include "editor.h"
 #include "eyedropper_lens.h"
+#include "eyedropper_quick_select.h"
+#include "shortcut_input.h"
 #include "include/effects/SkImageFilters.h"
 #include "recent_export_paths.h"
 #include "palette_layout.h"
@@ -27,6 +29,9 @@ struct EyedropperLensWork final:ui::Property {
  std::uint64_t identity=0,revision=0,previewRevision=0,renders=0,reads=0;
  std::string frame,layer,mask;EyedropperSource source=EyedropperSource::Composite;
  int x=0,y=0;std::vector<Pixel> pixels;
+ bool quickActive=false,quickSuppressed=false;
+ std::uint64_t quickOwner=0;
+ std::optional<Pixel> quickOriginal,quickColor;
  EyedropperLensWork():ui::Property("moonsprite.eyedropper-lens-work"){}
 };
 struct BrushWrite {std::filesystem::path root;std::array<std::string,7> text;};
@@ -1598,25 +1603,200 @@ std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget
  return work?std::make_pair(work->renders,work->reads):std::make_pair(std::uint64_t(0),std::uint64_t(0));
 }
 
+void Editor::flushQuickEyedropperColor(){
+ const auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
+ if(!work||!work->quickColor)return;
+ const auto color=*work->quickColor;work->quickColor.reset();
+ if(work->quickOwner==currentDocument().identity()&&currentDocument().palette().primary!=color){setSharedColor(color,false);refresh();}
+}
+
+bool Editor::processQuickEyedropper(ui::Message* msg){
+ auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
+ const auto key=dynamic_cast<ui::KeyMessage*>(msg);
+ const bool down=msg->type()==ui::kKeyDownMessage,up=msg->type()==ui::kKeyUpMessage;
+ const bool enabled=runtimePreferences_.flag("tools.eyedropperQuickSelect");
+ auto clear=[&](bool suppressed){
+  work->quickActive=false;work->quickSuppressed=suppressed;work->quickOriginal.reset();work->quickColor.reset();
+  if(!eyedropperGesture_.active()){work->pending=false;eyedropperLensSurface_.reset();invalidateRect(canvasViewport());}
+ };
+ // Legacy blur/focus cancels transient sampling without restoring the color.
+ if(work&&(work->quickOwner!=currentDocument().identity()||!enabled||
+    msg->type()==ui::kFocusLeaveMessage||msg->type()==ui::kFocusEnterMessage)){
+  if(work->quickActive||work->quickSuppressed)clear(false);
+ }
+ const bool matched=key&&shortcuts::matches(shortcutBindings_,"tool.eyedropper.quick",shortcuts::keyboardText(*key));
+ if(work&&down&&work->quickActive&&!matched){
+  const auto original=work->quickOriginal;clear(true);
+  if(original&&currentDocument().palette().primary!=*original){setSharedColor(*original,false);refresh();}
+ }
+ if(work&&down&&key->scancode()==ui::kKeyAlt&&!key->repeat())work->quickSuppressed=false;
+ if(work&&up&&work->quickActive){
+  auto released=shortcuts::keyboardKey(*key);
+  switch(key->scancode()){
+   case ui::kKeyAlt:case ui::kKeyAltGr:released="Alt";break;
+   case ui::kKeyLControl:case ui::kKeyRControl:released="Ctrl";break;
+   case ui::kKeyLShift:case ui::kKeyRShift:released="Shift";break;
+   case ui::kKeyLWin:case ui::kKeyRWin:case ui::kKeyCommand:released="Win";break;
+   default:break;
+  }
+  bool ends=false;
+  for(const auto& binding:shortcuts::forId(shortcutBindings_,"tool.eyedropper.quick")){
+   std::istringstream parts(shortcuts::normalize(binding));std::string part;
+   while(std::getline(parts,part,'+'))if(shortcuts::lower(part)==shortcuts::lower(released))ends=true;
+  }
+  if(ends){flushQuickEyedropperColor();clear(false);return false;}
+ }
+ // Chord rollback runs before the text/modal gate, as in the legacy keyboard
+ // dispatcher; a focused field must not retain a provisional foreground color.
+ if(work&&shortcutInputBlocked()&&(work->quickActive||work->quickSuppressed))clear(false);
+ if(!enabled||msg->fromFilter())return false;
+ const auto mouse=dynamic_cast<ui::MouseMessage*>(msg);
+ if(work&&work->quickActive&&mouse&&msg->type()==ui::kMouseDownMessage&&
+    (mouse->left()||mouse->right())&&canvasOwnsPointer(mouse->position())){
+  // sampleAtPoint begins a separate captured gesture, with its own previous
+  // color; keep the quick original available for a subsequent chord rollback.
+  flushQuickEyedropperColor();work->pending=false;eyedropperLensSurface_.reset();
+ }
+ const bool moving=msg->type()==ui::kMouseMoveMessage&&work&&work->quickActive;
+ if(!moving&&!(down&&matched))return false;
+ const auto pointer=moving?std::optional<gfx::Point>{mouse->position()}:paletteMousePosition_;
+ const bool visible=pointer&&canvasOwnsPointer(*pointer);
+ const bool sizing=modifierBrushSupported()&&moveModifierHeld("brushSizeAdjust",*msg);
+ const bool blocked=(work&&work->quickSuppressed)||currentTools().moveTool||currentPlayback().playing||currentView().freeTransform||bool(canvasResizePreview_);
+ const bool dragging=historyGestureBusy()||eyedropperGesture_.active()||moveDragging_||rotationDragging_||drawingAnchorDragging_||selectionPivotDragging_||symmetryDragging_||navigation_.pan_.active||currentDocument().freeTilePlacementActive();
+ if(!shouldQuickSelectEyedropper({enabled,true,key&&key->repeat(),visible,documentOpen_&&!homeOpen_,dragging,spaceHeld_,sizing,blocked,shortcutInputBlocked()}))return false;
+ if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
+ work->quickActive=true;work->quickOwner=currentDocument().identity();
+ // Quick hover samples RGBA, including transparent space outside finite repeats.
+ auto at=canvasDocumentPoint(*pointer);
+ if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off)
+  if(const auto local=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat))at={local->local.x,local->local.y};
+ const auto color=sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
+ if(!work->quickOriginal)work->quickOriginal=currentDocument().palette().primary;
+ updateEyedropperLens(*pointer,color);
+ work->quickColor=color;
+ if(down)flushQuickEyedropperColor();else invalidateRect(canvasViewport());
+ updateNavigationCursor();return true;
+}
+
+void Editor::smokeQuickEyedropper(){
+ const auto preferences=runtimePreferences_.values;
+ const auto bindings=shortcutBindings_;
+ const bool locked=paletteLocked_,lens=eyedropperLensEnabled_;
+ auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
+ if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
+ struct Restore{std::function<void()> fn;~Restore(){fn();}}restore{[&]{
+  work->quickActive=work->quickSuppressed=work->pending=false;work->quickOriginal.reset();work->quickColor.reset();
+  eyedropperLensSurface_.reset();runtimePreferences_.values=preferences;shortcutBindings_=bindings;
+  paletteLocked_=locked;eyedropperLensEnabled_=lens;moveHeldKeys_.clear();eyedropperHeld_=spaceHeld_=false;
+ }};
+ auto check=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+ replaceDocumentForSmoke(Document(8,8));homeOpen_=false;documentOpen_=true;pending_=Pending::None;
+ runShortcutCommand("tool.pencil");paletteLocked_=true;eyedropperLensEnabled_=true;
+ currentDocument().beginStroke({2,2},0x80443322);currentDocument().commitStroke();
+ currentDocument().beginStroke({3,2},0xffabcdef);currentDocument().commitStroke();currentDocument().markSaved();
+ refresh();fitCanvas();currentView().zoom=4;const auto area=canvasViewport();currentView().canvas={area.center().x-32,area.center().y-32,64,64};refresh();requestFocus();
+ shortcutBindings_.clear();shortcutBindings_["tool.eyedropper.quick"]={"F8"};
+ auto at=[&](double x,double y){return canvasDocumentToDisplay({x+.25,y+.25});};
+ auto key=[&](ui::MessageType type,ui::KeyScancode code=ui::kKeyF8,ui::KeyModifiers modifiers=ui::kKeyNoneModifier,int repeat=0){ui::KeyMessage event(type,code,modifiers,0,repeat);onProcessMessage(&event);};
+ auto hover=[&](double x,double y){const auto p=at(x,y);updatePaletteMouse(p);ui::MouseMessage event(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,p);onProcessMessage(&event);};
+ auto flush=[&]{auto target=os::instance()->makeRgbaSurface(bounds().w,bounds().h);ui::Graphics g(target);paintEyedropperLens(g);};
+ auto resetColor=[&]{setSharedColor(0xff102030,false);};
+ const auto pixels=currentDocument().pixels();const auto history=currentDocument().historySize(),revision=currentDocument().contentRevision();
+ const auto palette=currentDocument().palette().entries;const auto recent=currentView().recent.values();
+ runtimePreferences_.set("tools.eyedropperQuickSelect","false");resetColor();hover(2,2);key(ui::kKeyDownMessage);key(ui::kKeyUpMessage);
+ check(!work->quickActive&&currentDocument().palette().primary==0xff102030,"Quick eyedropper default disabled");
+ runtimePreferences_.set("tools.eyedropperQuickSelect","true");
+ check(preferenceRowEnabled(preferences::RuntimeSettings::item("tools.eyedropperQuickSelect")),"Quick eyedropper preference enabled");
+ key(ui::kKeyDownMessage);check(work->quickActive&&!eyedropperGesture_.active()&&!hasCapture()&&currentDocument().palette().primary==0x80443322&&eyedropperLensSurface_&&eyedropperLensPrevious_==0xff102030,"Quick eyedropper first key samples alpha with original lens and no capture");
+ const auto count=eyedropperLensWorkCounts(*this);key(ui::kKeyDownMessage,ui::kKeyF8,ui::kKeyNoneModifier,1);
+ check(eyedropperLensWorkCounts(*this)==count,"Quick eyedropper repeat is ignored");
+ hover(3,2);check(work->quickColor==0xffabcdef&&currentDocument().palette().primary==0x80443322,"Quick hover queues color until paint");flush();
+ check(currentDocument().palette().primary==0xffabcdef&&eyedropperLensPrevious_==0xff102030,"Quick hover flush keeps original color");
+ hover(4,2);key(ui::kKeyUpMessage);
+ check(!work->quickActive&&!work->quickColor&&!eyedropperLensSurface_&&currentDocument().palette().primary==0,"Quick release flushes last transparent sample and clears lens");
+ resetColor();hover(2,2);key(ui::kKeyDownMessage);hover(3,2);
+ ui::KeyMessage chord(ui::kKeyDownMessage,ui::kKeyLControl,ui::kKeyCtrlModifier,0,0);chord.setFromFilter(true);processQuickEyedropper(&chord);
+ check(!work->quickActive&&work->quickSuppressed&&!work->quickColor&&!eyedropperLensSurface_&&currentDocument().palette().primary==0xff102030,"Filtered chord cancels pending color and restores original");
+ key(ui::kKeyUpMessage);hover(3,2);key(ui::kKeyDownMessage);
+ check(!work->quickActive&&currentDocument().palette().primary==0xff102030,"Custom binding retains legacy suppression until Alt/focus reset");key(ui::kKeyUpMessage);
+ ui::FocusMessage focus(ui::kFocusEnterMessage,this,this);processQuickEyedropper(&focus);
+ key(ui::kKeyDownMessage);check(work->quickActive,"Focus reset permits quick eyedropper");
+ ui::FocusMessage blur(ui::kFocusLeaveMessage,nullptr,this);processQuickEyedropper(&blur);
+ check(!work->quickActive&&!eyedropperLensSurface_&&currentDocument().palette().primary==0xffabcdef,"Blur clears quick state without restoring color");key(ui::kKeyUpMessage);
+ // Every contextual gate exercises the actual editor key route.
+ for(int gate=0;gate<7;++gate){resetColor();hover(2,2);
+  if(gate==0)currentTools().moveTool=true;
+  if(gate==1)currentPlayback().playing=true;
+  if(gate==2)currentView().freeTransform=true;
+  if(gate==3)canvasResizePreview_=std::array<int,4>{0,0,8,8};
+  // Exercise a real active stroke without introducing a preview mutation into
+  // the sampling-isolation baseline (contentRevision is monotonic on cancel).
+  if(gate==4)currentDocument().beginStroke({1,1},0xff010203,{},nullptr,0,nullptr,false);
+  if(gate==5)brushSizeInput_->requestFocus();
+  if(gate==6)updatePaletteMouse({});
+  key(ui::kKeyDownMessage);check(!work->quickActive&&currentDocument().palette().primary==0xff102030,"Quick eyedropper context gate");key(ui::kKeyUpMessage);
+  currentTools().moveTool=false;currentPlayback().playing=false;currentView().freeTransform=false;canvasResizePreview_.reset();
+  if(gate==4)currentDocument().cancelStroke();requestFocus();
+ }
+ // Configured modifier chord: either constituent releases the gesture.
+ shortcutBindings_["tool.eyedropper.quick"]={"Ctrl+F8"};hover(2,2);key(ui::kKeyDownMessage,ui::kKeyF8,ui::kKeyCtrlModifier);
+ check(work->quickActive&&currentDocument().palette().primary==0x80443322,"Configured modified quick binding");
+ hover(3,2);key(ui::kKeyUpMessage,ui::kKeyLControl);
+ check(!work->quickActive&&currentDocument().palette().primary==0xffabcdef,"Modifier release commits pending sample");key(ui::kKeyUpMessage);
+ shortcutBindings_["tool.eyedropper.quick"]={"Alt"};resetColor();hover(2,2);key(ui::kKeyDownMessage,ui::kKeyAlt,ui::kKeyAltModifier);
+ check(work->quickActive&&eyedropperHeld_,"Default Alt quick select starts");
+ key(ui::kKeyDownMessage,ui::kKeyLControl,ui::KeyModifiers(ui::kKeyCtrlModifier|ui::kKeyAltModifier));key(ui::kKeyUpMessage,ui::kKeyLControl,ui::kKeyAltModifier);key(ui::kKeyUpMessage,ui::kKeyAlt);
+ check(work->quickSuppressed&&currentDocument().palette().primary==0xff102030,"Alt chord rollback stays suppressed");
+ key(ui::kKeyDownMessage,ui::kKeyAlt,ui::kKeyAltModifier);check(work->quickActive,"Fresh Alt press resets suppression");key(ui::kKeyUpMessage,ui::kKeyAlt);
+ // Same source/mask/repeat readers as click sampling, without tile-resource selection.
+ shortcutBindings_["tool.eyedropper.quick"]={"F8"};
+ for(const auto source:{EyedropperSource::CurrentLayer,EyedropperSource::Composite}){
+  currentTools().eyedropperSource=source;hover(2,2);key(ui::kKeyDownMessage);check(currentDocument().palette().primary==sampleEyedropper(currentDocument(),2,2,source),"Quick source reader");key(ui::kKeyUpMessage);
+ }
+ tileRepeatIdentity_=currentDocument().identity();currentView().tileRepeat=repeat::Mode::Both;
+ hover(10,2);key(ui::kKeyDownMessage);check(currentDocument().palette().primary==0x80443322,"Quick finite repeat local point");hover(26,2);key(ui::kKeyUpMessage);
+ check(currentDocument().palette().primary==0,"Quick outside finite repeat samples transparent");currentView().tileRepeat=repeat::Mode::Off;
+ check(currentDocument().pixels()==pixels,"Quick sampling preserves artwork pixels");
+ check(currentDocument().historySize()==history&&currentDocument().contentRevision()==revision&&!currentDocument().dirty(),"Quick sampling preserves artwork history/revision/dirty state");
+ check(currentDocument().palette().entries.size()==palette.size()&&currentView().recent.values()==recent&&!currentTools().eyedropperTool,"Quick sampling preserves palette count/recent/tool");
+ // Queued color delivery is independent of whether the lens is displayed.
+ eyedropperLensEnabled_=false;resetColor();hover(2,2);key(ui::kKeyDownMessage);hover(3,2);flush();
+ check(work->quickActive&&!eyedropperLensSurface_&&currentDocument().palette().primary==0xffabcdef,"Quick sampling flushes with magnifier disabled");key(ui::kKeyUpMessage);eyedropperLensEnabled_=true;
+ // Mouse sampling owns a new original color while Alt hover keeps its rollback
+ // original; release returns to quick hover without finishing the selected tool.
+ shortcutBindings_["tool.eyedropper.quick"]={"Alt"};resetColor();hover(2,2);key(ui::kKeyDownMessage,ui::kKeyAlt,ui::kKeyAltModifier);hover(3,2);
+ auto pointer=[&](ui::MessageType type,double x,double y){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyAltModifier,at(x,y));onProcessMessage(&event);};
+ pointer(ui::kMouseDownMessage,2,2);
+ check(eyedropperGesture_.active()&&work->quickActive&&eyedropperLensPrevious_==0xffabcdef&&currentDocument().palette().primary==0x80443322,"Quick hover transitions to captured mouse sampling with its own original");
+ pointer(ui::kMouseUpMessage,2,2);hover(3,2);flush();
+ check(!eyedropperGesture_.active()&&work->quickActive&&eyedropperLensPrevious_==0xff102030&&currentDocument().palette().primary==0xffabcdef,"Mouse release resumes quick hover and its original");key(ui::kKeyUpMessage,ui::kKeyAlt);
+ shortcutBindings_["tool.eyedropper.quick"]={"F8"};
+ // A queued sample cannot reach the next document or restore its old original.
+ hover(2,2);key(ui::kKeyDownMessage);hover(3,2);replaceDocumentForSmoke(Document(8,8));setSharedColor(0xff556677,false);flush();
+ check(currentDocument().palette().primary==0xff556677,"Quick queued sample respects document identity");key(ui::kKeyUpMessage);
+ check(!work->quickActive&&!work->quickOriginal&&!work->quickColor,"Quick document switch clears transient state");
+}
+
 void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
     auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
     if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
     if(!eyedropperLensEnabled_){work->pending=false;eyedropperLensSurface_.reset();return;}
-    if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto at=canvasDocumentPoint(pointer);if(!repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat))return;}
+    if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto at=canvasDocumentPoint(pointer);if(!repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat)&&!work->quickActive)return;}
     // First preview remains immediate; subsequent pointer bursts render once at paint.
     if(!work->rendering&&eyedropperLensSurface_){work->pointer=pointer;work->sampled=sampled;work->pending=true;invalidateRect(canvasViewport());return;}
     work->pending=false;
 
-    if(!eyedropperLensSurface_)eyedropperLensPrevious_=eyedropperGesture_.secondary()?currentDocument().palette().secondary:currentDocument().palette().primary;
+    if(!eyedropperLensSurface_)eyedropperLensPrevious_=work->quickActive&&!eyedropperGesture_.active()&&work->quickOriginal?*work->quickOriginal:eyedropperGesture_.secondary()?currentDocument().palette().secondary:currentDocument().palette().primary;
 
     eyedropperLensPointer_=pointer;
 
     auto at=canvasDocumentPoint(pointer);
     if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){
       const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);
-      if(!mapped)return;
-      at={mapped->local.x,mapped->local.y};
+      if(!mapped&&!work->quickActive)return;
+      if(mapped)at={mapped->local.x,mapped->local.y};
       sampled=sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
     }
     const double px=at.x,py=at.y;
@@ -1655,7 +1835,10 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
 void Editor::paintEyedropperLens(ui::Graphics& g) {
 
-    if(!eyedropperGesture_.active() || !eyedropperLensSurface_)return;
+    flushQuickEyedropperColor();
+    const auto quick=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));
+    const bool quickVisible=quick&&quick->quickActive&&quick->quickOwner==currentDocument().identity()&&paletteMousePosition_&&canvasOwnsPointer(*paletteMousePosition_);
+    if((!eyedropperGesture_.active()&&!quickVisible) || !eyedropperLensSurface_)return;
     if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work"));work&&work->pending){
       work->rendering=true;
       try{updateEyedropperLens(work->pointer,work->sampled);}catch(...){work->rendering=false;throw;}

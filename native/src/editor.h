@@ -2718,6 +2718,9 @@ private:
 
   void useEyedropperTool();
 
+  void flushQuickEyedropperColor();
+  void smokeQuickEyedropper();
+
   void updateEyedropperLens(gfx::Point pointer,Pixel sampled);
 
   void paintEyedropperLens(ui::Graphics& g);
@@ -3028,6 +3031,7 @@ public:
   bool processScrollDrag(ui::Message* msg);
 
   void observeModifierRelease(ui::Message* msg);
+  bool processQuickEyedropper(ui::Message* msg);
 
   void smokePanelScroll();
 
