@@ -110,6 +110,7 @@ void Editor::refresh(RefreshScope scope){
     layoutDocumentTab();layoutModal();
   }
   if(needs(RefreshScope::Palette))syncPaletteButtons();
+  if(needs(RefreshScope::Palette)||needs(RefreshScope::Layout))ColorEditorPopup::refreshActivePalettes();
   if(needs(RefreshScope::Layout))layoutPanelTabs();
   if(needs(RefreshScope::Palette))layoutPalette();
   if(needs(RefreshScope::Tools))layoutToolOptions();

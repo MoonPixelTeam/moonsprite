@@ -88,6 +88,51 @@ void moon::TilesetPanel::smokePerformance(){
  }catch(...){restore();throw;}
 }
 
+void moon::ColorEditorPopup::smokePaletteAndPaste(const std::function<void(ColorEditorPopup*,const char*)>& snapshot){
+    auto check=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+    const auto savedEntries=paletteEntries_;const auto savedChanged=changed_;const auto savedReader=readClipboard_;const auto savedMode=mode_;const auto savedColor=current_;const auto frame=bounds();int changes=0;changed_=[&](auto){++changes;};
+    std::vector<ColorEditorPaletteEntry> entries{{0,U"零号",0x80332211},{7,U"蓝色",0xffcc8844},{3,U"重复色",0x80332211}};
+    updatePalette(entries);mode_=ColorValueMode::Palette;current_=entries[0].color;sync(true);
+    auto first=paletteButtons_[0],second=paletteButtons_[1];auto tips=paletteTips_;
+    updatePalette(entries);check(tips==paletteTips_&&first==paletteButtons_[0],"Identical palette rebuilt controls");
+    manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();check(hex_->hasFocus(),"HEX focus setup failed before palette refresh");check(changes==0,"HEX focus setup committed stale color");hex_->setText("#12");const auto draft=hex_->text();
+    entries[0].name=U"零号已改名";entries[0].color=0x80443322;std::swap(entries[0],entries[1]);updatePalette(entries);smokePaletteMatches(entries);
+    check(paletteButtons_[1]==first,"Palette refresh replaced surviving color identity");
+    check(hex_->hasFocus(),"Palette refresh lost HEX focus");
+    check(hex_->text()==draft,"Palette refresh replaced HEX draft");
+    if(changes!=0)throw std::runtime_error("Palette refresh emitted color callbacks: "+std::to_string(changes));
+    hex_->setText(colorValueHex(current_));manager()->setFocus(first,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
+    auto pointer=[&](ui::Widget* widget,ui::MessageType type,gfx::Point at){ui::MouseMessage msg(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);return widget->sendMessage(&msg);};
+    pointer(first,ui::kMouseDownMessage,first->bounds().center());std::swap(entries[0],entries[1]);entries[0].color=0x80554433;updatePalette(entries);
+    check(first==paletteButtons_[0]&&first->hasCapture()&&first->hasFocus(),"Surviving palette identity lost gesture/focus");
+    pointer(first,ui::kMouseUpMessage,first->bounds().center());check(current_==entries[0].color&&changes==1,"Reordered palette release used stale color");
+    std::vector<ui::Widget*> childOrder;for(auto child:children())if(std::find(paletteButtons_.begin(),paletteButtons_.end(),child)!=paletteButtons_.end())childOrder.push_back(child);
+    check(childOrder==std::vector<ui::Widget*>(paletteButtons_.begin(),paletteButtons_.end()),"Palette native tab order differs from document order");
+    pointer(second,ui::kMouseDownMessage,second->bounds().center());entries.erase(entries.begin()+1);updatePalette(entries);
+    const auto after=current_;second->Click();pointer(second,ui::kMouseUpMessage,first->bounds().center());
+    check(!second->hasCapture()&&second->parent()==nullptr&&current_==after&&changes==1,"Removed palette target retained capture or applied stale color");
+    tabs_[1]->Click();manager()->setFocus(entries_[0],ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();entries_[0]->setText("-");
+    entries.push_back({8,U"新增",0x00abcdef});updatePalette(entries);check(entries_[0]->hasFocus()&&entries_[0]->text()=="-"&&changes==1,"Live palette replaced channel draft");
+    entries_[0]->setText("51");manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
+    check(changes==2,"Channel blur did not commit through existing numeric input");const int pasteChanges=changes;
+    current_=0x80332211;sync(true);hex_->setText("#draft");
+    auto hex=static_cast<HexEntry*>(hex_);int reads=0;std::optional<std::string> text=" \t#A1b2C3\r\n";readClipboard_=[&]{++reads;return text;};
+    auto right=[&](ui::MessageType type,gfx::Point at){ui::MouseMessage msg(type,os::PointerType::Mouse,ui::kButtonRight,ui::kKeyNoneModifier,at);return hex->onProcessMessage(&msg);};
+    right(ui::kMouseDownMessage,hex_->bounds().center());right(ui::kMouseMoveMessage,hex_->bounds().center());check(reads==0&&hex->hasCapture()&&hex_->text()=="#draft","HEX context gesture committed draft or read early");
+    right(ui::kMouseUpMessage,hex_->bounds().center());check(reads==1&&!hex->hasCapture()&&current_==0x80c3b2a1&&hex_->text()=="#A1B2C380"&&changes==pasteChanges+1,"HEX clipboard six digits/alpha/normalization");
+    text="#11223300";right(ui::kMouseDownMessage,hex_->bounds().center());right(ui::kMouseUpMessage,hex_->bounds().center());check(current_==0x00332211&&changes==pasteChanges+2,"HEX explicit transparent color lost RGB");
+    for(const auto& invalid:std::vector<std::optional<std::string>>{std::nullopt,"","bad","#12345","#12 3456","#112233FFx"}){text=invalid;hex_->setText("unfinished");const auto color=current_;pasteHex();check(current_==color&&hex_->text()=="unfinished"&&changes==pasteChanges+2,"Invalid clipboard altered draft/color");}
+    readClipboard_=[]()->std::optional<std::string>{throw std::runtime_error("unavailable");};pasteHex();check(current_==0x00332211&&hex_->text()=="unfinished"&&changes==pasteChanges+2,"Clipboard failure altered color/draft");
+    readClipboard_=[&]{++reads;return std::optional<std::string>{"#456789"};};const int beforeReads=reads;
+    right(ui::kMouseDownMessage,hex_->bounds().center());right(ui::kMouseUpMessage,bounds().origin());
+    hex_->setEnabled(false);right(ui::kMouseDownMessage,hex_->bounds().center());right(ui::kMouseUpMessage,hex_->bounds().center());hex_->setEnabled(true);
+    check(reads==beforeReads&&!hex->hasCapture()&&changes==pasteChanges+2,"Outside/disabled HEX context pasted");
+    hex_->setText(colorValueHex(current_));manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();check(hex_->hasFocus(),"HEX focus loss setup failed");right(ui::kMouseDownMessage,hex_->bounds().center());manager()->setFocus(currentButton_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();check(!hex_->hasFocus()&&currentButton_->hasFocus(),"HEX focus did not transfer to sibling control");right(ui::kMouseUpMessage,hex_->bounds().center());check(!hex->hasCapture()&&reads==beforeReads,"HEX focus loss retained context gesture");
+    manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();ui::KeyMessage menu(ui::kKeyDownMessage,ui::kKeyMenu,ui::kKeyNoneModifier,0,0);hex->onProcessMessage(&menu);check(current_==0x00896745&&changes==pasteChanges+3,"Keyboard context HEX paste");
+    snapshot(this,"color-editor-live-paste-smoke.bmp");mode_=ColorValueMode::Palette;sync(true);snapshot(this,"color-editor-live-palette-smoke.bmp");
+    hex_->setText(colorValueHex(current_));manager()->setFocus(currentButton_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();changed_={};current_=savedColor;mode_=savedMode;updatePalette(savedEntries);setBounds(frame);sync(true);readClipboard_=savedReader;changed_=savedChanged;
+  }
+
 namespace moon::script { void withScriptFloating(Document&,const std::function<void()>&); }
 
 namespace moon::editor {
@@ -8491,10 +8536,35 @@ void Editor::smokeColorEditor(){
     };
     snapshot(&other,"color-editor-cmyk-smoke.bmp");other.testMode(ColorValueMode::Hsl);snapshot(&other,"color-editor-hsl-smoke.bmp");other.testMode(ColorValueMode::Cmyk);
     {
-      std::vector<std::uint32_t> palette;for(unsigned i=0;i<128;++i)palette.push_back(0xff000000u|((i*37)&255)|(((i*71)&255)<<8)|(((i*13)&255)<<16));palette[1]=palette[0];
-      ColorEditorPopup overflow(font_,skin_,toolIcons_,assets_.parent_path()/"color-modes-test-owned"/"overflow-size.txt");overflow.setDisplay(display(),false);
-      overflow.open({20,20,20,20},{0,0,1280,960},0x80443322,U"色板",palette,{},{});overflow.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
-      overflow.smokeFeedbackAndPalette(snapshot);overflow.closeWindow(nullptr);
+      const auto baseline=currentDocument().palette();const auto history=currentDocument().historyPosition();
+      auto verify=[&]{const auto& p=currentDocument().displayPalette();const auto expected=colorEditorPalette(p.entries,p.order());active->smokePaletteMatches(expected);other.smokePaletteMatches(expected);require(changes==0,"Palette refresh emitted a popup color");};
+      verify();const int id=baseline.entries.front().id;
+      currentDocument().renamePaletteColor(id,U"实时色板名称");refresh(RefreshScope::Palette);verify();
+      currentDocument().updatePaletteColor(id,0x80123456);refresh(RefreshScope::Palette);verify();
+      currentDocument().undo();refresh(RefreshScope::Palette);verify();currentDocument().redo();refresh(RefreshScope::Palette);verify();
+      const int added=currentDocument().addPaletteColor(0x00443322,false);refresh(RefreshScope::Palette);verify();
+      auto slots=currentDocument().palette().slots;const auto a=std::find(slots.begin(),slots.end(),id),b=std::find(slots.begin(),slots.end(),added);require(a!=slots.end()&&b!=slots.end(),"Live palette reorder fixture");std::iter_swap(a,b);
+      require(currentDocument().reorderPaletteColors({id,added},slots,currentDocument().palette().columns),"Live palette reorder");refresh(RefreshScope::Palette);verify();
+      currentDocument().deletePaletteColors({added});refresh(RefreshScope::Palette);verify();currentDocument().undo();refresh(RefreshScope::Palette);verify();
+      const auto source=currentDocument().paletteEntry(id)->color;require(currentDocument().beginPaletteReplacement()&&currentDocument().updatePaletteReplacement(source,0x40abcdef,true),"Popup palette preview fixture");refresh(RefreshScope::Palette);verify();require(currentDocument().paletteEntry(id)->color==source,"Palette preview mutated baseline");currentDocument().cancelPaletteReplacement();refresh(RefreshScope::Palette);verify();
+      other.closeWindow(nullptr);currentDocument().renamePaletteColor(id,U"关闭期间更新");refresh(RefreshScope::Palette);
+      other.open({10,10,20,20},{0,0,1280,960},0x80443322,U"CMYK",{},[&](auto){++changes;},{});other.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);verify();
+      while(currentDocument().historyPosition()>history)currentDocument().undo();refresh(RefreshScope::Palette);verify();
+      require(colorEditorPalette(currentDocument().palette().entries,currentDocument().palette().order())==colorEditorPalette(baseline.entries,baseline.order())&&currentDocument().palette().primary==before,"Live palette diagnostic did not restore document");
+      requestFocus();manager()->dispatchMessages();verify();
+    }
+    {
+      // These isolated input fixtures own their palette. Normal Editor refreshes
+      // during focus dispatch must not replace it with the document palette.
+      auto restoreProvider=[&]{ColorEditorPopup::setPaletteProvider(this,[this]{const auto& p=currentDocument().displayPalette();return documentOpen_?colorEditorPalette(p.entries,p.order()):std::vector<ColorEditorPaletteEntry>{};});ColorEditorPopup::refreshActivePalettes();};
+      ColorEditorPopup::clearPaletteProvider(this);
+      try{
+        other.smokePaletteAndPaste(snapshot);
+        ColorEditorPopup overflow(font_,skin_,toolIcons_,assets_.parent_path()/"color-modes-test-owned"/"overflow-size.txt");overflow.setDisplay(display(),false);
+        overflow.open({20,20,20,20},{0,0,1280,960},0x80443322,U"色板",{}, {},{});overflow.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
+        overflow.smokeFeedbackAndPalette(snapshot);overflow.closeWindow(nullptr);
+      }catch(...){restoreProvider();throw;}
+      restoreProvider();const auto& p=currentDocument().displayPalette();const auto expected=colorEditorPalette(p.entries,p.order());active->smokePaletteMatches(expected);other.smokePaletteMatches(expected);require(changes==0,"Isolated palette diagnostics changed document color callback");
     }
     showPreferences();toggle(6)->Click();require(applyPreferences(),"Disable active CMYK mode");resolve(false);
     require(active->mode()==ColorValueMode::Hsv&&other.mode()==ColorValueMode::Hsv&&changes==0&&currentDocument().palette().primary==before,"Live mode fallback changed color or missed common popup");
