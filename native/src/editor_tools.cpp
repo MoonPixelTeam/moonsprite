@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "editor_canvas_references.h"
 #include "native_global_color_drag.h"
 #include "native_canvas_color_sampling.h"
 #include "eyedropper_lens.h"
@@ -1666,7 +1667,7 @@ bool Editor::processQuickEyedropper(ui::Message* msg){
  const bool visible=pointer&&canvasOwnsPointer(*pointer);
  const bool sizing=modifierBrushSupported()&&moveModifierHeld("brushSizeAdjust",*msg);
  const bool blocked=(work&&work->quickSuppressed)||currentTools().moveTool||currentPlayback().playing||currentView().freeTransform||bool(canvasResizePreview_);
- const bool dragging=historyGestureBusy()||eyedropperGesture_.active()||moveDragging_||rotationDragging_||drawingAnchorDragging_||selectionPivotDragging_||symmetryDragging_||navigation_.pan_.active||currentDocument().freeTilePlacementActive();
+ const bool dragging=CanvasReferenceController::dragging(*this)||historyGestureBusy()||eyedropperGesture_.active()||moveDragging_||rotationDragging_||drawingAnchorDragging_||selectionPivotDragging_||symmetryDragging_||navigation_.pan_.active||currentDocument().freeTilePlacementActive();
  if(!shouldQuickSelectEyedropper({enabled,true,key&&key->repeat(),visible,documentOpen_&&!homeOpen_,dragging,spaceHeld_,sizing,blocked,shortcutInputBlocked()}))return false;
  if(!work){work=std::make_shared<EyedropperLensWork>();setProperty(work);}
  work->quickActive=true;work->quickOwner=currentDocument().identity();
@@ -1674,7 +1675,8 @@ bool Editor::processQuickEyedropper(ui::Message* msg){
  auto at=canvasDocumentPoint(*pointer);
  if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off)
   if(const auto local=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat))at={local->local.x,local->local.y};
- const auto color=sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
+ const auto referenceColor=CanvasReferenceController::sample(*this,*pointer);
+ const auto color=referenceColor?*referenceColor:sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
  if(!work->quickOriginal)work->quickOriginal=currentDocument().palette().primary;
  updateEyedropperLens(*pointer,color);
  work->quickColor=color;
@@ -1894,8 +1896,8 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
     }else if(msg->type()!=ui::kMouseMoveMessage)return false;
     if(eyedropperGesture_.active()&&canvasViewport().contains(point)){
       const auto p=transformCanvasPoint(point);const Point at{int(std::floor(p.x)),int(std::floor(p.y))};
-      const auto color=sampleEyedropper(currentDocument(),at.x,at.y,currentTools().eyedropperSource);
-      updateEyedropperLens(point,color);sampleEyedropperAt(at);
+      const auto color=CanvasReferenceController::sample(*this,point).value_or(sampleEyedropper(currentDocument(),at.x,at.y,currentTools().eyedropperSource));
+      updateEyedropperLens(point,color);sampleEyedropperAt(at,point);
     }
     return eyedropperGesture_.active();
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
@@ -1936,7 +1938,15 @@ bool Editor::processCrossCanvasIntent(const ui::MouseMessage& mouse){
   return !navigation&&routeNativeCanvasColorIntent(mouse.screenPosition(),mouse.right());
 }
 
-void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
+void Editor::sampleEyedropperAt(Point p,std::optional<gfx::Point> displayPoint){
+ try{
+  const auto reference=displayPoint?CanvasReferenceController::sample(*this,*displayPoint):std::optional<Pixel>{};
+  if(!reference&&tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}
+  const auto color=reference?*reference:sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource);
+  eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());
+  if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();
+ }catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}
+}
 
 void Editor::finishEyedropper(){endNativeCanvasColorSampling(*this);if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=currentTools().eyedropperTool && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{currentDocument().addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){currentTools().eyedropperTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().zoomTool=currentTools().eraser=false;}updateNavigationCursor();refresh();}
 
@@ -2050,6 +2060,7 @@ void Editor::createEyedropperOptions(){
     registerNativeCanvasColorSurface(*this,[this](gfx::Point screen)->std::optional<Pixel>{
       if(!documentOpen_||homeOpen_||!display())return {};
       const auto p=display()->nativeWindow()->pointFromScreen(screen);if(!canvasViewport().contains(p))return {};
+      if(const auto color=CanvasReferenceController::sample(*this,p))return color;
       auto at=canvasDocumentPoint(p);
       if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return Pixel(0);at={mapped->local.x,mapped->local.y};}
       if(at.x<0||at.y<0||at.x>=currentDocument().width()||at.y>=currentDocument().height())return Pixel(0);

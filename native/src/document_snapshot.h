@@ -19,7 +19,7 @@ class DocumentSnapshot {
   ProjectInformation information_;timelapse::Settings timelapse_;
   std::shared_ptr<const std::vector<std::uint8_t>> archive_;
   std::vector<ProjectBrushResource> brushes_;
-  ReferenceLibrary references_;
+  ReferenceLibrary references_;CanvasReferences canvasReferences_;
   std::vector<DocumentSlice> slices_;
   std::size_t brush_=0,part_=0,offset_=0;
 public:

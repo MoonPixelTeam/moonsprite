@@ -192,7 +192,7 @@ void Document::groupEdits(std::size_t start,const std::vector<std::string>& sele
  },[](const Edit& parent,std::size_t childrenBytes){const auto cost=parent.bytes();if(cost>HistoryStore<Edit>::unlimited-childrenBytes)throw std::length_error("History group byte cost exceeded");return cost+childrenBytes;});
  if(information){std::swap(projectInformation_,*information);pendingGroupedProjectOperation_=false;}
  ++historyRevision_;
- if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo);
+ if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo,0,!history_.latest().canvasReferenceHistory);
  if(!groupingHistory_&&history_.latest().documentChanged)notifyRecording();
 }
 namespace {void indexedSelectionSource(const SelectionClipboard&,timeline::RasterFormat,const PaletteState&,bool captureTranslation=false);}
@@ -1785,32 +1785,32 @@ bool Document::cropCanvasRegion(PixelRegion region,std::optional<TransformPoint>
 HistoryPanelTimeline Document::historyTimeline()const{HistoryPanelTimeline out;out.position=history_.position();out.revision=historyRevision_;out.entries.reserve(history_.size());for(std::size_t i=0;i<history_.size();++i)out.entries.push_back({i+1,history_.at(i).label});return out;}
 bool Document::setHistoryPosition(std::size_t target){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(active_)return false;target=std::min(target,history_.size());const auto steps=(history_.position()>target?history_.position()-target:target-history_.position())+16;for(std::size_t i=0;i<steps&&history_.position()!=target;++i){const auto before=history_.position();if(history_.position()>target)undo();else redo();if(history_.position()==before&&((history_.position()>target&&!canUndo())||(history_.position()<target&&!canRedo())))break;}return history_.position()==target;}
 void Document::undo() {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
-  cancelGradient();
+  finishCanvasReference(true);cancelGradient();
   if(floating_){if(floating_->restoredFromDeselect)commitFloatingPaste();else{cancelFloatingPaste();return;}}cancelStroke();
   if (!canUndo()) return;
   const auto& edit=history_.at(history_.position()-1);
   std::optional<FloatingPaste> restored;if(edit.contentHistory.restoredClipboard)restored=*edit.contentHistory.restoredClipboard;
-  history_.undo([&](const Edit& entry){replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,false);});},[&](const Edit& entry){
-    ++historyRevision_;if(restored)floating_=std::move(restored);publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
+  history_.undo([&](const Edit& entry){if(entry.canvasReferenceHistory)applyEdit(entry,false);else replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,false);});},[&](const Edit& entry){
+    ++historyRevision_;if(restored)floating_=std::move(restored);if(!entry.canvasReferenceHistory)publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
   });
-  state_ = edit.beforeState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Undo,edit.label);if(edit.documentChanged)notifyRecording(true);
+  state_ = edit.beforeState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Undo,edit.label,0,0,!edit.canvasReferenceHistory);if(edit.documentChanged&&!edit.canvasReferenceHistory)notifyRecording(true);
 }
 void Document::redo() {auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
-  cancelGradient();
+  finishCanvasReference(true);cancelGradient();
   commitFloatingPaste();cancelStroke();
   if (!canRedo()) return;
   const auto& edit=history_.at(history_.position());
-  history_.redo([&](const Edit& entry){replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,true);});},[&](const Edit& entry){
-    ++historyRevision_;publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
+  history_.redo([&](const Edit& entry){if(entry.canvasReferenceHistory)applyEdit(entry,true);else replayHistoryWithDamage(change_,width_,height_,[&]{applyEdit(entry,true);});},[&](const Edit& entry){
+    ++historyRevision_;if(!entry.canvasReferenceHistory)publishChange(bool(entry.snapshotHistory.beforeRollback)||entry.localSnapshot()!=nullptr);
   });
-  state_ = edit.afterState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Redo,edit.label);if(edit.documentChanged)notifyRecording(true);
+  state_ = edit.afterState;if(edit.documentChanged){modified_=true;projectInformation_.operation();}++revision_;notifyHistoryChange(HistoryStackChange::Kind::Redo,edit.label,0,0,!edit.canvasReferenceHistory);if(edit.documentChanged&&!edit.canvasReferenceHistory)notifyRecording(true);
 }
 // capturePaletteEdit: definition in its history domain unit.
 
 // Legacy HistoryStack.setMaxEntries: discard oldest undo entries first,
 // then farthest redo entries. Never change document pixels, dirty or revision.
-void Document::notifyHistoryChange(HistoryStackChange::Kind kind,const std::u32string& label,std::size_t discardedUndo,std::size_t discardedRedo){
- animationChangeBinding_.publish(*this,{AnimationChange::Kind::HistoryChanged,AnimationFrameOrigin::Manual,kind});
+void Document::notifyHistoryChange(HistoryStackChange::Kind kind,const std::u32string& label,std::size_t discardedUndo,std::size_t discardedRedo,bool animationSync){
+ animationChangeBinding_.publish(*this,{AnimationChange::Kind::HistoryChanged,AnimationFrameOrigin::Manual,kind,false,animationSync});
  if(historyChangeBinding_.observer)historyChangeBinding_.publish(*this,{kind,label,discardedUndo,discardedRedo,historyRevision_});
 }
 void Document::clearHistory(){
@@ -1838,8 +1838,8 @@ void Document::pushEdit(Edit edit,std::u32string label) {
   capturePixelAddresses(edit);
   history_.push(std::move(edit),false);++historyPushRevision_;if(history_.latest().documentChanged){if(groupingHistory_)pendingGroupedProjectOperation_=true;else projectInformation_.operation();}if(history_.latest().documentChanged){state_=nextState_++;modified_=true;}++revision_;
   const auto discardedUndo=groupingHistory_?0:history_.enforceLimits();
-  if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo);
-  if(!groupingHistory_&&history_.latest().documentChanged)notifyRecording();
+  if(!groupingHistory_)notifyHistoryChange(HistoryStackChange::Kind::Push,history_.latest().label,discardedUndo,0,!history_.latest().canvasReferenceHistory);
+  if(!groupingHistory_&&history_.latest().documentChanged&&!history_.latest().canvasReferenceHistory)notifyRecording();
 }
 const PaletteEntry* Document::paletteEntry(int id) const {
   for(const auto& entry:palette_.entries) if(entry.id==id) return &entry;

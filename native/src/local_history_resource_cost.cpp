@@ -305,7 +305,7 @@ struct InitialHistoryDocumentCost::Impl {
   if(sourceDocument.HasKey(L"pixelFormat")&&sourceDocument.GetNamedValue(L"pixelFormat").ValueType()==JsonValueType::String){const auto candidate=winrt::to_string(sourceDocument.GetNamedString(L"pixelFormat"));const char* formats[]{"rgba32","rgb24","rgb565","rgb555","rgb332","rgba4444","rgba5551","argb1555"};for(const auto* format:formats)if(candidate==format){pixelFormat=candidate;break;}}
   if(manifest->colorMode!=color_mode::name(document.colorMode()))throw std::invalid_argument("History color mode changed");
   if(color_mode::preferencePixelFormat(pixelFormat)!=document.pixelFormat())throw std::invalid_argument("History pixel format changed");
-  if(sourceDocument.HasKey(L"canvasReferences")){const auto references=sourceDocument.GetNamedValue(L"canvasReferences");if(references.ValueType()==JsonValueType::Array&&references.GetArray().Size())throw std::invalid_argument("Canvas-reference history cost requires adapter");}
+
  }
 };
 InitialHistoryDocumentCost::InitialHistoryDocumentCost(std::shared_ptr<const project::ReadManifest> source,const Document& document,HistoryDecodeContext context):impl_(std::make_unique<Impl>(std::move(source),document,std::move(context))){}
@@ -318,7 +318,7 @@ std::size_t InitialHistoryDocumentCost::append(HistoryCostBuilder& b,const Docum
   const auto rasters=plan.raster.append(b,document);const auto meta=plan.metadata.append(b,document);const auto groups=plan.groups.append(b,document);const auto resources=appendDecodedHistoryResources(b,document);const auto timeline=appendDecodedHistoryTimelineMetadata(b,document);const auto recording=appendHistoryRecording(b,document);
   b.add(root,b.node());b.add(root,b.string(plan.context.documentId));b.add(root,meta.name);b.add(root,b.node());b.add(root,b.node());b.add(root,b.string(std::string(color_mode::name(document.colorMode()))));b.add(root,b.string(plan.pixelFormat));b.add(root,rasters.layers);b.add(root,groups);b.add(root,meta.activeLayerId);
   for(auto field:{resources.palette,resources.paletteOrder,resources.paletteColumns,resources.paletteSlots,resources.nextColorId,resources.customBrushes,resources.referenceImages})b.add(root,field);
-  b.add(root,b.object());b.add(root,timeline.tilesets);
+  const auto references=b.object();validateCanvasReferences(document.canvasReferences());for(const auto& r:document.canvasReferences()){const auto item=b.object();for(int i=0;i<7;++i)b.add(item,b.node());if(r.opacity)b.add(item,b.node());b.add(item,b.string(r.id));b.add(item,b.string(r.name));b.add(item,b.node());if(r.floating)b.add(item,b.node());if(r.initial){const auto initial=b.object();for(int i=0;i<7;++i)b.add(initial,b.node());if(r.initial->opacity)b.add(initial,b.node());b.add(item,initial);}b.add(item,b.string(*r.src));b.add(references,item);}b.add(root,references);b.add(root,timeline.tilesets);
   const auto animation=b.object();for(auto field:{timeline.frames,rasters.cels,rasters.layerMasks,rasters.groupMasks,timeline.loopSections,timeline.activeFrameId,timeline.loop})b.add(animation,field);b.add(root,animation);
   if(meta.outlineSettings)b.add(root,*meta.outlineSettings);for(auto field:{meta.displaySettings,meta.statistics,recording,resources.slices})b.add(root,field);b.add(root,b.node());b.add(root,b.node());for(auto field:{meta.createdAt,meta.updatedAt,meta.layerPanelState})b.add(root,field);
   return root;

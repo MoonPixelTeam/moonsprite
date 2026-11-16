@@ -17,6 +17,7 @@
 #include "canvas_resize.h"
 #include "filter_presets.h"
 #include "reference_images.h"
+#include "canvas_references.h"
 #include "layer_color_presets.h"
 #include "animation_crossfade.h"
 #include "animation_transform.h"
@@ -310,6 +311,7 @@ public:
   std::uint64_t tilemapCacheCellWrites()const{return tilemapCacheCellWrites_;}
   bool active(bool includeFloating=true) const { return bool(freeSourceProperties_) || bool(freeSourceStroke_) || freeTilePlacement_.has_value() || paintCellMove_.has_value() || layerStyleBaseline_.has_value() || layerAdjustmentBaseline_.has_value() || textDraft_.has_value() || layerMove_.has_value() || filterPreview_.has_value() || paletteReplacement_.has_value() || adjustment_.has_value() || gradient_.has_value() || (includeFloating&&floating_.has_value()) || active_ || opacityBefore_.has_value() || durationBefore_.has_value() || celPropertyPreview_.has_value(); }
   bool canUndo() const { return history_.canUndo(); }
+  bool canvasReferenceHistoryRange(std::size_t target)const;
   bool canRedo() const { return history_.canRedo(); }
   std::size_t historySize() const { return history_.size(); }
   void setHistoryEntryLimit(std::size_t limit);
@@ -698,6 +700,17 @@ public:
   std::uint64_t projectBrushRevision()const{return projectBrushRevision_;}
   void setImportedProjectBrushes(std::vector<ProjectBrushResource> brushes);
   bool deleteProjectBrush(const std::string& id);
+  const CanvasReferences& canvasReferences()const{return canvasReferences_;}
+  const CanvasReference* canvasReference(const std::string&,bool preview=true)const;
+  void setImportedCanvasReferences(CanvasReferences);
+  bool addCanvasReference(CanvasReference);
+  bool updateCanvasReference(const std::string&,ReferencePatch);
+  bool replaceCanvasReference(const std::string&,std::shared_ptr<const std::string>,double,double);
+  bool removeCanvasReference(const std::string&);
+  bool resetCanvasReference(const std::string&);
+  bool bringCanvasReferenceToFront(const std::string&);
+  void beginCanvasReference(const std::string&);
+  bool finishCanvasReference(bool cancel=false);
   const ReferenceLibrary& referenceImages()const{return referenceImages_;}
   bool addReferenceImage(ReferenceImage);
   bool removeReferenceImage(const std::string&);
@@ -756,7 +769,7 @@ private:
   struct GroupUiSnapshot {std::vector<std::string> selected,collapsed;std::optional<std::string> focus;};
   struct FreeTileSelectionSnapshot {std::vector<std::string> selected;std::string primary,anchor,frame,viewLayer;};
   struct RollbackPayload {
- color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;color_mode::Mode colorMode=color_mode::Mode::Rgba;std::optional<OutlineSettings> outline;int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
+ color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;color_mode::Mode colorMode=color_mode::Mode::Rgba;std::optional<OutlineSettings> outline;int width=0,height=0;timeline::State timeline;std::unordered_map<std::string,std::array<int,4>> displayedLayerGeometry;PaletteState palette;std::vector<ProjectBrushResource> brushes;ReferenceLibrary references;CanvasReferences canvasReferences;SliceState slices;std::optional<SymmetryCenter> symmetry;bool loop=true,pixelGrid=false,customGridVisible=false;GridSettings grid;std::string activeLayer,activeFrame;std::vector<std::string> collapsed;std::shared_ptr<const std::vector<std::uint8_t>> archive;ProjectInformation information;timelapse::Settings timelapse;
  };
  std::shared_ptr<const RollbackPayload> captureRollbackPayload()const;
  std::shared_ptr<const RollbackPayload> takeRollbackPayload()&&;
@@ -932,6 +945,12 @@ private:
     std::size_t pixelBytes(const TilemapPixelHistory* tilemapPixels)const;
     std::size_t slotBytes()const;
   };
+  struct CanvasReferenceHistory {
+   std::optional<CanvasReference> before,after;std::size_t oldIndex=0,newIndex=0;
+   std::size_t bytes()const;
+  };
+  bool commitCanvasReference(std::optional<CanvasReference>,std::optional<CanvasReference>,std::size_t,std::size_t,std::u32string);
+  void applyCanvasReferenceHistory(const CanvasReferenceHistory&,bool);
   struct SliceHistory {
   std::optional<SliceState> beforeSlices,afterSlices;
     std::size_t bytes()const;
@@ -981,6 +1000,7 @@ private:
     SnapshotHistory snapshotHistory;
     MaskHistory maskHistory;
     SliceHistory sliceHistory;
+    std::optional<CanvasReferenceHistory> canvasReferenceHistory;
     TileResourceHistory tileHistory;
     ContentHistory contentHistory;
     bool documentChanged=true;
@@ -1047,6 +1067,9 @@ private:
   std::vector<ProjectBrushResource> projectBrushes_;
   std::uint64_t projectBrushRevision_=0;
   ReferenceLibrary referenceImages_;
+  CanvasReferences canvasReferences_;
+  struct CanvasReferenceGesture {CanvasReference before,after;};
+  std::optional<CanvasReferenceGesture> canvasReferenceGesture_;
   std::optional<SymmetryCenter> symmetryCenter_;
   std::vector<std::pair<std::string,bool>> lockGestureBefore_;
   std::vector<std::pair<std::string,bool>> visibilityGestureBefore_;
@@ -1251,7 +1274,7 @@ private:
   HistoryStore<Edit> history_;
   HistoryChangeBinding historyChangeBinding_;
   AnimationChangeBinding animationChangeBinding_;
-  void notifyHistoryChange(HistoryStackChange::Kind,const std::u32string& label={},std::size_t discardedUndo=0,std::size_t discardedRedo=0);
+  void notifyHistoryChange(HistoryStackChange::Kind,const std::u32string& label={},std::size_t discardedUndo=0,std::size_t discardedRedo=0,bool animationSync=true);
   std::uint64_t historyRevision_=0;
   // Unlike historyRevision_, this changes only when a new entry is pushed.
   std::uint64_t historyPushRevision_=0;

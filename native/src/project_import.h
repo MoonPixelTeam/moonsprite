@@ -20,6 +20,7 @@ struct PreparedImport {
  ProjectInformation information=ProjectInformation::fresh();timelapse::Settings timelapse;
  std::vector<ProjectBrushResource> customBrushes;
  ReferenceLibrary referenceImages;
+ CanvasReferences canvasReferences;
  std::vector<DocumentSlice> slices;
  std::optional<std::pair<double,double>> symmetryCenter;
  std::shared_ptr<const Bytes> sourceArchive;

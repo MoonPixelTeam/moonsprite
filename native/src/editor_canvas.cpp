@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "editor_canvas_references.h"
 #include "native_global_color_drag.h"
 #include "native_canvas_color_sampling.h"
 #include "image_decode.h"
@@ -850,6 +851,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
 
     // This is the native equivalent of legacy canvas pointer capture.
 
+    if(const auto cursor=CanvasReferenceController::cursor(*this,position))return cursor;
     if(navigation_.zoomDragging_)return "zoom";
 
     if(navigation_.pan_.active)return "grabbing";
@@ -1486,7 +1488,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     }
     cv=baseCanvas;
     g.restore();
-    paintSliceOverlay(g);paintViewRotationIndicator(g);
+    paintSliceOverlay(g);CanvasReferenceController::paint(*this,g);paintViewRotationIndicator(g);
     g.restoreClip();
 
   }

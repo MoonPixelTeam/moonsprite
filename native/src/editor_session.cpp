@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "editor_canvas_references.h"
 #include "native_canvas_color_sampling.h"
 #include "selection_pattern_brush.h"
 #include "recovery_store.h"
@@ -53,6 +54,7 @@ std::u32string timelapseRestoreWarning(const project::TimelapseRestoreReport& re
 
 void Editor::bindProjectDocument(std::shared_ptr<Document> value){
  if(!value)throw std::logic_error("Missing session document");
+ CanvasReferenceController::close(*this);
  endNativeCanvasColorSampling(*this);syncNativeCanvasColorIntent(*this,false,{});
  if(eyedropperGesture_.active()){eyedropperGesture_.finish();eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();}
  // Keep the old owner alive until all persistent active-document views detach.
@@ -134,6 +136,7 @@ void Editor::bindSessionAnimationObservation(){
  });
  currentDocument().setAnimationChangeListener([owner=std::weak_ptr<ProjectSession>(activeSession_)](const Document& source,const AnimationChange& change){
   if(auto session=owner.lock();session&&session->value.get()==&source){
+   if(!change.requiresAnimationSync){session->playback.revision=source.revision();return;}
    // Script adapters can temporarily detach floating content while publishing
    // ordinary history pushes. Only completed operations describe final state.
    const bool finalFloating=change.kind==AnimationChange::Kind::FloatingSettled ||change.kind==AnimationChange::Kind::SelectionPreviewChanged ||
@@ -175,6 +178,7 @@ int Editor::projectWidth(const Document& value)const{return std::min(180,font_.i
 int Editor::documentTabWidth(const Layout&)const{return projectWidth(currentDocument());}
 
 void Editor::settleProjectGesture(){
+    CanvasReferenceController::finish(*this,true);
 
     const bool resumePlayback=currentPlayback().playing;
     const auto playbackDocument=currentDocument().identity(),playbackRevision=currentDocument().revision();

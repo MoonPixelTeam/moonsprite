@@ -53,6 +53,11 @@ public:
  void add(std::size_t owner,std::string key,std::size_t child){graph.values[owner].properties.emplace_back(std::move(key),child);}
  std::size_t view(const void* data,std::size_t count,const char* type){if(count>limits.expandedBytes-byteCount)throw project::Error(project::ErrorKind::Limit,"History bytes exceed budget");byteCount+=count;Bytes bytes(count);if(count)std::memcpy(bytes.data(),data,count);HistoryCompareValue out;out.kind=K::View;out.view={std::make_shared<const Bytes>(std::move(bytes)),0,count,type};return node(std::move(out));}
 };
+std::size_t compareCanvasReferences(CompareAppend& b,const CanvasReferences& values){
+ validateCanvasReferences(values);using K=CompareAppend::K;const auto root=b.container(K::Array,values.size());
+ const auto placement=[&](std::size_t o,const ReferencePlacement& p){b.add(o,"x",b.number(p.x));b.add(o,"y",b.number(p.y));b.add(o,"width",b.number(p.width));b.add(o,"height",b.number(p.height));b.add(o,"angle",b.number(p.angle));b.add(o,"flipX",b.boolean(p.flipX));b.add(o,"flipY",b.boolean(p.flipY));if(p.opacity)b.add(o,"opacity",b.number(*p.opacity));};
+ for(std::size_t i=0;i<values.size();++i){const auto& r=values[i];const auto o=b.container(K::Object);placement(o,r);b.add(o,"id",b.string(r.id));b.add(o,"name",b.string(r.name));b.add(o,"locked",b.boolean(r.locked));if(r.floating)b.add(o,"floating",b.boolean(*r.floating));if(r.initial){const auto initial=b.container(K::Object);placement(initial,*r.initial);b.add(o,"initial",initial);}b.add(o,"src",b.string(*r.src));b.add(root,std::to_string(i),o);}return root;
+}
 std::size_t compareColor(CompareAppend& b,std::uint32_t color){const auto root=b.container(CompareAppend::K::Object);for(int i=0;i<4;++i)b.add(root,std::string(1,"rgba"[i]),b.number((color>>(8*i))&255));return root;}
 std::size_t compareGradientMap(CompareAppend& b,const GradientMapSettings& map){
  const auto normalized=normalizeGradientMap(map);if(gradientMapSignature(normalized)!=gradientMapSignature(map)||map.dither<0||map.dither>8)throw std::invalid_argument("Unnormalized history gradient map");
@@ -298,7 +303,7 @@ std::size_t appendDecodedHistoryMetadataValues(HistoryCompareDocument& graph,con
   const auto text=[&](const JsonObject& owner,const wchar_t* key)->std::optional<std::string>{const auto value=field(owner,key);if(value.ValueType()==JsonValueType::String)return winrt::to_string(value.GetString());return {};};
   const auto number=[&](const JsonObject& owner,const wchar_t* key,double fallback){const auto value=field(owner,key);return value.ValueType()==JsonValueType::Number&&std::isfinite(value.GetNumber())?value.GetNumber():fallback;};
   const auto truth=[&](const JsonObject& owner,const wchar_t* key){const auto value=field(owner,key);return value.ValueType()==JsonValueType::Boolean&&value.GetBoolean();};
-  const auto references=field(source,L"canvasReferences");if(references.ValueType()==JsonValueType::Array&&references.GetArray().Size())throw std::invalid_argument("Canvas-reference history comparison requires adapter");
+
   // Reuse the timestamps resolved by this manifest decode; never read a second
   // clock during capture. Truthy nonstring createdAt has a distinct JS shape.
   if(project::textjson::truthy(source,L"createdAt")&&!text(source,L"createdAt"))throw std::invalid_argument("Nonstring createdAt requires decode adaptation");
@@ -306,7 +311,7 @@ std::size_t appendDecodedHistoryMetadataValues(HistoryCompareDocument& graph,con
   if(text(source,L"colorMode")!=color_mode::name(document.colorMode()))throw std::invalid_argument("History color mode changed");
   const auto format=text(source,L"pixelFormat");if(color_mode::preferencePixelFormat(format.value_or("rgba32"))!=document.pixelFormat())throw std::invalid_argument("History pixel format changed");
   CompareAppend b(graph,limits);using K=HistoryCompareValue::Kind;const auto root=b.container(K::Object);
-  b.add(root,"schemaVersion",b.number(21));b.add(root,"id",b.string(decodedDocumentId));b.add(root,"name",b.wide(document.name()));b.add(root,"width",b.number(document.width()));b.add(root,"height",b.number(document.height()));b.add(root,"colorMode",b.string(std::string(color_mode::name(document.colorMode()))));b.add(root,"pixelFormat",b.string(std::string(color_mode::name(document.pixelFormat()))));b.add(root,"activeLayerId",b.string(document.layer().id));b.add(root,"canvasReferences",b.container(K::Array));
+  b.add(root,"schemaVersion",b.number(21));b.add(root,"id",b.string(decodedDocumentId));b.add(root,"name",b.wide(document.name()));b.add(root,"width",b.number(document.width()));b.add(root,"height",b.number(document.height()));b.add(root,"colorMode",b.string(std::string(color_mode::name(document.colorMode()))));b.add(root,"pixelFormat",b.string(std::string(color_mode::name(document.pixelFormat()))));b.add(root,"activeLayerId",b.string(document.layer().id));b.add(root,"canvasReferences",compareCanvasReferences(b,document.canvasReferences()));
   const auto outlineValue=field(source,L"outlineSettings");
   if(outlineValue.ValueType()==JsonValueType::Object||outlineValue.ValueType()==JsonValueType::Array){
    const auto outline=object(source,L"outlineSettings");const auto settings=b.container(K::Object);

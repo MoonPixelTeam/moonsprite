@@ -238,7 +238,14 @@
     {
       "patterns": [
         "zlibstatic",
-        "icu"
+        "icu",
+        "*svg.lib",
+        "*skresources.lib",
+        "*skshaper.lib",
+        "*skunicode.lib",
+        "*harfbuzz.lib",
+        "*icu.lib",
+        "*expat.lib"
       ],
       "module": "codec"
     },

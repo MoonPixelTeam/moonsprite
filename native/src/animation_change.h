@@ -32,6 +32,7 @@ struct AnimationChange {
   AnimationFrameOrigin origin=AnimationFrameOrigin::Manual;
   HistoryStackChange::Kind historyKind=HistoryStackChange::Kind::Push;
   bool selectionProjectionDeferred=false;
+  bool requiresAnimationSync=true;
 };
 
 // Runtime observation belongs to a live document, never a clone/checkpoint.
@@ -61,8 +62,8 @@ public:
     if(replayDepth_)return;
     if(selectionPreviewDepth_){
       change.selectionProjectionDeferred=true;
-      if(change.kind==AnimationChange::Kind::FloatingSettled||change.kind==AnimationChange::Kind::SelectionPreviewChanged||
-         (change.kind==AnimationChange::Kind::HistoryChanged&&(change.historyKind==HistoryStackChange::Kind::Undo||change.historyKind==HistoryStackChange::Kind::Redo)))selectionProjectionPending_=true;
+      if(change.requiresAnimationSync&&(change.kind==AnimationChange::Kind::FloatingSettled||change.kind==AnimationChange::Kind::SelectionPreviewChanged||
+         (change.kind==AnimationChange::Kind::HistoryChanged&&(change.historyKind==HistoryStackChange::Kind::Undo||change.historyKind==HistoryStackChange::Kind::Redo))))selectionProjectionPending_=true;
       if(change.kind==AnimationChange::Kind::SelectionPreviewChanged)return;
     }
     const auto observer=observer_;

@@ -94,8 +94,11 @@ class ToolPropertyPopup;
 class LoopNumberEntry;
 class FrameDurationPaletteEntry;
 class LayerLabelSeparator;
+class CanvasReferenceController;
 class Editor : public ui::Widget {
+  friend class CanvasReferenceController;
 public:
+  void smokeCanvasReferences();
   void smokeAsepriteSaveLifecycle();
   void smokeLargeImageIo();
   void smokeNativeSaveLifecycle();
@@ -2727,7 +2730,7 @@ private:
 
   void paintEyedropperLens(ui::Graphics& g);
 
-  void sampleEyedropperAt(Point p);
+  void sampleEyedropperAt(Point p,std::optional<gfx::Point> displayPoint={});
 
   void finishEyedropper();
 

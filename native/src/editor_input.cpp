@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "editor_canvas_references.h"
 #include "native_canvas_color_sampling.h"
 #include "image_resize_task.h"
 #include "image_sequence_dialog.h"
@@ -150,6 +151,7 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       observeShortcutInputs(msg);syncShortcutTools(*msg);
     }
     struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg,shortcutEvent]{if(shortcutEvent)syncShortcutTools(*msg);}};
+    if(CanvasReferenceController::process(*this,msg))return true;
     if(processQuickEyedropper(msg))return true;
     // The source toolbar is a sibling for column chrome layout, but belongs
     // to the legacy tileset command scope. Delete must never reach layer delete.
@@ -268,9 +270,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(msg->type()==ui::kMouseDownMessage || msg->type()==ui::kMouseMoveMessage || msg->type()==ui::kMouseUpMessage){auto mouse=static_cast<ui::MouseMessage*>(msg);const bool canvas=canvasViewport().contains(mouse->position()) && !dialogDisplayBounds().contains(mouse->position());
 
-        if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && !(mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition())) && canvas)sampleEyedropperAt(canvasPoint(mouse->position()));if(msg->type()==ui::kMouseUpMessage && (mouse->button()==strokeButton_ || mouse->button()==ui::kButtonNone))finishEyedropper();return true;}
+        if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && !(mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition())) && canvas)sampleEyedropperAt(canvasPoint(mouse->position()),mouse->position());if(msg->type()==ui::kMouseUpMessage && (mouse->button()==strokeButton_ || mouse->button()==ui::kButtonNone))finishEyedropper();return true;}
 
-        if(msg->type()==ui::kMouseDownMessage && canvas && (mouse->left() || mouse->right())){cancelReplacePreview();strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),false);captureMouse();beginCrossCanvasSampling();sampleEyedropperAt(canvasPoint(mouse->position()));updateNavigationCursor();return true;}
+        if(msg->type()==ui::kMouseDownMessage && canvas && (mouse->left() || mouse->right())){cancelReplacePreview();strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),false);captureMouse();beginCrossCanvasSampling();sampleEyedropperAt(canvasPoint(mouse->position()),mouse->position());updateNavigationCursor();return true;}
 
       }
 
@@ -731,9 +733,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
       if(msg->type()==ui::kMouseDownMessage && mouse->left() && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && !spaceHeld_ && !currentTools().handTool && !currentTools().zoomTool && !currentTools().eyedropperTool && !eyedropperHeld_){if(auto hit=symmetryHit(mouse->position(),mouse->ctrlPressed())){symmetryDragging_=true;symmetryDragAxis_=*hit;symmetryDragBefore_=currentDocument().symmetryCenter();captureMouse();return true;}}
 
-      if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && !(mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition())) && canvasViewport().contains(mouse->position())){updateEyedropperLens(mouse->position(),sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource));sampleEyedropperAt(p);}if(msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)finishEyedropper();return true;}
+      if(eyedropperGesture_.active()){if(msg->type()==ui::kMouseMoveMessage && !(mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition())) && canvasViewport().contains(mouse->position())){updateEyedropperLens(mouse->position(),CanvasReferenceController::sample(*this,mouse->position()).value_or(sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource)));sampleEyedropperAt(p,mouse->position());}if(msg->type()==ui::kMouseUpMessage && mouse->button()==strokeButton_)finishEyedropper();return true;}
 
-      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && (currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_) && !spaceHeld_ && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && canvasViewport().contains(mouse->position())){paletteFocused_=false;requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),!currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_);captureMouse();beginCrossCanvasSampling();updateEyedropperLens(mouse->position(),sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource));sampleEyedropperAt(p);updateNavigationCursor();return true;}
+      if(msg->type()==ui::kMouseDownMessage && (mouse->left() || mouse->right()) && (currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_) && !spaceHeld_ && !currentDocument().active() && !selectionDragging_ && !floatingDragging_ && canvasViewport().contains(mouse->position())){paletteFocused_=false;requestFocus();currentPlayback().playing=false;strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),!currentTools().eyedropperTool || eyedropperHeld_ || paletteSamplingHeld_);captureMouse();beginCrossCanvasSampling();updateEyedropperLens(mouse->position(),CanvasReferenceController::sample(*this,mouse->position()).value_or(sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource)));sampleEyedropperAt(p,mouse->position());updateNavigationCursor();return true;}
 
       if(drawingAnchorDragging_){if(msg->type()==ui::kMouseMoveMessage){auto at=transformCanvasPoint(mouse->position());const auto before=TransformPoint{std::floor(drawingAnchorDragBefore_.x*currentDocument().width()*2+.5)/2,std::floor(drawingAnchorDragBefore_.y*currentDocument().height()*2+.5)/2};auto round=[](double v){return std::copysign(std::floor(std::abs(v)+.5),v);};currentView().drawingAnchor={(before.x+round(at.x-drawingAnchorPointerStart_.x))/currentDocument().width(),(before.y+round(at.y-drawingAnchorPointerStart_.y))/currentDocument().height()};invalidateRect(canvasViewport());}if(msg->type()==ui::kMouseUpMessage){if(mouse->button()==ui::kButtonNone)currentView().drawingAnchor=drawingAnchorDragBefore_;else saveBrushPreferences();drawingAnchorDragging_=false;if(hasCapture())releaseMouse();refresh();}return true;}
       if(msg->type()==ui::kMouseDownMessage&&mouse->left()&&drawingAnchorActive()&&currentView().drawingAnchorVisible&&!currentDocument().active()&&!shapeDragging_&&!selectionDragging_&&!spaceHeld_&&!currentTools().handTool&&!eyedropperHeld_&&!mouse->shiftPressed()&&!mouse->ctrlPressed()&&!mouse->cmdPressed()&&!mouse->altPressed()&&canvasViewport().contains(mouse->position())){const auto anchor=canvasDocumentToDisplay(drawingAnchorPoint());if(std::abs(mouse->position().x-anchor.x)<=10&&std::abs(mouse->position().y-anchor.y)<=10){drawingAnchorDragging_=true;drawingAnchorDragBefore_=currentView().drawingAnchor;drawingAnchorPointerStart_=transformCanvasPoint(mouse->position());captureMouse();return true;}}

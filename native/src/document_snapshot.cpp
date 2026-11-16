@@ -5,7 +5,7 @@
 namespace moon {
 DocumentSnapshot::DocumentSnapshot(const Document& d,std::string newProjectId)
  :raster_(d.timeline().state()),identity_(d.identity()),revision_(d.revision()),contentRevision_(d.contentRevision()),width_(d.width()),height_(d.height()),loop_(d.animationLoop()),projectId_(d.projectId().empty()?std::move(newProjectId):d.projectId()),layer_(d.layer().id),frame_(d.frame().id),name_(d.name()),palette_(d.palette()),symmetry_(d.symmetryCenter()),archive_(d.sourceArchive()){
-  pixelFormat_=d.pixelFormat();colorMode_=d.colorMode();outline_=d.outlineSettings();panel_=d.layerPanelState();timelapse_=d.timelapseSettings();references_=d.referenceImages();slices_=d.slices();information_=d.projectInformation();
+  pixelFormat_=d.pixelFormat();colorMode_=d.colorMode();outline_=d.outlineSettings();panel_=d.layerPanelState();timelapse_=d.timelapseSettings();references_=d.referenceImages();canvasReferences_=d.canvasReferences();slices_=d.slices();information_=d.projectInformation();
   showPixelGrid_=d.showPixelGrid();showCustomGrid_=d.showCustomGrid();customGrid_=d.customGrid();
   for(const auto& resource:d.projectBrushes()){
     ProjectBrushResource copy;copy.metadata=resource.metadata;const auto& b=resource.brush;
@@ -55,6 +55,6 @@ Document DocumentSnapshot::finish(){
   result.setImportedOutlineSettings(std::move(outline_));result.activeLayerId_=layer_;result.activeFrameId_=frame_;result.setImportedLayerGeometry(std::move(layerGeometry_));result.projectActiveCelOpacities();
   result.setImportedProjectInformation(std::move(information_));result.setImportedTimelapse(std::move(timelapse_));
   result.projectId_=std::move(projectId_);result.sourceArchive_=std::move(archive_);
-  result.setImportedReferenceImages(std::move(references_));result.setImportedSlices(std::move(slices_));result.setImportedProjectBrushes(std::move(brushes_));result.setImportedSymmetryCenter(symmetry_);result.selectLayer(layer_);result.selectFrame(frame_);result.applyLayerPanelState(std::move(panel_));result.setImportedLoop(loop_);result.setPixelGrid(showPixelGrid_,false);result.setCustomGrid(showCustomGrid_,customGrid_,false);return result;
+  result.setImportedReferenceImages(std::move(references_));result.setImportedCanvasReferences(std::move(canvasReferences_));result.setImportedSlices(std::move(slices_));result.setImportedProjectBrushes(std::move(brushes_));result.setImportedSymmetryCenter(symmetry_);result.selectLayer(layer_);result.selectFrame(frame_);result.applyLayerPanelState(std::move(panel_));result.setImportedLoop(loop_);result.setPixelGrid(showPixelGrid_,false);result.setCustomGrid(showCustomGrid_,customGrid_,false);return result;
 }
 }

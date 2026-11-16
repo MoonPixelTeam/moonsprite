@@ -12,6 +12,7 @@ std::size_t Document::Edit::animationSelectionBytes()const{
 }
 std::size_t Document::Edit::bytes() const {
  const auto selectionBytes=animationSelectionBytes();
+ if(canvasReferenceHistory)return canvasReferenceHistory->bytes()+selectionBytes;
  if(const auto* pixels=localPixels())return pixels->retainedBytes+selectionBytes;
  if(const auto bytes=tileHistory.exclusiveBytes(sourceProperties()))return *bytes+selectionBytes;
  if(const auto* local=localSnapshot())return local->rollbackBytes+selectionBytes;

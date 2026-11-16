@@ -9,6 +9,7 @@
 #include "custom_grid.h"
 #include "project_brush_resources.h"
 #include "reference_images.h"
+#include "canvas_references.h"
 #include "text_cel_data.h"
 #include <optional>
 #include <functional>
@@ -67,6 +68,7 @@ struct ReadManifest {
   std::optional<std::pair<double,double>> symmetryCenter;
   std::vector<ProjectBrushResource> customBrushes;
   ReferenceLibrary referenceImages;
+ CanvasReferences canvasReferences;
   std::vector<DocumentSlice> slices;
   std::vector<tiles::Tileset> tilesets;
   std::vector<ManifestLayer> layers;

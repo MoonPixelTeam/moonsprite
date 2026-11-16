@@ -75,6 +75,9 @@ Document::HistoryReplayPlan::HistoryReplayPlan(const Edit& edit,bool forward):ro
  for(const auto& child:edit.children)children.emplace_back(child,forward);
 }
 void Document::applyEdit(const Edit& edit,bool forward){
+ // Reference placement is project metadata. It must not enter animation
+ // replay, synchronize linked Cels, or publish raster damage.
+ if(edit.canvasReferenceHistory){applyCanvasReferenceHistory(*edit.canvasReferenceHistory,forward);return;}
  validateHistoryShape(edit);validateHistorySnapshots(edit,forward);
  if(!edit.children.empty()&&history_targets::hasStableTargets(edit))history_targets::validateStableTargets(timeline_,edit,forward);
  HistoryReplayPlan plan(edit,forward);
@@ -107,6 +110,7 @@ void Document::applyEdit(const Edit& edit,bool forward){
  }
 }
 void Document::applyValidatedEdit(const Edit& edit,bool forward,HistoryReplayPlan& plan){
+if(edit.canvasReferenceHistory){applyCanvasReferenceHistory(*edit.canvasReferenceHistory,forward);return;}
 auto animationReplay=animationChangeBinding_.replayHistory();if(applyTerminalHistory(edit,forward)){
  if(edit.beforeAnimationSelection&&edit.afterAnimationSelection){
   try{if(!restoreAnimationSelection(forward?*edit.afterAnimationSelection:*edit.beforeAnimationSelection))throw std::logic_error("Missing terminal selection history context");}
@@ -162,6 +166,7 @@ auto animationReplay=animationChangeBinding_.replayHistory();if(applyTerminalHis
 }
 
 bool Document::applyTerminalHistory(const Edit& edit,bool forward){
+ if(edit.canvasReferenceHistory){applyCanvasReferenceHistory(*edit.canvasReferenceHistory,forward);return true;}
  return std::visit([&](const auto& payload)->bool{
   using T=std::decay_t<decltype(payload)>;
   if constexpr(std::is_same_v<T,std::monostate>)return false;

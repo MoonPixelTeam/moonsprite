@@ -42,8 +42,9 @@ void Editor::applyHistoryAction(const workspace::HistoryRequest& request){
  if(request.action==workspace::HistoryAction::Jump&&request.position==currentDocument().historyPosition())return;
  if(action==workspace::HistoryAction::Undo&&!currentDocument().canUndo()&&!currentDocument().floating())return;
  if(action==workspace::HistoryAction::Redo&&!currentDocument().canRedo())return;
- cancelStroke();
- currentPlayback().loop={};
+ const auto target=request.action==workspace::HistoryAction::Jump?request.position:action==workspace::HistoryAction::Undo?currentDocument().historyPosition()-1:currentDocument().historyPosition()+1;
+ if(!currentDocument().canvasReferenceHistoryRange(target)){cancelStroke();currentPlayback().loop={};}
+ else if(action==workspace::HistoryAction::Undo&&!currentDocument().floating()){currentPlayback().playing=false;currentPlayback().loop={};}
  if(request.action==workspace::HistoryAction::Jump)currentDocument().setHistoryPosition(request.position);
  else if(action==workspace::HistoryAction::Undo)currentDocument().undo();else currentDocument().redo();
  refresh();

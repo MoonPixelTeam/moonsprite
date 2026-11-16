@@ -3,6 +3,7 @@
 #include "tilemap_project_json.h"
 #include "free_tile_project_json.h"
 #include "project_encode.h"
+#include "canvas_reference_json.h"
 #include "project_raster_encode.h"
 #include "layer_panel_state_json.h"
 #include "cel_properties.h"
@@ -220,6 +221,9 @@ static EncodedProject encodeProject(const Document& d,Limits limits,bool recover
 
     JsonArray references;std::set<std::string> liveReferenceFiles;
     for(const auto& image:d.referenceImages()){validateReferenceImage(image);JsonObject item;text(item,L"id",image.id);number(item,L"width",image.width);number(item,L"height",image.height);const auto file="references/"+image.id+".rgba";text(item,L"dataFile",file);references.Append(item);Bytes bytes;bytes.reserve(image.pixels->size()*4);for(auto pixel:*image.pixels)put32(bytes,pixel);files[file]=std::move(bytes);liveReferenceFiles.insert(file);}doc.Insert(L"referenceImages",references);
+    JsonArray canvasReferences;std::set<std::string> liveCanvasFiles;validateCanvasReferences(d.canvasReferences());
+    for(const auto& reference:d.canvasReferences()){auto item=referencejson::metadata(reference);const auto file="references/canvas/"+reference.id+".dataurl";text(item,L"dataFile",file);files[file]=Bytes(reference.src->begin(),reference.src->end());liveCanvasFiles.insert(file);canvasReferences.Append(item);}doc.Insert(L"canvasReferences",canvasReferences);
+    if(source)for(const auto& old:source->canvasReferences){const auto file="references/canvas/"+old.id+".dataurl";if(!liveCanvasFiles.count(file))files.erase(file);}
     JsonArray slices;for(const auto& slice:d.slices()){JsonObject item;text(item,L"id",slice.id);text(item,L"name",utf8(slice.name));number(item,L"x",slice.rect.x);number(item,L"y",slice.rect.y);number(item,L"width",slice.rect.width);number(item,L"height",slice.rect.height);slices.Append(item);}doc.Insert(L"slices",slices);
     if(source)for(const auto& old:source->referenceImages){const auto file="references/"+old.id+".rgba";if(!liveReferenceFiles.count(file))files.erase(file);}
 

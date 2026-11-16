@@ -598,6 +598,7 @@ int app_main(int argc,char* argv[]) {
       {"--image-resize-check", &Editor::smokeImageResize, "native-image-resize-error.txt"},
       {"--layer-color-presets-check", &Editor::smokeLayerColorPresets, "native-layer-color-presets-error.txt"},
       {"--alignment-check", &Editor::smokeAlignment, "native-alignment-error.txt"},
+      {"--canvas-references-check", &Editor::smokeCanvasReferences, "native-canvas-references-error.txt"},
       {"--reference-panel-check", &Editor::smokeReferenceImages, "native-reference-panel-error.txt"},
       {"--linked-layers-check", &Editor::smokeLinkedLayers, "native-linked-layers-error.txt"},
       {"--text-rasterization-check", &Editor::smokeTextRasterization, "native-text-rasterization-error.txt"},
