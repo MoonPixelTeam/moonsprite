@@ -39,10 +39,12 @@ struct QuickPreferenceHandle : ui::Property {
  QuickCommandDragHandle* handle;
  explicit QuickPreferenceHandle(QuickCommandDragHandle* h):ui::Property("moonsprite.quick-preference-handle"),handle(h){}
 };
-std::vector<std::size_t> quickPreferenceOrder(const std::vector<quick::Bar>& bars){
+std::vector<std::size_t> quickPreferenceOrder(const std::vector<quick::Bar>& bars,const std::vector<color_editor::Mode>& modes){
  std::vector<std::size_t> order;const auto& rows=preferences::catalog();
  static const auto commandRows=[] {std::map<std::string,std::size_t> result;const auto& catalog=preferences::catalog();for(std::size_t i=0;i<catalog.size();++i)result[catalog[i].id]=i;return result;}();
- for(std::size_t i=0;i<rows.size();++i){const std::string key=rows[i].id;if(key.rfind("quickCommands.bar",0)==0&&key.find(".command.")!=std::string::npos)continue;order.push_back(i);
+ for(std::size_t i=0;i<rows.size();++i){const std::string key=rows[i].id;if(key.rfind("quickCommands.bar",0)==0&&key.find(".command.")!=std::string::npos)continue;
+  if(color_editor::preferenceIndex(key)>=0){if(key=="colorLayers.mode.0")for(const auto& mode:modes)order.push_back(commandRows.at("colorLayers.mode."+std::to_string(color_editor::catalogIndex(mode.id))));continue;}
+  order.push_back(i);
   if(key.rfind("quickCommands.bar",0)==0&&key.find(".collapse")!=std::string::npos){const auto b=key[17]-'0';for(auto& c:bars[b].commands){const auto id="quickCommands.bar"+std::to_string(b)+".command."+c.id;if(auto at=commandRows.find(id);at!=commandRows.end())order.push_back(at->second);}}}
  return order;
 }
@@ -726,6 +728,7 @@ void Editor::createPreferencesControls(){
 
     catch(const std::exception& e){runtimePreferencesReadable_=false;status_=U"首选项读取失败，保留原文件："+unicodeText(e.what());}
 
+    ColorEditorPopup::setModePreferences(runtimePreferences_.colorEditorModes);
     runtimePreferenceDraft_=runtimePreferences_;quickBarsDraft_=quickBarsConfig_;syncQuickPreferenceValues();syncPreferenceScales();syncPreferenceColors();currentTools().gradientConfirm=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
 
     createPreferenceCatalogControls();
@@ -793,9 +796,11 @@ bool Editor::preferenceRowEnabled(const preferences::Item& item) const {
     if(std::string(item.id)=="extensions.common.refresh")if(auto p=extensionPanel(const_cast<Editor*>(this));p&&p->scripts)return !p->scripts->busy();
     if(std::string(item.id)=="extensions.preferences.extensions.add")if(auto p=extensionPanel(const_cast<Editor*>(this)))return !p->panel->busy();
 
+    if(std::string(item.id)=="colorLayers.mode.restore")return true;
     if(std::string(item.id)=="quickCommands.restore"||(std::string(item.id).rfind("quickCommands.bar",0)==0&&std::string(item.id).find(".collapse")!=std::string::npos))return true;if(std::string(item.id)=="presets.addColor")return runtimePreferenceDraft_.layerDisplayColors.size()<12;if(std::string(item.id)=="presets.restoreColors")return true;if(std::string(item.id)=="presets.addScale")return true;if(item.binding<0 && !preferences::runtimeSetting(item.id) && !preferenceDirectoryAction(item.id))return false;
 
     const std::string key=item.id;
+    if(const int i=color_editor::preferenceIndex(key);i>=0&&color_editor::enabled(runtimePreferenceDraft_.colorEditorModes,i)&&std::count_if(runtimePreferenceDraft_.colorEditorModes.begin(),runtimePreferenceDraft_.colorEditorModes.end(),[](const auto& v){return v.enabled;})==1)return false;
 
     if(key.rfind("quickCommands.bar",0)==0&&key.find(".command.")!=std::string::npos){const auto& commands=quickBarsDraft_[key[17]-'0'].commands;for(auto& c:commands)if(c.id==key.substr(27)&&c.enabled&&std::count_if(commands.begin(),commands.end(),[](auto& c){return c.enabled;})==1)return false;}
     if(key.find("files.saveDirectory")==0 && runtimePreferenceDraft_.index("files.saveLocationMode.Select")!=1)return false;
@@ -844,7 +849,7 @@ void Editor::createPreferenceCatalogControls(){
 
         if(item.binding==12){field->changed=[this](int value){const double minutes[]{.5,1,2,5,10};preferenceDraft_.recovery.enabled=value!=0;if(value>0)preferenceDraft_.recovery.minutes=minutes[std::clamp(value-1,0,4)];layoutModal();invalidate();};}
 
-      }else if(item.kind==preferences::Kind::Action){const std::string key=item.id;auto field=new DialogBackground<PixelButton>(font_,skin_,item.label,[this,key]{if(key.rfind("quickCommands.bar",0)==0&&key.find(".collapse")!=std::string::npos){quickPreferenceAction(key);return;}if(key=="quickCommands.restore"){quickBarsDraft_=quick::defaultBars();syncQuickPreferenceValues();syncPreferenceCatalog();layoutModal();invalidate();return;}if(key=="presets.addColor"||key=="presets.restoreColors"){preferenceColorAction(key);return;}if(key=="presets.addScale"){addPreferenceScale();return;}if(preferenceDirectoryAction(key))preferenceDirectoryActionRun(key);});configureDialogBackground(field);addChild(field);if(key=="presets.addColor"||key=="presets.restoreColors"){field->iconSkin=&toolIcons_;field->icon=key=="presets.addColor"?"plus":"restore";}widget=field;}
+      }else if(item.kind==preferences::Kind::Action){const std::string key=item.id;auto field=new DialogBackground<PixelButton>(font_,skin_,item.label,[this,key]{if(key=="colorLayers.mode.restore"){runtimePreferenceDraft_.colorEditorModes=color_editor::defaults();syncPreferenceCatalog();layoutModal();invalidate();return;}if(key.rfind("quickCommands.bar",0)==0&&key.find(".collapse")!=std::string::npos){quickPreferenceAction(key);return;}if(key=="quickCommands.restore"){quickBarsDraft_=quick::defaultBars();syncQuickPreferenceValues();syncPreferenceCatalog();layoutModal();invalidate();return;}if(key=="presets.addColor"||key=="presets.restoreColors"){preferenceColorAction(key);return;}if(key=="presets.addScale"){addPreferenceScale();return;}if(preferenceDirectoryAction(key))preferenceDirectoryActionRun(key);});configureDialogBackground(field);addChild(field);if(key=="presets.addColor"||key=="presets.restoreColors"||key=="colorLayers.mode.restore"){field->iconSkin=&toolIcons_;field->icon=key=="presets.addColor"?"plus":"restore";}widget=field;}
 
       else if(item.kind==preferences::Kind::Color){
 
@@ -860,7 +865,7 @@ void Editor::createPreferenceCatalogControls(){
 
         const std::string key=item.id;
 
-        auto change=[this,key](std::string value){try{if(key=="general.preferences.usageStatisticsEnabled")setUsageStatisticsEnabled(value=="true");quickPreferenceChanged(key,value);runtimePreferenceDraft_.set(key,std::move(value));if(key.rfind("quickCommands.bar",0)==0)syncQuickPreferenceValues();preferenceFeedback_.clear();}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());}layoutModal();invalidateRect(dialogDisplayBounds());};
+        auto change=[this,key](std::string value){try{if(key=="general.preferences.usageStatisticsEnabled")setUsageStatisticsEnabled(value=="true");quickPreferenceChanged(key,value);runtimePreferenceDraft_.set(key,std::move(value));if(key.rfind("quickCommands.bar",0)==0)syncQuickPreferenceValues();if(color_editor::preferenceIndex(key)>=0)syncPreferenceCatalog();preferenceFeedback_.clear();}catch(const std::exception& e){preferenceFeedback_=unicodeText(e.what());}layoutModal();invalidateRect(dialogDisplayBounds());};
 
         if(auto toggle=dynamic_cast<PixelSwitch*>(widget))toggle->Click.connect([change,toggle]{if(toggle->isEnabled())change(toggle->checked()?"true":"false");});
 
@@ -887,6 +892,17 @@ void Editor::createPreferenceCatalogControls(){
           for(std::size_t i=0;i<preferenceRows_.size();++i){const std::string target=preferences::catalog()[i].id;if(target.rfind("quickCommands.bar",0)!=0||target.find(".command.")==std::string::npos||target[17]-'0'!=bar||!preferenceRows_[i]->isVisible())continue;const auto r=preferenceRows_[i]->bounds();if(point.y<r.y||point.y>=r.y2())continue;
             const auto& commands=quickBarsDraft_[bar].commands;const auto source=std::find_if(commands.begin(),commands.end(),[&](const auto& c){return c.id==quickKey.substr(27);});const auto destination=std::find_if(commands.begin(),commands.end(),[&](const auto& c){return c.id==target.substr(27);});if(source==commands.end()||destination==commands.end()||source->enabled!=destination->enabled)break;
             if(quick::reorderCommands(quickBarsDraft_[bar].commands,quickKey.substr(27),target.substr(27),point.y>=r.center().y)){syncQuickPreferenceValues();layoutModal();invalidateRect(dialogDisplayBounds());}break;}
+        };
+      }
+      if(color_editor::preferenceIndex(quickKey)>=0){
+        auto handle=new DialogBackground<QuickCommandDragHandle>(font_,skin_,toolIcons_);configureDialogBackground(handle);addChild(handle);handle->setVisible(false);widget->setProperty(std::make_shared<QuickPreferenceHandle>(handle));
+        handle->viewport=[this]{return preferenceViewport_;};
+        handle->move=[this,quickKey](gfx::Point point,bool scroll){
+          if(pending_!=Pending::Preferences||preferenceSection_!=9)return;const auto view=preferenceViewport_;
+          if(scroll){const int edge=std::clamp(view.h/4,16*uiScale,32*uiScale);const int direction=point.x>=view.x&&point.x<=view.x2()?(point.y<=view.y+edge?-1:point.y>=view.y2()-edge?1:0):0;if(direction){const int old=preferenceContentPixels_;preferenceContentPixels_+=direction*12*uiScale;layoutModal();if(old!=preferenceContentPixels_)invalidateRect(dialogDisplayBounds());}return;}
+          if(!view.contains(point))return;
+          for(std::size_t i=0;i<preferenceRows_.size();++i){const int target=color_editor::preferenceIndex(preferences::catalog()[i].id);if(target<0||!preferenceRows_[i]->isVisible())continue;const auto r=preferenceRows_[i]->bounds();if(point.y<r.y||point.y>=r.y2())continue;
+            if(color_editor::reorder(runtimePreferenceDraft_.colorEditorModes,color_editor::defaults()[color_editor::preferenceIndex(quickKey)].id,color_editor::defaults()[target].id,point.y>=r.center().y)){layoutModal();invalidateRect(dialogDisplayBounds());}break;}
         };
       }
       widget->setVisible(false);widget->setEnabled(false);preferenceRows_.push_back(widget);
@@ -926,7 +942,7 @@ int Editor::preferenceCatalogHeight(){
 
     std::u32string group;int y=0;
 
-    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_,runtimePreferenceDraft_.colorEditorModes)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
 
       if(group!=item.group){if(y)y+=preferenceGroupGap;group=item.group;y+=preferenceGroupTitleHeight+preferenceOptionGap;}
 
@@ -948,7 +964,7 @@ void Editor::paintPreferenceCatalog(ui::Graphics& g,gfx::Rect modal){
 
     const int labelWidth=std::max(50,(view.w-10)*55/100);
 
-    for(auto i:quickPreferenceOrder(quickBarsDraft_)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
+    for(auto i:quickPreferenceOrder(quickBarsDraft_,runtimePreferenceDraft_.colorEditorModes)){const auto& item=preferences::catalog()[i];if(item.section!=preferenceSection_||fixedExportScaleRow(item)||quickPreferenceHidden(item.id)||extensionPlaceholder(item.id))continue;
 
       const int y=view.y+preferenceRowY_[i]-preferenceContentPixels_/uiScale;
 
@@ -1034,7 +1050,7 @@ bool Editor::applyPreferences(){
       }
 
       const bool pixelFormatChanged=runtimePreferences_.index("colorLayers.pixelFormat.Select")!=next.index("colorLayers.pixelFormat.Select");
-      runtimePreferences_=std::move(next);if(pixelFormatChanged){const auto format=color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select"));currentDocument().setPixelFormat(format);for(auto& project:projects_)if(project->value&&project->value!=activeDocument_)project->value->setPixelFormat(format);}
+      runtimePreferences_=std::move(next);ColorEditorPopup::setModePreferences(runtimePreferences_.colorEditorModes);if(pixelFormatChanged){const auto format=color_mode::PixelFormat(runtimePreferences_.index("colorLayers.pixelFormat.Select"));currentDocument().setPixelFormat(format);for(auto& project:projects_)if(project->value&&project->value!=activeDocument_)project->value->setPixelFormat(format);}
       quickBarsConfig_=quickBarsDraft_;applyWorkspacePreferences();runtimePreferenceDraft_=runtimePreferences_;currentTools().gradientConfirm=runtimePreferences_.index("tools.gradientApplicationMode.Select")==1;
 
       for(auto& slot:projects_){slot->recovery.queue.setIntervalMinutes(d.recovery.minutes);slot->recovery.due=std::chrono::steady_clock::now()+std::chrono::milliseconds(static_cast<long long>(d.recovery.minutes*60000));}

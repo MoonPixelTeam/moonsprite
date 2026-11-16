@@ -194,7 +194,7 @@ int app_main(int argc,char* argv[]) {
 
     if(argc>1 && std::string(argv[1])=="--export-dialog-check") {try{editor->smokeStaticExport();}catch(const std::exception& e){std::ofstream("native-export-dialog-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
-    if(argc>1 && std::string(argv[1])=="--color-editor-check") {try{editor->smokeColorEditor();}catch(const std::exception& e){std::ofstream("native-color-editor-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
+    if(argc>1 && std::string(argv[1])=="--color-editor-check") {desktop.addChild(editor);desktop.setBounds(manager.bounds());desktop.openWindow();try{editor->smokeColorEditor();}catch(const std::exception& e){std::ofstream("native-color-editor-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 
     if(argc>1 && std::string(argv[1])=="--adjustment-components-check") {try{editor->smokeAdjustmentComponents();}catch(const std::exception& e){std::ofstream("native-adjustment-components-error.txt")<<e.what();delete editor;desktop.editor=nullptr;return 1;}delete editor;desktop.editor=nullptr;return 0;}
 

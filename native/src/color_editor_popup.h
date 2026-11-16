@@ -1,5 +1,6 @@
 #pragma once
 #include "color_value_model.h"
+#include "color_editor_modes.h"
 #include "native_widgets.h"
 #include "ui/message.h"
 #include "ui/manager.h"
@@ -16,7 +17,9 @@ class ColorEditorPopup final : public PixelDialog {
   ColorValues values_{};std::uint32_t previous_=0,current_=0;
   bool updating_=false,resident_=false,sampling_=false;
   gfx::Point titlePress_;bool titleHeld_=false;
-  std::array<PixelButton*,5> tabs_{};
+  std::array<PixelButton*,7> tabs_{};
+  inline static std::vector<color_editor::Mode> sharedModes_=color_editor::defaults();
+  inline static std::vector<ColorEditorPopup*> instances_;
   std::array<PixelSlider*,5> sliders_{};
   std::array<PixelEntry*,5> entries_{};
   PixelEntry* hex_=nullptr;PixelButton *previousButton_=nullptr,*currentButton_=nullptr,*close_=nullptr,*sample_=nullptr;
@@ -24,20 +27,20 @@ class ColorEditorPopup final : public PixelDialog {
   std::filesystem::path storage_;std::u32string role_;
   std::function<void(std::uint32_t)> changed_;
   std::function<void(bool)> samplingChanged_;
-  inline static constexpr ColorValueMode modes_[]{ColorValueMode::Hsv,ColorValueMode::Rgb,ColorValueMode::Lab,ColorValueMode::Gray,ColorValueMode::Palette};
+  inline static constexpr ColorValueMode modes_[]{ColorValueMode::Hsv,ColorValueMode::Rgb,ColorValueMode::Lab,ColorValueMode::Gray,ColorValueMode::Palette,ColorValueMode::Hsl,ColorValueMode::Cmyk};
   PixelButton* button(std::u32string text,std::function<void()> action){auto b=new PixelButton(font_,skin_,std::move(text),std::move(action));addChild(b);return b;}
   void sync(bool derive){
     if(derive)values_=colorToValues(current_,mode_);
     updating_=true;const auto fields=colorValueFields(mode_);
     for(int i=0;i<5;++i){const bool show=i<int(fields.size());entries_[i]->setVisible(show);sliders_[i]->setVisible(show);if(show){sliders_[i]->minimum=fields[i].minimum;sliders_[i]->maximum=fields[i].maximum;sliders_[i]->percentage=fields[i].percentage;sliders_[i]->value=int(std::floor(values_[i]+.5));if(!entries_[i]->hasFocus())entries_[i]->setText(std::to_string(int(std::floor(values_[i]+.5))));sliders_[i]->invalidate();}}
-    for(int i=0;i<5;++i){tabs_[i]->active=mode_==modes_[i];tabs_[i]->invalidate();}
+    for(int i=0;i<7;++i){tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));tabs_[i]->active=mode_==modes_[i];tabs_[i]->invalidate();}
     for(auto b:paletteButtons_){b->setVisible(mode_==ColorValueMode::Palette);b->active=b->swatch==current_;b->invalidate();}
     if(!hex_->hasFocus())hex_->setText(colorValueHex(current_));
     previousButton_->swatch=previous_;currentButton_->swatch=current_;previousButton_->invalidate();currentButton_->invalidate();updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();invalidate();
   }
   void apply(std::uint32_t color,bool derive=true){current_=color;sync(derive);if(changed_)changed_(color);}
   void updateField(int i,double value){const auto fields=colorValueFields(mode_);if(i>=int(fields.size())||!std::isfinite(value))return;values_[i]=std::clamp(value,double(fields[i].minimum),double(fields[i].maximum));apply(colorFromValues(mode_,values_,current_),false);}
-  void commitHex(){if(updating_)return;std::uint32_t next;if(pickerParseRgbaHex(unicodeText(hex_->text()),next,int(current_>>24)))apply(next);hex_->setText(colorValueHex(current_));}
+  void commitHex(){if(updating_)return;std::uint32_t next;if(pickerParseRgbaHex(unicodeText(hex_->text()),next,int(current_>>24))&&next!=current_)apply(next);hex_->setText(colorValueHex(current_));}
   bool samplingFilters_=false;
   void samplingFilters(bool enabled){
     if(enabled==samplingFilters_)return;samplingFilters_=enabled;
@@ -48,14 +51,15 @@ class ColorEditorPopup final : public PixelDialog {
   }
   void setSampling(bool sampling){samplingFilters(sampling&&bool(canvasSamplingInput));sampling_=sampling;if(sampling){resident_=true;setClickBehavior(ClickBehavior::DoNothingOnClick);}sample_->active=sampling;sample_->invalidate();if(samplingChanged_)samplingChanged_(sampling);}
   void layout(){
-    const auto r=uiLogical(bounds());const int x=r.x+6,y=r.y+DialogLayout::bodyTop,w=r.w-12;
-    auto place=[](ui::Widget* child,gfx::Rect rect){child->setBounds(uiPhysical(rect));};
+    const auto origin=bounds().origin();const auto r=uiLogical(gfx::Rect(bounds().size()));const int x=6,y=DialogLayout::bodyTop,w=r.w-12;
+    auto place=[origin](ui::Widget* child,gfx::Rect rect){child->setBounds(uiDisplayRect(rect,origin));};
     close_->icon="close";layoutHeaderButton(close_);
     const int gap=2,hexWidth=hex_->widthForValue(U"#FFFFFFFF");
     const int modeWidth=w-hexWidth-40-22-3*gap;
-    int base=-4;for(auto tab:tabs_)base+=font_.measure(tab->caption)+8;
+    const auto visible=availableModes();const int count=int(visible.size());
+    int base=1-count;for(int i:visible)base+=font_.measure(tabs_[i]->caption)+8;
     const int extra=modeWidth-base;
-    int at=x;for(int i=0;i<5;++i){const int width=font_.measure(tabs_[i]->caption)+8+extra*(i+1)/5-extra*i/5;place(tabs_[i],{at,y,width,textControlHeight});at+=width-1;}
+    int at=x;for(int n=0;n<count;++n){auto tab=tabs_[visible[n]];const int width=font_.measure(tab->caption)+8+extra*(n+1)/count-extra*n/count;place(tab,{at,y,width,textControlHeight});at+=width-1;}
     at=x+modeWidth+gap;hex_->setFixedContentWidth(hexWidth);place(hex_,{at,y,hexWidth,textControlHeight});
     at+=hexWidth+gap;place(previousButton_,{at,y,20,textControlHeight});place(currentButton_,{at+20,y,20,textControlHeight});
     place(sample_,{at+40+gap,y,22,textControlHeight});
@@ -64,13 +68,13 @@ class ColorEditorPopup final : public PixelDialog {
   }
 public:
   std::function<bool(ui::Message*)> canvasSamplingInput;
-  ~ColorEditorPopup(){samplingFilters(false);if(sampling_)try{setSampling(false);}catch(...){}}
+  ~ColorEditorPopup(){instances_.erase(std::remove(instances_.begin(),instances_.end(),this),instances_.end());samplingFilters(false);if(sampling_)try{setSampling(false);}catch(...){}}
   ColorEditorPopup(const PixelFont& font,const Skin& skin,const Skin& icons,std::filesystem::path storage)
     :PixelDialog(skin,"",ClickBehavior::CloseOnClickInOtherWindow,EnterBehavior::DoNothingOnEnter),font_(font),skin_(skin),icons_(icons),storage_(std::move(storage)){
     setAutoRemap(false);setWantFocus(true);setTransparent(true);
     close_=button(U"",[this]{commitHex();closeWindow(nullptr);});close_->iconSkin=&icons_;
-    const char32_t* names[]{U"HSV",U"RGB",U"LAB",U"GRAY",U"PLT"};
-    for(int i=0;i<5;++i)tabs_[i]=button(names[i],[this,i]{commitHex();mode_=modes_[i];sync(true);});
+    const char32_t* names[]{U"HSV",U"RGB",U"LAB",U"GRAY",U"PLT",U"HSL",U"CMYK"};
+    for(int i=0;i<7;++i)tabs_[i]=button(names[i],[this,i]{commitHex();if(color_editor::enabled(sharedModes_,i)){mode_=modes_[i];sync(true);}});
     hex_=new PixelEntry(font_,skin_);addChild(hex_);hex_->accept=[this]{commitHex();};hex_->blur=[this]{commitHex();};hex_->cancel=[this]{commitHex();closeWindow(nullptr);};
     auto copy=[this](bool previous){clip::set_text(colorValueHex(previous?previous_:current_));};
     previousButton_=button(U"",[copy]{copy(true);});currentButton_=button(U"",[copy]{copy(false);});previousButton_->recentColorSwatch=currentButton_->recentColorSwatch=true;previousButton_->swatchOpenEdges=2;currentButton_->swatchOpenEdges=1;
@@ -79,7 +83,21 @@ public:
       slider->colorGradient=[this,i](double t){auto next=values_;const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return current_;next[i]=fields[i].minimum+t*(fields[i].maximum-fields[i].minimum);return colorFromValues(mode_,next,current_);};
       auto entry=new PixelEntry(font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->Change.connect([this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size())updateField(i,v);}catch(...){}});entry->blur=[this]{sync(false);};entry->accept=[this]{sync(false);};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
     Close.connect([this](ui::CloseEvent&){commitHex();if(sampling_)setSampling(false);changed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
+    mode_=modes_[availableModes().front()];instances_.push_back(this);
+    for(int i=0;i<7;++i)tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));
   }
+  static void setModePreferences(const std::vector<color_editor::Mode>& modes){
+    sharedModes_=color_editor::normalize(modes);
+    for(auto popup:instances_)popup->refreshModePreferences();
+  }
+  static const std::vector<color_editor::Mode>& modePreferences(){return sharedModes_;}
+  std::vector<int> availableModes()const{std::vector<int> result;for(const auto& item:sharedModes_)if(item.enabled)result.push_back(color_editor::catalogIndex(item.id));return result;}
+  void refreshModePreferences(){
+    if(!color_editor::enabled(sharedModes_,int(mode_)))mode_=modes_[availableModes().front()];
+    if(!bounds().isEmpty())sync(true);
+  }
+  ColorValueMode mode()const{return mode_;}
+  void testMode(ColorValueMode mode){tabs_.at(int(mode))->Click();}
   int preferredHeight()const{
     const int rows=std::max(1,int(colorValueFields(mode_).size()));
     const int rowHeight=mode_==ColorValueMode::Palette?16:textControlHeight;
@@ -97,7 +115,7 @@ public:
   void finishSampling(){if(sampling_)setSampling(false);}
   void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());if(hex_)layout();}
   gfx::Size minimumDialogSize(int)const override {
-    int tabs=-4;for(auto tab:tabs_)tabs+=font_.measure(tab->caption)+8;
+    const auto visible=availableModes();int tabs=1-int(visible.size());for(int i:visible)tabs+=font_.measure(tabs_[i]->caption)+8;
     return {(12+tabs+hex_->widthForValue(U"#FFFFFFFF")+40+22+6)*uiScale,preferredHeight()*uiScale};
   }
   void paintDialogContents(ui::PaintEvent& ev)override{auto& g=*ev.graphics();UiPaintScale scale(g);const auto r=uiLogical(clientBounds());drawDialogTitle(font_,g,r,U"颜色编辑 "+role_);const auto fields=colorValueFields(mode_);for(int i=0;i<int(fields.size());++i)font_.draw(g,unicodeText(fields[i].label),r.x+6,r.y+DialogLayout::bodyTop+DialogLayout::rowStep+i*DialogLayout::rowStep+5,skin_["text"]);if(mode_==ColorValueMode::Palette&&paletteButtons_.empty())font_.draw(g,U"颜色板为空",r.x+6,r.y+49,skin_["muted"]);}
@@ -121,7 +139,7 @@ public:
     for(int width:{360,400,540}){
       setBounds({original.x,original.y,width*uiScale,preferredHeight()*uiScale});
       check(bounds().h==preferredHeight()*uiScale,"Editor preferred content height");
-      check(hex_->bounds().x-tabs_.back()->bounds().x2()==2*uiScale && previousButton_->bounds().x-hex_->bounds().x2()==2*uiScale && sample_->bounds().x-currentButton_->bounds().x2()==2*uiScale,"Editor toolbar group spacing");
+      check(hex_->bounds().x-tabs_[availableModes().back()]->bounds().x2()==2*uiScale && previousButton_->bounds().x-hex_->bounds().x2()==2*uiScale && sample_->bounds().x-currentButton_->bounds().x2()==2*uiScale,"Editor toolbar group spacing");
       check(sample_->bounds().x2()==bounds().x2()-6*uiScale,"Editor toolbar fills width");
       check(bounds().y2()-entries_[3]->bounds().y2()==6*uiScale,"Editor bottom content padding");
     }
@@ -133,7 +151,19 @@ public:
     const auto alpha=current_>>24;hex_->setText("#AABBCC");commitHex();check(current_==((alpha<<24)|0xccbbaa),"HEX retains fallback alpha");hex_->setText("invalid");commitHex();check(hex_->text()==colorValueHex(current_),"Invalid HEX resets");
     for(int i=0;i<5;++i){tabs_[i]->Click();check(tabs_[i]->active,"Editor mode tab selection");for(auto s:sliders_)if(s->isVisible())check(s->bounds().h==textControlHeight*uiScale,"Color slider shared height");}
     if(!paletteButtons_.empty()){auto expected=paletteButtons_[0]->swatch;paletteButtons_[0]->Click();check(current_==expected,"Palette editor selection");}
-    tabs_[0]->Click();for(auto child:children())if(child->isVisible())check(bounds().contains(child->bounds()),"Color editor control outside window");
+    const auto savedModes=sharedModes_;auto all=savedModes;for(auto& item:all)item.enabled=true;setModePreferences(all);
+    const auto neutral=current_;const auto savedChanged=changed_;int notifications=0;changed_=[&](std::uint32_t){++notifications;};
+    for(int i=0;i<7;++i){tabs_[i]->Click();check(mode_==modes_[i]&&tabs_[i]->active&&current_==neutral&&notifications==0,"Mode switch changed color or submitted unchanged HEX");
+      setBounds({original.x+1,original.y+1,40*uiScale,40*uiScale});
+      const auto fields=colorValueFields(mode_);check(bounds().w>=minimumDialogSize(bounds().w).w,"Seven-mode minimum width");
+      for(int field=0;field<5;++field)check(entries_[field]->isVisible()==(field<int(fields.size())),"Mode field visibility");
+      if(!fields.empty())check(bounds().y2()-entries_[fields.size()-1]->bounds().y2()==6*uiScale,"Mode minimum bottom padding");
+      for(auto child:children())if(child->isVisible())check(bounds().contains(child->bounds()),"Seven-mode minimum content overflow");
+    }
+    tabs_[6]->Click();entries_[4]->setText("91");entries_[4]->Change();check(current_>>24==91&&notifications==1,"CMYK alpha field binding");
+    tabs_[5]->Click();entries_[0]->setText("240");entries_[0]->Change();check(notifications==2,"HSL channel edit binding");
+    changed_=savedChanged;setModePreferences(savedModes);apply(neutral);
+    tabs_[0]->Click();setBounds({original.x,original.y,original.w,preferredHeight()*uiScale});for(auto child:children())if(child->isVisible())check(bounds().contains(child->bounds()),"Color editor control outside window");
     for(int width:{120,240,300})for(bool hover:{false,true}){
       const gfx::Rect border(4*uiScale,4*uiScale,width*uiScale,textControlHeight*uiScale);const auto material=skin_.selectionMaterialBounds(border);
       auto mask=os::instance()->makeRgbaSurface((width+8)*uiScale,(textControlHeight+8)*uiScale);mask->clear();{ui::Graphics g(mask);UiPaintScale scale(g);skin_.drawSelectionBorder(g,border,hover);}

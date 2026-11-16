@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "legacy_tools.h"
+#include "quick_command_drag_handle.h"
 
 #include "project_file.h"
 #include "recovery_store.h"
@@ -8430,6 +8431,7 @@ void Editor::smokeColorEditor(){
 
     primaryRole_->Click();if(!colorEditorPopup_||!colorEditorPopup_->isVisible()||pending_!=Pending::None||!menuBar_->isEnabled())throw std::runtime_error("Color component must open a modeless editor");
 
+    runtimePreferences_.colorEditorModes=color_editor::defaults();ColorEditorPopup::setModePreferences(runtimePreferences_.colorEditorModes);
     colorEditorPopup_->smoke();if(currentDocument().palette().primary!=colorEditorPopup_->color())throw std::runtime_error("Color editor live primary binding");
 
     const bool previousTool=currentTools().eyedropperTool;colorEditorPopup_->testSampling();if(!colorEditorSampling_||!currentTools().eyedropperTool)throw std::runtime_error("Color editor sampling tool");
@@ -8444,6 +8446,46 @@ void Editor::smokeColorEditor(){
 
     secondaryRole_->Click();colorEditorPopup_->sampled(0x40221100);colorEditorPopup_->closeWindow(nullptr);if(currentDocument().palette().secondary!=0x40221100)throw std::runtime_error("Color editor secondary binding");
 
+    auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};
+    const auto saved=runtimePreferences_;const auto savedShared=ColorEditorPopup::modePreferences();
+    auto row=[&](const std::string& key)->ui::Widget*{for(unsigned i=0;i<preferences::catalog().size();++i)if(key==preferences::catalog()[i].id)return preferenceRows_[i];throw std::runtime_error("Missing color preference row");};
+    auto toggle=[&](int i){return dynamic_cast<PixelSwitch*>(row("colorLayers.mode."+std::to_string(i)));};
+    auto restore=dynamic_cast<PixelButton*>(row("colorLayers.mode.restore"));
+    preferenceSection_=9;showPreferences();modalGeometry_[Pending::Preferences]={100,20,420,440};preferenceContentPixels_=0;layoutModal();
+    require(restore&&restore->isEnabled()&&restore->icon=="restore","Color modes restore/icon wiring");
+    for(int i=0;i<7;++i)require(toggle(i)&&toggle(i)->isEnabled()&&toggle(i)->checked()==color_editor::defaults()[i].enabled,"Color modes default controls");
+    auto source=row("colorLayers.mode.5"),target=row("colorLayers.mode.0");
+    QuickCommandDragHandle* handle=nullptr;for(auto child:children())if(auto h=dynamic_cast<QuickCommandDragHandle*>(child);h&&h->isVisible()&&h->bounds().center().y>=source->bounds().y&&h->bounds().center().y<source->bounds().y2())handle=h;
+    require(handle&&modalControl(handle),"Color mode shared drag/modal route");
+    auto from=handle->bounds().center(),to=target->bounds().center();to.y-=uiScale;
+    ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,from),move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,to),up(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,to);
+    handle->onProcessMessage(&down);handle->onProcessMessage(&move);handle->onProcessMessage(&up);
+    require(runtimePreferenceDraft_.colorEditorModes.front().id=="hsl"&&source->bounds().y<target->bounds().y&&!handle->hasCapture(),"Disabled color mode actual drag/release");
+    require(!runtimePreferenceDraft_.colorEditorModes.front().enabled,"Reorder enabled disabled mode");
+    toggle(5)->Click();require(runtimePreferenceDraft_.colorEditorModes.front().id=="hsl"&&runtimePreferenceDraft_.colorEditorModes.front().enabled,"Color toggle must retain order");
+    for(int i:{0,1,2,3,4})toggle(i)->Click();
+    require(!toggle(5)->isEnabled()&&toggle(6)->isEnabled(),"Last enabled mode checkbox gate");
+    require(ColorEditorPopup::modePreferences()==savedShared,"Draft changed shared popup preferences");
+    resolve(false);require(runtimePreferences_.colorEditorModes==saved.colorEditorModes&&ColorEditorPopup::modePreferences()==savedShared,"Cancelled mode settings changed runtime");
+    showPreferences();restore->Click();require(runtimePreferenceDraft_.colorEditorModes==color_editor::defaults(),"Restore default color mode order");
+    toggle(5)->Click();toggle(6)->Click();require(color_editor::reorder(runtimePreferenceDraft_.colorEditorModes,"cmyk","hsv",false),"CMYK reorder fixture");syncPreferenceCatalog();layoutModal();
+    require(applyPreferences(),"Apply color mode preferences");resolve(false);
+    require(ColorEditorPopup::modePreferences()==runtimePreferences_.colorEditorModes,"Apply modes common popup propagation");
+    std::istringstream stored(runtimePreferences_.encode());require(preferences::RuntimeSettings::decode(stored).colorEditorModes==runtimePreferences_.colorEditorModes,"Mode settings persistence");
+    primaryRole_->Click();auto active=colorEditorPopup_.get();require(active&&active->availableModes()==std::vector<int>({6,0,1,2,3,4,5}),"New popup enabled order");active->testMode(ColorValueMode::Cmyk);
+    ColorEditorPopup other(font_,skin_,toolIcons_,assets_.parent_path()/"color-modes-test-owned"/"nested-size.txt");other.setDisplay(display(),false);
+    const auto before=currentDocument().palette().primary;int changes=0;
+    other.open({10,10,20,20},{0,0,1280,960},0x80443322,U"CMYK",{},[&](auto){++changes;},{});
+    other.setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);active->setClickBehavior(ui::PopupWindow::ClickBehavior::DoNothingOnClick);
+    require(other.mode()==ColorValueMode::Cmyk,"Nested popup initial mode follows first enabled");
+    auto snapshot=[&](ColorEditorPopup* popup,const char* name){auto surface=os::instance()->makeRgbaSurface(popup->bounds().w,popup->bounds().h);surface->clear();{ui::Graphics g(surface);ui::PaintEvent ev(popup,&g);popup->onPaint(ev);}for(auto child:popup->children())if(child->isVisible()){const auto at=child->bounds().origin()-popup->bounds().origin();ui::Graphics g(nullptr,surface,at.x,at.y);ui::PaintEvent ev(child,&g);if(auto e=dynamic_cast<PixelEntry*>(child))e->onPaint(ev);else if(auto b=dynamic_cast<PixelButton*>(child))b->onPaint(ev);else if(auto slider=dynamic_cast<PixelSlider*>(child))slider->onPaint(ev);}writeSmokeFrame(surface.get(),assets_.parent_path()/name);};
+    snapshot(&other,"color-editor-cmyk-smoke.bmp");other.testMode(ColorValueMode::Hsl);snapshot(&other,"color-editor-hsl-smoke.bmp");other.testMode(ColorValueMode::Cmyk);
+    showPreferences();toggle(6)->Click();require(applyPreferences(),"Disable active CMYK mode");resolve(false);
+    require(active->mode()==ColorValueMode::Hsv&&other.mode()==ColorValueMode::Hsv&&changes==0&&currentDocument().palette().primary==before,"Live mode fallback changed color or missed common popup");
+    other.testMode(ColorValueMode::Hsl);showPreferences();toggle(0)->Click();require(applyPreferences(),"Disable different mode");resolve(false);require(other.mode()==ColorValueMode::Hsl,"Valid current mode was reset");
+    showPreferences();restore->Click();require(applyPreferences(),"Restore default modes apply");
+    manager()->invalidate();manager()->flushRedraw();manager()->dispatchMessages();manager()->flipAllDisplays();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"color-mode-preferences-smoke.bmp");resolve(false);
+    other.closeWindow(nullptr);active->closeWindow(nullptr);runtimePreferences_=saved;ColorEditorPopup::setModePreferences(savedShared);
     replaceDocumentForSmoke(Document());refresh();
 
   }

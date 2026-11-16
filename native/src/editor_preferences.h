@@ -1,6 +1,7 @@
 #pragma once
 #include "preferences_catalog.h"
 #include "layer_color_presets.h"
+#include "color_editor_modes.h"
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -12,6 +13,7 @@ namespace moon::preferences {
 // Actual consumers are in Editor. Entries without consumers stay unavailable.
 // Legacy: file-preferences.ts parsers/defaults and PreferencesDialog.persist.
 inline bool runtimeSetting(const std::string& key) {
+  if(color_editor::preferenceIndex(key)>=0)return true;
   if(key.rfind("quickCommands.",0)==0)return key!="quickCommands.bars.json"&&key!="quickCommands.restore"&&key.find(".collapse")==std::string::npos;
   static const std::vector<std::string> keys{
     "general.timelapseRecordingEnabled", "general.diagnostics.mode", "general.preferences.usageStatisticsEnabled", "appearance.pixelGridColor", "appearance.gridColor", "editing.pasteTarget.Select", "editing.brushSizeWheelReversed", "editing.canvasViewScrollbarsEnabled",
@@ -33,6 +35,7 @@ struct RuntimeSettings {
   std::map<std::string,std::string> values;
   std::vector<timeline::Pixel> layerDisplayColors=defaultLayerDisplayColors();
   std::vector<int> exportScales{100,200,400,1000,2000};
+  std::vector<color_editor::Mode> colorEditorModes=color_editor::defaults();
   static std::vector<int> normalizeExportScales(const std::vector<double>& input){std::vector<int> result;for(double value:input)if(std::isfinite(value)&&value>=1&&value<=6400){const int n=int(std::floor(value+.5));if(std::find(result.begin(),result.end(),n)==result.end())result.push_back(n);}return result.empty()?std::vector<int>{100,200,400,1000,2000}:result;}
   static std::vector<int> decodeExportScales(const std::string& text){std::istringstream input(text);std::vector<double> values;double value;while(input>>value)values.push_back(value);return input.eof()?normalizeExportScales(values):normalizeExportScales({});}
   int defaultExportScale()const{return std::find(exportScales.begin(),exportScales.end(),100)!=exportScales.end()?100:exportScales.empty()?100:exportScales.front();}
@@ -41,6 +44,7 @@ struct RuntimeSettings {
     throw std::invalid_argument("Unknown preference: "+key);
   }
   std::string get(const std::string& key) const {
+    if(const int i=color_editor::preferenceIndex(key);i>=0)return color_editor::enabled(colorEditorModes,i)?"true":"false";
     auto found=values.find(key);if(found!=values.end())return found->second;
     static const auto defaults=[] {std::map<std::string,std::string> result;for(const auto& entry:catalog())result[entry.id]=entry.kind==Kind::Select?std::to_string(entry.selected):entry.kind==Kind::Text?std::string():std::string(entry.value);return result;}();
     if(key.rfind("quickCommands.bar",0)==0&&key.find(".name")!=std::string::npos)return item(key).value;
@@ -52,6 +56,7 @@ struct RuntimeSettings {
     const auto& entry=item(key);
     if(!runtimeSetting(key))throw std::invalid_argument("Unwired preference: "+key);
     if(entry.kind==Kind::Toggle && value!="true" && value!="false")throw std::invalid_argument("Invalid preference toggle");
+    if(const int i=color_editor::preferenceIndex(key);i>=0){if(!color_editor::setEnabled(colorEditorModes,i,value=="true"))throw std::invalid_argument("至少保留一种颜色编辑模式");return;}
     if(entry.kind==Kind::Select || entry.kind==Kind::Number){
       std::size_t used=0;double number=std::stod(value,&used);
       if(used!=value.size() || !std::isfinite(number))throw std::invalid_argument("Invalid preference number");
@@ -70,6 +75,7 @@ struct RuntimeSettings {
     for(const auto& [key,value]:values)out<<std::quoted(key)<<' '<<std::quoted(value)<<'\n';
     std::ostringstream scales;for(int value:exportScales)scales<<value<<' ';out<<std::quoted("presets.exportScales")<<' '<<std::quoted(scales.str())<<'\n';
     out<<std::quoted("presets.layerDisplayColors")<<' '<<std::quoted(encodeLayerDisplayColors(layerDisplayColors))<<'\n';
+    out<<std::quoted("colorLayers.modes")<<' '<<std::quoted(color_editor::encode(colorEditorModes))<<'\n';
     return out.str();
   }
   static RuntimeSettings decode(std::istream& input) {
@@ -80,6 +86,7 @@ struct RuntimeSettings {
       if(!(row>>std::quoted(key)>>std::quoted(value)) || !(row>>std::ws).eof())throw std::runtime_error("Invalid editor preference record");
       if(key=="presets.layerDisplayColors"){next.layerDisplayColors=decodeLayerDisplayColors(value);continue;}
       if(key=="presets.exportScales"){next.exportScales=decodeExportScales(value);continue;}
+      if(key=="colorLayers.modes"){next.colorEditorModes=color_editor::decode(value);continue;}
       if(runtimeSetting(key))next.set(key,value);else next.values[key]=value; // Preserve future records without activating them.
     }
     if(input.bad())throw std::runtime_error("Cannot read editor preferences");return next;
