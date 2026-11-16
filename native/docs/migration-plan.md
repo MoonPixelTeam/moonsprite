@@ -7371,3 +7371,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy ColorValueControl 的捕获、RAF 队列、异步取样与释放／取消迁移已接入的颜色触发器。保留调色器优先及透明角落门禁、原始画布 alpha、桌面区域／单点、序号／代数和最后取样；外部调色器复用已有五种算法并保留源 HSV。Win32 服务移植旧 Rust GetPixel／BitBlt／DIB，原生 property／timer／promise 与 MIT UILayer 承接生命周期和透明镜头，素材及全局 CSS 效果沿用。已有主次色、工具／图层／文字／设置等颜色编辑入口绑定，固定预设色块语义不变。
 
 37 组真实旧版异步快照、旧版两文件 10 测试和 19 项不同定向 CTest 通过：服务／调色器 10 项 1.90 秒、正式输入诊断 1.85 秒、关联八项 19.75 秒。真实 Windows 窗口检查颜色、top-down 顺序、半径与 GDI 清理；正式输入覆盖点击／拖动／边界、5 种调色器与量化、角色／alpha／回调隔离、透明镜头及取消。正式 Release 构建退出 0，唯一 exe 于 2026-11-16 15:01:31 更新（30,973,440 bytes）；初轮隐藏触发器夹具已改为可见控件并重验通过。已查看镜头及仅 Editor＋镜头合成图，不宣称完整工作区、1× 或多显示器验收。来源 1020 文件／既有哈希、Editor608、架构608源码／278targets及偏好360通过；strict 因全仓缺口退出1。详见[颜色控件拖动取色迁移](global-color-drag-migration-20261116.md)。跨画布／参考图覆盖／剩余通用颜色触发器仍需迁移，整体 INCOMPLETE，生产 indexed 准入关闭。本阶段只迁移功能，保存推送 dev，不提交生成物和用户数据。
+
+
+## 2026-11-16 画布取色注册与路由阶段
+
+按实际 legacy canvas-color-sampling 完整路由、useCanvasColorSampling、捕获启动／移动和设备路由迁移注册来源、被动原始 RGBA、跨目标捕获与持续吸管意图。保留注册顺序、源画布排除、透明 0／已处理空样本、指针结束与目标切换清理；主 Editor 读取现有蒙版／合成／图层／重复画布，颜色控件全局拖动复用注册表。普通吸管、替色和颜色编辑器接入捕获路由与 sampled／completed 语义；导航优先级、共享主次色、源文档镜头、释放／取消及身份清理沿用实际旧版规则。原生 property／Manager 物理屏幕命中替代 DOM，不引入新界面布局。
+
+84 组完整实际旧版快照、旧版 3 项测试、15 项不同定向 CTest 和正式 --sampling-zoom-check 全部通过。正式 color-editor-popup 2.81 秒覆盖实际 Manager 命中、注册测试目标、原始 alpha、全局／捕获／意图、空样本／透明 0、导航、弹窗完成、丢失捕获、工程替换与源像素／历史隔离。正式 Release 构建退出 0，唯一 exe 于2026-11-16 16:05:28更新（31,003,136bytes）。来源1025／证据、Editor611、架构611源码／279targets、偏好360及diff通过；strict继续因全仓已知缺口退出1。详见[画布取色注册与路由迁移](canvas-color-sampling-migration-20261116.md)。当前生产只有一个主画布与工程页签，多文档分屏／多画布布局和 CanvasReferences 覆盖层仍未迁移，测试注册窗口、ReferenceImagePanel 与屏幕回退均不替代它们。整体 INCOMPLETE，生产 indexed 准入关闭。未进行新图像／完整人工桌面／多显示器／1×验收或性能工作；阶段保存推送 dev，不提交生成物与用户数据。

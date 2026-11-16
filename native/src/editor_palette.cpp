@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_canvas_color_sampling.h"
 #include "palette_layout.h"
 #include "composite_palette_extraction.h"
 #include "floating_column_surface.h"
@@ -345,6 +346,7 @@ void Editor::setColorEditorSampling(bool active,ColorEditorPopup* target){
       currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=eyedropperHeld_=currentTools().zoomTool=false;
       currentTools().eyedropperTool=true;currentPlayback().playing=false;
     }else{
+        endNativeCanvasColorSampling(*this);
       if(eyedropperGesture_.active())eyedropperGesture_.finish();
       eyedropperLensSurface_.reset();
       if(colorEditorSamplingTarget_&&colorEditorSamplingTarget_->hasCapture())colorEditorSamplingTarget_->releaseMouse();

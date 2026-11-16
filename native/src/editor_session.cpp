@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_canvas_color_sampling.h"
 #include "selection_pattern_brush.h"
 #include "recovery_store.h"
 #include "project_import.h"
@@ -52,6 +53,8 @@ std::u32string timelapseRestoreWarning(const project::TimelapseRestoreReport& re
 
 void Editor::bindProjectDocument(std::shared_ptr<Document> value){
  if(!value)throw std::logic_error("Missing session document");
+ endNativeCanvasColorSampling(*this);syncNativeCanvasColorIntent(*this,false,{});
+ if(eyedropperGesture_.active()){eyedropperGesture_.finish();eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();}
  // Keep the old owner alive until all persistent active-document views detach.
  const auto previous=activeDocument_;activeDocument_=std::move(value);activeSession_->value=activeDocument_;
  // Bind display policy before a gesture can start, independently of refresh/paint.

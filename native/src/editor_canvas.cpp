@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "native_global_color_drag.h"
+#include "native_canvas_color_sampling.h"
 #include "image_decode.h"
 #include "ui/move_region.h"
 #include "legacy_cursors.h"
@@ -808,7 +809,7 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
       const int bucket=(int(std::floor(std::atan2(direction.y,direction.x)*180/3.141592653589793/45+.5))%4+4)%4;
       return bucket==0?"ew-resize":bucket==1?"nwse-resize":bucket==2?"ns-resize":"nesw-resize";
     };
-    if(globalColorDragActive()||referenceSamplingCursor_)return "eyedropper";
+    if(globalColorDragActive()||nativeCanvasColorCursor(*this)||referenceSamplingCursor_)return "eyedropper";
     if(pending_==Pending::SheetImport&&importSheetPreview_&&importSheetPreview_->isVisible()){const auto capture=ui::Manager::getDefault()->getCapture();if(capture==importSheetPreview_||(!capture&&importSheetPreview_->bounds().contains(position)))return "crosshair";}
 
     if(const auto capture=ui::Manager::getDefault()->getCapture();capture && capture!=this){

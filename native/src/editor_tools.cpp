@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "native_global_color_drag.h"
+#include "native_canvas_color_sampling.h"
 #include "eyedropper_lens.h"
 #include "eyedropper_quick_select.h"
 #include "shortcut_input.h"
@@ -1878,7 +1879,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
     return false;
   }
   const auto mouse=dynamic_cast<ui::MouseMessage*>(msg);if(!mouse)return false;
-  if(mouse->display()&&mouse->display()!=display()){finish();return false;}
+  if(eyedropperGesture_.active()&&msg->type()==ui::kMouseMoveMessage&&mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition()))return true;
   const auto point=mouse->positionForDisplay(display());
   if(target->bounds().contains(mouse->positionForDisplay(target->display())))return false;
   const bool active=eyedropperGesture_.active();
@@ -1886,7 +1887,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   try{
     if(msg->type()==ui::kMouseDownMessage){
       if(!mouse->left()&&!mouse->right())return false;
-      if(!active){strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),false);target->captureMouse();}
+      if(!active){strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),false);target->captureMouse();beginCrossCanvasSampling();}
     }else if(msg->type()==ui::kMouseUpMessage){
       if(active&&(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone)){finishEyedropper();return true;}
       return active;
@@ -1900,9 +1901,44 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
 }
 
+void Editor::beginCrossCanvasSampling(){
+  const auto identity=currentDocument().identity();
+  beginNativeCanvasColorSampling(*this,[this,identity](Pixel color,gfx::Point screen){
+    if(identity!=currentDocument().identity()||!eyedropperGesture_.active())return;
+    eyedropperGesture_.sample(color);
+    if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);
+    else setSharedColor(color,eyedropperGesture_.secondary());
+    if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);
+    // Legacy cross-stage callback passes target color and client position to
+    // the source document magnifier; it does not replace the lens reader.
+    if(display())updateEyedropperLens(display()->nativeWindow()->pointFromScreen(screen),color);
+    refresh();
+  });
+}
+
+void Editor::syncCrossCanvasIntent(){
+  const bool enabled=documentOpen_&&!homeOpen_&&currentTools().eyedropperTool;
+  const auto identity=currentDocument().identity();
+  syncNativeCanvasColorIntent(*this,enabled,[this,identity](Pixel color,gfx::Point,bool secondary){
+    if(identity!=currentDocument().identity())return;
+    // Intent clicks publish color/completion without starting a captured drag
+    // or switching the source document/tool (useCanvasColorSampling).
+    setSharedColor(color,secondary);
+    if(colorEditorSampling_&&colorEditorSamplingTarget_){colorEditorSamplingTarget_->sampled(color);colorEditorSamplingTarget_->finishSampling();}
+    if(replaceSampling_>=0){changeReplaceColor(replaceSampling_,color,true);finishReplaceSampling();}
+    refresh();
+  });
+}
+
+bool Editor::processCrossCanvasIntent(const ui::MouseMessage& mouse){
+  if(!mouse.display()||mouse.middle()||(!mouse.left()&&!mouse.right()))return false;
+  const bool navigation=mouse.left()&&(currentPlayback().playing||mouse.ctrlPressed()||mouse.cmdPressed()||spaceHeld_||currentTools().handTool||currentTools().zoomTool||currentTools().rotateTool);
+  return !navigation&&routeNativeCanvasColorIntent(mouse.screenPosition(),mouse.right());
+}
+
 void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
 
-void Editor::finishEyedropper(){if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=currentTools().eyedropperTool && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{currentDocument().addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){currentTools().eyedropperTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().zoomTool=currentTools().eraser=false;}updateNavigationCursor();refresh();}
+void Editor::finishEyedropper(){endNativeCanvasColorSampling(*this);if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=currentTools().eyedropperTool && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{currentDocument().addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){currentTools().eyedropperTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().zoomTool=currentTools().eraser=false;}updateNavigationCursor();refresh();}
 
 std::filesystem::path Editor::fillBrushLibraryDirectory() const {if(brushLibraryTestDirectory_)return *brushLibraryTestDirectory_;
 
@@ -2011,18 +2047,20 @@ void Editor::createEyedropperOptions(){
 
     eyedropperLensPointers_[0]=importSkinPng(assets_/"cursors/02-Slice-2.png",32);eyedropperLensPointers_[1]=importSkinPng(assets_/"cursors/03-Slice-3.png",32);
 
+    registerNativeCanvasColorSurface(*this,[this](gfx::Point screen)->std::optional<Pixel>{
+      if(!documentOpen_||homeOpen_||!display())return {};
+      const auto p=display()->nativeWindow()->pointFromScreen(screen);if(!canvasViewport().contains(p))return {};
+      auto at=canvasDocumentPoint(p);
+      if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return Pixel(0);at={mapped->local.x,mapped->local.y};}
+      if(at.x<0||at.y<0||at.x>=currentDocument().width()||at.y>=currentDocument().height())return Pixel(0);
+      return sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
+    },[this](bool){updateNavigationCursor();},[this](gfx::Point screen){return documentOpen_&&!homeOpen_&&display()&&canvasViewport().contains(display()->nativeWindow()->pointFromScreen(screen));});
     setGlobalColorDragEnvironment(this,[this]{
       GlobalColorDragEnvironment e;e.skin=&skin_;e.magnifier=eyedropperLensEnabled_;e.line=runtimePreferences_.index("tools.eyedropperMagnifierStyle.Select")==1;e.distortion=runtimePreferences_.flag("tools.eyedropperMagnifierDistortionEnabled");
       const double sizes[]{.5,.75,1,1.25};e.size=sizes[std::clamp(eyedropperLensSize_,0,3)];e.masks=eyedropperLensMasks_;e.pointers=eyedropperLensPointers_;
       const auto identity=currentDocument().identity();e.valid=[this,identity]{return identity==currentDocument().identity();};e.cursor=[this](bool){updateNavigationCursor();};
       e.hideAt=[this](ui::Widget* w){const int id=widgetColumn(w);return id==1||(id>=4&&id<=7);};
-      e.canvas=[this,identity](gfx::Point screen,ui::Widget* target)->std::optional<Pixel>{
-        if(identity!=currentDocument().identity()||!documentOpen_||homeOpen_||!display()||target!=this)return {};
-        const auto p=display()->nativeWindow()->pointFromScreen(screen);if(!canvasViewport().contains(p))return {};
-        auto at=canvasDocumentPoint(p);if(tileRepeatIdentity_==identity&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return Pixel(0);at={mapped->local.x,mapped->local.y};}
-        if(at.x<0||at.y<0||at.x>=currentDocument().width()||at.y>=currentDocument().height())return Pixel(0);
-        return sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
-      };return e;
+      e.canvas=[](gfx::Point screen,ui::Widget*){return sampleNativeCanvasColor(screen);};return e;
     });
     {std::ifstream in(palettePreferencePath().parent_path()/"zoom-tool-drag-mode.txt");std::string mode;if(in>>mode)navigation_.zoomSmooth_=mode=="smooth";}
 

@@ -122,6 +122,7 @@ void Editor::refresh(RefreshScope scope){
     updateControlVisibility();applyHomeVisibility();applyAdvancedVisibility();
   }
   updateNavigationCursor();
+  syncCrossCanvasIntent();
   if(needs(RefreshScope::Layout))invalidate();
   else {
     if(needs(RefreshScope::Canvas)){

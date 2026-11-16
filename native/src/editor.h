@@ -2292,6 +2292,7 @@ private:
 
   void setColorEditorSampling(bool active,ColorEditorPopup* target=nullptr);
   bool processColorEditorCanvasSampling(ui::Message* msg);
+  void beginCrossCanvasSampling();void syncCrossCanvasIntent();
 
   void showRoleColorEditor(bool secondary,PixelButton* trigger=nullptr);
 
@@ -3033,6 +3034,7 @@ public:
 
   void observeModifierRelease(ui::Message* msg);
   bool processQuickEyedropper(ui::Message* msg);
+  bool processCrossCanvasIntent(const ui::MouseMessage& mouse);
 
   void smokePanelScroll();
 

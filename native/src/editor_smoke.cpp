@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "native_global_color_drag.h"
+#include "native_canvas_color_sampling.h"
 #include "legacy_tools.h"
 #include "quick_command_drag_handle.h"
 
@@ -8518,6 +8519,64 @@ void Editor::smokeColorEditor(){
       send(pickerPrimary_,ui::kMouseDownMessage,pickerPrimary_->bounds().center());send(pickerPrimary_,ui::kMouseMoveMessage,canvas);pollGlobalColorDrag(*pickerPrimary_);send(pickerPrimary_,ui::kMouseUpMessage,canvas,ui::kButtonNone);check(!globalColorDragActive()&&!pickerPrimary_->hasCapture(),"Lost capture cancels sampling without final click");
       check(currentDocument().historySize()==h&&currentDocument().pixels()==baseline&&currentDocument().palette().secondary==secondary,"Global role sampling changed document pixels/history/other role");
       refresh();
+    }
+
+    {
+      // A registered native stage fixture exercises actual Manager hit testing
+      // while production still has one document canvas (tabs, no split panes).
+      std::optional<Pixel> targetColor=0x80332211;bool targetCursor=false;int reads=0;
+      struct StageFixture{
+        ui::Window window{ui::Window::WithoutTitleBar};
+        ~StageFixture(){unregisterNativeCanvasColorSurface(window);window.closeWindow(nullptr);}
+      } target;
+      const auto viewport=canvasViewport();
+      target.window.setDisplay(display(),false);target.window.setAutoRemap(false);target.window.setWantFocus(false);
+      target.window.setBounds({viewport.x2()-72,viewport.y+10,64,64});target.window.openWindow();
+      registerNativeCanvasColorSurface(target.window,[&](gfx::Point)->std::optional<Pixel>{++reads;return targetColor;},[&](bool active){targetCursor=active;});
+      auto check=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+      const auto at=target.window.bounds().center(),screen=display()->nativeWindow()->pointToScreen(at);
+      const auto source=canvasDocumentToDisplay({4.25,4.25});
+      check(manager()->pickFromScreenPos(screen)==&target.window,"Registered target native hit test");
+      check(manager()->pickFromScreenPos(display()->nativeWindow()->pointToScreen(source))==this,"Registered source native hit test");
+      const auto pixels=currentDocument().pixels();const auto history=currentDocument().historySize();
+      const auto secondary=currentDocument().palette().secondary;
+      check(sampleNativeCanvasColor(screen)==targetColor&&!eyedropperGesture_.active(),"Passive raw target sample without gesture");
+      auto button=[&](ui::MessageType type,gfx::Point p,ui::MouseButton b=ui::kButtonLeft){ui::MouseMessage m(type,os::PointerType::Mouse,b,ui::kKeyNoneModifier,p);m.setDisplay(display());return onProcessMessage(&m);};
+      auto clickIntent=[&](ui::MouseButton b,ui::KeyModifiers mods=ui::kKeyNoneModifier){ui::MouseMessage m(ui::kMouseDownMessage,os::PointerType::Mouse,b,mods,at);m.setDisplay(display());m.setFromFilter(true);m.setRecipient(manager());return manager()->sendMessage(&m);};
+      // Global color triggers use the same registry before desktop sampling.
+      auto trigger=[&](ui::MessageType type,gfx::Point p){ui::MouseMessage m(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,p);m.setDisplay(display());pickerPrimary_->onProcessMessage(&m);};
+      trigger(ui::kMouseDownMessage,pickerPrimary_->bounds().center());trigger(ui::kMouseMoveMessage,at);pollGlobalColorDrag(*pickerPrimary_);
+      check(globalColorDragActive()&&currentDocument().palette().primary==*targetColor,"Global drag reads registered target raw alpha");trigger(ui::kMouseUpMessage,at);
+      const auto preference=runtimePreferences_.flag("tools.eyedropperSwitchToPencil");runtimePreferences_.set("tools.eyedropperSwitchToPencil","false");
+      runShortcutCommand("tool.eyedropper");refresh();
+      check(targetCursor,"Actual eyedropper intent marks registered target");
+      button(ui::kMouseDownMessage,source);check(eyedropperGesture_.active()&&hasCapture(),"Real source input begins captured routing");
+      button(ui::kMouseMoveMessage,at);check(currentDocument().palette().primary==*targetColor&&targetCursor,"Captured source move samples target");
+      targetColor.reset();const auto sampled=currentDocument().palette().primary;const auto beforeReads=reads;
+      button(ui::kMouseMoveMessage,at);check(reads==beforeReads+1&&currentDocument().palette().primary==sampled,"Handled empty target blocks local source sampling");
+      targetColor=0;button(ui::kMouseMoveMessage,at);check(currentDocument().palette().primary==0,"Captured target transparent color is valid");
+      button(ui::kMouseUpMessage,at);check(!eyedropperGesture_.active()&&!hasCapture()&&!targetCursor,"Release clears captured router and target cursor");
+      check(!routeNativeCanvasColorSampling(screen),"Released route cannot sample again");
+      targetColor=0x40221199;const auto primary=currentDocument().palette().primary;
+      check(clickIntent(ui::kButtonRight)&&currentDocument().palette().secondary==*targetColor&&currentDocument().palette().primary==primary&&!hasCapture(),"Manager intent uses secondary without capture or source tool switch");
+      spaceHeld_=true;check(!clickIntent(ui::kButtonLeft),"Space navigation precedes sampling intent");spaceHeld_=false;
+      check(!clickIntent(ui::kButtonLeft,ui::kKeyCtrlModifier),"Ctrl left navigation precedes sampling intent");
+      check(clickIntent(ui::kButtonRight,ui::kKeyCtrlModifier),"Ctrl right remains secondary intent as in legacy");
+      // Popup sampling uses the same intent event/completion semantics.
+      showRoleColorEditor(false,pickerPrimary_);colorEditorPopup_->testSampling();targetColor=0x60112233;
+      check(clickIntent(ui::kButtonLeft)&&!colorEditorSampling_&&colorEditorPopup_->color()==*targetColor,"Cross-stage intent completes active color editor sampling");colorEditorPopup_->closeWindow(nullptr);
+      runShortcutCommand("tool.eyedropper");button(ui::kMouseDownMessage,source);button(ui::kMouseMoveMessage,at);
+      releaseMouse();button(ui::kMouseMoveMessage,source,ui::kButtonNone);
+      check(!eyedropperGesture_.active()&&!targetCursor&&!routeNativeCanvasColorSampling(screen),"Lost capture clears registered routing");
+      button(ui::kMouseDownMessage,source);button(ui::kMouseMoveMessage,at);
+      const auto original=activeDocument_;bindProjectDocument(std::make_shared<Document>(Document::withBuiltinPalette()));
+      const auto newRole=currentDocument().palette().primary;
+      check(!eyedropperGesture_.active()&&!hasCapture()&&!routeNativeCanvasColorSampling(screen)&&currentDocument().palette().primary==newRole,"Document replacement invalidates old captured source");
+      bindProjectDocument(original);refresh();runShortcutCommand("tool.pencil");
+      check(!routeNativeCanvasColorIntent(screen,false)&&!targetCursor,"Tool change clears source intent and registered cursor");
+      unregisterNativeCanvasColorSurface(target.window);check(!sampleNativeCanvasColor(screen),"Unregistered stage no longer supplies pixels");
+      check(currentDocument().pixels()==pixels&&currentDocument().historySize()==history,"Cross-stage sampling preserves source pixels and undo history");
+      setSharedColor(secondary,true);runtimePreferences_.set("tools.eyedropperSwitchToPencil",preference?"true":"false");refresh();
     }
 
     primaryRole_->Click();if(!colorEditorPopup_||!colorEditorPopup_->isVisible()||pending_!=Pending::None||!menuBar_->isEnabled())throw std::runtime_error("Color component must open a modeless editor");

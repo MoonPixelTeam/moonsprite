@@ -1,5 +1,6 @@
 #pragma once
 #include "editor.h"
+#include "native_canvas_color_sampling.h"
 
 namespace moon::editor {
 class Desktop : public ui::Window {
@@ -110,6 +111,9 @@ public:
 
     if(msg->fromFilter() && msg->type()==ui::kMouseDownMessage){
       const auto mouse=static_cast<ui::MouseMessage*>(msg);
+      // Legacy device router gives an active eyedropper intent first refusal
+      // over another registered stage, before activating its document.
+      if(msg->display()&&!getCapture()&&desktop&&desktop->editor&&desktop->editor->processCrossCanvasIntent(*mouse))return true;
       if(msg->display())if(auto picked=pickFromScreenPos(mouse->screenPosition()))if(auto popup=dynamic_cast<PixelPopupWindow*>(picked->window()))if(isWidgetClickable(popup)){
         ui::MouseMessage translated(msg->type(),*mouse,mouse->positionForDisplay(popup->display()));translated.setFromFilter(true);
         if(popup->processDialogGeometry(&translated))return true;

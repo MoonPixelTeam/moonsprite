@@ -832,6 +832,15 @@ add_test(NAME color-picker COMMAND color-picker-tests)
 add_executable(global-color-sampling-tests tests/global_color_sampling_test.cpp)
 target_include_directories(global-color-sampling-tests PRIVATE src)
 add_test(NAME global-color-sampling COMMAND global-color-sampling-tests)
+add_executable(canvas-color-sampling-tests tests/canvas_color_sampling_test.cpp)
+target_include_directories(canvas-color-sampling-tests PRIVATE src)
+add_test(NAME canvas-color-sampling COMMAND canvas-color-sampling-tests)
+if(MOON_NODE_EXECUTABLE)
+  add_test(NAME canvas-color-sampling-oracle COMMAND "${MOON_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make-canvas-color-sampling-oracle.cjs" "${CMAKE_CURRENT_SOURCE_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/canvas-color-sampling-oracle.txt")
+  set_tests_properties(canvas-color-sampling-oracle PROPERTIES FIXTURES_SETUP canvas-color-sampling-oracle)
+  add_test(NAME canvas-color-sampling-contract COMMAND canvas-color-sampling-tests "${CMAKE_CURRENT_BINARY_DIR}/canvas-color-sampling-oracle.txt")
+  set_tests_properties(canvas-color-sampling-contract PROPERTIES FIXTURES_REQUIRED canvas-color-sampling-oracle)
+endif()
 if(MOON_NODE_EXECUTABLE)
   add_test(NAME global-color-sampling-oracle COMMAND "${MOON_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make-global-color-sampling-oracle.cjs" "${CMAKE_CURRENT_SOURCE_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/global-color-sampling-oracle.txt")
   set_tests_properties(global-color-sampling-oracle PROPERTIES FIXTURES_SETUP global-color-sampling-oracle)
@@ -1578,6 +1587,7 @@ if(TARGET moonsprite-native)
   add_dependencies(moonsprite-native architecture-checks)
   target_sources(moonsprite-native PRIVATE src/preview_panel.cpp src/floating_column_surface.cpp
     src/native_global_color_drag.cpp
+    src/native_canvas_color_sampling.cpp
     src/pixel_theme.cpp
     src/curve_editor_native.cpp
     src/sprite_sheet_preview.cpp
