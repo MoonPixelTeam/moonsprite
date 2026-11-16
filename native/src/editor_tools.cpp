@@ -22,8 +22,8 @@ namespace {
 struct EyedropperLensWork final:ui::Property {
  bool pending=false,rendering=false,cached=false;
  gfx::Point pointer;Pixel sampled=0;
- std::uint64_t identity=0,revision=0,renders=0,reads=0;
- std::string frame,layer;EyedropperSource source=EyedropperSource::Composite;
+ std::uint64_t identity=0,revision=0,previewRevision=0,renders=0,reads=0;
+ std::string frame,layer,mask;EyedropperSource source=EyedropperSource::Composite;
  int x=0,y=0;std::vector<Pixel> pixels;
  EyedropperLensWork():ui::Property("moonsprite.eyedropper-lens-work"){}
 };
@@ -1079,7 +1079,7 @@ void Editor::showGradientStopsMenu(bool verify){
       }
       if(!samplePoint)throw std::runtime_error("Gradient sampling fixture needs visible canvas outside popups");
       auto sampleMouse=[&](ui::MessageType type){ui::MouseMessage event(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,*samplePoint);event.setDisplay(display());event.setFromFilter(true);return stopColorEditor->onProcessMessage(&event);};
-      const auto pixel=transformCanvasPoint(*samplePoint);const auto expected=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),int(std::floor(pixel.x)),int(std::floor(pixel.y)),currentTools().eyedropperSource);
+      const auto pixel=transformCanvasPoint(*samplePoint);const auto expected=sampleEyedropper(currentDocument(),int(std::floor(pixel.x)),int(std::floor(pixel.y)),currentTools().eyedropperSource);
       if(!sampleMouse(ui::kMouseDownMessage)||currentTools().gradientStops[gradientStop_].color!=expected)throw std::runtime_error("Gradient stop samples canvas RGBA");
       sampleMouse(ui::kMouseMoveMessage);sampleMouse(ui::kMouseUpMessage);
       if(colorEditorSampling_||colorEditorSamplingTarget_||eyedropperGesture_.active()||currentTools().gradientTool!=gradientToolBefore||gradientPending_!=pendingBefore||currentDocument().palette().primary!=primaryBefore||currentDocument().palette().secondary!=secondaryBefore||currentDocument().historySize()!=beforeHistory||currentDocument().pixels()!=beforePixels)throw std::runtime_error("Gradient sample release restores tool without role/history/pixel changes");
@@ -1615,16 +1615,15 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
       const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);
       if(!mapped)return;
       at={mapped->local.x,mapped->local.y};
-      sampled=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
+      sampled=sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
     }
     const double px=at.x,py=at.y;
 
     const int sx=int(std::floor(px))-12,sy=int(std::floor(py))-12;
 
-    if(!work->cached||work->identity!=currentDocument().identity()||work->revision!=currentDocument().revision()||work->frame!=currentDocument().frame().id||work->layer!=currentDocument().layer().id||work->source!=currentTools().eyedropperSource||work->x!=sx||work->y!=sy){
-      auto pixels=currentTools().eyedropperSource==EyedropperSource::Composite?compositeNormalRegion(currentDocument().timeline(),currentDocument().frame().id,{sx,sy,25,25}):std::vector<Pixel>(625);
-      if(currentTools().eyedropperSource==EyedropperSource::CurrentLayer)for(int y=0;y<25;++y)for(int x=0;x<25;++x)pixels[y*25+x]=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),sx+x,sy+y,currentTools().eyedropperSource);
-      work->pixels=std::move(pixels);work->identity=currentDocument().identity();work->revision=currentDocument().revision();work->frame=currentDocument().frame().id;work->layer=currentDocument().layer().id;work->source=currentTools().eyedropperSource;work->x=sx;work->y=sy;work->cached=true;++work->reads;
+    if(!work->cached||work->identity!=currentDocument().identity()||work->revision!=currentDocument().revision()||work->previewRevision!=currentDocument().gradientRevision()||work->frame!=currentDocument().frame().id||work->layer!=currentDocument().layer().id||work->mask!=currentDocument().activeMaskId()||work->source!=currentTools().eyedropperSource||work->x!=sx||work->y!=sy){
+      auto pixels=renderEyedropperRegion(currentDocument(),{sx,sy,25,25},currentTools().eyedropperSource);
+      work->pixels=std::move(pixels);work->identity=currentDocument().identity();work->revision=currentDocument().revision();work->previewRevision=currentDocument().gradientRevision();work->frame=currentDocument().frame().id;work->layer=currentDocument().layer().id;work->mask=currentDocument().activeMaskId();work->source=currentTools().eyedropperSource;work->x=sx;work->y=sy;work->cached=true;++work->reads;
     }
     const auto& pixels=work->pixels;++work->renders;
 
@@ -1652,7 +1651,7 @@ void Editor::updateEyedropperLens(gfx::Point pointer,Pixel sampled) {
 
         const Pixel bg=Pixel(gfx::getr(checker)|(gfx::getg(checker)<<8)|(gfx::getb(checker)<<16)|0xff000000);
 
-        color=over(bg,dx>=0 && dy>=0 && dx<currentDocument().width() && dy<currentDocument().height() && dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
+        color=over(bg,dx>=sx && dx<sx+25 && dy>=sy && dy<sy+25?pixels[(dy-sy)*25+dx-sx]:0);
 
         if(x>=56 && x<72 && y>=56 && y<72){const auto p=pointerBitmap.pixels[(y-56)*2*32+(x-56)*2];color=over(color,(p&0xffffff)|((p>>25)<<24));}
 
@@ -1723,14 +1722,14 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
     }else if(msg->type()!=ui::kMouseMoveMessage)return false;
     if(eyedropperGesture_.active()&&canvasViewport().contains(point)){
       const auto p=transformCanvasPoint(point);const Point at{int(std::floor(p.x)),int(std::floor(p.y))};
-      const auto color=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),at.x,at.y,currentTools().eyedropperSource);
+      const auto color=sampleEyedropper(currentDocument(),at.x,at.y,currentTools().eyedropperSource);
       updateEyedropperLens(point,color);sampleEyedropperAt(at);
     }
     return eyedropperGesture_.active();
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
 }
 
-void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,currentDocument().width(),currentDocument().height(),p.x,p.y,currentTools().eyedropperSource);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
+void Editor::sampleEyedropperAt(Point p){try{if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}const auto color=sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource);eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();}catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}}
 
 void Editor::finishEyedropper(){if(auto work=std::dynamic_pointer_cast<EyedropperLensWork>(getProperty("moonsprite.eyedropper-lens-work")))work->pending=false;const bool returnToPencil=currentTools().eyedropperTool && replaceSampling_<0 && !colorEditorSampling_ && runtimePreferences_.flag("tools.eyedropperSwitchToPencil");const bool editorSampling=colorEditorSampling_;const auto added=eyedropperGesture_.finish(paletteSamplingHeld_);if(added)try{currentDocument().addPaletteColor(*added);}catch(const std::length_error&){status_=U"颜色编号超出当前支持范围";}eyedropperLensSurface_.reset();if(hasCapture())releaseMouse();if(replaceSampling_>=0)finishReplaceSampling();if(editorSampling&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();if(returnToPencil){currentTools().eyedropperTool=false;currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().zoomTool=currentTools().eraser=false;}updateNavigationCursor();refresh();}
 

@@ -89,6 +89,7 @@ void moon::TilesetPanel::smokePerformance(){
 namespace moon::script { void withScriptFloating(Document&,const std::function<void()>&); }
 
 namespace moon::editor {
+std::pair<std::uint64_t,std::uint64_t> eyedropperLensWorkCounts(const ui::Widget&);
 
 void Editor::smokeRuntimePreferences(bool persist){
 
@@ -5376,6 +5377,29 @@ void Editor::smokeEyedropper(){
 
     key(ui::kKeyDownMessage,ui::kKeyB);key(ui::kKeyDownMessage,ui::kKeyAlt,ui::kKeyAltModifier);pointer(ui::kMouseDownMessage,1,1,false,ui::kKeyAltModifier);key(ui::kKeyUpMessage,ui::kKeyAlt);pointer(ui::kMouseUpMessage,1,1);if(currentTools().eyedropperTool || eyedropperHeld_ || currentDocument().palette().primary!=0x80443322 || currentDocument().pixels()!=pixels || currentDocument().historySize()!=history || currentDocument().dirty())throw std::runtime_error("Temporary eyedropper restores tool without edit");
 
+    // Active mask overrides both source choices, including lens pixels and
+    // cache invalidation when switching context without editing the raster.
+    eyedropperLensEnabled_=true;useEyedropperTool();
+    const auto owner=currentDocument().layer().id,frame=currentDocument().frame().id;
+    if(!currentDocument().createAttachedMask(owner,frame))throw std::runtime_error("Eyedropper mask fixture");
+    currentDocument().fillSelectionOrCanvas(0xff808080);currentDocument().markSaved();refresh();
+    auto flushLens=[&]{auto target=os::instance()->makeRgbaSurface(bounds().w,bounds().h);ui::Graphics g(target);paintEyedropperLens(g);};
+    const auto maskHistory=currentDocument().historySize();const auto maskPixels=currentDocument().maskDisplayRegion({0,0,4,3});
+    for(const auto source:{EyedropperSource::CurrentLayer,EyedropperSource::Composite}){
+      currentTools().eyedropperSource=source;pointer(ui::kMouseDownMessage,1,1);
+      if(currentDocument().palette().primary!=0xff808080||!eyedropperLensSurface_)throw std::runtime_error("Eyedropper mask source override");
+      const auto first=eyedropperLensWorkCounts(*this);updateEyedropperLens(eyedropperLensPointer_,0xff808080);flushLens();
+      if(eyedropperLensWorkCounts(*this).second!=first.second)throw std::runtime_error("Eyedropper stable mask cache");
+      currentDocument().exitAttachedMask();updateEyedropperLens(eyedropperLensPointer_,0x80443322);flushLens();
+      const auto exited=eyedropperLensWorkCounts(*this);
+      if(exited.second!=first.second+1)throw std::runtime_error("Eyedropper mask exit cache invalidation");
+      if(!currentDocument().selectAttachedMask(owner,frame))throw std::runtime_error("Eyedropper mask reselect");
+      updateEyedropperLens(eyedropperLensPointer_,0xff808080);flushLens();
+      if(eyedropperLensWorkCounts(*this).second!=exited.second+1)throw std::runtime_error("Eyedropper mask enter cache invalidation");
+      pointer(ui::kMouseMoveMessage,-1,1);pointer(ui::kMouseUpMessage,-1,1);
+      if(currentDocument().palette().primary!=0||currentDocument().historySize()!=maskHistory||currentDocument().dirty()||currentDocument().maskDisplayRegion({0,0,4,3})!=maskPixels||currentDocument().pixels()!=pixels)throw std::runtime_error("Eyedropper mask bounds and content isolation");
+    }
+    currentDocument().exitAttachedMask();
     replaceDocumentForSmoke(Document());currentTools().eyedropperTool=eyedropperHeld_=paletteSamplingHeld_=false;currentTools().eyedropperSource=EyedropperSource::Composite;refresh();
 
   }

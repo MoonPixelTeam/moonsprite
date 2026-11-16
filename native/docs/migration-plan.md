@@ -7325,3 +7325,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy workspace-magic-eraser、magicWandSelection、clearSelection 和 PixelEdit 迁移 indexed／RGBA 匹配与擦除。修复 indexed 源字未解析颜色、可见合成缺少色板上下文、擦除未裁切到原始可见内容边界及 pending lookup 初始化顺序。保留完整源匹配后求选区交集、稀疏／负偏移／画布外存储、关联图层与链接帧、点／密集历史和旧版取消规则。蒙版按实际解码后的标量存储核对；实际输入诊断补齐独立设置目录，生产 UI 与设置逻辑不变。
 
 2,492 组实际旧版对照（含 60 组密集历史）、144 组链接／编码变体和 48 组蒙版事务全部通过；旧版两文件 25 项测试通过（8.32 秒），9 项定向 CTest 通过（21.30 秒）。正式 Release 构建退出 0，唯一 exe 于 07:32:45 更新（30,764,544 bytes），新正式程序 `--magic-eraser-only` 实际输入检查退出 0。来源 996／证据快照、Editor597、架构597源码／271targets及diff通过；strict 因其它缺口退出1。详见[魔术橡皮擦迁移](magic-eraser-migration-20261116.md)。生产 indexed 准入仍关闭，全仓 INCOMPLETE；仅功能迁移，没有完整人工桌面／图像验收。阶段保存推送 dev，保留用户数据、缓存与日志。
+
+
+## 2026-11-16 吸管取样与放大镜数据阶段
+
+按实际 legacy eyedropper-source、document-model、cursor normal sampler、compositeRegion 及输入／镜头调用链迁移 indexed／RGBA／混合格式取样。补齐首项重复 ID 的 raw 当前层取色、末项 ID 的合成取色、活动层／组蒙版白底灰度、颜色调整预览和背景排除规则；点取样先裁切画布，镜头区域保留 raw 快路径、隐藏 RGB 与画布外存储。效果仅以画布内像素求样式，画布外保留原始存储。复用既有合成器与采样元数据，不复制整份文档；镜头缓存增加蒙版与预览代数，输入及绘制合并沿用。
+
+840 组实际旧版案例、84 组颜色调整预览、120 组原生链接帧变体和 6 组层／组蒙版全部通过。旧版吸管来源和按下取样两文件 23 项测试通过（6.25 秒）。最终 6 项定向 CTest 通过（1.86 秒）：eyedropper、eyedropper-legacy-oracle、eyedropper-legacy、layer-compositor、layer-group-compositor、attached-masks。正式 Release 与受影响测试目标构建退出 0；唯一正式 exe 于 2026-11-16 08:20:41 更新，30,767,104 bytes。新正式程序 --sampling-zoom-check 退出 0，包含两种来源的实际蒙版取样、镜头稳定缓存、进入／退出蒙版刷新、越界透明及内容／历史隔离。来源覆盖 998 文件与既有哈希、Editor 597 源码、架构 597 源码／272 targets 和 diff 检查通过；strict 因整体已知缺口按要求退出 1。 详见[吸管迁移](eyedropper-migration-20261116.md)。生产 indexed 新建／转换／可编辑导入继续关闭，整体 INCOMPLETE。仅功能迁移，没有性能优化或完整人工桌面／图像验收。阶段保存推送 dev，生成物与用户数据不提交。

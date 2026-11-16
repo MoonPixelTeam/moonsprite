@@ -36,8 +36,9 @@ inline bool compositeContains(CompositeRegion bounds,int x,int y){return x>=boun
 struct CompositeSamplingBounds {
  struct Item {CompositeRegion geometry,output;bool containsAdjustment=false;};
  std::unordered_map<std::string,Item> items;
+ bool omitBackgrounds=false,clipStylesToCanvas=false;
 };
-CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline&,const std::string& frame,const RasterColorContext&);
+CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline&,const std::string& frame,const RasterColorContext&,bool omitBackgrounds=false);
 // Adapter for legacy RGBA/indexed layer stacks, topmost first.
 // Preview vectors are resolved RGBA colors; Surface words retain their format.
 // Output is only the requested rectangle; caller retains unrelated cached pixels.

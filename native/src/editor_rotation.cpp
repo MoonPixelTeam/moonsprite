@@ -551,7 +551,7 @@ void Editor::smokeTileRepeat(){
   useEyedropperTool();currentTools().eyedropperSource=current?EyedropperSource::CurrentLayer:EyedropperSource::Composite;eyedropperLensEnabled_=true;setTileRepeat(mode);currentView().zoom=4;{const auto v=canvasViewport();const int w=int(16*canvasScale()),h=int(12*canvasScale());currentView().canvas={v.x+(v.w-w)/2,v.y+(v.h-h)/2,w,h};}refresh();const auto baseline=currentDocument().canvasPixels();const auto h=currentDocument().historyPosition();const auto other=right?currentDocument().palette().primary:currentDocument().palette().secondary;const int ox=repeat::includesX(mode)?-16:0,oy=repeat::includesY(mode)?12:0;
   auto sampleSend=[&](ui::MessageType type,TransformPoint at){ui::MouseMessage m(type,os::PointerType::Mouse,right?ui::kButtonRight:ui::kButtonLeft,ui::kKeyNoneModifier,canvasDocumentToDisplay(at));m.setDisplay(display());onProcessMessage(&m);};
   auto role=[&]{return right?currentDocument().palette().secondary:currentDocument().palette().primary;};
-  const auto first=sampleEyedropper(currentDocument().timeline(),currentDocument().frame().id,currentDocument().layer().id,16,12,2,3,currentTools().eyedropperSource);
+  const auto first=sampleEyedropper(currentDocument(),2,3,currentTools().eyedropperSource);
   sampleSend(ui::kMouseDownMessage,{ox+2.25,oy+3.25});if(!eyedropperGesture_.active()||role()!=first||!eyedropperLensSurface_)throw std::runtime_error("Repeated eyedropper initial sample");
   auto flushLens=[&]{auto target=os::instance()->makeRgbaSurface(bounds().w,bounds().h);ui::Graphics g(target);paintEyedropperLens(g);};
   const auto lens=eyedropperLensSurface_;const auto counts=eyedropperLensWorkCounts(*this);

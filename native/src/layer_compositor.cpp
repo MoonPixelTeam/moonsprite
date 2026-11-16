@@ -31,9 +31,10 @@ void compositeOpaqueRgbaRow(Pixel* output,const Pixel* source,std::size_t count)
   ++p;
  }
 }
-CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline& timeline,const std::string& frame,const RasterColorContext& colors){
- CompositeSamplingBounds result;const auto& state=timeline.state();
+CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline& timeline,const std::string& frame,const RasterColorContext& colors,bool omitBackgrounds){
+ CompositeSamplingBounds result;result.omitBackgrounds=omitBackgrounds;const auto& state=timeline.state();
  for(const auto& l:state.layers){auto& item=result.items[l.id];item.containsAdjustment=l.kind=="adjustment"&&l.adjustment&&l.adjustment->enabled;
+  if(omitBackgrounds&&l.background)continue;
   if(l.kind=="adjustment")item.geometry={0,0,state.canvasWidth,state.canvasHeight};
   else if(const auto* cel=timeline.findCel(l.id,frame)){const auto r=timeline.resolveSurface(cel->id);if(r.surface)item.geometry=rasterStyleGeometry(*r.surface,colors);}
   item.output=layerStyleOutputBounds(item.geometry,l.layerStyles);
@@ -49,7 +50,7 @@ CompositeSamplingBounds compileCompositeSamplingBounds(const timeline::Timeline&
 }
 std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,const std::string& frameId,CompositeRegion r,const std::string& previewLayer,const std::vector<Pixel>* preview,int previewWidth,int previewX,int previewY,bool cacheContent,const std::string& targetLayerId,const std::string& previewOwnerCelId,const timeline::AttachedMask* maskPreview,const timeline::Surface* maskPixelsPreview,const RasterColorContext* colorContext,const CompositeSamplingBounds* sampling) {
  const auto& state=timeline.state();const RasterColorContext fallbackColors;const auto& colors=colorContext?*colorContext:fallbackColors;
- auto inCanvas=[&](int x,int y){return !colors.indexed()||(x>=0&&y>=0&&(state.canvasWidth<=0||x<state.canvasWidth)&&(state.canvasHeight<=0||y<state.canvasHeight));};
+ auto inCanvas=[&](int x,int y){return (!colors.indexed()&&!(sampling&&sampling->clipStylesToCanvas))||(x>=0&&y>=0&&(state.canvasWidth<=0||x<state.canvasWidth)&&(state.canvasHeight<=0||y<state.canvasHeight));};
  const auto* linkedPreviewSlot=previewLayer.empty()?nullptr:timeline.findCel(previewLayer,frameId);
  const auto linkedPreviewRoot=linkedPreviewSlot?timeline.resolveSurface(linkedPreviewSlot->id):timeline::Resolution{};
 
@@ -75,6 +76,7 @@ std::vector<Pixel> compositeNormalRegion(const timeline::Timeline& timeline,cons
  // Storage origins identify stable history coordinates; world rendering uses
  // surface offsets only, including after an owner expands without cropping.
  auto renderLayer=[&](std::size_t index,CompositeRegion r,std::vector<Pixel>& out,bool raw=false){
+  if(sampling&&sampling->omitBackgrounds&&state.layers[index].background)return;
   const auto* mask=timeline::resolvedMask(state,state.layers[index].id,frameId);if(maskPreview&&mask&&maskPreview->id==mask->id)mask=maskPreview;
   CompositeRegion styleGeometry;const auto mappedStyle=colors.mappedStyle(state.layers[index].layerStyles);
   auto masked=[&](Pixel p,int x,int y){if(mask&&mask->visible){const auto n=compositeMaskCoverage(*mask,x,y,maskPreview,maskPixelsPreview);p=(p&0xffffff)|(Pixel(std::floor((p>>24)*n/255.+.5))<<24);}if(!inCanvas(x,y))return p;p=timeline::applyColorOverlay(p,mappedStyle);return timeline::applyGradientOverlay(p,mappedStyle,x,y,styleGeometry.x,styleGeometry.y,styleGeometry.width,styleGeometry.height);};
