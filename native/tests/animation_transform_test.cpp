@@ -44,19 +44,21 @@ void verifyPathArtwork(){
  surface.pixels.assign(surface.pixels.size(),0);CHECK(!transformTweenPathArtwork(timeline::Timeline(state),largeSource,"A"));
 }
 void verifyBackgroundTweenResize(){
- for(int mode=0;mode<3;++mode){
-  timeline::State state;state.layers={{"A",U"Raster"},{"BG",U"Background"}};state.layers[1].background=timeline::BackgroundSettings{};state.frames={{"f0",100},{"f1",100}};
-  state.cels={cel("a0","A","f0",0,{0xffffffff}),cel("a1","A","f1",4,{0xff0000ff}),cel("bg0","BG","f0",0,{0xff112233,0xff445566}),cel("bg1","BG","f1",0,{0xff112233,0xff445566})};
-  for(auto& c:state.cels)c.surface->offsetY=0;
-  Document seed(2,1);auto document=Document::fromImported(2,1,state,seed.palette(),"background-tween",U"Background tween",std::make_shared<const std::vector<std::uint8_t>>());document.clearSourceArchiveForNewSnapshot();document.markSaved();const auto history=document.historySize();
-  TransformTweenOptions options;options.frameCount=1;options.offsetX=4;options.autoCropCanvas=true;options.betweenMode=mode==1?TweenBetweenMode::Morph:TweenBetweenMode::Crossfade;
-  if(mode==0)CHECK(document.generateTransformTween("f0","A",options));else CHECK(document.generateCrossfadeTween("f0","A",options));
-  CHECK(document.width()==5&&document.height()==1&&document.historySize()==history+1);
+ for(int mode=0;mode<3;++mode)for(int direction:{-1,1})for(bool preset:{false,true}){
+  timeline::State state;state.layers={{"A",U"Raster"},{"BG",U"Background"}};state.layers[1].background=timeline::BackgroundSettings{};if(preset){state.layers[1].background->mode="preset";state.layers[1].background->pattern="solid";}state.frames={{"f0",100},{"f1",100}};
+  state.cels={cel("a0","A","f0",0,{0xffffffff}),cel("a1","A","f1",direction*4,{0xff0000ff}),cel("bg0","BG","f0",0,{0xff112233,0xff445566}),cel("bg1","BG","f1",0,{0xff112233,0xff445566})};
+  for(auto& c:state.cels)c.surface->offsetY=0;state.cels.back().linkedCelId="bg0";state.cels.back().surface.reset();
+  Document seed(2,1);auto document=Document::fromImported(2,1,state,seed.palette(),"background-tween",U"Background tween",std::make_shared<const std::vector<std::uint8_t>>());document.clearSourceArchiveForNewSnapshot();document.previewSelection(SelectionMask{0,0,1,1,{1}});document.markSaved();const auto history=document.historySize();
+  TransformTweenOptions options;options.frameCount=1;options.offsetX=direction*4;options.autoCropCanvas=true;options.betweenMode=mode==1?TweenBetweenMode::Morph:TweenBetweenMode::Crossfade;
+  if(mode==0)CHECK(document.generateTransformTween("f0","A",options,{},TransformPoint{0,0}));else CHECK(document.generateCrossfadeTween("f0","A",options,{},TransformPoint{0,0}));
+  const int shift=direction<0?4:0,width=direction<0?6:5;CHECK(document.width()==width&&document.height()==1&&document.historySize()==history+1);
   const auto generated=document.selectedFrames();CHECK(generated.size()==1);
-  for(const auto& f:document.timeline().state().frames){const auto* bg=document.timeline().findCel("BG",f.id);CHECK(bg&&bg->surface&&bg->surface->width>=5);for(int x=0;x<5;++x)CHECK(bg->surface->pixels[x]==(x%2?0xff445566:0xff112233));}
-  CHECK(document.timeline().state().layers[1].background->repeatWidth==2);
-  const auto imported=project::prepareEditableImport(project::readProjectManifest(project::encodeEditableProject(document).bytes));timeline::Timeline reopened(imported.timeline);CHECK(imported.width==5&&reopened.findCel("BG",generated.front())->surface->pixels==document.timeline().findCel("BG",generated.front())->surface->pixels);
-  document.undo();CHECK(document.width()==2&&document.timeline().state().frames.size()==2&&!document.timeline().state().layers[1].background->repeatWidth&&document.timeline().findCel("BG","f0")->surface->width==2);document.redo();CHECK(document.width()==5&&document.selectedFrames()==generated&&document.timeline().findCel("BG",generated.front())->surface->pixels[4]==0xff112233);
+  for(const auto& f:document.timeline().state().frames){const auto* bg=document.timeline().findCel("BG",f.id);CHECK(bg);const auto resolved=document.timeline().resolveSurface(bg->id);CHECK(resolved.surface);for(int x=0;x<width;++x){const int originalX=x-shift;const auto expected=preset&&(originalX<0||originalX>=2)?0xffe4e4e4u:(originalX%2?0xff445566u:0xff112233u);CHECK(raster::readWorld(*resolved.surface,x,0)==expected);}}
+  CHECK(document.timeline().findCelById("bg1")->linkedCelId==std::optional<std::string>{"bg0"});CHECK(!document.timeline().findCel("BG",generated.front())->linkedCelId);
+  CHECK(document.selection()&&document.selection()->x==shift&&document.selectionPivotHistory().pivot&&document.selectionPivotHistory().pivot->x==shift);
+  CHECK(document.timeline().state().layers[1].background->repeatWidth==(preset?0:2));
+  const auto imported=project::prepareEditableImport(project::readProjectManifest(project::encodeEditableProject(document).bytes));timeline::Timeline reopened(imported.timeline);CHECK(imported.width==width&&reopened.findCelById("bg1")->linkedCelId==std::optional<std::string>{"bg0"}&&reopened.findCel("BG",generated.front())->surface->pixels==document.timeline().findCel("BG",generated.front())->surface->pixels);
+  document.undo();CHECK(document.width()==2&&document.timeline().state().frames.size()==2&&!document.timeline().state().layers[1].background->repeatWidth&&document.timeline().findCel("BG","f0")->surface->width==2&&document.selection()->x==0&&document.selectionPivotHistory().pivot->x==0);document.redo();CHECK(document.width()==width&&document.selectedFrames()==generated&&document.timeline().findCelById("bg1")->linkedCelId==std::optional<std::string>{"bg0"});
  }
 }
 void verifyTransformDocumentTransactions(){

@@ -7502,3 +7502,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 补间扩展画布的背景平铺
 
 按旧版 resizeDocumentAt／resizeAnimationCelsAt 语义，含背景层的补间扩展画布复用既有离线背景调整事务，覆盖变换、形变和交叉淡化，原帧和生成帧均平铺到新画布并保存重复尺寸。单步撤销重做、保存重开及像素检查通过；定向 Release 构建和 animation-transform CTest 通过（0.24 秒）。本批未重建正式 GUI，未做人工图像验收。来源详见 legacy-provenance.json 的 backgroundTweenResize20261118。整体迁移 INCOMPLETE。
+
+## 2026-11-18 背景补间边界验收
+
+三种补间 × 正负方向扩展 × 画布／预设背景共 12 组定向检查通过，覆盖背景相位像素、关联所有者、生成帧独立内容、选区和轴心偏移、撤销重做及保存重开。Release 定向构建和 animation-transform CTest 通过（0.30 秒）。无像素面 Cel 试验因不满足现有 Document 导入契约已撤回，未保留生产代码修改；本批未重建 GUI、未进行人工图像验收。来源详见 legacy-provenance.json 的 backgroundTweenBoundaries20261118。整体迁移 INCOMPLETE。

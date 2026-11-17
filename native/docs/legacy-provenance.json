@@ -17862,6 +17862,13 @@
           "legacy/src/renderer/src/core/animation.ts:497-600"
         ],
         "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
+      },
+      "backgroundTweenBoundaries20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-600"
+        ],
+        "nativeAdaptation": "Expanded existing background tween regression to 12 combinations: transform/morph/crossfade, positive/negative canvas expansion, canvas/preset background. Checks phase-aligned expected world pixels, original linked background ownership, independently generated background, selection/pivot shifts, Undo/Redo and encoded reopen. Focused Release build and animation-transform CTest passed (0.30s). No production source change or GUI rebuild in this batch. Surfaceless Cel experiment was discarded because Document::fromImported explicitly rejects it; no unsupported-state behavior change retained."
       }
     },
     {
