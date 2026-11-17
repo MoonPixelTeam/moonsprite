@@ -52,9 +52,12 @@ CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline& t,int w
  }
  // Legacy animation-tween.ts maskOutput and animation-tween-masks.ts:
  // interpolate coverage in the moving owner's space; absent masks are neutral.
- for(const auto& layer:t.state().layers){const auto* start=timeline::resolvedMask(t.state(),layer.id,source.startFrameId);const auto* end=timeline::resolvedMask(t.state(),layer.id,source.endFrameId);const auto part=std::find_if(source.layers.begin(),source.layers.end(),[&](const auto& p){return p.layerId==layer.id;});const bool selected=part!=source.layers.end();if(!start&&(!selected||!end))continue;const auto* original=start?start:end;timeline::MaskSlot slot;slot.ownerId=layer.id;slot.mask=*original;slot.mask.id.clear();slot.mask.linkedMaskId.clear();
+ std::vector<std::pair<std::string,bool>> owners;for(const auto& layer:t.state().layers)owners.push_back({layer.id,false});for(const auto& group:t.state().groups)owners.push_back({group.id,true});
+ for(const auto& owner:owners){std::vector<std::string> children;if(!owner.second)children.push_back(owner.first);else for(const auto& layer:t.state().layers){auto parent=layer.groupId;std::unordered_set<std::string> seen;while(parent&&seen.insert(*parent).second){if(*parent==owner.first){children.push_back(layer.id);break;}const auto group=std::find_if(t.state().groups.begin(),t.state().groups.end(),[&](const auto& g){return g.id==*parent;});parent=group==t.state().groups.end()?std::nullopt:group->parentGroupId;}}
+ const auto* start=timeline::resolvedMask(t.state(),owner.first,source.startFrameId);const auto* end=timeline::resolvedMask(t.state(),owner.first,source.endFrameId);const bool selected=!children.empty()&&std::all_of(children.begin(),children.end(),[&](const auto& id){return std::find(source.layerIds.begin(),source.layerIds.end(),id)!=source.layerIds.end();});if(!start&&(!selected||!end))continue;const auto* original=start?start:end;timeline::MaskSlot slot;slot.ownerId=owner.first;slot.group=owner.second;slot.mask=*original;slot.mask.id.clear();slot.mask.linkedMaskId.clear();
   if(selected&&!original->locked&&(!end||!end->locked)){
-   const auto a=contentBounds(resolved(t,t.findCel(layer.id,source.startFrameId)).surface).value_or(TweenRegion{});const auto b=part->morph?contentBounds(resolved(t,t.findCel(layer.id,source.endFrameId)).surface).value_or(TweenRegion{}):a;
+   auto ownerBounds=[&](const std::string& frame){std::optional<TweenRegion> result;for(const auto& id:children){auto bounds=contentBounds(resolved(t,t.findCel(id,frame)).surface);if(bounds)result=unite(result,bounds);}return result.value_or(TweenRegion{});};
+   const auto a=ownerBounds(source.startFrameId);const bool moving=std::any_of(source.layers.begin(),source.layers.end(),[&](const auto& part){return part.morph&&std::find(children.begin(),children.end(),part.layerId)!=children.end();});const auto b=moving?ownerBounds(source.endFrameId):a;
    auto lerp=[&](double x,double y){return x+(y-x)*progress;};const double tx=std::floor(lerp(a.x,b.x)+.5),ty=std::floor(lerp(a.y,b.y)+.5),tw=std::max(1.,std::floor(lerp(a.width,b.width)+.5)),th=std::max(1.,std::floor(lerp(a.height,b.height)+.5));
    double left=0,top=0,right=0,bottom=0;bool first=true;
    auto include=[&](const timeline::AttachedMask* mask,TweenRegion owner){if(!mask)return;const auto& m=mask->surface;const double x=mask->moveWithOwner?tx+(m.offsetX-owner.x)*tw/owner.width:m.offsetX,y=mask->moveWithOwner?ty+(m.offsetY-owner.y)*th/owner.height:m.offsetY,w=mask->moveWithOwner?m.width*tw/owner.width:m.width,h=mask->moveWithOwner?m.height*th/owner.height:m.height;if(first){left=x;top=y;right=x+w;bottom=y+h;first=false;}else{left=std::min(left,x);top=std::min(top,y);right=std::max(right,x+w);bottom=std::max(bottom,y+h);}};include(start,a);include(end,b);
@@ -65,8 +68,6 @@ CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline& t,int w
    slot.mask.surface=std::move(output);slot.mask.visible=true;
   }else consume(slot.mask.surface.pixels.size()*sizeof(timeline::Pixel));out.masks.push_back(std::move(slot));
  }
- // Unselected group masks are independently carried through this batch.
- for(const auto& mask:t.state().masks)if(mask.group&&mask.frameId==source.startFrameId){auto copy=mask;copy.mask=*timeline::resolvedMask(t.state(),mask.ownerId,source.startFrameId);copy.mask.id.clear();copy.mask.linkedMaskId.clear();copy.frameId.clear();consume(copy.mask.surface.pixels.size()*sizeof(timeline::Pixel));out.masks.push_back(std::move(copy));}
  return out;
 }
 TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline& t,const CrossfadeTweenSource& source){
