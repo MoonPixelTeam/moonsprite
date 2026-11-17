@@ -7506,3 +7506,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 背景补间边界验收
 
 三种补间 × 正负方向扩展 × 画布／预设背景共 12 组定向检查通过，覆盖背景相位像素、关联所有者、生成帧独立内容、选区和轴心偏移、撤销重做及保存重开。Release 定向构建和 animation-transform CTest 通过（0.30 秒）。无像素面 Cel 试验因不满足现有 Document 导入契约已撤回，未保留生产代码修改；本批未重建 GUI、未进行人工图像验收。来源详见 legacy-provenance.json 的 backgroundTweenBoundaries20261118。整体迁移 INCOMPLETE。
+
+## 2026-11-18 补间预览相对进度
+
+按旧版 AnimationTweenDialog 的独立 progress 状态迁移，数量变更保留相对进度，不再保留旧绝对帧号；反复修改数量保留未取整比例。跳转、播放推进／终点重播、范围重置与路径应用统一更新进度。正式 Release 构建通过，--quantization-morph-check 退出 0，实际对话框覆盖起点／终点／中间位置、变换／相邻帧、反复数量取整、播放重启以及原有生成、取消和撤销重做。未进行人工图像验收；全量迁移仍 INCOMPLETE。来源见 legacy-provenance.json 的 normalizedProgress20261118。

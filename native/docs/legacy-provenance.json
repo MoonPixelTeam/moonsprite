@@ -17467,6 +17467,13 @@
           "legacy/src/renderer/src/core/animation-tween.ts:180-185"
         ],
         "nativeAdaptation": "Formal dialog uses Document::selectedLayerIdsWithGroups to pass selected layer and recursive group descendants in timeline order. Existing scope controls and generation transaction retained. Official --moon-crossfade-check exercises Selected scope with a group-only selection, both descendants, unchanged outside layer, and Undo/Redo. Release build and focused GUI diagnostic exit 0."
+      },
+      "normalizedProgress20261118": {
+        "sources": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:48,114-126,175-219"
+        ],
+        "adaptation": "Preserve normalized progress independently of rounded preview frame when frameCount changes. Seek/playback, scope resets and applied paths update the same normalized state. Native integer slider projects Math.round(progress * previewSteps), retaining the original ratio across repeated edits.",
+        "validation": "Official Release build succeeded; --quantization-morph-check exit 0, including actual dialog count changes at endpoint/start/intermediate positions, repeated rounded count edits in transform/between scopes, playback restart, existing generation, cancel and Undo/Redo checks."
       }
     },
     {
