@@ -33468,6 +33468,13 @@
           "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
         ],
         "nativeAdaptation": "Legacy Cut copies the active selection independently of timeline multi-selection, routes deletion through selectedEffectTargets, then clears selection. Allow read-only Paint Cut with extra timeline groups/layers/frames/Cels; retain original single-target pixel deletion refusal and multi-target special-layer filtering. Rasterization status probe follows the same multi-target routing. Six existing context variants check exact clipboard pixels/mask, selection completion, unchanged refs/history/unrelated frames, and single versus multi-target status."
+      },
+      "paintMixedCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "Eight locked/hidden and explicit layer/Cel selection combinations verify legacy Cut copies the active tilemap marquee, while selectedEffectTargets filters special layers and clearSelection skips locked ordinary targets but permits hidden ones. Checks ordinary selected pixels cleared, exterior preserved, tile refs/resources/focus and timeline selection preserved, single history, Undo restoring pixels/selection and Redo. Existing production routing passes without additional changes. Release tilemap-document CTest passed (0.39s)."
       }
     },
     {

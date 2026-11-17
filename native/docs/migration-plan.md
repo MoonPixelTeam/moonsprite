@@ -7744,3 +7744,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Paint剪切与额外时间轴选择
 
 对照workspace-commands-clipboard.ts::cutSelection，先复制活动图层像素选区，再按已有删除命令处理，最后结束选区，复制不受额外时间轴选择限制。原生对只读Paint剪切提前准入，保留浮动/其他瓦片模式门禁；底层deleteSelectedPixels既有多目标路径跳过特殊层且可编辑所选普通层，未改其逻辑。状态提示同步workspace-selection-effects-support.ts的多目标判定，批量删除过滤特殊层时不再误报单目标Paint需栅格化。六组Cel/帧头/组选择夹具扩展剪贴板像素与mask、选择清除、其他帧/引用/焦点/时间轴选择及历史不变、单/多目标提示。Release tilemap-document构建和完整定向CTest通过（0.39秒），来源1043文件快照及diff检查通过。未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见paintCutTimelineContext20261118。瓦片居中行为问题仍待用户答复，本阶段未修改该路径。
+
+## 2026-11-18 Paint混合选择剪切验收
+
+对照workspace-commands-clipboard.ts与workspace-selection-effects-support.ts，八组锁定/隐藏及显式图层/Cel选择组合确认：复制活动瓦片选区，批量删除跳过特殊层与锁定普通层，但允许隐藏普通层；只清除选区内普通像素，保留外部像素、瓦片引用/资源、焦点和时间轴选择。检查单条历史、Undo恢复普通像素及选区、Redo清除。既有生产路由通过，无需新增生产修改。Release tilemap-document构建和完整定向CTest通过（0.39秒）；未重建正式GUI或人工图像验收，整体迁移INCOMPLETE。来源见paintMixedCut20261118。
