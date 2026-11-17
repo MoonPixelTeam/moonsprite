@@ -1021,7 +1021,7 @@ bool Document::beginColorReplacement(const std::vector<std::string>& celIds,bool
   adjustmentStorageBudget(timeline_,3);adjustment_=AdjustmentPreview{timeline_,timeline_,celIds,selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;++gradientRevision_;return true;
  }
  commitFloatingPaste();cancelStroke();if(clipSelection && !selection_)return false;std::vector<std::string> targets;
- for(const auto& id:celIds){const auto* c=timeline_.findCelById(id);if(!c)continue;const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l==timeline_.state().layers.end() || l->kind=="adjustment" || layerEffectivelyLocked(*l))continue;if(!l->kind.empty())return false;const auto r=timeline_.resolveSurface(id);if(r.source && r.surface && std::find(targets.begin(),targets.end(),r.source->id)==targets.end())targets.push_back(r.source->id);}
+ for(const auto& id:celIds){const auto* c=timeline_.findCelById(id);if(!c)continue;const auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l==timeline_.state().layers.end() || l->kind=="adjustment" || layerEffectivelyLocked(*l))continue;if(!l->kind.empty()&&l->kind!="tilemap"&&l->kind!="free-tile")return false;const auto r=timeline_.resolveSurface(id);if(r.source && r.surface && std::find(targets.begin(),targets.end(),r.source->id)==targets.end())targets.push_back(r.source->id);}
  if(targets.empty())return false;const auto bytes=adjustmentStorageBudget(timeline_,3);std::shared_ptr<const AdjustmentPalettes> palettes;
  if(std::any_of(targets.begin(),targets.end(),[&](const auto& id){return timeline_.resolveSurface(id).surface->format==timeline::RasterFormat::Indexed;})){AdjustmentPalettes p{palette_,palette_};adjustmentPaletteBudget(p,bytes*3);palettes=std::make_shared<const AdjustmentPalettes>(std::move(p));}
  adjustment_=AdjustmentPreview{timeline_,timeline_,std::move(targets),selection_,layer().id,frame().id,contentRevision_,clipSelection};adjustment_->maskContext=activeMaskId_;adjustment_->palettes=std::move(palettes);adjustment_->colorReplacement=true;++gradientRevision_;return true;
@@ -1033,7 +1033,12 @@ bool Document::updateColorReplacement(Pixel source,Pixel replacement,bool enable
  const auto bytes=adjustmentStorageBudget(p.baseline,4);if(p.palettes){if(!indexed_adjustment::samePaletteData(palette_,p.palettes->baseline)){cancelColorAdjustment();return false;}const auto used=adjustmentPaletteBudget(*p.palettes,bytes*4);if(p.palettes->baseline.entries.size()>(adjustmentByteLimit-used)/128)throw std::length_error("Replacement lookup exceeds palette budget");}
  auto preview=p.baseline;std::unordered_set<Pixel> sourceIds;std::optional<RasterColorContext> colors;std::optional<Pixel> replacementId;
  if(p.palettes){const auto& palette=p.palettes->baseline;colors.emplace(palette.entries,palette.order(),colorMode_,pixelFormat_);for(const auto& e:palette.entries)if(e.color==source)sourceIds.insert(Pixel(e.id));}
+ if(enabled&&source!=replacement&&!preview.state_.tilesets.empty()){
+  std::function<bool(std::int64_t,std::int64_t)> contains;if(p.clipSelection)contains=[&](std::int64_t x,std::int64_t y){return x>=0&&y>=0&&x<width_&&y<height_&&selectionContains(p.selection,int(x),int(y));};
+  synchronizePaletteResources(preview.state_,source,normalizeCanvasPacked(replacement),colorMode_==color_mode::Mode::Grayscale,&p.targets,contains);
+ }
  if(enabled && source!=replacement)for(const auto& id:p.targets){
+  const auto* target=p.baseline.findCelById(id);if(target&&(target->tilemap||target->freeTiles))continue;
   timeline::Surface* s=nullptr;const bool mask=adjustmentMask(p.baseline,id)!=nullptr;if(mask){for(auto& slot:preview.state_.masks)if(slot.mask.id==id)s=&slot.mask.surface;}else s=preview.mutableOwnedSurface(id);if(!s)throw std::logic_error("Missing replacement owner");
   for(int y=0;y<s->height;++y)for(int x=0;x<s->width;++x){auto& value=s->pixels[std::size_t(y)*s->width+x];
    const auto wx=std::int64_t(x)+s->offsetX,wy=std::int64_t(y)+s->offsetY;
@@ -1313,6 +1318,14 @@ bool Document::commitColorAdjustment(){
   edit.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});reserveHistoryEntries();timeline_.state_.masks=*edit.maskHistory.afterMasks;cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
  }
  if(p.contentRevision!=contentRevision_ || p.frameId!=frame().id || p.layerId!=layer().id || !selectionEqual(p.selection,selection_)){cancelColorAdjustment();return false;}
+ if(p.colorReplacement&&std::any_of(p.targets.begin(),p.targets.end(),[&](const auto& id){const auto* c=p.baseline.findCelById(id);return c&&(c->tilemap||c->freeTiles);})){ // Resource edits include every dependent cache, including locked references.
+  bool changed=false;const auto& before=p.baseline.state();const auto& after=p.preview.state();
+  for(std::size_t i=0;i<before.tilesets.size();++i)changed|=before.tilesets[i].pixels!=after.tilesets[i].pixels;
+  for(std::size_t i=0;i<before.cels.size();++i)if(before.cels[i].surface&&after.cels[i].surface)changed|=before.cels[i].surface->pixels!=after.cels[i].surface->pixels;
+  if(!changed){cancelColorAdjustment();return false;}
+  Edit edit{{},state_,nextState_};edit.beforeActive=edit.afterActive=activeLayerId_;edit.beforeFrame=edit.afterFrame=activeFrameId_;edit.beforeSelection=edit.afterSelection=selectedFrames_;
+  edit.snapshotHistory.beforeTimeline=before;edit.snapshotHistory.afterTimeline=after;reserveHistoryEntries();applyEdit(edit,true);cancelColorAdjustment();change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色");return true;
+ }
  const auto storageBytes=adjustmentStorageBudget(p.baseline,3);
  std::size_t available=adjustmentByteLimit-3*storageBytes;
  if(p.palettes)available=adjustmentByteLimit-adjustmentPaletteBudget(*p.palettes,3*storageBytes);
