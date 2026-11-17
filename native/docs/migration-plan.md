@@ -7646,3 +7646,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色图层样式拆分
 
 对照旧版workspace-layer-style-split.ts及对应测试，拆分时按文档色板判断源内容边界、解析原像素与样式颜色，并按文档模式生成效果表面；索引色效果按既有可见色板映射ID，不修改源存储或链接帧。新增七类效果夹具，对照映射样式后的RGBA参考拆分，检查几何、逐像素ID、单条历史、撤销重做和源像素/链接保留。Release indexed-runtime-tests与document-layer-groups-tests构建成功，indexed-runtime关联两项CTest通过（oracle0.71秒、runtime0.02秒）。document-layer-groups既有样式拆分检查先执行通过，随后在空组复制断言!empty.copyLayerClipboard()失败，未报告完整测试通过，未修改该行为。新增夹具的RGBA参考初始沿用了另一文档的活动ID，修正引用后通过。来源覆盖1043文件及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedStyleSplit20261118。
+
+## 2026-11-18 图层组验收夹具与旧版语义对齐
+
+核对旧版layer-operations.ts的createLayerGroup/ungroupSelected及动画选择规范化，修正document-layer-groups过时夹具与断言，不修改生产行为。清空显式选择后仍承接活动图层，因此先建含图层组，再从纯组选中创建空同级组，实际验证空组不能复制或合并且不新增历史。新建组按文档顺序设置所选图层，撤销不恢复点击顺序；解组历史只恢复结构，不恢复先前组选中和折叠状态。Release定向构建及完整document-layer-groups CTest通过（0.03秒），解除上一批记录的空组复制失败及随后暴露的选择状态过时期望。来源覆盖和diff检查通过；未重建GUI、未人工图像验收，整体迁移INCOMPLETE。来源见groupFixtureAlignment20261118。
