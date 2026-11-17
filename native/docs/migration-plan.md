@@ -7800,3 +7800,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 活动蒙版下整帧粘贴与跨工程历史上下文
 
 对照workspace-commands-clipboard.ts::pasteClipboard及workspace-commands-animation-frame-clipboard.ts，帧头作用域中的内部整帧载荷在外部系统图片优先检查之后、像素蒙版粘贴之前分流。registry与实际编辑器入口接通此路径。跨工程特殊图层帧事务允许活动蒙版，保留图层行选择，初次插入与Redo退出蒙版，Undo保留之后进入的蒙版上下文；复用maskToActivateOnRedo并使结构历史承接该已有字段。同工程继续使用明确的双向退出规则；特殊帧拖拽拒绝条件保留。扩展八组网格/自由层、同/跨工程、隔离组合，覆盖活动蒙版、Undo前及Redo前重入、静态选区、保存重开；正式菜单夹具在隔离蒙版活动时粘贴完整帧。正式Release及测试构建退出0，frame-selection通过，完整free-tile-project通过（42.85秒），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0。来源1043文件及快照检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见framePasteActiveMask20261118。
+
+## 2026-11-18 完整Cel粘贴保留目标静态像素选区
+
+对照workspace-commands-animation-cel-clipboard.ts与workspace-commands-clipboard.ts，完整Cel载荷替换整个目标，目标静态像素选区保持，不限制替换范围。特殊图层完整Cel事务移除目标静态选区拒绝；源选区载荷仍使用独立路径。registry、编辑器及自由菜单将完整Cel载荷分流至既有事务，保留外部系统图片优先、活动编辑、活动蒙版和目标锁定校验。新增网格/自由层、同/跨工程四组核心检查，验证选区外完整内容、选区保留、单条历史、Undo/Redo、链接及保存重开。正式Release及测试构建退出0，cel-static-selection四组通过，完整free-tile-project回归通过（40.71秒），正式程序既有--tileset-management-check --grid-transform-entry-only入口回归带正式主题/指针退出0；本轮未新增此差异的GUI专用断言。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见wholeCelStaticSelection20261118。

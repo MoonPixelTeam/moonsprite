@@ -522,7 +522,7 @@ void Document::detachTilemapCelTargets(timeline::State& candidate,const std::vec
  for(const auto& id:destinations){auto& c=find(id);const auto source=baseline.resolveSurface(id);if(!source.source)throw std::invalid_argument("Missing detached Cel source");c.surface=source.surface?std::optional<timeline::Surface>{*source.surface}:std::nullopt;c.tilemap=source.source->tilemap;c.freeTiles=source.source->freeTiles;c.text=source.source->text;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
 }
 bool Document::pasteTilemapCels(const CelClipboardSnapshot& clip){
- if(clip.items.empty())return false;if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel paste is migrated");
+ if(clip.items.empty())return false;if(active()||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel paste is migrated");
  if(clip.width<1||clip.height<1||clip.layers.empty())throw std::invalid_argument("Invalid portable Cel clipboard metadata");
  const auto& before=timeline_.state();const bool same=clip.sourceIdentity==identity_;const auto* anchor=timelineSelection_.cels.empty()?&cel():timeline_.findCelById(timelineSelection_.cels.back());if(!anchor)return false;
  const int row=int(timeline_.layerIndex(anchor->layerId)),column=int(timeline_.frameIndex(anchor->frameId));

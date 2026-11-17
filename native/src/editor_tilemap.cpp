@@ -135,7 +135,7 @@ void Editor::createTilesetPanel(){
    if(paste&&!hasApplicationFrameClipboard())return false;
    return !previous||previous();
   }
-  if(!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&celClipboardContext()&&!currentDocument().freeTileInstanceView()){
+  if((!currentDocument().selection()||(paste&&hasApplicationCelClipboard()&&!applicationCelSelectionOnly()))&&currentDocument().activeMaskId().empty()&&celClipboardContext()&&!currentDocument().freeTileInstanceView()){
    if((paste||cut)&&currentDocument().layerEffectivelyLocked(currentDocument().layer()))return false;
    if(paste&&(!hasApplicationCelClipboard()||applicationCelSelectionOnly()))return false;
    return !previous||previous();

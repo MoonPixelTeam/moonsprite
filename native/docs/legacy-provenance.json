@@ -20920,6 +20920,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
+      },
+      "wholeCelStaticSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
       }
     },
     {
@@ -22706,6 +22713,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
+      },
+      "wholeCelStaticSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
       }
     },
     {
@@ -27629,6 +27643,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
+      },
+      "wholeCelStaticSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
       }
     },
     {
@@ -33533,6 +33554,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy local pasteAnimationFrames inserts full frames without rejecting or changing a static canvas selection. Permit same-document static selection in existing tilemap/free frame transaction; retain active edit, special active-mask and cross-document selection restrictions pending their separate migration. Free menu frame-paste wrapper no longer rejects static selection. Actual grid-only and grid/free menu fixture checks all source layer pixels/grid refs/free instance counts, inserted Cel selection, preserved canvas selection, one history, Undo/Redo, resource preservation and valid links."
+      },
+      "wholeCelStaticSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
       }
     },
     {
@@ -35713,6 +35741,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
+      },
+      "wholeCelStaticSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
       }
     },
     {
