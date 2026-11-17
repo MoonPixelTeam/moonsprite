@@ -17296,6 +17296,12 @@
           "legacy/src/renderer/src/core/animation-tween.ts:234-267"
         ],
         "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
+      },
+      "originalTweenEndpoints20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:364-376"
+        ],
+        "nativeAdaptation": "Between preview step0 and frameCount+1 composite the original corresponding frame rather than a generated candidate; intermediate generation remains unchanged. Validate options, frame membership and step before endpoint dispatch. Focused Crossfade/Morph checks cover a missing start slot and locked endpoint mask, comparing actual original-frame composites. Release build and animation-crossfade CTest passed0.30s."
       }
     },
     {
@@ -17513,6 +17519,12 @@
           "legacy/src/renderer/src/core/animation.ts:497-585"
         ],
         "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
+      },
+      "originalTweenEndpoints20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:364-376"
+        ],
+        "nativeAdaptation": "Between preview step0 and frameCount+1 composite the original corresponding frame rather than a generated candidate; intermediate generation remains unchanged. Validate options, frame membership and step before endpoint dispatch. Focused Crossfade/Morph checks cover a missing start slot and locked endpoint mask, comparing actual original-frame composites. Release build and animation-crossfade CTest passed0.30s."
       }
     },
     {

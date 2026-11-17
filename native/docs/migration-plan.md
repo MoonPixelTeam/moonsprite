@@ -7486,3 +7486,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 补间预览样式范围
 
 变换及 between 预览计入图层与嵌套父组样式外扩，复用自动画布的边界逻辑。两项定向测试通过，详见 [记录](styled-tween-preview-20261117.md)。整体 INCOMPLETE。
+
+## 2026-11-17 补间原帧端点预览
+
+起点与终点按旧版直接显示对应原帧，补齐非目标内容和蒙版差异；定向测试通过。详见 [记录](original-tween-endpoints-20261117.md)。整体 INCOMPLETE。

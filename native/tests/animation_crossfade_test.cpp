@@ -64,7 +64,15 @@ void verifyMixedResourcePreviews(){
 
  }
 }
-int main(){try{verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
+void verifyOriginalEndpointPreviews(){
+ auto state=fixture();state.cels.erase(std::remove_if(state.cels.begin(),state.cels.end(),[](const auto& c){return c.id=="B0";}),state.cels.end());
+ timeline::MaskSlot mask;mask.ownerId="A";mask.frameId="f1";mask.mask.id="end-mask";mask.mask.surface=fixtureRaster({0xff000000,0xffffffff});mask.mask.locked=true;state.masks.push_back(mask);
+ timeline::Timeline timeline(state);for(auto mode:{TweenBetweenMode::Crossfade,TweenBetweenMode::Morph}){CrossfadeTweenOptions options;options.frameCount=2;options.betweenMode=mode;options.layerScope=TweenLayerScope::Current;const auto source=prepareCrossfadeTweenSource(timeline,"f0","A",options.layerScope,{},mode);
+ for(int step:{0,3}){const auto frame=step==0?"f0":"f1";CHECK(compositeCrossfadeTweenPreview(timeline,2,1,source,options,step)==compositeNormalRegion(timeline,frame,{0,0,2,1}));}
+ bool rejected=false;try{compositeCrossfadeTweenPreview(timeline,2,1,source,options,4);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
+ }
+}
+int main(){try{verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
  auto a=fixtureRaster({0xff0000ff},-2,3),b=fixtureRaster({0xffff0000},-2,3);auto blend=crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,.25,.75,1);CHECK(blend.opacity==.5&&blend.surface.pixels==std::vector<Pixel>{0xffbf0040});auto green=fixtureRaster({0xff00ff00},-2,3);CHECK(crossfadeTweenSurface(nullptr,&green,{-2,3,1,1},.5,1,1,1).surface.pixels==std::vector<Pixel>{0x8000ff00});CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},0,1,1,1).surface.pixels==a.pixels);CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},1,1,1,1).surface.pixels==b.pixels);bool rejected=false;try{crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,1,1,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  CHECK(tweenProgress(.25,TweenEasing::Linear)==.25);CHECK(tweenProgress(.25,TweenEasing::EaseIn)==.0625);CHECK(tweenProgress(.25,TweenEasing::EaseOut)==.4375);CHECK(tweenProgress(.25,TweenEasing::EaseInOut)==.15625);CHECK(std::abs(tweenProgress(.25,TweenEasing::Custom,{.42,0,1,1})-.09346465067959621)<1e-12);
  timeline::Timeline t(fixture());CrossfadeTweenOptions o;o.betweenMode=TweenBetweenMode::Crossfade;o.frameCount=1;o.duration=90;const auto source=prepareCrossfadeTweenSource(t,"f0","A",TweenLayerScope::All,{},TweenBetweenMode::Crossfade);CHECK(source.endFrameId=="f1"&&source.layerIds==std::vector<std::string>{"A"});auto frame=prepareCrossfadeTweenFrame(t,2,1,source,o,1);CHECK(frame.cels.size()==2);CHECK(frame.cels[0].surface->pixels==std::vector<Pixel>({0xff008080,0x80ff0000}));CHECK(frame.cels[0].opacity==1&&frame.cels[0].zIndex==0);CHECK(frame.cels[1].surface->pixels==t.resolveSurface("B0").surface->pixels&&frame.cels[1].zIndex==7&&frame.cels[1].opacity==.4);for(const auto& c:frame.cels)CHECK(c.id.empty()&&c.frameId.empty()&&!c.linkedCelId&&!c.runtimeSharedCelId);frame.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("B0").surface->pixels[0]==0xff884422);
