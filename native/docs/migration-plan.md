@@ -7730,3 +7730,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 对照旧版canvas-input-selection-begin.ts活动Cel捕获、tilemap-document.ts固定目标及workspace-tile-selection-move.ts键盘移动，移除原生Paint移动对额外Cel、帧头和图层组选择及frameSelection的拒绝，继续仅移动活动Cel；离散翻转限制保持原状。复用既有整格引用事务、锁定/隐藏门禁、取消及历史。六组复制/移动与三类时间轴选择夹具验证其他帧不变、活动目标和时间轴选择保留、单条历史、取消及撤销重做、全帧标志下键盘仍作用活动Cel。首轮夹具追加选择会切换活动帧，已改为使用正式replacement选择入口固定活动Cel；未因此修改生产语义。Release tilemap-document定向构建和CTest通过（0.39秒）。正式程序集成结果随后记录；整体迁移INCOMPLETE。来源见paintMoveTimelineContext20261118。
 
 本阶段唯一正式Release moonsprite-native构建退出0（paint-move-context-gui-build.log），已包含editor_input入口变更。来源覆盖1043文件及证据快照检查通过，diff检查通过。最小相关验证为tilemap-document回归及正式编译，未运行GUI自动检查或人工图像验收；未提交生成物和用户数据。
+
+## 2026-11-18 Paint选区翻转与额外时间轴选择
+
+对照workspace-commands-selection-flip.ts，显式画布选区会绕过whole-Cel时间轴翻转，Paint分支在普通多目标分支之前仅翻转活动layer/frame。原生删除额外组、图层、Cel及帧选择的拒绝条件，继续复用既有规范来源、整格翻转历史、蒙版选择及锁定/隐藏行为。已有菜单paintCellFlipAvailable门禁直接承接此变更。扩展三类时间轴选择和移动/复制夹具变体的水平/垂直翻转，核对资源ID、逐像素sourcePoint镜像、无关帧及焦点/选择不变、单次历史和Undo/Redo。首轮期望简单切换flip位，但既有算法可用旋转与翻转的等价表示，已改为逐像素映射断言，未修改生产算法。Release tilemap-document构建及完整定向CTest通过（0.39秒），来源1043文件及diff检查通过。未重建正式GUI、未做人工图像验收；整体迁移INCOMPLETE。来源见paintFlipTimelineContext20261118。

@@ -5973,6 +5973,14 @@
           "legacy/src/renderer/src/store/workspace-tile-selection-move.ts"
         ],
         "nativeAdaptation": "Legacy Paint drag capture and keyboard cell movement resolve only the active tilemap Cel despite additional timeline Cel/frame/group selections. Native movement removes those admission restrictions and the editor frame-scope refusal; discrete flips retain existing restrictions. Reuses canonical cell-reference preview/history and existing lock/visibility gates. Six copy/move and Cel/frame/group selection fixtures verify active-only refs, unrelated frame preservation, timeline selection, cancel, single history, undo/redo, and keyboard movement with all-frame flag. Release tilemap-document CTest passed (0.39s)."
+      },
+      "paintFlipTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts",
+          "legacy/src/renderer/src/store/workspace-selection-timeline-flip.ts",
+          "legacy/src/renderer/src/core/tilemap-document.ts"
+        ],
+        "nativeAdaptation": "With an explicit marquee, legacy bypasses whole-Cel timeline flip and invokes flipTilemapSelection for the active layer/frame before ordinary multi-target transform handling. Remove native Paint flip admission restrictions for extra selected groups/layers/Cels/frames; reuse existing canonical cell history and legacy locked/hidden discrete-flip behavior. Extend three timeline contexts and move/copy fixture variants with horizontal/vertical exact cell orientation, unrelated-frame preservation, timeline focus/selection, one history and undo/redo checks."
       }
     },
     {
@@ -33429,6 +33437,14 @@
           "legacy/src/renderer/src/store/workspace-tile-selection-move.ts"
         ],
         "nativeAdaptation": "Legacy Paint drag capture and keyboard cell movement resolve only the active tilemap Cel despite additional timeline Cel/frame/group selections. Native movement removes those admission restrictions and the editor frame-scope refusal; discrete flips retain existing restrictions. Reuses canonical cell-reference preview/history and existing lock/visibility gates. Six copy/move and Cel/frame/group selection fixtures verify active-only refs, unrelated frame preservation, timeline selection, cancel, single history, undo/redo, and keyboard movement with all-frame flag. Release tilemap-document CTest passed (0.39s)."
+      },
+      "paintFlipTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts",
+          "legacy/src/renderer/src/store/workspace-selection-timeline-flip.ts",
+          "legacy/src/renderer/src/core/tilemap-document.ts"
+        ],
+        "nativeAdaptation": "With an explicit marquee, legacy bypasses whole-Cel timeline flip and invokes flipTilemapSelection for the active layer/frame before ordinary multi-target transform handling. Remove native Paint flip admission restrictions for extra selected groups/layers/Cels/frames; reuse existing canonical cell history and legacy locked/hidden discrete-flip behavior. Extend three timeline contexts and move/copy fixture variants with horizontal/vertical exact cell orientation, unrelated-frame preservation, timeline focus/selection, one history and undo/redo checks."
       }
     },
     {
