@@ -27587,6 +27587,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy local pasteAnimationFrames inserts full frames without rejecting or changing a static canvas selection. Permit same-document static selection in existing tilemap/free frame transaction; retain active edit, special active-mask and cross-document selection restrictions pending their separate migration. Free menu frame-paste wrapper no longer rejects static selection. Actual grid-only and grid/free menu fixture checks all source layer pixels/grid refs/free instance counts, inserted Cel selection, preserved canvas selection, one history, Undo/Redo, resource preservation and valid links."
+      },
+      "specialFrameSelectionContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy local/cross frame insertion preserves static pixel selection; local insertion, Undo and Redo explicitly exit mask editing. Remove cross-document static-selection rejection, permit local active mask, and apply existing local mask-exit and layer-row/Cel selection history rules to special-layer structural transaction. Keep active edits and cross-document active-mask admission unchanged. Eight grid/free, local/cross and isolation cases check selection preservation, one history, local mask exit including reenter-before-Redo, structure, valid links and save/reopen. Dedicated frame-selection test phase reuses this fixture. Preserve existing special frame drag/duplicate selection and active-mask rejection by distinguishing duplicate/drop insertion from clipboard paste; full regression checks this boundary."
       }
     },
     {
@@ -35657,6 +35664,13 @@
       "frameMaskReplay20261115": {
         "legacyEvidence": "Frame command undo/redo explicitly clears activeLayerMaskId. mutateDocumentSession requests selection normalization, not a full captured mask-context restoration. The generic native row snapshot must not reactivate the mask cleared by the command. Frame clipboard maps portable owners and retains explicit surface dimensions.",
         "nativeAdaptation": "Reapply explicit MaskHistory context after generic animation selection restoration; compound entries retain first before / last after mask context. Existing six ordinary frame-mask deletion cases exercise single/batch/cut, two starting frames, mask links, save, Undo and Redo. Portable layer fixture explicitly creates 2x1 storage before assigning two pixels, matching current sparse addLayer geometry. Final free-tile-project suite passed (42.70s); attached masks and document raster history passed; unique formal Release rebuilt successfully. See docs/scaled-image-brush-modes-migration-20261115.md."
+      },
+      "specialFrameSelectionContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy local/cross frame insertion preserves static pixel selection; local insertion, Undo and Redo explicitly exit mask editing. Remove cross-document static-selection rejection, permit local active mask, and apply existing local mask-exit and layer-row/Cel selection history rules to special-layer structural transaction. Keep active edits and cross-document active-mask admission unchanged. Eight grid/free, local/cross and isolation cases check selection preservation, one history, local mask exit including reenter-before-Redo, structure, valid links and save/reopen. Dedicated frame-selection test phase reuses this fixture. Broader regression exposed obsolete mixedRasterReplacement refusal assertion predating user-approved resource synchronization (docs/resource-replacement-20261117.md); update to admission and cancellation, retaining existing resource-preservation assertions. Preserve existing special frame drag/duplicate selection and active-mask rejection by distinguishing duplicate/drop insertion from clipboard paste; full regression checks this boundary."
       }
     },
     {

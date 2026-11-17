@@ -7792,3 +7792,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 同工程混合瓦片整帧粘贴保留像素选区
 
 对照workspace-commands-animation-frame-clipboard.ts::pasteAnimationFrames，旧版同工程插入完整帧时允许静态像素选区并保留其几何。原生既有瓦片帧事务允许同工程静态选区，自由菜单帧粘贴包装不再因该选区禁用；保留活动编辑、特殊层活动蒙版和跨工程静态选区限制，后两项仍需单独迁移。复用纯网格与网格/自由层实际菜单夹具，验证逐层像素、网格引用、自由实例数量、原像素选区、插入Cel选择、单次历史、Undo/Redo及资源和链接有效。唯一正式Release构建退出0（local-grid-frame-paste-selection-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0；来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见localGridFramePasteSelection20261118。
+
+## 2026-11-18 特殊图层整帧粘贴选区与蒙版上下文
+
+对照workspace-commands-animation-frame-clipboard.ts，跨工程插入完整帧允许并保留静态像素选区；同工程帧插入、Undo与Redo显式退出蒙版编辑。特殊图层结构事务去除跨工程静态选区拒绝，同工程允许活动蒙版并应用既有普通层的退出蒙版、图层行和Cel选择历史规则；活动编辑及跨工程活动蒙版准入保持。新增八组网格/自由层、同/跨工程、蒙版隔离组合，验证选区保留、单条历史、蒙版退出及重入后Redo、帧结构、链接有效、保存重开。首次夹具误选空自由层导致创建蒙版失败，改选含像素网格层。扩大回归发现旧替色拒绝断言与用户批准资源同步冲突，改为接受后取消；又发现共用事务放宽影响特殊帧拖拽，已明确保留duplicate/drop路径原选区/蒙版拒绝。最终正式Release及测试构建退出0；frame-selection八组通过，完整free-tile-project回归通过（33.10秒），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见specialFrameSelectionContext20261118。

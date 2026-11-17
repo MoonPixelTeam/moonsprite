@@ -449,10 +449,10 @@ bool Document::splitLayerStyles(const std::string& requested){
 namespace moon {
 bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplicateSelection,std::optional<int> dropIndex){
  if(clip.items.empty())return false;
- const bool ordinaryLocal=clip.sourceIdentity==identity_&&!hasFreeTileContent()&&!hasTilemapContent()&&clip.tilesets.empty()&&std::none_of(clip.layers.begin(),clip.layers.end(),[](const auto& l){return l.kind=="free-tile"||l.kind=="tilemap";});
- // Ordinary frame paste already permits a static pixel selection. Reusing the
- // structural transaction must not make the auto-link toggle disable paste.
- if(active()||(clip.sourceIdentity!=identity_&&selection_)||(!ordinaryLocal&&!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before frame paste");
+ const bool local=clip.sourceIdentity==identity_;
+ const bool specialDrag=(duplicateSelection||dropIndex.has_value())&&(hasFreeTileContent()||hasTilemapContent()||!clip.tilesets.empty()||std::any_of(clip.layers.begin(),clip.layers.end(),[](const auto& l){return l.kind=="free-tile"||l.kind=="tilemap";}));
+ // Legacy frame insertion preserves static pixel selection; local replay exits mask editing.
+ if(active()||(specialDrag&&(selection_||!activeMaskId_.empty()))||(!local&&!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before frame paste");
  const bool same=clip.sourceIdentity==identity_;const auto& original=timeline_.state();
  if(clip.width<1||clip.height<1||clip.layers.empty()||original.frames.size()+clip.items.size()>10000||std::max(original.layers.size(),clip.layers.size())>256)throw std::invalid_argument("Invalid frame clipboard extent");
  std::size_t pixels=0;auto charge=[&](std::size_t n){if(n>64*1024*1024-pixels)throw std::length_error("Frame paste memory limit");pixels+=n;};for(const auto& c:original.cels)if(c.surface)charge(c.surface->pixels.size());for(const auto& t:original.tilesets)charge(t.pixels.size());
@@ -483,7 +483,7 @@ bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplic
  if(!resources.after.empty())e.layerHistory.layerTilesets=std::make_shared<const LayerTilesetHistory>(std::move(resources));e.layerHistory.structureCelBytes=0;for(const auto& c:e.layerHistory.structureCels)e.layerHistory.structureCelBytes+=groupCelStorageBytes(c);e.afterFrame=inserted.front();e.afterSelection=inserted;e.afterFrameAnchor=inserted.back();e.afterTimelineSelection=TimelineSelection{};
  if(same&&!duplicateSelection&&inserted.size()==1){const auto c=std::find_if(e.layerHistory.structureCels.begin(),e.layerHistory.structureCels.end(),[&](const auto& v){return v.layerId==activeLayerId_&&v.frameId==inserted.front();});if(c!=e.layerHistory.structureCels.end()){e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};e.afterTimelineSelection->cels={c->id};e.afterTimelineSelection->celAnchor=c->id;}}
  // Legacy local frame paste, undo and redo all exit mask editing.
- if(ordinaryLocal){e.afterTimelineSelection->layers=timelineSelection_.layers;e.afterTimelineSelection->layerAnchor=timelineSelection_.layerAnchor;e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});e.beforeTimelineSelection->cels.clear();e.beforeTimelineSelection->celAnchor.clear();}
+ if(local){e.afterTimelineSelection->layers=timelineSelection_.layers;e.afterTimelineSelection->layerAnchor=timelineSelection_.layerAnchor;e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});e.beforeTimelineSelection->cels.clear();e.beforeTimelineSelection->celAnchor.clear();}
  // Legacy frame clipboard entries are not wrapped by historyEntryWithAnimationSelection.
  // Their explicit undo/redo mask-exit and selection rules must remain authoritative.
  e.beforeAnimationSelection.reset();
