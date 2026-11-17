@@ -7670,3 +7670,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色背景画布扩展
 
 对照旧版 background-patterns.ts::tileBackgroundSurfaceToCanvas、document-model.ts::resizeDocumentAt 及 animation.ts 的背景扩展路径，背景重铺保留原表面格式并重置存储原点，预设填充按文档现有可见色板映射ID；旧画布内保留原始编辑，普通重复背景直接复制原始ID，不扩充色板。resizeBackgroundCanvas沿用既有规范来源及结构事务。四组索引色夹具覆盖canvas/preset、正负偏移、非零原始存储原点、链接帧、逐像素ID、色板不变和撤销重做。首轮夹具添加链接Cel后使用失效引用导致崩溃，已修正；随后检查暴露存储原点未显式重置，补齐为零。Release indexed-runtime-tests与document-background-tests定向构建成功，最终三项关联CTest通过（oracle0.69秒、runtime0.03秒、background0.04秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色入口仍关闭，背景创建时的索引色资源分配尚未在本阶段迁移，整体INCOMPLETE。来源见indexedBackgroundResize20261118。
+
+## 2026-11-18 索引色背景创建与色板事务
+
+对照旧版 workspace-commands-layer-creation.ts::createBackgroundLayer、background-patterns.ts::renderBackgroundTileIndexed 和 document-model.ts::findOrAddPaletteColor，索引色背景创建按首次出现顺序复用首个同色条目、提升隐藏颜色到可见槽位、插入透明ID0及分配新ID；重复像素使用颜色缓存。暂存色板纳入现有结构历史，恢复entries/order/slots/columns/nextColorId，不改UI角色颜色及选中色。保留活动图层/帧、完整重复图像尺寸及各帧链接同一背景来源。原生整数耗尽与现有文档预算在发布前拒绝。新增solid/image两种夹具核对精确ID、透明RGB、隐藏色复用、新色分配、重复缓存、尺寸、来源不变、链接帧、单历史及撤销重做，补充色号耗尽拒绝不发布。Release indexed-runtime-tests与document-background-tests定向构建成功，最终三项关联CTest通过（oracle0.70秒、runtime0.03秒、background0.04秒）；来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见indexedBackgroundCreation20261118。

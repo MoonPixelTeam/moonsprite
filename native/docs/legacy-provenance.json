@@ -27311,6 +27311,16 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "layerClipboardFromDocument freezes animation Cel indexed pixels through a palette Map (last duplicate ID wins), while applyLayerClipboardAnimationCel converts RGBA snapshots into destination indexed IDs or grayscale without requantizing RGBA precision. Reuse animationClipboardCel at whole-layer copy and animationCelForTarget at paste. Preserve independent Cel snapshots, geometry, payloads and existing structure history. Directed regression copies indexed linked frames with duplicate IDs, changes source palette, pastes to RGBA/grayscale/indexed targets with different IDs, checks frozen pixels, format, no RGBA precision requantization, single history and undo/redo. Release builds passed; indexed-runtime oracle/runtime and complete document-layer-groups CTests passed (0.71/0.03/0.03s). No official GUI rebuild or manual acceptance; indexed production admission remains closed."
+      },
+      "indexedBackgroundCreation20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-creation.ts",
+          "legacy/src/renderer/src/store/workspace-document-history.ts",
+          "legacy/src/renderer/src/core/background-patterns.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/palette-layout.ts"
+        ],
+        "nativeAdaptation": "createBackgroundLayer renders indexed pattern/tile using findOrAddPaletteColor(document,color,true): first exact color reuse, hidden entry promotion, transparent ID0 insertion, monotonically allocated names/IDs and cached repeated RGBA. Detached palette staged into existing structure history with paletteKind13, matching DocumentStructureSnapshot ownership of entries/order/slots/columns/nextColorId but excluding UI role/selected colors. Existing full-frame link and focus semantics retained. Native integer exhaustion and document budget reject before live publication. Regression covers solid/image tile, dimensions, transparent RGB, hidden color reuse, exact new color, duplicate input cache, linked frames, focus, single history and undo/redo plus exhausted allocator rejection."
       }
     },
     {
@@ -41777,6 +41787,16 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "tileBackgroundSurfaceToCanvas retains raster format and resets owned Cel storage origin. resizeDocumentAt/resizeAnimationDocumentAt provide paletteColorIdForCanvas for indexed procedural extension; map preset RGBA into existing visible IDs only, preserve original storage words inside old canvas and repeated raw tile IDs. Native resizeBackgroundCanvas supplies immutable document palette, retains existing linked-owner structural transaction. Regression covers preset/canvas modes, signed offsets, storage origins, linked frame resolution, exact IDs, unchanged palette and undo/redo."
+      },
+      "indexedBackgroundCreation20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-creation.ts",
+          "legacy/src/renderer/src/store/workspace-document-history.ts",
+          "legacy/src/renderer/src/core/background-patterns.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/palette-layout.ts"
+        ],
+        "nativeAdaptation": "createBackgroundLayer renders indexed pattern/tile using findOrAddPaletteColor(document,color,true): first exact color reuse, hidden entry promotion, transparent ID0 insertion, monotonically allocated names/IDs and cached repeated RGBA. Detached palette staged into existing structure history with paletteKind13, matching DocumentStructureSnapshot ownership of entries/order/slots/columns/nextColorId but excluding UI role/selected colors. Existing full-frame link and focus semantics retained. Native integer exhaustion and document budget reject before live publication. Regression covers solid/image tile, dimensions, transparent RGB, hidden color reuse, exact new color, duplicate input cache, linked frames, focus, single history and undo/redo plus exhausted allocator rejection."
       }
     },
     {

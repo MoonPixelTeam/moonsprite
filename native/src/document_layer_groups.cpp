@@ -5,10 +5,12 @@
 #include <locale>
 #include "document.h"
 #include "raster_geometry.h"
+#include "palette_layout.h"
 #include "layer_compositor.h"
 #include "layer_style_sampler.h"
 #include <algorithm>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <unordered_set>
 #include <unordered_map>
@@ -358,7 +360,28 @@ void Document::mergeVisibleLayers(){
  e.beforeAnimationSelection.reset();if(commitGroupEdit(std::move(e),U"合并可见图层")){nextLayerId_=counter;normalizeAnimationSelection();}
 }
 bool Document::setLayerBackground(const std::string& id,bool enabled){if(!timeline_.hasLayer(id))return false;const auto& l=timeline_.state().layers[timeline_.layerIndex(id)];if(!l.kind.empty()||bool(l.background)==enabled)return false;commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())return false;Edit e{{},state_,nextState_};captureGroupEdit(e,false);captureGroupEdit(e,true);if(enabled)appendDetachLinkedLayer(e,id);auto& m=*e.layerHistory.afterLayerStructure;auto it=std::find_if(m.layers.begin(),m.layers.end(),[&](const auto& l){return l.id==id;});if(enabled){it->background=timeline::BackgroundSettings{};LayerPanelDropTarget target;target.kind=LayerPanelDropTarget::Kind::Bottom;if(!moveMetadataRows(m,{id},{},target))throw std::logic_error("Cannot move background to root bottom");}else it->background.reset();return commitGroupEdit(std::move(e),enabled?U"转换为背景图层":U"转换为普通图层");}
-bool Document::createBackgroundLayer(const timeline::Surface& tile,bool solid){raster::validate(tile);commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())return false;const int w=solid?width_:std::max(width_,tile.width),h=solid?height_:std::max(height_,tile.height);constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t bytes=std::uint64_t(w)*h*4;for(const auto& c:timeline_.state().cels)if(c.surface)bytes+=c.surface->pixels.size()*4;if(timeline_.state().layers.size()>=256||bytes>limit)throw std::length_error("Background exceeds document pixel budget");Edit e{{},state_,nextState_};captureGroupEdit(e,false);captureGroupEdit(e,true);DocumentLayer layer;do{layer.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);}while(timeline_.hasLayer(layer.id));layer.name=U"背景";layer.background=solid?timeline::BackgroundSettings{"preset","solid",0,0}:timeline::BackgroundSettings{"canvas","",tile.width,tile.height};auto& m=*e.layerHistory.afterLayerStructure;m.layers.push_back(layer);auto tree=metadataTree(m);auto where=findPanelItem(tree,LayerPanelKind::Layer,layer.id);if(where.items){where.items->erase(where.items->begin()+where.index);tree.push_back({LayerPanelKind::Layer,layer.id,{}});applyMetadataTree(m,tree);}timeline::Surface filled;filled.width=w;filled.height=h;filled.pixels.resize(std::size_t(w)*h);for(int y=0;y<h;++y)for(int x=0;x<w;++x)filled.pixels[std::size_t(y)*w+x]=tile.pixels[std::size_t(y%tile.height)*tile.width+x%tile.width];std::string owner;for(const auto& f:timeline_.state().frames){DocumentCel c;c.id="cel-"+layer.id+"-"+f.id;c.layerId=layer.id;c.frameId=f.id;if(owner.empty()){owner=c.id;c.surface=std::move(filled);}else c.linkedCelId=owner;e.layerHistory.structureCelBytes+=groupCelStorageBytes(c);e.layerHistory.structureCels.push_back(std::move(c));}return commitGroupEdit(std::move(e),U"新建背景图层");}
+bool Document::createBackgroundLayer(const timeline::Surface& tile,bool solid){raster::validate(tile);commitFloatingPaste();cancelStroke();cancelLayerOpacity();if(active())return false;const int w=solid?width_:std::max(width_,tile.width),h=solid?height_:std::max(height_,tile.height);constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t bytes=std::uint64_t(w)*h*4;for(const auto& c:timeline_.state().cels)if(c.surface)bytes+=c.surface->pixels.size()*4;if(timeline_.state().layers.size()>=256||bytes>limit)throw std::length_error("Background exceeds document pixel budget");Edit e{{},state_,nextState_};captureGroupEdit(e,false);captureGroupEdit(e,true);DocumentLayer layer;do{layer.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++nextLayerId_);}while(timeline_.hasLayer(layer.id));layer.name=U"背景";layer.background=solid?timeline::BackgroundSettings{"preset","solid",0,0}:timeline::BackgroundSettings{"canvas","",tile.width,tile.height};auto& m=*e.layerHistory.afterLayerStructure;m.layers.push_back(layer);auto tree=metadataTree(m);auto where=findPanelItem(tree,LayerPanelKind::Layer,layer.id);if(where.items){where.items->erase(where.items->begin()+where.index);tree.push_back({LayerPanelKind::Layer,layer.id,{}});applyMetadataTree(m,tree);}timeline::Surface filled;filled.width=w;filled.height=h;filled.pixels.resize(std::size_t(w)*h);
+ if(colorMode_==color_mode::Mode::Indexed){
+  // Legacy createBackgroundLayer uses findOrAddPaletteColor(..., true),
+  // preserving exact colors and promoting reused hidden entries into slots.
+  auto chargePalette=[&](std::uint64_t added){if(added>limit-bytes)throw std::length_error("Background exceeds document palette budget");bytes+=added;};
+  chargePalette(3ull*(palette_.slots.size()+palette_.order().size())*sizeof(int));for(const auto& entry:palette_.entries)chargePalette(3ull*(sizeof(PaletteEntry)+entry.name.size()*sizeof(char32_t))+128);
+  auto palette=palette_;std::unordered_map<Pixel,int> byColor;for(const auto& entry:palette.entries)byColor.emplace(entry.color,entry.id);
+  std::unordered_map<Pixel,Pixel> ids;
+  auto resolve=[&](Pixel color){const auto cached=ids.find(color);if(cached!=ids.end())return cached->second;chargePalette(512);int id=0;
+   if(!(color>>24)){if(std::none_of(palette.entries.begin(),palette.entries.end(),[](const auto& e){return e.id==0;}))palette.entries.insert(palette.entries.begin(),{0,U"透明",0});}
+   else if(const auto found=byColor.find(color);found!=byColor.end())id=found->second;
+   else{if(palette.nextId<1||palette.nextId==std::numeric_limits<int>::max())throw std::length_error("Background palette ID exhausted");id=palette.nextId++;auto name=std::to_string(id);palette.entries.push_back({id,std::u32string(name.begin(),name.end()),color});byColor.emplace(color,id);}
+   auto order=palette.order();palette.columns=std::clamp(palette.columns,1,256);auto slots=normalizePaletteSlots(palette.entries,order,palette.slots,palette.columns);
+   if(std::find(order.begin(),order.end(),id)==order.end()&&std::find(slots.begin(),slots.end(),id)==slots.end()){auto hole=std::find(slots.begin(),slots.end(),EmptyPaletteSlot);if(hole==slots.end()){const auto offset=slots.size();slots.resize(offset+palette.columns,EmptyPaletteSlot);slots[offset]=id;}else *hole=id;}
+   palette.slots=std::move(slots);palette.independentOrder.reset();ids.emplace(color,Pixel(id));return Pixel(id);
+  };
+  const RasterColorContext sourceColors(palette_.entries,palette_.order());
+  for(int y=0;y<h;++y)for(int x=0;x<w;++x){const auto raw=tile.pixels[std::size_t(y%tile.height)*tile.width+x%tile.width];filled.pixels[std::size_t(y)*w+x]=resolve(sourceColors.toolColor(tile.format,raw));}
+  filled.format=timeline::RasterFormat::Indexed;
+  e.paletteHistory.paletteKind=13;e.paletteHistory.beforePalette=palette_;e.paletteHistory.afterPalette=std::move(palette);for(auto* p:{&*e.paletteHistory.beforePalette,&*e.paletteHistory.afterPalette})p->independentOrder=p->order();
+ }else for(int y=0;y<h;++y)for(int x=0;x<w;++x)filled.pixels[std::size_t(y)*w+x]=tile.pixels[std::size_t(y%tile.height)*tile.width+x%tile.width];
+ std::string owner;for(const auto& f:timeline_.state().frames){DocumentCel c;c.id="cel-"+layer.id+"-"+f.id;c.layerId=layer.id;c.frameId=f.id;if(owner.empty()){owner=c.id;c.surface=std::move(filled);}else c.linkedCelId=owner;e.layerHistory.structureCelBytes+=groupCelStorageBytes(c);e.layerHistory.structureCels.push_back(std::move(c));}return commitGroupEdit(std::move(e),U"新建背景图层");}
 
 }
 
