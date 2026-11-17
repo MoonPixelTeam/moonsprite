@@ -17278,6 +17278,12 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
         ],
         "nativeAdaptation": "Preserve absent non-target Cel slots in between candidates and allow sparse generated frames in transform/between transaction validation and active opacity projection. Selected between targets still generate their tween surface. Focused tests cover Current/All empty layers, generation, Undo/Redo and encoded manifest slots. Test fixtures initialize display geometry as the Aseprite import builder does. Both animation-transform and animation-crossfade CTests passed in 0.34 seconds. Mixed tile admission remains gated."
+      },
+      "mixedTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:354-383"
+        ],
+        "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
       }
     },
     {
@@ -17473,6 +17479,12 @@
           "legacy/src/renderer/src/store/workspace-animation-selection.ts"
         ],
         "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
+      },
+      "mixedTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:354-383"
+        ],
+        "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
       }
     },
     {
@@ -17668,7 +17680,13 @@
       "ordinaryGroupConsumers20261019": "Legacy ancestor visibility/locking from document-model and group tool availability from workspace-session are applied at native raster tool entry, preview revalidation, pixel command targets and canvas unavailable cursor. Stored metadata/snapshot equality remains raw. Tween temporary State preserves groups and inherited lock filtering. Focused regression covers ancestor-hidden/locked drawing refusal, unchanged history and undo, and grouped tween source/preview. External ordinary-group editable admission remains gated pending complete group command/panel integration; this does not assert full migration.",
       "tweenPayload20261117": "Actual legacy src/renderer/src/core/animation-tween.ts animationTweenLayerIds excludes special/background/locked layers; prepareAnimationTweenFrame clones resolved nonselected Cel payload using cloneAnimationCel. Native source plans retain raster-only selection and nonselected candidates copy complete resolved Cel metadata (text/free/grid payload) with fresh identity/link clearing. Focused animation-crossfade and animation-transform tests cover special text exclusion and cloned text payload. Document mixed-special admission remains closed pending attached-mask tween transactions; no full tween parity claim.",
       "transformTweenMasks20261117": "Actual legacy src/renderer/src/core/animation-tween.ts prepareAnimationTweenFrame maskOutput resolves linked masks, independently clones nonselected/locked/nonmoving masks and transforms selected unlocked moveWithOwner layer masks with tweenSurface. Native candidate carries mask slots, preview composites them, Document assigns fresh IDs/frame slots and stores before/after masks in existing frame history; canvas resizing shifts mask offsets. Focused animation-transform covers layer locked x moveWithOwner, generated identity/offsets, UndoRedo and editable encode/read. Selected group masks and between/morph mask interpolation remain incomplete; mixed-special Document admission remains closed. No full tween parity claim.",
-      "groupTweenMasks20261117": "Actual legacy src/renderer/src/core/animation-tween.ts animationTweenSource groupIds selects groups only when nonempty descendant layer set is fully selected; maskOutput uses descendant union bounds and any morph child for moving-space interpolation. Native nested parent traversal applies same full-descendant admission, group masks share layer interpolation path and transformTweenSurface; partial groups clone unchanged. Focused crossfade/transform CTests pass nested all/partial group transform and layer/group moving morph boundaries with moveWithOwner on/off. UI selected group transmission remains a known gap; mixed-special admission stays closed."
+      "groupTweenMasks20261117": "Actual legacy src/renderer/src/core/animation-tween.ts animationTweenSource groupIds selects groups only when nonempty descendant layer set is fully selected; maskOutput uses descendant union bounds and any morph child for moving-space interpolation. Native nested parent traversal applies same full-descendant admission, group masks share layer interpolation path and transformTweenSurface; partial groups clone unchanged. Focused crossfade/transform CTests pass nested all/partial group transform and layer/group moving morph boundaries with moveWithOwner on/off. UI selected group transmission remains a known gap; mixed-special admission stays closed.",
+      "mixedTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:354-383"
+        ],
+        "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
+      }
     },
     {
       "file": "tests/animation_transform_test.cpp",

@@ -7470,3 +7470,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 补间蒙版编辑状态
 
 生成后按旧版退出蒙版编辑及隔离，撤销恢复原状态、重做恢复退出状态。两项定向测试通过，详见 [记录](tween-mask-context-20261117.md)。整体 INCOMPLETE，混合瓦片补间仍待迁移。
+
+## 2026-11-17 混合瓦片补间预览
+
+三条补间临时预览时间轴保留资源目录及画布信息，定向构建与测试通过。详见 [记录](mixed-tween-preview-20261117.md)。资源感知画布扩展与生成准入仍未完成，整体 INCOMPLETE。

@@ -1,3 +1,4 @@
+#include "animation_transform.h"
 #include <algorithm>
 #include "animation_crossfade.h"
 #include "document.h"
@@ -38,6 +39,16 @@ void verifySparseTweenTransactions(){
   CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==selectEmpty);
   doc.undo();CHECK(doc.timeline().state().frames.size()==2&&!doc.timeline().findCel("empty","start"));doc.redo();CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==selectEmpty);
   auto saved=project::readProjectManifest(project::encodeEditableProject(doc).bytes);CHECK((std::any_of(saved.cels.begin(),saved.cels.end(),[&](const auto& c){return c.layerId=="empty"&&c.frameId==frame;}))==selectEmpty);
+ }
+}
+void verifyMixedResourcePreviews(){
+ for(bool free:{false,true}){
+  auto state=fixture();auto& layer=state.layers[1];layer.kind=free?"free-tile":"tilemap";layer.locked=false;
+  auto set=tiles::blankTileset("set",U"Tile",1,1,"tile",1);tiles::writeTile(set,"tile",{0xff334455});state.tilesets={set};state.canvasWidth=2;state.canvasHeight=1;
+  if(free){free_tiles::LayerData data;data.setId="sources";free_tiles::Source source;source.id="source";source.tilesetId="set";data.sources={source};layer.freeTiles=data;}else layer.tilemapTilesetId="set";
+  for(auto& cel:state.cels)if(cel.layerId=="B"){if(free){cel.freeTiles=free_tiles::CelData{};free_tiles::Instance instance;instance.id="instance";instance.sourceId="source";cel.freeTiles->instances={instance};}else cel.tilemap=tiles::CelData{1,1,2,1,{tiles::Cell{"set","tile"},std::nullopt}};}
+  timeline::Timeline timeline(state);CrossfadeTweenOptions options;options.frameCount=1;options.layerScope=TweenLayerScope::All;const auto plan=prepareCrossfadeTweenSource(timeline,"f0","A",options.layerScope);CHECK(plan.layerIds==std::vector<std::string>{"A"});const auto output=prepareCrossfadeTweenFrame(timeline,2,1,plan,options,1);CHECK(output.cels[1].tilemap.has_value()==!free&&output.cels[1].freeTiles.has_value()==free);CHECK(compositeCrossfadeTweenPreview(timeline,2,1,plan,options,1).size()==2);
+  TransformTweenOptions transform;transform.frameCount=1;const auto source=prepareTransformTweenSource(timeline,"f0","A",transform);CHECK(compositeTransformTweenPreview(timeline,source,transform,1,{0,0,2,1}).size()==2);CHECK(transformTweenEndpointPreview(timeline,source,transform).has_value());
  }
 }
 int main(){try{verifySparseTweenTransactions();verifyBetweenAutoCrop();
