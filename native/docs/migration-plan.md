@@ -7780,3 +7780,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合网格工程普通图层创建关联图层入口
 
 对照workspace-commands-layer-properties.ts::createLinkedLayer、core/linked-layers.ts::isLinkableRasterLayer及workspace-linked-layers.test.ts，关联图层只限制源图层类型，不因其他网格层拒绝。移除旧网格工程级createLinkedLayer菜单禁用项，保留registry的源类型、组/多选、忙碌状态校验及既有事务。复用混合图层实际菜单夹具验证创建一条历史、Undo/Redo、共享像素编辑及其Undo/Redo、瓦片引用/资源保持，并验证活动瓦片层仍禁用。唯一正式Release构建退出0（mixed-grid-linked-layer-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针运行退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridLinkedLayer20261118。
+
+## 2026-11-18 混合自由瓦片工程网格选区复制与剪切
+
+对照workspace-commands-clipboard.ts::copySelection/cutSelection及workspace-commands-selection-effects.ts，像素选区复制读取活动网格图层，剪切委托既有模式删除，不受无关自由图层影响。自由实例菜单包装仅对free-tile目标生效，其他类型回到原有registry准入；不新增网格像素粘贴能力。复用正式混合网格/自由层夹具，覆盖Paint/Create/Edit/Hybrid实际Copy与Cut菜单、确切剪贴板像素、Paint只复制/结束选区且无历史、其他模式删除一条历史与Undo/Redo、无关网格引用/资源及自由实例不变，同时保留蒙版检查。唯一正式Release构建退出0（mixed-free-grid-clipboard-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0；来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedFreeGridClipboard20261118。

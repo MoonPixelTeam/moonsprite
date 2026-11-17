@@ -25222,6 +25222,14 @@
           "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
         ],
         "nativeAdaptation": "Legacy createLinkedLayer and isLinkableRasterLayer restrict the source raster layer, not unrelated tilemaps. Remove obsolete document-wide createLinkedLayer menu block; retain registry source/group/selection/busy guards and existing linked-layer transaction. Formal mixed grid menu fixture checks one creation history, Undo/Redo, shared pixel editing and Undo/Redo, tile resource preservation, and refusal on tile source."
+      },
+      "mixedFreeGridClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "Apply free-instance clipboard menu guards only to a free-tile target. Legacy selection Copy reads active grid raster and Cut delegates to existing mode-specific delete regardless of unrelated free layers. Retain existing grid registry eligibility and transactions. Formal mixed grid/free fixture covers actual Copy/Cut menus in Paint/Create/Edit/Hybrid, exact clipboard pixels, Paint copy-only no history, other modes resource-backed deletion and Undo/Redo, unrelated grid resources and free instances unchanged; existing mask fixture remains."
       }
     },
     {
@@ -33409,6 +33417,14 @@
           "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
         ],
         "nativeAdaptation": "Legacy createLinkedLayer and isLinkableRasterLayer restrict the source raster layer, not unrelated tilemaps. Remove obsolete document-wide createLinkedLayer menu block; retain registry source/group/selection/busy guards and existing linked-layer transaction. Formal mixed grid menu fixture checks one creation history, Undo/Redo, shared pixel editing and Undo/Redo, tile resource preservation, and refusal on tile source."
+      },
+      "mixedFreeGridClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "Apply free-instance clipboard menu guards only to a free-tile target. Legacy selection Copy reads active grid raster and Cut delegates to existing mode-specific delete regardless of unrelated free layers. Retain existing grid registry eligibility and transactions. Formal mixed grid/free fixture covers actual Copy/Cut menus in Paint/Create/Edit/Hybrid, exact clipboard pixels, Paint copy-only no history, other modes resource-backed deletion and Undo/Redo, unrelated grid resources and free instances unchanged; existing mask fixture remains."
       }
     },
     {

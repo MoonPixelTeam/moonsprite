@@ -128,7 +128,7 @@ void Editor::createTilesetPanel(){
  // Paste targets any editable free-tile cel, independent of the instance view.
  // Canvas pixel selection is copied unless the instance list owns clipboard scope.
  for(const auto* id:{"copy","cut","paste"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool paste=std::string(id)=="paste",cut=std::string(id)=="cut";found->second->available=[this,previous,paste,cut]{
-  if(paletteFocused_||!currentDocument().hasFreeTileContent()||currentDocument().layer().kind.empty()||!currentDocument().activeMaskId().empty())return !previous||previous();
+  if(paletteFocused_||!currentDocument().hasFreeTileContent()||currentDocument().layer().kind!="free-tile"||!currentDocument().activeMaskId().empty())return !previous||previous();
   if(currentDocument().active())return false;
   if(paste&&layerClipboardSnapshot_)return !previous||previous();
   if(!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&currentView().frameSelection&&!currentDocument().freeTileInstanceView()){
