@@ -7554,3 +7554,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色 PSD 导出
 
 按旧版 scaledRaster 的色板感知边界与首个同 ID 色板项采样，补齐索引色分层像素和合成预览；蒙版与效果元数据沿用原规则。正式 Release 构建成功，psd-export 定向检查通过（0.11秒），覆盖链接活动帧、双图层、不透明度、有无活动帧蒙版及100/150/200%缩放，与转为RGBA后的PSD逐字节比较，并检查导出不修改原始ID、修订和历史。首轮夹具在切帧前创建非自动链接蒙版，已改为在实际导出帧创建。未做实际indexed GUI或人工图像验收，生产索引色入口仍关闭，整体 INCOMPLETE。来源见 indexedPsdExport20261118。
+
+## 2026-11-18 索引色静态图片导出
+
+依据旧版 png.ts 与 document-composite-region.ts，将文档色板接入静态合成与单层直接像素路径，共享覆盖PNG、BMP、SVG、ICO、JPEG。Release定向构建及image-export检查通过（0.04秒），覆盖单层／多层、链接活动帧、不透明度、裁切、共同裁切与目标层、选区及150%缩放；解码PNG检查像素，五种格式与转换后RGBA输出比较，并检查导出不修改原始ID、修订和历史。本批未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedStaticExport20261118。
