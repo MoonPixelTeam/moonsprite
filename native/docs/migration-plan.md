@@ -7602,3 +7602,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色图片序列导入
 
 依据旧版store/image-sequence-import.ts，序列组装对每张源图传入各自文档色板，合成后生成RGBA动画。Release定向构建与image-sequence-import检查通过（0.16秒），新增两张使用相同ID但不同色板颜色的索引色输入，核对顺序、RGBA结果、透明像素、提取色板和原生工程像素保存重开。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedImageSequence20261118。
+
+## 2026-11-18 索引色蒙版渐变参考
+
+依据旧版 pending-gradient-session.ts 的 visible-layers 合成取色与 selection.ts 的色板解析，为蒙版渐变区域合成传入文档色板。Release attached-masks 定向检查通过（0.12秒），覆盖同色区域、异色边界、预览、取消无历史、提交及撤销重做。原始蒙版透明像素维持零值，显示为白色覆盖率；未重建正式 GUI、未做人工图像验收。索引色生产入口仍关闭，整体迁移 INCOMPLETE。来源见 indexedMaskGradient20261118。

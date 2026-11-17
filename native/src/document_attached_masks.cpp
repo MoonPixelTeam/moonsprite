@@ -262,7 +262,7 @@ std::vector<Pixel> Document::attachedMaskCanvas(const timeline::Surface& surface
 bool Document::beginMaskPreview(Point seed,WandOptions options,bool shape){
  cancelGradient();if(!maskBrushAvailable()||(!shape&&(seed.x<0||seed.y<0||seed.x>=width_||seed.y>=height_||(selection_&&!selectionContains(selection_,seed.x,seed.y)))))return false;
  const auto* mask=mutableActiveMask();auto canvas=attachedMaskCanvas(mask->surface);options.gapClosing=false;std::optional<SelectionMask> region;
- if(!shape){const auto reference=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};region=magicWandSelection(options.visibleLayers?reference:canvas,width_,height_,seed.x,seed.y,options);if(!region)return false;}
+ if(!shape){const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);const auto reference=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors):std::vector<Pixel>{};region=magicWandSelection(options.visibleLayers?reference:canvas,width_,height_,seed.x,seed.y,options);if(!region)return false;}
  GradientPreview pending{seed,cel().id,layer().id,frame().id,canvas,selection_,std::move(region),options,contentRevision_,shape};pending.mask=MaskPreviewBaseline{activeMaskId_,mask->surface,std::move(canvas),*mask};gradient_=std::move(pending);++gradientRevision_;return true;
 }
 bool Document::maskPreviewValid()const{return gradient_&&gradient_->mask&&gradient_->mask->id==activeMaskId_&&maskBrushAvailable();}

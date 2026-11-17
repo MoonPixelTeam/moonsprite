@@ -30901,6 +30901,15 @@
           "legacy/src/renderer/src/components/canvas-pointer-down.ts"
         ],
         "nativeAdaptation": "Read activePaintLayer mask surface, blend raw RGBA before normalized mask write, preserve read-only brush replacement data. Isolated view shows opaque coverage gray and samples that background for adaptive outline; normal view passes a bounded transient mask patch through existing leaf/group/clipping/style/adjustment compositor, retaining original mask outside patch. Native const mask accessor only; ordinary activeSurfaceIfPresent semantics unchanged. Core checks compare actual strokes, Undo/Redo, linked/offset masks, image brushes and styled/clipped/adjustment replacement. Sole formal UI phase covers all repeat modes and isolated/composite layer/group masks. Actual verification and limits recorded in docs/mask-brush-preview-migration-20261114.md."
+      },
+      "indexedMaskGradient20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/pending-gradient-session.ts",
+          "legacy/src/renderer/src/core/gradient.ts",
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "Legacy refreshPendingGradientRegion uses createCompositePointSampler for visible-layers reference and magicWandSelection compares resolved palette colors. Pass the document RasterColorContext to mask-gradient reference composition. Directed indexed test checks equal-color region and different-color barrier, display preview, cancel without history, commit raw mask coverage, undo and redo. Release attached-masks test passed (0.12 s); no GUI acceptance this stage."
       }
     },
     {
@@ -31158,7 +31167,16 @@
         ],
         "nativeAdaptation": "Read activePaintLayer mask surface, blend raw RGBA before normalized mask write, preserve read-only brush replacement data. Isolated view shows opaque coverage gray and samples that background for adaptive outline; normal view passes a bounded transient mask patch through existing leaf/group/clipping/style/adjustment compositor, retaining original mask outside patch. Native const mask accessor only; ordinary activeSurfaceIfPresent semantics unchanged. Core checks compare actual strokes, Undo/Redo, linked/offset masks, image brushes and styled/clipped/adjustment replacement. Sole formal UI phase covers all repeat modes and isolated/composite layer/group masks. Actual verification and limits recorded in docs/mask-brush-preview-migration-20261114.md."
       },
-      "maskShiftLines20261114": "Eight group/link/offset combinations execute inherited-baseline translucent anchor and real mask connection, comparing preview to committed pixels and undo/redo. Uses the existing legacy normalized mask and paint-baseline semantics; assertions retained after initially failing on shared endpoint."
+      "maskShiftLines20261114": "Eight group/link/offset combinations execute inherited-baseline translucent anchor and real mask connection, comparing preview to committed pixels and undo/redo. Uses the existing legacy normalized mask and paint-baseline semantics; assertions retained after initially failing on shared endpoint.",
+      "indexedMaskGradient20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/pending-gradient-session.ts",
+          "legacy/src/renderer/src/core/gradient.ts",
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "Legacy refreshPendingGradientRegion uses createCompositePointSampler for visible-layers reference and magicWandSelection compares resolved palette colors. Pass the document RasterColorContext to mask-gradient reference composition. Directed indexed test checks equal-color region and different-color barrier, display preview, cancel without history, commit raw mask coverage, undo and redo. Release attached-masks test passed (0.12 s); no GUI acceptance this stage."
+      }
     },
     {
       "file": "src/aseprite_io.h",
