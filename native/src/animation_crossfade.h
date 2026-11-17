@@ -10,7 +10,7 @@ struct CrossfadeTweenOptions{int frameCount=8,duration=100;TweenLayerScope layer
 struct TweenRegion{int x=0,y=0,width=1,height=1;};
 struct CrossfadeTweenLayerSource{std::string layerId;TweenRegion bounds;double startOpacity=1,endOpacity=1;std::optional<MorphTweenPlan> morph;};
 struct CrossfadeTweenSource{std::string startFrameId,endFrameId;std::vector<std::string> layerIds;std::vector<CrossfadeTweenLayerSource> layers;};
-struct CrossfadeTweenFrame{std::vector<timeline::Cel> cels;};
+struct CrossfadeTweenFrame{std::vector<timeline::Cel> cels;std::vector<timeline::MaskSlot> masks;};
 struct CrossfadeSurfaceResult{timeline::Surface surface;double opacity=1;};
 void validateCrossfadeTweenOptions(const CrossfadeTweenOptions&);
 double tweenProgress(double progress,TweenEasing easing,const std::array<double,4>& curve={.42,0,.58,1});
