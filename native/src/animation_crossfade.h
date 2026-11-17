@@ -14,7 +14,7 @@ struct CrossfadeTweenFrame{std::vector<timeline::Cel> cels;std::vector<timeline:
 struct CrossfadeSurfaceResult{timeline::Surface surface;double opacity=1;};
 void validateCrossfadeTweenOptions(const CrossfadeTweenOptions&);
 double tweenProgress(double progress,TweenEasing easing,const std::array<double,4>& curve={.42,0,.58,1});
-CrossfadeSurfaceResult crossfadeTweenSurface(const timeline::Surface* start,const timeline::Surface* end,TweenRegion bounds,double progress,double startOpacity,double endOpacity,std::size_t maxPixels=16*1024*1024);
+CrossfadeSurfaceResult crossfadeTweenSurface(const timeline::Surface* start,const timeline::Surface* end,TweenRegion bounds,double progress,double startOpacity,double endOpacity,std::size_t maxPixels=16*1024*1024,std::optional<timeline::RasterFormat> format={});
 CrossfadeTweenSource prepareCrossfadeTweenSource(const timeline::Timeline&,const std::string& startFrame,const std::string& activeLayer,TweenLayerScope,const std::vector<std::string>& selectedLayers={},TweenBetweenMode mode=TweenBetweenMode::Morph);
 std::size_t crossfadeTweenAllocationBytes(const timeline::Timeline&,int width,int height,const CrossfadeTweenOptions&);
 CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::size_t* remaining=nullptr,std::size_t maxPixels=16*1024*1024);

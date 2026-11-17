@@ -7510,3 +7510,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 补间预览相对进度
 
 按旧版 AnimationTweenDialog 的独立 progress 状态迁移，数量变更保留相对进度，不再保留旧绝对帧号；反复修改数量保留未取整比例。跳转、播放推进／终点重播、范围重置与路径应用统一更新进度。正式 Release 构建通过，--quantization-morph-check 退出 0，实际对话框覆盖起点／终点／中间位置、变换／相邻帧、反复数量取整、播放重启以及原有生成、取消和撤销重做。未进行人工图像验收；全量迁移仍 INCOMPLETE。来源见 legacy-provenance.json 的 normalizedProgress20261118。
+
+## 2026-11-18 索引色交叉淡化像素算法
+
+迁移 legacy animation-crossfade.ts 的 Bayer 溶解：按世界坐标固定相位，保留原始 uint32 颜色 ID，沿用不透明度加权及双零不透明度回退。输出格式从有效端点推断，也可显式指定以支持空端点。Release 定向构建成功，animation-crossfade CTest 通过（0.23 秒），覆盖17个进度、负坐标、原始端点、高位ID、零／不等不透明度、缺失端点和输入保留。仅完成像素算法，索引色内容边界、形变／变换、生产文档准入仍未完成；未重建 GUI，整体迁移 INCOMPLETE。来源见 indexedDissolve20261118。

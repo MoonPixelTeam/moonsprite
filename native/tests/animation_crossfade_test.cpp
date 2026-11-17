@@ -14,6 +14,22 @@ timeline::Surface fixtureRaster(std::vector<Pixel> p,int x=0,int y=0){timeline::
 timeline::Cel owned(std::string id,std::string layer,std::string frame,std::vector<Pixel> p,double opacity=1,int z=0){timeline::Cel c;c.id=id;c.layerId=layer;c.frameId=frame;c.opacity=opacity;c.zIndex=z;c.surface=fixtureRaster(std::move(p));return c;}
 timeline::State fixture(){timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",125},{"f1",75,true}};s.cels={owned("A0","A","f0",{0xff0000ff,0}),owned("A1","A","f1",{0xff00ff00,0xffff0000},1,9),owned("B1","B","f1",{0xff884422,0xff884422},.4,7)};timeline::Cel link;link.id="B0";link.layerId="B";link.frameId="f0";link.linkedCelId="B1";link.zIndex=-3;s.cels.push_back(link);return s;}
 
+void verifyIndexedDissolve(){
+ timeline::Surface a,b;a.width=b.width=4;a.height=b.height=4;a.offsetX=b.offsetX=-3;a.offsetY=b.offsetY=-2;
+ a.format=b.format=timeline::RasterFormat::Indexed;a.pixels.assign(16,0x80000001);b.pixels.assign(16,0xf0000002);
+ // At half opacity exactly these world-phase texels come from the endpoint.
+ const std::vector<Pixel> half={0x80000001,0xf0000002,0x80000001,0xf0000002,0xf0000002,0x80000001,0xf0000002,0x80000001,0x80000001,0xf0000002,0x80000001,0xf0000002,0xf0000002,0x80000001,0xf0000002,0x80000001};
+ auto result=crossfadeTweenSurface(&a,&b,{-3,-2,4,4},.5,1,1);CHECK(result.surface.format==a.format&&result.surface.pixels==half&&result.opacity==1);
+ for(int n=0;n<=16;++n){auto out=crossfadeTweenSurface(&a,&b,{-3,-2,4,4},double(n)/16,1,1);CHECK(std::count(out.surface.pixels.begin(),out.surface.pixels.end(),0xf0000002)==n);}
+ CHECK(crossfadeTweenSurface(&a,&b,{-3,-2,4,4},0,1,1).surface.pixels==a.pixels);
+ CHECK(crossfadeTweenSurface(&a,&b,{-3,-2,4,4},1,1,1).surface.pixels==b.pixels);
+ CHECK(crossfadeTweenSurface(&a,&b,{-3,-2,4,4},.5,0,0).surface.pixels==half);
+ auto weighted=crossfadeTweenSurface(&a,&b,{-3,-2,4,4},.5,.75,.25);CHECK(weighted.opacity==.5&&std::count(weighted.surface.pixels.begin(),weighted.surface.pixels.end(),0xf0000002)==4);
+ auto missing=crossfadeTweenSurface(nullptr,&b,{-4,-3,6,6},1,1,1);CHECK(missing.surface.format==b.format&&missing.surface.pixels.front()==0&&missing.surface.pixels[7]==0xf0000002);
+ auto empty=crossfadeTweenSurface(nullptr,nullptr,{0,0,1,1},.5,1,1,16,timeline::RasterFormat::Indexed);CHECK(empty.surface.format==a.format&&empty.surface.pixels[0]==0);
+ CHECK(a.pixels==std::vector<Pixel>(16,0x80000001)&&b.pixels==std::vector<Pixel>(16,0xf0000002));
+}
+
 void verifyBetweenAutoCrop(){
  auto make=[](bool tooWide=false){timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",125},{"f1",75,true}};auto a0=owned("a0","A","f0",{0xff112233},.8,2);a0.surface->offsetX=tooWide?-2000:-2;a0.surface->offsetY=1;auto a1=owned("a1","A","f1",{0xff445566},.6,9);a1.surface->offsetX=6;a1.surface->offsetY=1;auto b0=owned("b0","B","f0",{0xff778899,0x00030201,0xffaabbcc},.4,7);b0.surface->offsetX=-4;b0.surface->offsetY=2;b0.surface->storageOriginX=91;b0.surface->storageOriginY=-73;auto b1=b0;b1.id="b1";b1.frameId="f1";b1.linkedCelId="b0";b1.surface->offsetX=3000;s.cels={a0,a1,b0,b1};Document palette(5,4);auto d=Document::fromImported(5,4,std::move(s),palette.palette(),"between-crop",U"Between",std::make_shared<const std::vector<std::uint8_t>>(std::vector<std::uint8_t>{1}));d.clearSourceArchiveForNewSnapshot();return d;};
  for(const auto mode:{TweenBetweenMode::Crossfade,TweenBetweenMode::Morph}){
@@ -72,7 +88,7 @@ void verifyOriginalEndpointPreviews(){
  bool rejected=false;try{compositeCrossfadeTweenPreview(timeline,2,1,source,options,4);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
  }
 }
-int main(){try{verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
+int main(){try{verifyIndexedDissolve();verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
  auto a=fixtureRaster({0xff0000ff},-2,3),b=fixtureRaster({0xffff0000},-2,3);auto blend=crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,.25,.75,1);CHECK(blend.opacity==.5&&blend.surface.pixels==std::vector<Pixel>{0xffbf0040});auto green=fixtureRaster({0xff00ff00},-2,3);CHECK(crossfadeTweenSurface(nullptr,&green,{-2,3,1,1},.5,1,1,1).surface.pixels==std::vector<Pixel>{0x8000ff00});CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},0,1,1,1).surface.pixels==a.pixels);CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},1,1,1,1).surface.pixels==b.pixels);bool rejected=false;try{crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,1,1,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  CHECK(tweenProgress(.25,TweenEasing::Linear)==.25);CHECK(tweenProgress(.25,TweenEasing::EaseIn)==.0625);CHECK(tweenProgress(.25,TweenEasing::EaseOut)==.4375);CHECK(tweenProgress(.25,TweenEasing::EaseInOut)==.15625);CHECK(std::abs(tweenProgress(.25,TweenEasing::Custom,{.42,0,1,1})-.09346465067959621)<1e-12);
  timeline::Timeline t(fixture());CrossfadeTweenOptions o;o.betweenMode=TweenBetweenMode::Crossfade;o.frameCount=1;o.duration=90;const auto source=prepareCrossfadeTweenSource(t,"f0","A",TweenLayerScope::All,{},TweenBetweenMode::Crossfade);CHECK(source.endFrameId=="f1"&&source.layerIds==std::vector<std::string>{"A"});auto frame=prepareCrossfadeTweenFrame(t,2,1,source,o,1);CHECK(frame.cels.size()==2);CHECK(frame.cels[0].surface->pixels==std::vector<Pixel>({0xff008080,0x80ff0000}));CHECK(frame.cels[0].opacity==1&&frame.cels[0].zIndex==0);CHECK(frame.cels[1].surface->pixels==t.resolveSurface("B0").surface->pixels&&frame.cels[1].zIndex==7&&frame.cels[1].opacity==.4);for(const auto& c:frame.cels)CHECK(c.id.empty()&&c.frameId.empty()&&!c.linkedCelId&&!c.runtimeSharedCelId);frame.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("B0").surface->pixels[0]==0xff884422);

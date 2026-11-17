@@ -17244,6 +17244,13 @@
           "legacy/src/renderer/src/core/animation-tween.ts:234-267"
         ],
         "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
+      },
+      "indexedDissolve20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-crossfade.ts:crossfadeTweenSurface"
+        ],
+        "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
       }
     },
     {
@@ -17302,6 +17309,13 @@
           "legacy/src/renderer/src/core/animation-tween.ts:364-376"
         ],
         "nativeAdaptation": "Between preview step0 and frameCount+1 composite the original corresponding frame rather than a generated candidate; intermediate generation remains unchanged. Validate options, frame membership and step before endpoint dispatch. Focused Crossfade/Morph checks cover a missing start slot and locked endpoint mask, comparing actual original-frame composites. Release build and animation-crossfade CTest passed0.30s."
+      },
+      "indexedDissolve20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-crossfade.ts:crossfadeTweenSurface"
+        ],
+        "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
       }
     },
     {
@@ -17539,6 +17553,13 @@
           "legacy/src/renderer/src/core/animation-tween.ts:364-376"
         ],
         "nativeAdaptation": "Between preview step0 and frameCount+1 composite the original corresponding frame rather than a generated candidate; intermediate generation remains unchanged. Validate options, frame membership and step before endpoint dispatch. Focused Crossfade/Morph checks cover a missing start slot and locked endpoint mask, comparing actual original-frame composites. Release build and animation-crossfade CTest passed0.30s."
+      },
+      "indexedDissolve20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-crossfade.ts:crossfadeTweenSurface"
+        ],
+        "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
       }
     },
     {
