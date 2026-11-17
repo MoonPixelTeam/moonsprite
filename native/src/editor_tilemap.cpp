@@ -112,7 +112,7 @@ void Editor::createTilesetPanel(){
  const char* blocked[]{"resizeImage","resizeCanvas","createLinkedLayer","deleteFrame","pasteFrames","pasteCels","flipHorizontal","flipVertical","rotate90","rotate180","rotate270","centerContent","delete","openColorAdjustment","openColorReplacement","generateTransformTween","generateCrossfadeTween"};
  for(auto id:blocked){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;const bool paintFlip=std::string(id)=="flipHorizontal"||std::string(id)=="flipVertical";it->second->available=[this,previous,paintFlip]{return (!currentDocument().hasTilemapContent()||(paintFlip&&(currentDocument().floating()||currentDocument().paintCellFlipAvailable())))&&(!previous||previous());};}
  // Keep unsupported free-instance operations visibly disabled, using existing entries.
- const std::set<std::string> freeBlocked{"replaceColor","quickAntiAlias","convolution"};
+ const std::set<std::string> freeBlocked{"replaceColor"};
  for(auto& [id,item]:menuItems_)if(freeBlocked.count(id)){auto previous=item->available;item->available=[this,previous]{return !currentDocument().hasFreeTileContent()&&(!previous||previous());};}
  // Legacy beginLayerTransform/beginFreeTransform: single editable source target.
  for(const auto* id:{"transform","freeTransform"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool free=std::string(id)=="freeTransform";found->second->available=[this,previous,free]{
