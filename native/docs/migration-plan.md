@@ -7764,3 +7764,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合网格工程蒙版像素复制与剪切
 
 对照workspace-commands-clipboard.ts::copySelection/cutSelection及workspace-commands-selection-effects.ts蒙版删除路径，mixedPixelCopyContext放行活动蒙版像素入口，不再因工程存在网格瓦片而拒绝菜单。保留旧版copySelection读取getActiveLayer拥有者像素的行为，剪切则在活动蒙版按背景色填充并结束选区。扩展正式菜单夹具覆盖Copy确切RGBA和无历史、Cut只改蒙版、普通层像素/网格引用/资源保持、单条历史与Undo/Redo。首次断言错误地期望蒙版清零，按实际旧版背景色规则改为normalizedMaskPixel(secondary)，未修改核心行为。唯一正式Release构建退出0（mixed-grid-mask-copy-cut-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0，包含已有粘贴取消/提交检查。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridMaskCopyCut20261118。
+
+## 2026-11-18 混合网格工程蒙版选区翻转入口
+
+对照workspace-commands-selection-flip.ts及workspace-session.ts::activePaintLayer，活动蒙版应通过现有选区翻转事务处理。网格菜单包装对活动蒙版放行翻转，继续使用既有菜单前置条件与Document::transformMaskImmediate，不修改像素算法。实际菜单新增水平翻转检查，验证两个位置的镜像、只改蒙版、普通层像素/瓦片引用/资源不变、单次历史和Undo/Redo；垂直共享门禁但本阶段未新增垂直运行用例。唯一正式Release构建退出0（mixed-grid-mask-flip-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0，包含已有剪贴板检查。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridMaskFlip20261118。

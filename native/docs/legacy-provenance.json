@@ -25194,6 +25194,13 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
         ],
         "nativeAdaptation": "In grid-containing documents, permit active-mask pixel Copy/Cut through mixedPixelCopyContext instead of rejecting on activeMaskId. Reuse legacy Copy source getActiveLayer (owner pixels), while Cut routes deleteSelection to mask secondary-color fill then clears selection. Extend formal actual menu mask fixture with exact owner RGBA clipboard, unchanged Copy history, mask-only Cut, owner/grid refs/resources preserved, single history and Undo/Redo. No core sampling behavior changed."
+      },
+      "mixedGridMaskFlip20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts",
+          "legacy/src/renderer/src/store/workspace-session.ts"
+        ],
+        "nativeAdaptation": "Legacy activePaintLayer resolves the editing mask before single-target flipSelection. Native grid menu wrapper now permits flip actions in active-mask context and defers to existing previous availability and Document::transformMaskImmediate. Formal mixed-grid mask fixture checks enabled actual horizontal menu, mirrored two-pixel destination, mask-only history, owner pixels/grid refs/resources unchanged, Undo/Redo. Vertical shares wrapper but no new vertical runtime case in this stage."
       }
     },
     {
@@ -33353,6 +33360,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "renderCanvasFreeTileBrush resolves replacement via resolveLayerCanvasColor, reads original with readLayerColorAt, blends and samples composite replacement. Extract existing native replacement preparation into freeTilePlacementComposite used by editor; resolve indexed target colors only within actual storage, normalize ink according to target format and pass document RasterColorContext to full composite. Directed indexed-runtime checks exercise shared production helper with sparse storage, opaque palette zero, full and clipped previews, preserving raw pixels/history. Release indexed-runtime build/CTest passed (oracle 0.71s, runtime 0.02s). GUI call site inspected; no GUI rebuild or manual acceptance, indexed production admission still closed."
+      },
+      "mixedGridMaskFlip20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts",
+          "legacy/src/renderer/src/store/workspace-session.ts"
+        ],
+        "nativeAdaptation": "Legacy activePaintLayer resolves the editing mask before single-target flipSelection. Native grid menu wrapper now permits flip actions in active-mask context and defers to existing previous availability and Document::transformMaskImmediate. Formal mixed-grid mask fixture checks enabled actual horizontal menu, mirrored two-pixel destination, mask-only history, owner pixels/grid refs/resources unchanged, Undo/Redo. Vertical shares wrapper but no new vertical runtime case in this stage."
       }
     },
     {
