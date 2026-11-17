@@ -7558,3 +7558,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色静态图片导出
 
 依据旧版 png.ts 与 document-composite-region.ts，将文档色板接入静态合成与单层直接像素路径，共享覆盖PNG、BMP、SVG、ICO、JPEG。Release定向构建及image-export检查通过（0.04秒），覆盖单层／多层、链接活动帧、不透明度、裁切、共同裁切与目标层、选区及150%缩放；解码PNG检查像素，五种格式与转换后RGBA输出比较，并检查导出不修改原始ID、修订和历史。本批未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedStaticExport20261118。
+
+## 2026-11-18 索引色精灵表
+
+按旧版renderSpriteSheetItem先合成再过滤的流程，将文档色板传入精灵表逐帧合成，预览、PNG和生成RGBA精灵表文档共用结果。Release定向构建及sprite-sheet检查通过（0.03秒），覆盖链接帧、多层不透明度、合并重复／过滤空帧、分层、选区、选中帧及目标层；与转换后RGBA的像素和PNG比较，检查新文档格式及源ID、修订和历史保留。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedSheet20261118。

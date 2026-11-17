@@ -21,8 +21,9 @@ static StaticImageExport buildSingleSpriteSheet(const Document& d,const SpriteSh
  if(o.frameScope.rfind("loop:",0)==0){const auto id=o.frameScope.substr(5);auto it=std::find_if(source.loopSections.begin(),source.loopSections.end(),[&](const auto& l){return l.id==id;});if(it==source.loopSections.end())throw std::runtime_error("Sprite sheet loop missing");auto range=timeline::loopRange(source,*it);if(range.start<0)throw std::runtime_error("Invalid sprite sheet loop");for(int i=range.start;i<=range.end;++i)frames.push_back(source.frames[i].id);if(it->direction=="reverse")std::reverse(frames.begin(),frames.end());}
  else if(o.frameScope=="selected"){for(const auto& f:source.frames)if(std::find(d.selectedFrames().begin(),d.selectedFrames().end(),f.id)!=d.selectedFrames().end())frames.push_back(f.id);if(frames.empty())frames.push_back(d.frame().id);}
  else if(o.frameScope=="all")for(const auto& f:source.frames)frames.push_back(f.id);else throw std::runtime_error("Unknown sheet frame scope");
+ const RasterColorContext colors(d.palette().entries,d.palette().order(),d.colorMode(),d.pixelFormat());
  std::vector<std::vector<Pixel>> items;std::unordered_map<std::uint32_t,std::vector<std::size_t>> buckets;
- for(const auto& f:frames){auto pixels=compositeNormalRegion(timeline,f,area);if(o.selection)for(int y=0;y<area.height;++y)for(int x=0;x<area.width;++x)if(!selectionContains(d.selection(),area.x+x,area.y+y))pixels[std::size_t(y)*area.width+x]&=0xffffff;
+ for(const auto& f:frames){auto pixels=compositeNormalRegion(timeline,f,area,{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);if(o.selection)for(int y=0;y<area.height;++y)for(int x=0;x<area.width;++x)if(!selectionContains(d.selection(),area.x+x,area.y+y))pixels[std::size_t(y)*area.width+x]&=0xffffff;
   if(o.ignoreEmpty&&std::none_of(pixels.begin(),pixels.end(),[](Pixel p){return p>>24;}))continue;
   auto hash=hashPixels(pixels);auto& matches=buckets[hash];if(o.mergeDuplicates&&std::any_of(matches.begin(),matches.end(),[&](std::size_t i){return items[i]==pixels;}))continue;matches.push_back(items.size());items.push_back(std::move(pixels));
  }
