@@ -7582,3 +7582,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色缩时录像采集
 
 依据旧版timelapse.ts的色板感知合成与最近邻采样，将文档色彩上下文随受修订保护的PixelPreparation捕获，传入既有分块合成。Release定向构建及timelapse检查通过（0.55秒），覆盖索引色单层／多层、不透明度、链接活动帧、原尺寸及641缩至640的低质量采样、PNG编码解码和RGBA参考一致，并检查源ID、修订、历史及模式变化后的失效保护。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedTimelapse20261118。
+
+## 2026-11-18 索引色主画布与播放渲染
+
+依据旧版色板感知合成，主画布、洋葱皮、瓦片预览局部修补及独立播放帧传入文档色板，直接上传仅接收RGBA表面。正式Release构建成功，--preview-panel-check退出0，实际离屏渲染像素对照覆盖索引色与转换后RGBA的单层／多层、不透明度、洋葱皮及独立播放帧。未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedCanvas20261118。
