@@ -18740,6 +18740,15 @@
       "indexedGradientTransactions20261115": {
         "legacyEvidence": "Actual gradientRegionSelection resolves palette colors (first duplicate ID) even at tolerance zero and does not clip traversal to the paint selection. applyGradient expands before painting; recordPixel normalizes even transparent-source raw IDs; point and dense replay differ. canvas-render-gradient writeSample resolves replacement colors independently from commit words; gradientReplacementColor and resolveLayerCanvasColor preserve that distinction. Existing sampler retains nine dithers, radial geometry and custom stops. shareLinkedRasterContent retains independent placement.",
         "nativeAdaptation": "Reuse Document gradient dispatch, GradientPreview, sampler, sparse expansion and existing point/dense/history transactions. Only ordinary indexed raster gradients use separate transient RGBA replacement colors and packed ID candidates. Resolve true out-of-storage transparency for region/preview; commit new storage uses indexed zero. Preserve absent-Cel indexed format and full-canvas storage-origin history addresses. Real Node TypeScript oracle with interface imports erased only; test-only friend prepares indexed documents. Production indexed new/convert/editable-import admission remains closed. Validation results are recorded in docs/indexed-gradient-transactions-migration-20261115.md."
+      },
+      "indexedGradientReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/pending-gradient-session.ts",
+          "legacy/src/renderer/src/core/gradient.ts",
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "refreshPendingGradientRegion uses createCompositePointSampler when fillReference is visible-layers; selection compares resolved colors. Supply document RasterColorContext to all remaining gradient-reference composites, including tilemap begin, ordinary absent/full/sparse begin and option refresh shared with masks. Six directed mixed-format fixtures cover Create/Hybrid/Edit, full/sparse/absent RGBA targets, indexed top-layer barrier, initial and changed reference options, cancel, authoritative tile resources, one commit, undo/redo and reference source preservation. Friend fixture installs indexed test state without bypassing production admission gates. Release tilemap-document CTest passed (0.89s); no GUI build or manual acceptance."
       }
     },
     {
@@ -32629,6 +32638,15 @@
         ],
         "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
+      },
+      "indexedGradientReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/pending-gradient-session.ts",
+          "legacy/src/renderer/src/core/gradient.ts",
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "refreshPendingGradientRegion uses createCompositePointSampler when fillReference is visible-layers; selection compares resolved colors. Supply document RasterColorContext to all remaining gradient-reference composites, including tilemap begin, ordinary absent/full/sparse begin and option refresh shared with masks. Six directed mixed-format fixtures cover Create/Hybrid/Edit, full/sparse/absent RGBA targets, indexed top-layer barrier, initial and changed reference options, cancel, authoritative tile resources, one commit, undo/redo and reference source preservation. Friend fixture installs indexed test state without bypassing production admission gates. Release tilemap-document CTest passed (0.89s); no GUI build or manual acceptance."
       }
     },
     {
@@ -33084,7 +33102,16 @@
       "deferredHybridRepeat20261110": "Legacy selection translation repeat semantics already carried by native repeatedFloatingTranslation/repeat::wrapSelection. Hybrid deferred candidate-cell union now includes wrapped destination bounds, preventing skipped source patches when unwrapped target is outside canvas. Existing deferred fixture extends X/Y/Both move/copy translations with preview=commit, dirty coverage, regional clipping and UndoRedo. Magic eraser special-layer rejection verified against workspace-magic-eraser.ts; unchanged. Three core suites passed41.03s; official Release build and --tileset-management-check exited0. Supplemental --tile-repeat-check failed at Repeated airbrush begins (before deferred Hybrid checks); failure remains open and is not counted as passed. Six added repeat combinations are core-only coverage; no FPS claim.",
       "paintCaptureRanges20261110": "Legacy tilemap-document.ts::tilemapCellIndexesForEdit world-bounds-to-grid enumeration reused for Paint expanded selection and source capture, replacing two full-grid scans with row-major candidate ranges. Exact mask/clip/offset/null-cell semantics retained. Independent old full-grid oracle covers 30 offset/masked/outside cases and cancellation; existing movement/discrete flip/link tests retained. Official Release build and complete --tileset-management-check actually exited0. document-transactions/tilemap-project/tilemap-document passed1.13s, including persistence regressions. Candidate enumeration is bounded by selected rectangle; no timing/FPS claim.",
       "paintMoveDirty20261110": "Reuse legacy tilemap-document.ts rerenderTilemapCells reference-edit invalidation boundary. Reference-only incremental history with unchanged activity unions clipped world bounds of patched cells; resource edits/view switches retain full invalidation and linked-layer publish fallback. Paint preview and cancel clear prior change then publish applyEdit dirty without forcing full canvas. Six origin/copy cases check every changed pixel across initial/repeated preview, cancel, UndoRedo and local bounds. Official Release build and complete --tileset-management-check actually exited0. Four CTests document-transactions/tilemap-project/free-tile-project/tilemap-document passed39.90s. No FPS claim; shared-resource and linked-layer full-view fallback retained.",
-      "hybridRegionalCatalog20261110": "User approved final-resource-consistent Hybrid previews with deferred large-canvas optimization. Keep legacy tilemap-document.ts beforeByCell/editedTiles row-major semantics and existing native regional texel rendering. Build the existing Catalog lazily only for source sheets needed by candidate or visible cells; cached modified/local patches avoid unrelated sheet indexes. Tests add an unrelated 8192-tile sheet and transformed foreign/empty cells, compare regional reads with full preview, commit, UndoRedo and patch reuse. No FPS or full migration completion claim."
+      "hybridRegionalCatalog20261110": "User approved final-resource-consistent Hybrid previews with deferred large-canvas optimization. Keep legacy tilemap-document.ts beforeByCell/editedTiles row-major semantics and existing native regional texel rendering. Build the existing Catalog lazily only for source sheets needed by candidate or visible cells; cached modified/local patches avoid unrelated sheet indexes. Tests add an unrelated 8192-tile sheet and transformed foreign/empty cells, compare regional reads with full preview, commit, UndoRedo and patch reuse. No FPS or full migration completion claim.",
+      "indexedGradientReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/pending-gradient-session.ts",
+          "legacy/src/renderer/src/core/gradient.ts",
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "refreshPendingGradientRegion uses createCompositePointSampler when fillReference is visible-layers; selection compares resolved colors. Supply document RasterColorContext to all remaining gradient-reference composites, including tilemap begin, ordinary absent/full/sparse begin and option refresh shared with masks. Six directed mixed-format fixtures cover Create/Hybrid/Edit, full/sparse/absent RGBA targets, indexed top-layer barrier, initial and changed reference options, cancel, authoritative tile resources, one commit, undo/redo and reference source preservation. Friend fixture installs indexed test state without bypassing production admission gates. Release tilemap-document CTest passed (0.89s); no GUI build or manual acceptance."
+      }
     },
     {
       "file": "tests/tilemap_project_test.cpp",

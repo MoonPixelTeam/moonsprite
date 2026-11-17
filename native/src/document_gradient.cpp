@@ -84,7 +84,7 @@ bool Document::beginSparseGradient(Point seed,WandOptions options){
  const auto count=std::size_t(width_)*height_;account(count);account(count);if(options.visibleLayers)account(count);
  if(gradient_){account(gradient_->preview.size());if(gradient_->sparse)account(gradient_->sparse->canvas.size());}
  auto baseline=sparseFillCanvas(s);options.gapClosing=false;
- const auto reference=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};
+ const auto reference=options.visibleLayers?[&]{const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);return compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);}():std::vector<Pixel>{};
  auto region=sparseGradientRegion(options.visibleLayers?reference:baseline,width_,height_,seed,options);if(!region)return false;
  GradientPreview pending{seed,cel().id,layer().id,frame().id,baseline,selection_,std::move(region),options,contentRevision_};
  pending.sparse=SparseGradientBaseline{std::move(baseline),r.source->id,s.width,s.height,s.offsetX,s.offsetY,s.storageOriginX,s.storageOriginY};
@@ -95,7 +95,7 @@ bool Document::updateSparseGradient(const GradientSpec& spec,WandOptions options
  constexpr std::size_t limit=256*1024*1024;std::size_t used=0;auto account=[&](std::size_t count){if(count>(limit-used)/sizeof(Pixel))throw std::length_error("Gradient update exceeds document pixel budget");used+=count*sizeof(Pixel);};for(const auto& c:timeline_.state().cels)if(c.surface)account(c.surface->pixels.size());account(baseline.size());account(g.preview.size());const auto baseUsed=used;
  auto region=g.region;
  if(options.tolerance!=g.options.tolerance||options.contiguous!=g.options.contiguous||options.connectivity!=g.options.connectivity||options.visibleLayers!=g.options.visibleLayers){
-  if(options.visibleLayers)account(std::size_t(width_)*height_);const auto reference=options.visibleLayers?compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_}):std::vector<Pixel>{};
+  if(options.visibleLayers)account(std::size_t(width_)*height_);const auto reference=options.visibleLayers?[&]{const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);return compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);}():std::vector<Pixel>{};
   region=sparseGradientRegion(options.visibleLayers?reference:baseline,width_,height_,g.seed,options);
  }
  used=baseUsed;account(region?std::size_t(region->width):0);GradientSampler sample(spec);std::vector<Pixel> row(region?std::size_t(region->width):0);

@@ -619,4 +619,40 @@ static void checkHybridLargeTileRegions(){
  check(doc.floatingHybridPatchBuilds()==builds&&doc.canvasPixels()==before,"large regional reads rebuild patch or modify authority");const timeline::LinkedPixelStorage storageRevision;check(doc.commitFloatingPaste()&&doc.canvasPixels()==preview,"large regional preview differs from commit");check(timeline::LinkedPixelStorage{}.revision()-storageRevision.revision()<128,"Hybrid regional commit performs per-pixel authority writes");doc.undo();check(doc.canvasPixels()==before,"large regional undo");doc.redo();check(doc.canvasPixels()==preview,"large regional redo");
  }
 }
-int main(){try{checkHybridLargeTileRegions();checkPaintMoveDirty();checkPaintSelectionRanges();checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}
+namespace moon {struct RasterHistoryFixture {static void installReference(Document& d,timeline::State state){d.timeline_=timeline::Timeline(std::move(state));}};}
+static void checkIndexedGradientReference(){
+ for(int kind=0;kind<6;++kind){
+  auto seed=Document::fromImage(3,1,{0xff112233,0xff112233,0xff112233},U"Reference target");
+  const bool tile=kind<3,absent=kind==5;
+  if(tile)check(seed.convertLayerToTilemap(3,1,U"Reference tile"),"reference tile fixture");
+  const auto owner=seed.layer().id,frame=seed.frame().id;
+  auto indexed=Document::fromImage(3,1,{0xff445566,0xff445566,0xffabcdef},U"Indexed reference");
+  check(indexed.convertColorMode(color_mode::Mode::Indexed),"reference indexed fixture");
+  auto state=seed.timeline().state();
+  if(kind==4){auto& surface=*state.cels.front().surface;surface.width=surface.height=1;surface.pixels={0xff112233};}
+  if(absent)state.cels.clear();
+  auto layer=indexed.layer();layer.id="indexed-reference";state.layers.insert(state.layers.begin(),layer);
+  auto cel=indexed.cel();cel.id="indexed-reference-cel";cel.layerId=layer.id;cel.frameId=frame;state.cels.push_back(cel);
+  auto d=Document::fromImported(3,1,seed.timeline().state(),indexed.palette(),"gradient-reference",U"Reference",std::make_shared<const std::vector<std::uint8_t>>());RasterHistoryFixture::installReference(d,std::move(state));
+  d.selectLayer(owner);d.clearTimelineSelection();
+  if(tile)d.setTilemapMode(kind==0?tiles::Mode::Create:kind==1?tiles::Mode::Hybrid:tiles::Mode::Edit);
+  const auto before=d.canvasPixels();std::vector<std::vector<Pixel>> sheet;for(const auto& set:d.timeline().state().tilesets)sheet.push_back(set.pixels);auto sameSheet=[&]{std::vector<std::vector<Pixel>> current;for(const auto& set:d.timeline().state().tilesets)current.push_back(set.pixels);return current==sheet;};const auto h=d.historyPosition();
+  GradientSpec spec;spec.start={0,0};spec.end={2,0};spec.first=spec.last=0xff778899;
+  WandOptions options;options.visibleLayers=true;
+  auto preview=[&]{
+   check(d.beginGradient({0,0},options)&&d.updateGradient(spec,options),"indexed reference gradient begin");
+   const auto expected=std::vector<Pixel>{0xff778899,0xff778899,before[2]};
+   if(d.displayPixels()!=expected){std::cerr<<"reference kind "<<kind<<" pixels";for(auto p:d.displayPixels())std::cerr<<" "<<std::hex<<p;std::cerr<<std::dec<<"\n";}check(d.displayPixels()==expected,"indexed visible reference region on begin");
+   auto local=options;local.visibleLayers=false;
+   check(d.updateGradient(spec,local)&&d.updateGradient(spec,options),"indexed reference option refresh");
+   check(d.displayPixels()==expected,"indexed visible reference region after option refresh");
+  };
+  preview();d.cancelGradient();check(d.canvasPixels()==before&&d.historyPosition()==h&&sameSheet(),"indexed reference cancel preserves authority");
+  preview();check(d.commitGradient(),"indexed reference commit");
+  const auto after=d.canvasPixels();check(after==std::vector<Pixel>({0xff778899,0xff778899,before[2]})&&d.historyPosition()==h+1,"indexed reference committed region");
+  check(d.timeline().findCelById(cel.id)->surface->pixels==cel.surface->pixels,"indexed reference source preserved");
+  d.undo();check(d.canvasPixels()==before&&sameSheet(),"indexed reference undo");
+  d.redo();check(d.canvasPixels()==after,"indexed reference redo");
+ }
+}
+int main(){try{checkIndexedGradientReference();checkHybridLargeTileRegions();checkPaintMoveDirty();checkPaintSelectionRanges();checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}
