@@ -2,6 +2,7 @@
 #include "raster_snapshot.h"
 #include "document.h"
 #include "free_tile_selection_target.h"
+#include "canvas_feedback_composite.h"
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -29,10 +30,34 @@ namespace moon {struct RasterHistoryFixture {
   const auto local=d.wandReferencePixels(false);CHECK(local==std::vector<Pixel>({0,0xff112233,0xff112233,0xffabcdef,0}));
   auto selection=magicWandSelection(local,5,1,1,0);CHECK(selectionContains(selection,1,0)&&selectionContains(selection,2,0)&&!selectionContains(selection,0,0)&&!selectionContains(selection,3,0));
   CHECK(d.wandReferencePixels(true)==local);
+  CHECK(selectionFeedbackComposite(d,{0,0,5,1})==local);
+  CHECK(brushFeedbackComposite(d,{0,0,5,1},{{1,0},{4,7}})==std::vector<Pixel>({0,0xffabcdef,0xff112233,0xffabcdef,0xff112233}));
+  CHECK(brushFeedbackComposite(d,{1,0,2,1},{{1,0}})==std::vector<Pixel>({0xffabcdef,0xff112233}));
+  d.palette_.entries[1].color=0xff445566;
+  CHECK(selectionFeedbackComposite(d,{0,0,5,1})==std::vector<Pixel>({0,0xff445566,0xff112233,0xffabcdef,0}));
+  CHECK(brushFeedbackComposite(d,{4,0,1,1},{{4,7}})==std::vector<Pixel>({0xff445566}));
+  d.palette_.entries[1].color=0xff112233;
   const auto preview=freeTilePlacementComposite(d,{0,0,5,1},{0,0xff112233,0xff112233,0,0},{0,0,5,1});
   CHECK(preview==local);
   CHECK(freeTilePlacementComposite(d,{0,0,5,1},{0,0xff112233,0xff112233,0,0},{1,0,2,1})==std::vector<Pixel>({0xff112233,0xff112233}));
   CHECK(d.canvasPixels()==std::vector<Pixel>({0,7,8,0,0})&&d.historyPosition()==h&&d.timeline_.resolveSurface(d.cel().id).surface->pixels==before);
+  auto denseState=d.timeline_.state();auto& dense=*denseState.cels.front().surface;
+  dense.width=5;dense.offsetX=0;dense.pixels={7,7,8,0,7};d.timeline_=Timeline(std::move(denseState));d.colorMode_=color_mode::Mode::Indexed;d.palette_.setOrder({0,7,8});d.projectActiveCelOpacities();
+  const std::vector<Pixel> denseBefore=d.timeline_.resolveSurface(d.cel().id).surface->pixels;
+  const auto replacements=d.brushPreview({1,0},{1,0},0xffabcdef,{});
+  const auto feedback=brushFeedbackComposite(d,{0,0,5,1},replacements);
+  d.beginStroke({1,0},0xffabcdef);d.commitStroke();
+  CHECK(selectionFeedbackComposite(d,{0,0,5,1})==feedback);
+  d.undo();CHECK(d.timeline_.resolveSurface(d.cel().id).surface->pixels==denseBefore);
+  CHECK(d.createAttachedMask(d.layer().id,d.frame().id));
+  CHECK(d.selectAttachedMask(d.layer().id,d.frame().id,false));
+  const auto maskPreview=d.brushPreview({1,0},{1,0},0xff000000,{});
+  const auto masked=brushFeedbackComposite(d,{0,0,5,1},maskPreview);
+  d.beginStroke({1,0},0xff000000);d.commitStroke();
+  CHECK(selectionFeedbackComposite(d,{0,0,5,1})==masked);d.undo();
+  CHECK(d.selectAttachedMask(d.layer().id,d.frame().id,true));
+  const auto isolated=brushFeedbackComposite(d,{1,0,1,1},{{1,0xff000000}});
+  CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
 int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();

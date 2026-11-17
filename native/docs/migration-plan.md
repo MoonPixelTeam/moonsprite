@@ -7634,3 +7634,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 近期迁移正式程序集中验证
 
 近期索引色绘制、魔棒参考、自由瓦片悬停预览与工程信息等改动已编入唯一正式产物 native/build/Release/moonsprite-native.exe。Release moonsprite-native 构建退出0（migration-gui-verification-build.log）；正式程序 --selection-check 与 --project-information-check 均退出0，覆盖现有选区工具/显示检查与工程信息入口、弹窗缩窄滚动及只读状态检查。来源覆盖检查通过1042文件，diff检查通过。上述为自动程序检查，未进行人工图像验收，也未直接验收索引色生产入口；生产索引色新建、导入及菜单限制继续保留，整体迁移INCOMPLETE。本批不重复此前已通过的领域测试。
+
+## 2026-11-18 索引色笔刷与选区反馈
+
+依据旧版 canvas-brush-composite-preview.ts、canvas-render-brush.ts 的图层颜色解析及 canvas-adaptive-contrast.ts 的显示背景取样，为普通笔刷悬停和选区自动反色取样接入文档色板。brushPreview返回的索引存储词先解析为RGBA，再传入合成器；稀疏外部保持透明，已有密集RGBA逐行复制、蒙版隔离、浮动覆盖及缓存继续复用。共享canvas_feedback_composite.h供编辑器与定向检查使用。Release indexed-runtime构建及CTest通过（旧版oracle0.67秒、runtime0.02秒），覆盖稀疏/裁切、零号不透明颜色、色板变化、完整表面实际落笔与撤销、关联蒙版及隔离预览。新增夹具初始未设置可见色板顺序，撤销按旧规则规范化隐藏ID；补齐夹具顺序后通过。稀疏不透明零号扩展与显示外部的差异未据此改变存储语义。来源覆盖1043文件及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见indexedCanvasFeedback20261118。

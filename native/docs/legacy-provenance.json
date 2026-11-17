@@ -1172,7 +1172,8 @@
     "legacy/src/renderer/src/components/app/document-pane-hit-test.ts": "2131044fbd06374f135b78872c20be062888cad8a2136ecec4440f3d26119b2d",
     "legacy/src/renderer/src/components/app/document-pane-dock-resize.ts": "3c6fb9f8838b2b314f130c79f5f70c2e5717e2e8ee05722c1e68d5f43be8c6d3",
     "legacy/src/renderer/src/components/app/document-pane-dock-resize.test.ts": "27c7817994c47eceb8e6c81044061eef48632473f0c04249d2545034d14fbd16",
-    "legacy/src/renderer/src/components/app/document-tab-close-range.ts": "5a3f30204774a145133590b72f94127f33213f8afffab9a66964f771bbd5323a"
+    "legacy/src/renderer/src/components/app/document-tab-close-range.ts": "5a3f30204774a145133590b72f94127f33213f8afffab9a66964f771bbd5323a",
+    "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts": "82e5dba82b75c9ff1ba949f5d6a892a380498b0fc2bf375fce71379356b6e35a"
   },
   "files": [
     {
@@ -20754,7 +20755,16 @@
         ],
         "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
       },
-      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed."
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed.",
+      "indexedCanvasFeedback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts",
+          "legacy/src/renderer/src/components/canvas-render-brush.ts",
+          "legacy/src/renderer/src/components/canvas-adaptive-contrast.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy brush preview resolves original and replacement layer colors before full composition; adaptive contrast samples the rendered backdrop. Native shared canvas_feedback_composite helpers retain existing sparse bounds, mask isolation, dense RGBA row copies and deferred floating overlays, resolve brushPreview storage IDs to RGBA and pass document palette to all feedback composites. Editor keeps existing caches and feedback geometry. Indexed-runtime regression covers sparse exterior, opaque ID zero, clipped region, palette changes and raw/history preservation. Production indexed admission remains closed; GUI rebuild and manual acceptance not performed in this stage. Release indexed-runtime build and CTest passed (oracle 0.67s, runtime 0.02s), including full-surface actual brush preview/commit/undo and attached/isolated mask previews. Fixture initializes palette order to retain IDs under legacy history normalization. Sparse opaque-zero expansion is not asserted equal to full storage painting; dedicated sparse preview expectations retained."
+      }
     },
     {
       "file": "src/editor_desktop.h",
@@ -41604,6 +41614,15 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "renderCanvasFreeTileBrush resolves replacement via resolveLayerCanvasColor, reads original with readLayerColorAt, blends and samples composite replacement. Extract existing native replacement preparation into freeTilePlacementComposite used by editor; resolve indexed target colors only within actual storage, normalize ink according to target format and pass document RasterColorContext to full composite. Directed indexed-runtime checks exercise shared production helper with sparse storage, opaque palette zero, full and clipped previews, preserving raw pixels/history. Release indexed-runtime build/CTest passed (oracle 0.71s, runtime 0.02s). GUI call site inspected; no GUI rebuild or manual acceptance, indexed production admission still closed."
+      },
+      "indexedCanvasFeedback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts",
+          "legacy/src/renderer/src/components/canvas-render-brush.ts",
+          "legacy/src/renderer/src/components/canvas-adaptive-contrast.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy brush preview resolves original and replacement layer colors before full composition; adaptive contrast samples the rendered backdrop. Native shared canvas_feedback_composite helpers retain existing sparse bounds, mask isolation, dense RGBA row copies and deferred floating overlays, resolve brushPreview storage IDs to RGBA and pass document palette to all feedback composites. Editor keeps existing caches and feedback geometry. Indexed-runtime regression covers sparse exterior, opaque ID zero, clipped region, palette changes and raw/history preservation. Production indexed admission remains closed; GUI rebuild and manual acceptance not performed in this stage. Release indexed-runtime build and CTest passed (oracle 0.67s, runtime 0.02s), including full-surface actual brush preview/commit/undo and attached/isolated mask previews. Fixture initializes palette order to retain IDs under legacy history normalization. Sparse opaque-zero expansion is not asserted equal to full storage painting; dedicated sparse preview expectations retained."
       }
     },
     {
@@ -44307,6 +44326,26 @@
         "legacy/src/renderer/src/core/document-pane-layout.ts"
       ],
       "adaptation": "Translate useAppDocumentPanes React effects/callbacks to synchronous native UI state. Preserve document order, main-view promotion, floating return, secondary identity and content isolation. Integrated in the production host; document-panes-only runtime verifies split/float ownership, return and close paths."
+    },
+    {
+      "file": "src/canvas_feedback_composite.h",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts",
+        "legacy/src/renderer/src/components/canvas-render-brush.ts",
+        "legacy/src/renderer/src/components/canvas-adaptive-contrast.ts",
+        "legacy/src/renderer/src/core/document-model.ts"
+      ],
+      "indexedCanvasFeedback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts",
+          "legacy/src/renderer/src/components/canvas-render-brush.ts",
+          "legacy/src/renderer/src/components/canvas-adaptive-contrast.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy brush preview resolves original and replacement layer colors before full composition; adaptive contrast samples the rendered backdrop. Native shared canvas_feedback_composite helpers retain existing sparse bounds, mask isolation, dense RGBA row copies and deferred floating overlays, resolve brushPreview storage IDs to RGBA and pass document palette to all feedback composites. Editor keeps existing caches and feedback geometry. Indexed-runtime regression covers sparse exterior, opaque ID zero, clipped region, palette changes and raw/history preservation. Production indexed admission remains closed; GUI rebuild and manual acceptance not performed in this stage. Release indexed-runtime build and CTest passed (oracle 0.67s, runtime 0.02s), including full-surface actual brush preview/commit/undo and attached/isolated mask previews. Fixture initializes palette order to retain IDs under legacy history normalization. Sparse opaque-zero expansion is not asserted equal to full storage painting; dedicated sparse preview expectations retained."
+      },
+      "scope": "Native brush replacement and adaptive selection feedback color composition"
     }
   ],
   "assetTransfers": [

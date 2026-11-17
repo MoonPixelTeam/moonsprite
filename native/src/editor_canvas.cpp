@@ -8,6 +8,7 @@
 #include "pixel_grid.h"
 #include "sheet_import_preview.h"
 #include "free_tile_selection_target.h"
+#include "canvas_feedback_composite.h"
 #include "raster_geometry.h"
 #include "layer_label_separator.h"
 #include "preview_panel.h"
@@ -1086,7 +1087,7 @@ gfx::Color Editor::selectionPreviewColor(int x,int y,bool selection) const {
 
     Pixel pixel=0;if(selectionColorIdentity_!=currentDocument().identity() || selectionColorRevision_!=currentDocument().contentRevision() || selectionColorFrame_!=currentDocument().frame().id||selectionColorFloatingRevision_!=currentDocument().floatingOverlayRevision()){selectionColorFloatingRevision_=currentDocument().floatingOverlayRevision();selectionColorTiles_.clear();selectionColorIdentity_=currentDocument().identity();selectionColorRevision_=currentDocument().contentRevision();selectionColorFrame_=currentDocument().frame().id;}
 
-    if(x>=0 && y>=0 && x<currentDocument().width() && y<currentDocument().height()){const auto key=std::make_pair(x/64,y/64);auto it=selectionColorTiles_.find(key);const int left=key.first*64,top=key.second*64,width=std::min(64,currentDocument().width()-left);if(it==selectionColorTiles_.end()){if(selectionColorTiles_.size()>=32)selectionColorTiles_.erase(selectionColorTiles_.begin());const PixelRegion region{left,top,width,std::min(64,currentDocument().height()-top)};const auto overlay=currentDocument().floatingDeferred()?currentDocument().floatingOverlayRegion(region):std::vector<Pixel>{};auto composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},currentDocument().layer().id,currentDocument().floatingDeferred()?&overlay:nullptr,region.w,region.x,region.y,false);it=selectionColorTiles_.emplace(key,std::move(composed)).first;}pixel=it->second[(y-top)*width+x-left];}
+    if(x>=0 && y>=0 && x<currentDocument().width() && y<currentDocument().height()){const auto key=std::make_pair(x/64,y/64);auto it=selectionColorTiles_.find(key);const int left=key.first*64,top=key.second*64,width=std::min(64,currentDocument().width()-left);if(it==selectionColorTiles_.end()){if(selectionColorTiles_.size()>=32)selectionColorTiles_.erase(selectionColorTiles_.begin());const PixelRegion region{left,top,width,std::min(64,currentDocument().height()-top)};auto composed=selectionFeedbackComposite(currentDocument(),region);it=selectionColorTiles_.emplace(key,std::move(composed)).first;}pixel=it->second[(y-top)*width+x-left];}
 
     auto color=pixel>>24?gfx::rgba(pixel&255,(pixel>>8)&255,(pixel>>16)&255,255):checkerboard_.at(x,y);
 
@@ -1240,19 +1241,7 @@ void Editor::paintBrushPreview(ui::Graphics& g,const gfx::Rect& cv,bool outlineP
 
     PixelRegion region;for(auto [i,value]:replacements)region.include(int(i%currentDocument().width()),int(i/currentDocument().width()));
 
-    std::vector<Pixel> pixels(std::size_t(region.w)*region.h);
-
-    const auto* mask=currentDocument().activeMask();const auto* source=mask?&mask->surface:currentDocument().activeSurfaceIfPresent();if(source)raster::validate(*source);
-    const bool denseSource=source&&raster::fullCanvas(*source,currentDocument().width(),currentDocument().height());
-    if(source)for(int y=0;y<region.h;++y){auto row=pixels.begin()+std::size_t(y)*region.w;if(denseSource)std::copy_n(source->pixels.begin()+std::size_t(region.y+y)*currentDocument().width()+region.x,region.w,row);else for(int x=0;x<region.w;++x)row[x]=raster::readWorld(*source,region.x+x,region.y+y);}
-
-    for(auto [i,value]:replacements)pixels[(i/currentDocument().width()-region.y)*region.w+i%currentDocument().width()-region.x]=value;
-
-    std::vector<Pixel> composed;
-    if(mask){
-      if(currentDocument().maskIsolated()){composed.reserve(pixels.size());for(auto p:pixels){const auto gray=timeline::maskCoverage(p);composed.push_back(0xff000000u|gray|(gray<<8)|(gray<<16));}}
-      else{timeline::Surface patch;patch.width=region.w;patch.height=region.h;patch.offsetX=region.x;patch.offsetY=region.y;patch.pixels=std::move(pixels);composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},{},nullptr,0,0,0,false,{},{},mask,&patch);}
-    }else composed=compositeNormalRegion(currentDocument().displayTimeline(),currentDocument().frame().id,{region.x,region.y,region.w,region.h},currentDocument().layer().id,&pixels,region.w,region.x,region.y);
+    const auto composed=brushFeedbackComposite(currentDocument(),region,replacements);
 
     // Port legacy solidCompositePreviewRects: group adjacent equal colors.
 
