@@ -25214,6 +25214,14 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts"
         ],
         "nativeAdaptation": "Legacy flipSelection operates on ordinary target layers independently of unrelated grid tilemaps. Permit ordinary layers through grid flip menu wrapper, leaving existing previous availability and Document target filtering intact. Actual menu fixture checks horizontal/vertical selected pixel destinations, outside pixel preservation, tile refs/resources unchanged, one history and Undo/Redo."
+      },
+      "mixedGridLinkedLayer20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-properties.ts",
+          "legacy/src/renderer/src/core/linked-layers.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
+        ],
+        "nativeAdaptation": "Legacy createLinkedLayer and isLinkableRasterLayer restrict the source raster layer, not unrelated tilemaps. Remove obsolete document-wide createLinkedLayer menu block; retain registry source/group/selection/busy guards and existing linked-layer transaction. Formal mixed grid menu fixture checks one creation history, Undo/Redo, shared pixel editing and Undo/Redo, tile resource preservation, and refusal on tile source."
       }
     },
     {
@@ -33393,6 +33401,14 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts"
         ],
         "nativeAdaptation": "Legacy flipSelection operates on ordinary target layers independently of unrelated grid tilemaps. Permit ordinary layers through grid flip menu wrapper, leaving existing previous availability and Document target filtering intact. Actual menu fixture checks horizontal/vertical selected pixel destinations, outside pixel preservation, tile refs/resources unchanged, one history and Undo/Redo."
+      },
+      "mixedGridLinkedLayer20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-properties.ts",
+          "legacy/src/renderer/src/core/linked-layers.ts",
+          "legacy/src/renderer/src/store/workspace-linked-layers.test.ts"
+        ],
+        "nativeAdaptation": "Legacy createLinkedLayer and isLinkableRasterLayer restrict the source raster layer, not unrelated tilemaps. Remove obsolete document-wide createLinkedLayer menu block; retain registry source/group/selection/busy guards and existing linked-layer transaction. Formal mixed grid menu fixture checks one creation history, Undo/Redo, shared pixel editing and Undo/Redo, tile resource preservation, and refusal on tile source."
       }
     },
     {

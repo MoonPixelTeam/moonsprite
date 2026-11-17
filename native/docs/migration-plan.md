@@ -7776,3 +7776,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合网格工程普通图层选区翻转入口
 
 对照workspace-commands-selection-flip.ts，普通图层选区翻转不因工程包含无关网格瓦片而禁用。网格菜单包装放行普通图层，仍沿用原菜单条件和Document目标校验。实际水平/垂直菜单检查验证选区像素镜像位置、范围外像素保留、瓦片引用/资源不变、单次历史与Undo/Redo。唯一正式Release构建退出0（mixed-grid-raster-flip-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridRasterFlip20261118。
+
+## 2026-11-18 混合网格工程普通图层创建关联图层入口
+
+对照workspace-commands-layer-properties.ts::createLinkedLayer、core/linked-layers.ts::isLinkableRasterLayer及workspace-linked-layers.test.ts，关联图层只限制源图层类型，不因其他网格层拒绝。移除旧网格工程级createLinkedLayer菜单禁用项，保留registry的源类型、组/多选、忙碌状态校验及既有事务。复用混合图层实际菜单夹具验证创建一条历史、Undo/Redo、共享像素编辑及其Undo/Redo、瓦片引用/资源保持，并验证活动瓦片层仍禁用。唯一正式Release构建退出0（mixed-grid-linked-layer-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针运行退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridLinkedLayer20261118。
