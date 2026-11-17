@@ -2060,6 +2060,15 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "indexedModeTransaction20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/palette-layout.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
+          "legacy/src/renderer/src/store/workspace-document-history.ts"
+        ],
+        "nativeAdaptation": "Migrate convertDocumentColorMode and ensureIndexedPalette through existing standalone surface/palette/mode history. Resolve indexed source IDs with last-entry Map semantics; map target colors to existing visible palette IDs; preserve storage deduplication, geometry, masks and independent resources. Add missing transparent ID 0 and visible slot according to legacy layout rules. Retain current UI roles and selection on history replay. Tests cover grayscale/indexed/RGBA transitions, empty palette, existing opaque zero, linked layers/frames, offsets and undo/redo. Production indexed import/new/menu admission remains closed; this is the conversion transaction, not full indexed admission."
       }
     },
     {
@@ -41127,6 +41136,15 @@
       "colorModeFreeResources20261114": {
         "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
         "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
+      },
+      "indexedModeTransaction20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/palette-layout.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
+          "legacy/src/renderer/src/store/workspace-document-history.ts"
+        ],
+        "nativeAdaptation": "Migrate convertDocumentColorMode and ensureIndexedPalette through existing standalone surface/palette/mode history. Resolve indexed source IDs with last-entry Map semantics; map target colors to existing visible palette IDs; preserve storage deduplication, geometry, masks and independent resources. Add missing transparent ID 0 and visible slot according to legacy layout rules. Retain current UI roles and selection on history replay. Tests cover grayscale/indexed/RGBA transitions, empty palette, existing opaque zero, linked layers/frames, offsets and undo/redo. Production indexed import/new/menu admission remains closed; this is the conversion transaction, not full indexed admission."
       }
     },
     {
@@ -41173,6 +41191,15 @@
       "colorModeFreeResources20261114": {
         "legacyEvidence": "captureDocumentImageResizeSnapshot/restoreDocumentImageResizeSnapshot and captureDocumentColorModeSnapshot/restoreDocumentColorModeSnapshot retain all instance fields, source offsets and referenced free tileset geometry/pixels; names, source flags, tile identities and unrelated resources are excluded.",
         "nativeAdaptation": "Retain one immutable resource capture because conversion itself leaves those resources unchanged. Resolve IDs and allocate exchange copies before publishing, restore only captured fields, preserve canonical Cel links/current frame/selection, include retained bytes and working-storage admission. Native mutation/replay/rejection cases and actual legacy module oracle; final evidence recorded in grayscale-color-mode-migration-20261114.md."
+      },
+      "indexedModeTransaction20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/palette-layout.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts",
+          "legacy/src/renderer/src/store/workspace-document-history.ts"
+        ],
+        "nativeAdaptation": "Migrate convertDocumentColorMode and ensureIndexedPalette through existing standalone surface/palette/mode history. Resolve indexed source IDs with last-entry Map semantics; map target colors to existing visible palette IDs; preserve storage deduplication, geometry, masks and independent resources. Add missing transparent ID 0 and visible slot according to legacy layout rules. Retain current UI roles and selection on history replay. Tests cover grayscale/indexed/RGBA transitions, empty palette, existing opaque zero, linked layers/frames, offsets and undo/redo. Production indexed import/new/menu admission remains closed; this is the conversion transaction, not full indexed admission."
       }
     },
     {

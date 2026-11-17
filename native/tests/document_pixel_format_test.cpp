@@ -143,7 +143,17 @@ static void grayscaleContract(){
  const auto gray=d.canvasPixels();CHECK(d.convertColorMode(Mode::Rgba));
  CHECK(d.canvasPixels()==gray&&d.pixelFormat()==Format::Rgb565);
  d.undo();CHECK(d.colorMode()==Mode::Grayscale&&d.canvasPixels()==gray);
- bool rejected=false;try{d.convertColorMode(Mode::Indexed);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected&&d.colorMode()==Mode::Grayscale);
+ const auto grayBeforeIndex=d.canvasPixels();const auto paletteBeforeIndex=d.palette();
+ CHECK(d.convertColorMode(Mode::Indexed)&&d.colorMode()==Mode::Indexed);
+ CHECK(d.cel().surface->format==timeline::RasterFormat::Indexed);
+ const auto indexedPixels=d.cel().surface->pixels;const auto indexedPalette=d.palette();
+ const auto indexedOrder=indexedPalette.order();CHECK(std::find(indexedOrder.begin(),indexedOrder.end(),0)!=indexedOrder.end());
+ d.undo();CHECK(d.colorMode()==Mode::Grayscale&&d.canvasPixels()==grayBeforeIndex&&d.palette().entries.size()==paletteBeforeIndex.entries.size());
+ d.redo();CHECK(d.colorMode()==Mode::Indexed&&d.cel().surface->pixels==indexedPixels);
+ CHECK(d.convertColorMode(Mode::Rgba)&&d.cel().surface->format==timeline::RasterFormat::Rgba);
+ for(std::size_t i=0;i<indexedPixels.size();++i)CHECK(d.cel().surface->pixels[i]==color_mode::paletteColor(indexedPalette.entries,int(indexedPixels[i])));
+ d.undo();CHECK(d.colorMode()==Mode::Indexed&&d.cel().surface->pixels==indexedPixels);
+ d.undo();CHECK(d.colorMode()==Mode::Grayscale&&d.canvasPixels()==grayBeforeIndex);
  Document linked(4,2);dot(linked,{0,0},source);const auto original=linked.layer().id;
  const auto peer=linked.createLinkedLayer(original);CHECK(!peer.empty());
  RasterHistoryFixture::resource(linked);const auto resource=linked.timeline().state().tilesets[0].pixels;
@@ -166,4 +176,27 @@ static void grayscaleContract(){
  for(unsigned i=0;i<8;++i){tools(Format(i),Mode::Grayscale);localHistoryFormat(Format(i),Mode::Grayscale);}
 }
 
-int main(){try{winrt::init_apartment();grayscaleContract();grayscaleTiles();grayscaleResourceHistory();for(unsigned i=0;i<8;++i){std::cout<<"format "<<i<<std::endl;const auto format=Format(i);conversion(format,false);conversion(format,true);tools(format);scriptsAndHistory(format);transforms(format);dynamicsAndAa(format);linkedLayersAndResources(format);localHistoryFormat(format);preferences::RuntimeSettings p;p.set("colorLayers.pixelFormat.Select",std::to_string(i));std::istringstream encoded(p.encode());CHECK(preferences::RuntimeSettings::decode(encoded).index("colorLayers.pixelFormat.Select")==int(i));}manifestFallback();std::cout<<"Eight RGBA pixel formats: conversion/tools/preview/history/script/save/recovery passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+static void indexedModeConversion(){
+ using Mode=color_mode::Mode;
+ for(int variant=0;variant<3;++variant){
+  Document d(3,2);const std::vector<Pixel> input{0xff211b18,0xffff7929,0x00123456,0xff211b18,0xffff7929,0};RasterHistoryFixture::raw(d,input,3,2,-1,1);
+  auto& palette=const_cast<PaletteState&>(d.palette());
+  if(variant==1){palette.entries.clear();palette.slots.assign(8,EmptyPaletteSlot);palette.independentOrder.reset();}
+  if(variant==2){palette.entries.insert(palette.entries.begin(),{0,U"Existing zero",0xff123456});palette.slots.push_back(0);}
+  const auto originalPalette=palette;const auto original=d.cel().surface.value();const auto layer=d.layer().id;const auto frame=d.frame().id;
+  const auto peer=d.createLinkedLayer(layer);CHECK(!peer.empty());d.selectLayer(layer);d.addLinkedFrame();
+  const std::vector<Pixel> linkedInput=d.timeline().resolveSurface(d.timeline().findCel(layer,frame)->id).surface->pixels;
+  CHECK(d.convertColorMode(Mode::Indexed));const auto order=d.palette().order();CHECK(std::count(order.begin(),order.end(),0)==1);
+  const auto* a=d.timeline().resolveSurface(d.timeline().findCel(layer,frame)->id).surface;const auto* b=d.timeline().resolveSurface(d.timeline().findCel(peer,frame)->id).surface;
+  CHECK(a&&b&&a->format==timeline::RasterFormat::Indexed&&a->pixels.identity()==b->pixels.identity());
+  CHECK(a->offsetX==original.offsetX&&a->offsetY==original.offsetY&&a->storageOriginX==original.storageOriginX&&a->storageOriginY==original.storageOriginY);
+  CHECK(a->pixels.size()==linkedInput.size());
+  for(std::size_t i=0;i<linkedInput.size();++i)CHECK(a->pixels[i]==Pixel(color_mode::paletteColorIdForCanvas(d.palette().entries,order,linkedInput[i])));
+  const auto raw=a->pixels;CHECK(d.convertColorMode(Mode::Grayscale));
+  for(std::size_t i=0;i<raw.size();++i)CHECK(d.timeline().resolveSurface(d.cel().id).surface->pixels[i]==relativeLuminancePixel(color_mode::paletteColor(d.palette().entries,int(raw[i]))));
+  d.undo();CHECK(d.colorMode()==Mode::Indexed&&d.timeline().resolveSurface(d.cel().id).surface->pixels==raw);d.undo();CHECK(d.colorMode()==Mode::Rgba&&d.timeline().resolveSurface(d.cel().id).surface->pixels==linkedInput&&d.palette().entries.size()==originalPalette.entries.size());
+  d.redo();CHECK(d.colorMode()==Mode::Indexed&&d.timeline().resolveSurface(d.cel().id).surface->pixels==raw);
+ }
+}
+
+int main(){try{winrt::init_apartment();indexedModeConversion();grayscaleContract();grayscaleTiles();grayscaleResourceHistory();for(unsigned i=0;i<8;++i){std::cout<<"format "<<i<<std::endl;const auto format=Format(i);conversion(format,false);conversion(format,true);tools(format);scriptsAndHistory(format);transforms(format);dynamicsAndAa(format);linkedLayersAndResources(format);localHistoryFormat(format);preferences::RuntimeSettings p;p.set("colorLayers.pixelFormat.Select",std::to_string(i));std::istringstream encoded(p.encode());CHECK(preferences::RuntimeSettings::decode(encoded).index("colorLayers.pixelFormat.Select")==int(i));}manifestFallback();std::cout<<"Eight RGBA pixel formats: conversion/tools/preview/history/script/save/recovery passed\n";return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

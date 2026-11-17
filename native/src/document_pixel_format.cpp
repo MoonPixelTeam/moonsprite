@@ -3,10 +3,10 @@
 #include <unordered_map>
 #include "document_history_storage.h"
 #include "sheet_import_storage.h"
+#include "raster_color_context.h"
 
 namespace moon {
 bool Document::convertColorMode(color_mode::Mode target){
- if(target==color_mode::Mode::Indexed)throw std::invalid_argument("Indexed storage migration is incomplete");
  if(target==colorMode_||active())return false;
  // Legacy visits displayed layers and cels, excluding masks and independent
  // tileset resources. Native displayed layers use the owning cel storage.
@@ -26,6 +26,20 @@ bool Document::convertColorMode(color_mode::Mode target){
  edit.snapshotHistory.colorModeResources=std::move(resources);
  edit.paletteHistory.paletteKind=13;
  edit.paletteHistory.beforePalette=palette_;edit.paletteHistory.afterPalette=palette_;
+ auto& targetPalette=*edit.paletteHistory.afterPalette;
+ if(target==color_mode::Mode::Indexed){
+  if(std::none_of(targetPalette.entries.begin(),targetPalette.entries.end(),[](const auto& e){return e.id==0;}))targetPalette.entries.insert(targetPalette.entries.begin(),{0,U"透明",0});
+  const auto order=targetPalette.order();
+  if(std::find(order.begin(),order.end(),0)==order.end()){
+   targetPalette.columns=std::clamp(targetPalette.columns,1,256);
+   auto slots=normalizePaletteSlots(targetPalette.entries,order,targetPalette.slots,targetPalette.columns);
+   const auto hole=std::find(slots.begin(),slots.end(),EmptyPaletteSlot);
+   if(hole!=slots.end())*hole=0;else{slots.push_back(0);slots.resize(slots.size()+targetPalette.columns-1,EmptyPaletteSlot);}
+   targetPalette.slots=std::move(slots);targetPalette.setOrder(paletteOrderFromSlots(targetPalette.slots));
+  }
+ }
+ const RasterColorContext sourceColors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ const RasterColorContext targetColors(targetPalette.entries,targetPalette.order(),target,pixelFormat_);
  edit.maskHistory.beforeMasks=timeline_.state().masks;edit.maskHistory.afterMasks=timeline_.state().masks;
  std::unordered_map<const void*,timeline::LinkedPixelStorage> converted;
  for(const auto& cel:timeline_.state().cels)if(cel.surface&&timeline_.resolveSurface(cel.id).source->id==cel.id){
@@ -33,10 +47,10 @@ bool Document::convertColorMode(color_mode::Mode target){
   auto found=converted.find(before.pixels.identity());
   if(found==converted.end()){
    timeline::LinkedPixelStorage pixels(before.pixels);
-   if(target==color_mode::Mode::Grayscale)for(auto& value:pixels)value=relativeLuminancePixel(value);
+   for(auto& value:pixels){const auto color=sourceColors.rgba(before.format,value);value=target==color_mode::Mode::Indexed?targetColors.colorId(color):target==color_mode::Mode::Grayscale?relativeLuminancePixel(color):color;}
    found=converted.emplace(before.pixels.identity(),std::move(pixels)).first;
   }
-  auto after=before;after.pixels.share(found->second);
+  auto after=before;after.format=target==color_mode::Mode::Indexed?timeline::RasterFormat::Indexed:timeline::RasterFormat::Rgba;after.pixels.share(found->second);
   edit.contentHistory.surfaceChanges.push_back({cel.id,before,std::move(after)});
  }
  // No animation-selection snapshot: replay keeps the current UI context.

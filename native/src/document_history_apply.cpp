@@ -29,7 +29,6 @@ template<class Edit> void validateHistoryShape(const Edit& e){
  requireHistoryAfter(s.beforeRollback,s.afterRollback);
  requireHistoryAfter(s.beforeTimeline,s.afterTimeline);
  requireHistoryAfter(s.beforeColorMode,s.afterColorMode);
- if(s.beforeColorMode&&(*s.beforeColorMode==color_mode::Mode::Indexed||*s.afterColorMode==color_mode::Mode::Indexed))throw std::logic_error("Unsupported color mode history");
  if(s.colorModeResources&&(!s.beforeColorMode||s.beforeTimeline))throw std::logic_error("Invalid color mode resource history");
  requireHistoryAfter(s.beforeDimensions,s.afterDimensions);
  requireHistoryAfter(s.beforeScriptGeometry,s.afterScriptGeometry);

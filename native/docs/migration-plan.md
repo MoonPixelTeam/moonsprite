@@ -7534,3 +7534,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色补间对话框接线
 
 实际补间对话框将文档色板、顺序、模式和精度传入三种补间源规划、边界及预览；路径底图与终点轮廓按旧版 tweenPreviewCanvas 在上传前转换为 RGBA，文档原始 ID 不变。正式 Release 构建成功，--quantization-morph-check 退出0，覆盖既有 RGBA 对话框取消、应用、生成及撤销重做；未验证实际 indexed GUI 准入，生产索引色打开仍关闭。来源覆盖1042文件和 diff 检查通过；未做人工图像验收，整体迁移 INCOMPLETE。来源见 indexedTweenUi20261118。
+
+## 2026-11-18 索引色模式转换事务
+
+按旧版 convertDocumentColorMode／ensureIndexedPalette 补齐 RGBA、灰度和索引色之间的转换，保留共享存储、几何与原始撤销数据，缺少透明 ID 0 时按旧版添加色板项和可见槽位。沿用独立模式／色板／表面历史，蒙版与独立瓦片资源不参与像素转换。正式 Release 构建成功；document-pixel-format 定向检查通过，覆盖空色板、有色 ID 0、关联图层／链接帧、偏移及 Undo/Redo。新增夹具曾直接读取链接 Cel 的空 optional，已改为解析实际表面；直接启动的测试进程曾占用测试 exe，结束该测试进程后重新构建验收通过。未做实际 indexed GUI 或保存重开验收，生产索引色新建、导入和菜单入口仍关闭，整体 INCOMPLETE。来源见 indexedModeTransaction20261118。
