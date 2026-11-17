@@ -9,6 +9,7 @@ static void check(bool value,const char* why){if(!value)throw std::runtime_error
 int main(){try{
  check(projectCounter(-1)==0&&projectCounter(.5)==0&&projectCounter(std::numeric_limits<double>::infinity())==0&&projectCounter(17)==17,"Legacy safe nonnegative integer metadata");
  check(projectDuration(360000123)=="100:00:00"&&projectDuration(999)=="00:00:00","Legacy duration floors seconds and retains hours");check(projectStorage(1024)=="1.0 KB"&&projectStorage(100*1024)=="100 KB","Legacy byte units");
+ {std::vector<timelapse::Frame> frames(3);frames[0].data={1,2,3};frames[0].local=timelapse::Reference{"store","chunk",0,100,0};frames[1].local=timelapse::Reference{"store","chunk",0,2048,0};check(projectRecordingBytes(frames)==2051,"Recording bytes prefer embedded data and include local references");check(projectRecordingBytes(std::vector<timelapse::Frame>{})==0,"Empty recording bytes");}
  Document d(4,4);auto original=d.projectInformation();check(original.operationCount==0&&original.strokeCount==0&&!original.createdAt.empty()&&original.createdAt==original.updatedAt,"New project metadata defaults");
  d.beginStroke({0,0},0xff123456);d.cancelStroke();check(d.projectInformation().operationCount==0&&d.projectInformation().strokeCount==0,"Canceled preview must not count");
  d.beginStroke({0,0},0xff123456);d.commitStroke();check(d.projectInformation().operationCount==1&&d.projectInformation().strokeCount==1&&d.projectInformation().drawingTimeMs>=1,"One committed brush stroke activity");const auto duration=d.projectInformation().drawingTimeMs;

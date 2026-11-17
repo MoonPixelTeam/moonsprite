@@ -7622,3 +7622,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 自由瓦片悬停预览颜色解析
 
 依据旧版 canvas-render-free-tile-brush.ts 与 document-model.ts，悬停预览按目标栅格格式解析原像素及写入颜色，随后传入文档色板合成。编辑器与定向测试复用 freeTilePlacementComposite，覆盖索引色、稀疏存储、零号不透明颜色及局部裁剪。Release indexed-runtime 构建及 CTest 通过（oracle 0.71秒、runtime 0.02秒）。未重建 GUI、未做人工图像验收；索引色生产入口仍关闭，整体 INCOMPLETE。来源见 freePlacementColor20261118。
+
+## 2026-11-18 工程信息颜色模式与缩时统计
+
+对照旧版 ProjectInfoDialog.tsx 及中文文案，工程信息显示实际 RGBA/索引/灰度模式、缩时快照数量和数据量。数据量优先取内嵌数据长度，否则取本地引用长度，不读取录像文件、不触发刷新或写入。沿用既有 projectStorage 单位和面板布局。Release project-information-tests 构建及 project-information CTest 通过（0.05秒），覆盖内嵌优先、本地引用及空记录；未重建 GUI、未做弹窗运行或人工图像验收。整体迁移 INCOMPLETE。来源见 projectInfoRecording20261118。
