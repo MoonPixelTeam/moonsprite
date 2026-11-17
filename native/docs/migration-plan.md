@@ -7630,3 +7630,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合格式填充参考取色
 
 对照旧版 tools-fill.ts::sourceColorAt，填充参考可见图层时始终传入文档色板，目标为RGBA时也能解析其他索引色图层；目标索引写入仍使用既有独立上下文。Release tilemap-document 构建及 CTest 通过（0.39秒），新增普通/稀疏/空Cel的纯色与图案填充，核对索引色边界、参考源不变、单条历史及撤销重做。未重建GUI、未做人工验收；索引色生产入口仍关闭，整体INCOMPLETE。来源见 mixedFillReference20261118。
+
+## 2026-11-18 近期迁移正式程序集中验证
+
+近期索引色绘制、魔棒参考、自由瓦片悬停预览与工程信息等改动已编入唯一正式产物 native/build/Release/moonsprite-native.exe。Release moonsprite-native 构建退出0（migration-gui-verification-build.log）；正式程序 --selection-check 与 --project-information-check 均退出0，覆盖现有选区工具/显示检查与工程信息入口、弹窗缩窄滚动及只读状态检查。来源覆盖检查通过1042文件，diff检查通过。上述为自动程序检查，未进行人工图像验收，也未直接验收索引色生产入口；生产索引色新建、导入及菜单限制继续保留，整体迁移INCOMPLETE。本批不重复此前已通过的领域测试。
