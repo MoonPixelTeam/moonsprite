@@ -27283,6 +27283,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy pasteAsNewLayer creates a layer in document color mode and writes each unmasked clipboard RGBA color through writeLayerColor. Native pastePixelsAsNewLayer now selects target storage format, maps indexed colors to visible palette IDs and applies grayscale/RGBA precision color-write normalization; masked pixels and other frames remain zero without color quantization. Existing placement, selection, mask-context exit and structure history are retained. Six mode/precision fixtures cover indexed, grayscale and RGBA with rgba32/rgb565, transparent RGB, clipping mask, inactive frame format, clipboard preservation and undo/redo. Release builds and all three associated CTests passed (oracle 0.70s, runtime 0.03s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "wholeLayerColorClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "layerClipboardFromDocument freezes animation Cel indexed pixels through a palette Map (last duplicate ID wins), while applyLayerClipboardAnimationCel converts RGBA snapshots into destination indexed IDs or grayscale without requantizing RGBA precision. Reuse animationClipboardCel at whole-layer copy and animationCelForTarget at paste. Preserve independent Cel snapshots, geometry, payloads and existing structure history. Directed regression copies indexed linked frames with duplicate IDs, changes source palette, pastes to RGBA/grayscale/indexed targets with different IDs, checks frozen pixels, format, no RGBA precision requantization, single history and undo/redo. Release builds passed; indexed-runtime oracle/runtime and complete document-layer-groups CTests passed (0.71/0.03/0.03s). No official GUI rebuild or manual acceptance; indexed production admission remains closed."
       }
     },
     {
@@ -41704,6 +41711,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy pasteAsNewLayer creates a layer in document color mode and writes each unmasked clipboard RGBA color through writeLayerColor. Native pastePixelsAsNewLayer now selects target storage format, maps indexed colors to visible palette IDs and applies grayscale/RGBA precision color-write normalization; masked pixels and other frames remain zero without color quantization. Existing placement, selection, mask-context exit and structure history are retained. Six mode/precision fixtures cover indexed, grayscale and RGBA with rgba32/rgb565, transparent RGB, clipping mask, inactive frame format, clipboard preservation and undo/redo. Release builds and all three associated CTests passed (oracle 0.70s, runtime 0.03s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "wholeLayerColorClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "layerClipboardFromDocument freezes animation Cel indexed pixels through a palette Map (last duplicate ID wins), while applyLayerClipboardAnimationCel converts RGBA snapshots into destination indexed IDs or grayscale without requantizing RGBA precision. Reuse animationClipboardCel at whole-layer copy and animationCelForTarget at paste. Preserve independent Cel snapshots, geometry, payloads and existing structure history. Directed regression copies indexed linked frames with duplicate IDs, changes source palette, pastes to RGBA/grayscale/indexed targets with different IDs, checks frozen pixels, format, no RGBA precision requantization, single history and undo/redo. Release builds passed; indexed-runtime oracle/runtime and complete document-layer-groups CTests passed (0.71/0.03/0.03s). No official GUI rebuild or manual acceptance; indexed production admission remains closed."
       }
     },
     {

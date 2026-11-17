@@ -7658,3 +7658,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 粘贴为新图层的颜色模式写入
 
 对照旧版workspace-commands-clipboard.ts::pasteAsNewLayer及document-model.ts::writeLayerColor，新图层按文档模式创建表面，未遮罩的剪贴板颜色映射为现有索引ID或应用灰度/RGBA精度规范化；遮罩外及其他帧保留空零值。沿用位置、选区、蒙版退出与单条结构历史。六组模式/精度夹具覆盖索引色、灰度、RGBA与rgba32/rgb565、透明RGB、剪贴板遮罩、非活动帧格式、源剪贴板保留和撤销重做。Release indexed-runtime与document-layer-groups构建成功，三项关联CTest通过（0.70/0.03/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见imageLayerColor20261118。
+
+## 2026-11-18 整层剪贴板颜色快照与目标转换
+
+对照旧版layerClipboardFromDocument与applyLayerClipboardAnimationCel，整层复制复用animationClipboardCel将索引色Cel按复制时色板冻结为RGBA，重复ID遵循旧版Map最后项规则；粘贴复用animationCelForTarget，转换为目标索引ID或灰度，RGBA沿用旧版不再次量化精度。保留独立Cel快照、几何、载荷及结构历史。新增链接帧/重复ID夹具，复制后改源色板，再粘贴到RGBA、灰度及不同ID的索引色目标，核对冻结像素、目标格式、单历史、撤销重做和源数据保留。Release indexed-runtime及document-layer-groups构建成功，三项关联CTest通过（0.71/0.03/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见wholeLayerColorClipboard20261118。

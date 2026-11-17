@@ -22,6 +22,18 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
 namespace moon {struct RasterHistoryFixture {
+ static void wholeLayerColorClipboard(){
+  Document source(3,1);auto state=source.timeline_.state();state.cels.front().surface->format=RasterFormat::Indexed;state.cels.front().surface->pixels={7,8,0};state.frames.push_back({"linked-copy",100});auto alias=state.cels.front();alias.id="linked-copy-cel";alias.frameId="linked-copy";alias.linkedCelId=state.cels.front().id;alias.surface.reset();state.cels.push_back(alias);source.timeline_=Timeline(state);source.colorMode_=color_mode::Mode::Indexed;source.palette_.entries={{0,U"empty",0},{7,U"first",0xff112233},{8,U"other",0xffaabbcc},{7,U"last",0xff223344}};source.palette_.setOrder({0,7,8});source.projectActiveCelOpacities();
+  auto clip=source.copyLayerClipboard();CHECK(clip&&clip->cels.size()==2);const std::vector<Pixel> frozen{0xff223344,0xffaabbcc,0};for(const auto& c:clip->cels)CHECK(c.surface->format==RasterFormat::Rgba&&c.surface->pixels==frozen&&!c.linkedCelId);
+  source.palette_.entries[3].color=0xff000000;
+  for(auto mode:{color_mode::Mode::Rgba,color_mode::Mode::Grayscale,color_mode::Mode::Indexed}){
+   Document target(3,1);target.colorMode_=mode;target.pixelFormat_=color_mode::PixelFormat::Rgb565;target.palette_.entries={{0,U"empty",0},{19,U"a",0xff223344},{23,U"b",0xffaabbcc}};target.palette_.setOrder({0,19,23});const auto original=target.layer().id;
+   CHECK(target.pasteLayerClipboard(*clip));const auto pasted=target.layer().id;CHECK(target.historySize()==1);
+   for(const auto& f:target.timeline_.state().frames){const auto r=target.timeline_.resolveSurface(target.timeline_.findCel(pasted,f.id)->id);CHECK(r.surface);const auto expected=mode==color_mode::Mode::Indexed?std::vector<Pixel>{19,23,0}:mode==color_mode::Mode::Grayscale?std::vector<Pixel>{relativeLuminancePixel(frozen[0]),relativeLuminancePixel(frozen[1]),0}:frozen;CHECK(r.surface->pixels==expected);CHECK(r.surface->format==(mode==color_mode::Mode::Indexed?RasterFormat::Indexed:RasterFormat::Rgba));}
+   target.undo();CHECK(target.layer().id==original&&target.timeline_.state().frames.size()==1);target.redo();CHECK(target.layer().id==pasted&&target.timeline_.state().frames.size()==2);
+  }
+  CHECK(source.timeline_.state().cels.front().surface->pixels==state.cels.front().surface->pixels);for(const auto& c:clip->cels)CHECK(c.surface->pixels==frozen);
+ }
  static void imagePasteColorModes(){
   for(auto mode:{color_mode::Mode::Indexed,color_mode::Mode::Grayscale,color_mode::Mode::Rgba})for(auto precision:{color_mode::PixelFormat::Rgba32,color_mode::PixelFormat::Rgb565}){
    Document d(8,8);d.addLinkedFrame();const auto owner=d.layer().id;d.colorMode_=mode;d.pixelFormat_=precision;d.palette_.entries={{0,U"empty",0},{7,U"red",0xff1122cc},{8,U"blue",0xffcc2211}};d.palette_.setOrder({0,7,8});
@@ -123,7 +135,7 @@ namespace moon {struct RasterHistoryFixture {
   CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
-int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();
+int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();RasterHistoryFixture::wholeLayerColorClipboard();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);
