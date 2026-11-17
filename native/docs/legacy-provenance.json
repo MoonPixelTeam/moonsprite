@@ -20890,6 +20890,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy pasteClipboard routes activeLayerMaskId to pasteSelection before Cel/frame/layer payloads. Admit active mask in the mixed grid pixel paste entry so existing mask floating conversion/preview/history can run; pixel scope and actual core mask editability remain authoritative. Formal menu fixture covers grid plus ordinary layer attached mask, Paste enabled/invoke, isolated preview/cancel, single commit, Undo/Redo and unchanged tile refs/resources."
+      },
+      "mixedGridMaskCopyCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+        ],
+        "nativeAdaptation": "In grid-containing documents, permit active-mask pixel Copy/Cut through mixedPixelCopyContext instead of rejecting on activeMaskId. Reuse legacy Copy source getActiveLayer (owner pixels), while Cut routes deleteSelection to mask secondary-color fill then clears selection. Extend formal actual menu mask fixture with exact owner RGBA clipboard, unchanged Copy history, mask-only Cut, owner/grid refs/resources preserved, single history and Undo/Redo. No core sampling behavior changed."
       }
     },
     {
@@ -25180,6 +25187,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy pasteClipboard routes activeLayerMaskId to pasteSelection before Cel/frame/layer payloads. Admit active mask in the mixed grid pixel paste entry so existing mask floating conversion/preview/history can run; pixel scope and actual core mask editability remain authoritative. Formal menu fixture covers grid plus ordinary layer attached mask, Paste enabled/invoke, isolated preview/cancel, single commit, Undo/Redo and unchanged tile refs/resources."
+      },
+      "mixedGridMaskCopyCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+        ],
+        "nativeAdaptation": "In grid-containing documents, permit active-mask pixel Copy/Cut through mixedPixelCopyContext instead of rejecting on activeMaskId. Reuse legacy Copy source getActiveLayer (owner pixels), while Cut routes deleteSelection to mask secondary-color fill then clears selection. Extend formal actual menu mask fixture with exact owner RGBA clipboard, unchanged Copy history, mask-only Cut, owner/grid refs/resources preserved, single history and Undo/Redo. No core sampling behavior changed."
       }
     },
     {
