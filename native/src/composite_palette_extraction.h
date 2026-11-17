@@ -18,7 +18,7 @@ template<class Read> std::vector<timeline::Pixel> extractCompositePalette(int wi
   }y+=rows;
  }return colors;
 }
-inline std::vector<timeline::Pixel> extractTimelinePalette(const timeline::Timeline& timeline,const std::string& frame,int width,int height,std::size_t limit,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,const std::string& previewOwner={}){
- return extractCompositePalette(width,height,limit,[&](CompositeRegion r){return compositeNormalRegion(timeline,frame,r,previewLayer,preview,previewWidth,previewX,previewY,false,{},previewOwner);});
+inline std::vector<timeline::Pixel> extractTimelinePalette(const timeline::Timeline& timeline,const std::string& frame,int width,int height,std::size_t limit,const std::string& previewLayer={},const std::vector<timeline::Pixel>* preview=nullptr,int previewWidth=0,int previewX=0,int previewY=0,const std::string& previewOwner={},const RasterColorContext* colors=nullptr){
+ return extractCompositePalette(width,height,limit,[&](CompositeRegion r){return compositeNormalRegion(timeline,frame,r,previewLayer,preview,previewWidth,previewX,previewY,false,{},previewOwner,nullptr,nullptr,colors);});
 }
 }

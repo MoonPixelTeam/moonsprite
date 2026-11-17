@@ -7586,3 +7586,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色主画布与播放渲染
 
 依据旧版色板感知合成，主画布、洋葱皮、瓦片预览局部修补及独立播放帧传入文档色板，直接上传仅接收RGBA表面。正式Release构建成功，--preview-panel-check退出0，实际离屏渲染像素对照覆盖索引色与转换后RGBA的单层／多层、不透明度、洋葱皮及独立播放帧。未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedCanvas20261118。
+
+## 2026-11-18 索引色画面色板提取
+
+依据旧版palette.ts对合成RGBA逐行提取颜色的规则，为extractTimelinePalette接入可选色彩上下文；编辑器使用文档色板，Lua palette.extract使用当前规划中的色板及既有预览。正式Release构建成功，palette-extraction定向检查通过（0.04秒），覆盖单层／多层、不透明度、链接帧、1／4096颜色上限、RGBA参考及预览像素，并检查源ID、修订、历史不变。编辑器与Lua接线已编译，未执行实际indexed UI／Lua调用或人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedPaletteExtraction20261118。
