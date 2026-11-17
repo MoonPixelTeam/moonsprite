@@ -17443,6 +17443,15 @@
           "legacy/src/renderer/src/core/animation.ts:497-600"
         ],
         "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
+      },
+      "indexedDocumentTween20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTween",
+          "legacy/src/renderer/src/core/document-model.ts:paletteColorIdForCanvas",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts:generateAnimationTween"
+        ],
+        "adaptation": "Use authoritative document palette/order/mode/precision for tween planning, candidates, preview and canvas expansion. Morph maps intermediate colors to existing visible palette IDs without palette mutation, matching legacy paletteColorIdForCanvas. Reuse existing atomic frame insertion and history; production indexed import admission remains gated.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.27s). Indexed Document fixtures exercise crossfade, morph and transform generation, preview equality, original ID retention, one history entry, Undo/Redo, transform canvas expansion and indexed manifest metadata in editable/recovery/history encodings. Does not claim decoded pixel roundtrip or production indexed admission; GUI not rebuilt."
       }
     },
     {
@@ -17587,6 +17596,15 @@
         ],
         "adaptation": "Thread optional RasterColorContext and indexedColor callback through adjacent-frame source planning, morph fields, candidate surfaces, mask owner bounds and preview compositing. Preserve indexed format when adapting generated crops into native full-canvas surfaces; explicit indexed crossfade format supports empty endpoints. Existing RGBA callers keep defaults. Production indexed Document admission and palette/history integration remain incomplete.",
         "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s). Indexed pipeline checks palette-aware bounds, morph/crossfade candidates, empty-layer fallback, dense/cropped format and IDs, intermediate and original endpoint previews, and input purity. No GUI rebuild or production indexed claim."
+      },
+      "indexedDocumentTween20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTween",
+          "legacy/src/renderer/src/core/document-model.ts:paletteColorIdForCanvas",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts:generateAnimationTween"
+        ],
+        "adaptation": "Use authoritative document palette/order/mode/precision for tween planning, candidates, preview and canvas expansion. Morph maps intermediate colors to existing visible palette IDs without palette mutation, matching legacy paletteColorIdForCanvas. Reuse existing atomic frame insertion and history; production indexed import admission remains gated.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.27s). Indexed Document fixtures exercise crossfade, morph and transform generation, preview equality, original ID retention, one history entry, Undo/Redo, transform canvas expansion and indexed manifest metadata in editable/recovery/history encodings. Does not claim decoded pixel roundtrip or production indexed admission; GUI not rebuilt."
       }
     },
     {
@@ -26179,6 +26197,15 @@
           "legacy/src/renderer/src/core/animation.ts:497-600"
         ],
         "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
+      },
+      "indexedDocumentTween20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTween",
+          "legacy/src/renderer/src/core/document-model.ts:paletteColorIdForCanvas",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts:generateAnimationTween"
+        ],
+        "adaptation": "Use authoritative document palette/order/mode/precision for tween planning, candidates, preview and canvas expansion. Morph maps intermediate colors to existing visible palette IDs without palette mutation, matching legacy paletteColorIdForCanvas. Reuse existing atomic frame insertion and history; production indexed import admission remains gated.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.27s). Indexed Document fixtures exercise crossfade, morph and transform generation, preview equality, original ID retention, one history entry, Undo/Redo, transform canvas expansion and indexed manifest metadata in editable/recovery/history encodings. Does not claim decoded pixel roundtrip or production indexed admission; GUI not rebuilt."
       }
     },
     {

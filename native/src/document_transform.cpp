@@ -1,5 +1,6 @@
 #include "document.h"
 #include "raster_geometry.h"
+#include "raster_color_context.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -8,7 +9,7 @@ namespace moon {
 bool Document::generateTransformTween(const std::string& start,const std::string& layerId,const TransformTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& layer){return layer.background.has_value();});
  // legacy generateAnimationTween resolves pending pixels before preparing its batch.
  commitFloatingPaste();if(active())throw std::runtime_error("Finish the active edit before generating tween frames");
- validateTransformTweenOptions(options);const auto source=prepareTransformTweenSource(timeline_,start,layerId,options,selected);const auto& original=timeline_.state();
+ validateTransformTweenOptions(options);const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);const auto source=prepareTransformTweenSource(timeline_,start,layerId,options,selected,&colors);const auto& original=timeline_.state();
  if(original.frames.size()+std::size_t(options.frameCount)>10000)throw std::length_error("Tween exceeds native frame limit");
  constexpr std::uint64_t workingLimit=256ull*1024*1024,outputLimit=128ull*1024*1024;std::uint64_t stored=0;
  for(const auto& c:original.cels)if(c.surface){raster::validate(*c.surface);const auto bytes=std::uint64_t(c.surface->pixels.size())*sizeof(Pixel);if(bytes>workingLimit-stored)throw std::length_error("Tween exceeds native document pixel budget");stored+=bytes;}
@@ -19,8 +20,8 @@ bool Document::generateTransformTween(const std::string& start,const std::string
  std::vector<timeline::MaskSlot> generatedMasks;
  auto next=nextFrameId_;auto fresh=[&](const char* prefix){std::string id;do{id=std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);}while(!used.insert(id).second);return id;};
  edit.frameHistory.detachedFrames.reserve(options.frameCount);edit.contentHistory.detachedCels.reserve(std::size_t(options.frameCount)*original.layers.size());std::vector<std::string> ids;ids.reserve(options.frameCount);
- for(int step=1;step<=options.frameCount;++step){DocumentFrame f{fresh("frame-native-"),options.duration};ids.push_back(f.id);auto output=prepareTransformTweenFrame(timeline_,source,options,step,remaining,std::min<std::size_t>(16*1024*1024,remaining/sizeof(Pixel)));for(auto& c:output.cels){c.id=fresh("cel-transform-native-");c.frameId=f.id;c.linkedCelId.reset();c.runtimeSharedCelId.reset();edit.contentHistory.detachedCels.push_back(std::move(c));}for(auto& mask:output.masks){mask.frameId=f.id;mask.mask.id=fresh("mask-tween-native-");generatedMasks.push_back(std::move(mask));}edit.frameHistory.detachedFrames.push_back(std::move(f));}
- TweenRegion canvas{0,0,width_,height_};if(options.autoCropCanvas)canvas=transformTweenCanvasBounds(timeline_,edit.contentHistory.detachedCels,width_,height_);
+ for(int step=1;step<=options.frameCount;++step){DocumentFrame f{fresh("frame-native-"),options.duration};ids.push_back(f.id);auto output=prepareTransformTweenFrame(timeline_,source,options,step,remaining,std::min<std::size_t>(16*1024*1024,remaining/sizeof(Pixel)),&colors);for(auto& c:output.cels){c.id=fresh("cel-transform-native-");c.frameId=f.id;c.linkedCelId.reset();c.runtimeSharedCelId.reset();edit.contentHistory.detachedCels.push_back(std::move(c));}for(auto& mask:output.masks){mask.frameId=f.id;mask.mask.id=fresh("mask-tween-native-");generatedMasks.push_back(std::move(mask));}edit.frameHistory.detachedFrames.push_back(std::move(f));}
+ TweenRegion canvas{0,0,width_,height_};if(options.autoCropCanvas)canvas=transformTweenCanvasBounds(timeline_,edit.contentHistory.detachedCels,width_,height_,&colors);
  if(canvas.width<1||canvas.height<1||canvas.width>1024||canvas.height>1024)throw std::length_error("Tween canvas exceeds native editable dimensions 1..1024");
  const bool resized=canvas.x!=0||canvas.y!=0||canvas.width!=width_||canvas.height!=height_;std::unordered_set<std::string> shiftedOwners;
  if(resized&&!resources){

@@ -1,12 +1,13 @@
 #include "document.h"
 #include "raster_geometry.h"
+#include "raster_color_context.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_set>
 namespace moon {
 std::vector<Pixel> Document::crossfadeTweenPreview(const std::string& start,const std::string& layerId,const CrossfadeTweenOptions& options,int step,const std::vector<std::string>& selected) const {
- const auto source=prepareCrossfadeTweenSource(timeline_,start,layerId,options.layerScope,selected,options.betweenMode);return compositeCrossfadeTweenPreview(timeline_,width_,height_,source,options,step);
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);const auto source=prepareCrossfadeTweenSource(timeline_,start,layerId,options.layerScope,selected,options.betweenMode,&colors);return compositeCrossfadeTweenPreview(timeline_,width_,height_,source,options,step,{},&colors,[&](Pixel color){return colors.colorId(color);});
 }
 
 bool Document::generateCrossfadeTween(const std::string& start,const std::string& layerId,const CrossfadeTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& layer){return layer.background.has_value();});
@@ -17,15 +18,15 @@ bool Document::generateCrossfadeTween(const std::string& start,const std::string
  constexpr std::uint64_t workingLimit=256ull*1024*1024,outputLimit=128ull*1024*1024;std::uint64_t stored=0;
  for(const auto& c:original.cels)if(c.surface){raster::validate(*c.surface);const auto bytes=std::uint64_t(c.surface->pixels.size())*sizeof(Pixel);if(bytes>workingLimit-stored)throw std::length_error("Tween exceeds native document pixel budget");stored+=bytes;}
  if(stored>workingLimit/2)throw std::length_error("Tween exceeds native working budget");
- const auto source=prepareCrossfadeTweenSource(timeline_,start,layerId,options.layerScope,selected,options.betweenMode);std::uint64_t shapeBytes=0;for(const auto& part:source.layers)if(part.morph)shapeBytes+=part.morph->byteLength();
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);const auto source=prepareCrossfadeTweenSource(timeline_,start,layerId,options.layerScope,selected,options.betweenMode,&colors);std::uint64_t shapeBytes=0;for(const auto& part:source.layers)if(part.morph)shapeBytes+=part.morph->byteLength();
  if(shapeBytes>outputLimit||shapeBytes>workingLimit-stored*2)throw std::length_error("Tween exceeds native working budget");std::size_t remaining=std::size_t(std::min<std::uint64_t>(outputLimit-shapeBytes,(workingLimit-stored*2-shapeBytes)/3));
  Edit edit{{},state_,nextState_};captureFrameOrder(edit,false);edit.beforeSelection=selectedFrames_;edit.frameHistory.beforeLoops=original.loopSections;for(const auto& l:original.layers)edit.layerHistory.beforeLayerOpacityProjection.push_back({l.id,l.opacity});
  std::unordered_set<std::string> used;for(const auto& f:original.frames)used.insert(f.id);for(const auto& c:original.cels)used.insert(c.id);for(const auto& l:original.loopSections)used.insert(l.id);for(const auto& m:original.masks)used.insert(m.mask.id);
  std::vector<timeline::MaskSlot> generatedMasks;
  auto next=nextFrameId_;auto fresh=[&](const char* prefix){std::string id;do{id=std::string(prefix)+std::to_string(identity_)+"-"+std::to_string(++next);}while(!used.insert(id).second);return id;};
  edit.frameHistory.detachedFrames.reserve(options.frameCount);edit.contentHistory.detachedCels.reserve(std::size_t(options.frameCount)*original.layers.size());std::vector<std::string> ids;ids.reserve(options.frameCount);
- for(int step=1;step<=options.frameCount;++step){DocumentFrame f{fresh("frame-native-"),options.duration};ids.push_back(f.id);auto output=prepareCrossfadeTweenFrame(timeline_,width_,height_,source,options,step,&remaining,std::min<std::size_t>(16*1024*1024,remaining/sizeof(Pixel)));for(auto& c:output.cels){c.id=fresh("cel-tween-native-");c.frameId=f.id;c.linkedCelId.reset();c.runtimeSharedCelId.reset();edit.contentHistory.detachedCels.push_back(std::move(c));}for(auto& mask:output.masks){mask.frameId=f.id;mask.mask.id=fresh("mask-tween-native-");generatedMasks.push_back(std::move(mask));}edit.frameHistory.detachedFrames.push_back(std::move(f));}
- TweenRegion canvas{0,0,width_,height_};if(options.autoCropCanvas)canvas=transformTweenCanvasBounds(timeline_,edit.contentHistory.detachedCels,width_,height_);
+ for(int step=1;step<=options.frameCount;++step){DocumentFrame f{fresh("frame-native-"),options.duration};ids.push_back(f.id);auto output=prepareCrossfadeTweenFrame(timeline_,width_,height_,source,options,step,&remaining,std::min<std::size_t>(16*1024*1024,remaining/sizeof(Pixel)),&colors,[&](Pixel color){return colors.colorId(color);});for(auto& c:output.cels){c.id=fresh("cel-tween-native-");c.frameId=f.id;c.linkedCelId.reset();c.runtimeSharedCelId.reset();edit.contentHistory.detachedCels.push_back(std::move(c));}for(auto& mask:output.masks){mask.frameId=f.id;mask.mask.id=fresh("mask-tween-native-");generatedMasks.push_back(std::move(mask));}edit.frameHistory.detachedFrames.push_back(std::move(f));}
+ TweenRegion canvas{0,0,width_,height_};if(options.autoCropCanvas)canvas=transformTweenCanvasBounds(timeline_,edit.contentHistory.detachedCels,width_,height_,&colors);
  if(canvas.width<1||canvas.height<1||canvas.width>1024||canvas.height>1024)throw std::length_error("Tween canvas exceeds native editable dimensions 1..1024");
  const bool resized=canvas.x!=0||canvas.y!=0||canvas.width!=width_||canvas.height!=height_;std::unordered_set<std::string> shiftedOwners;
  if(resized&&!resources){

@@ -7526,3 +7526,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色相邻帧补间链路
 
 按 legacy animation-tween.ts 接通色板感知源规划、形变场、候选帧、蒙版所属内容边界及预览合成，原生全画布适配保留 indexed 格式；空端点交叉淡化可显式确定格式。Release 定向构建成功，animation-crossfade CTest 通过（0.23 秒），覆盖色板边界、形变／淡化候选、空层回退、整画布／裁切格式及 ID、中间／原始端点预览和输入保留。未重建 GUI。生产索引色文档准入与色板／历史集成仍未完成，整体 INCOMPLETE。来源见 indexedBetweenPipeline20261118。
+
+## 2026-11-18 索引色补间文档事务
+
+三种补间接入文档真实色板、可见顺序、模式与精度，源规划、候选帧、预览和画布扩展使用同一色彩上下文。按旧版 paletteColorIdForCanvas 只映射现有颜色，不新增色板历史；帧插入复用现有单事务。Release 定向构建成功，animation-crossfade CTest 通过（0.27 秒），覆盖三种生成、预览一致、原始 ID、单历史、Undo/Redo、变换扩展画布及工程／恢复／历史编码的索引色清单元数据。未验证解码像素往返，未重建 GUI；生产索引色导入准入仍关闭，整体 INCOMPLETE。来源见 indexedDocumentTween20261118。

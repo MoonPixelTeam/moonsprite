@@ -61,7 +61,21 @@ void verifyBetweenAutoCrop(){
  }
 }
 
-namespace moon {struct RasterHistoryFixture {static Document sparse(timeline::State state){Document doc(2,1);doc.timeline_=timeline::Timeline(std::move(state));doc.activeLayerId_="A";doc.activeFrameId_="start";doc.setImportedLayerGeometry({{"A",{1,1,0,0}},{"empty",{1,1,0,0}}});return doc;}};}
+namespace moon {struct RasterHistoryFixture {
+ static Document indexed(){Document doc(3,1);doc.colorMode_=color_mode::Mode::Indexed;doc.palette_.entries={{0,U"Transparent",0},{1,U"Red",0xff0000ff},{2,U"Blue",0xffff0000},{3,U"Purple",0xff800080},{4,U"Hidden",0x00010203}};doc.palette_.setOrder({1,2,3});doc.palette_.nextId=5;
+ auto state=doc.timeline_.state();const auto layer=state.layers.front().id;state.frames={{"start",100},{"end",100}};state.cels={owned("a",layer,"start",{4,1,4}),owned("b",layer,"end",{4,2,4})};for(auto& c:state.cels)c.surface->format=timeline::RasterFormat::Indexed;doc.timeline_=timeline::Timeline(std::move(state));doc.activeFrameId_="start";doc.clearSourceArchiveForNewSnapshot();doc.markSaved();return doc;}
+ static Document sparse(timeline::State state){Document doc(2,1);doc.timeline_=timeline::Timeline(std::move(state));doc.activeLayerId_="A";doc.activeFrameId_="start";doc.setImportedLayerGeometry({{"A",{1,1,0,0}},{"empty",{1,1,0,0}}});return doc;}};}
+void verifyIndexedDocumentTweens(){
+ for(int mode=0;mode<3;++mode){auto doc=RasterHistoryFixture::indexed();const auto palette=doc.palette();const auto history=doc.historySize();const auto layer=doc.layer().id;std::vector<Pixel> preview;
+ if(mode<2){CrossfadeTweenOptions options;options.frameCount=1;options.betweenMode=mode?TweenBetweenMode::Morph:TweenBetweenMode::Crossfade;preview=doc.crossfadeTweenPreview("start",layer,options,1);CHECK(doc.generateCrossfadeTween("start",layer,options));}
+ else{TransformTweenOptions options;options.frameCount=1;options.offsetX=-2;options.autoCropCanvas=true;CHECK(doc.generateTransformTween("start",layer,options));}
+ const auto generated=doc.frame().id;const auto value=mode==1?3:1;const auto result=*doc.timeline().findCel(layer,generated)->surface;CHECK(doc.historySize()==history+1&&result.format==timeline::RasterFormat::Indexed&&std::find(result.pixels.begin(),result.pixels.end(),value)!=result.pixels.end());
+ if(mode<2){RasterColorContext colors(doc.palette().entries,doc.palette().order(),doc.colorMode(),doc.pixelFormat());CHECK(compositeNormalRegion(doc.timeline(),generated,{0,0,3,1},{},nullptr,0,0,0,false,{}, {},nullptr,nullptr,&colors)==preview);}
+ CHECK(doc.palette().nextId==palette.nextId&&doc.palette().entries.size()==palette.entries.size()&&doc.palette().order()==palette.order());
+ for(int encoding=0;encoding<3;++encoding){auto encoded=encoding==0?project::encodeEditableProject(doc):encoding==1?project::encodeRecoveryProject(doc):project::encodeHistoryProject(doc);auto manifest=project::readProjectManifest(encoded.bytes);CHECK(manifest.colorMode=="indexed"&&manifest.frames.size()==3);const auto saved=std::find_if(manifest.cels.begin(),manifest.cels.end(),[&](const auto& c){return c.frameId==generated;});CHECK(saved!=manifest.cels.end()&&saved->surface&&saved->surface->format==project::RasterFormat::Indexed);}
+ doc.undo();CHECK(doc.timeline().state().frames.size()==2&&doc.width()==3&&doc.timeline().resolveSurface("a").surface->pixels==std::vector<Pixel>({4,1,4}));doc.redo();CHECK(doc.frame().id==generated&&doc.timeline().findCel(layer,generated)->surface->pixels==result.pixels&&doc.timeline().findCel(layer,generated)->surface->format==result.format);
+ }
+}
 void verifySparseTweenTransactions(){
  for(bool selectEmpty:{false,true}){
   timeline::State state;state.layers={{"A",U"Raster"},{"empty",U"Empty"}};state.frames={{"start",100},{"end",100}};
@@ -106,7 +120,7 @@ void verifyOriginalEndpointPreviews(){
  bool rejected=false;try{compositeCrossfadeTweenPreview(timeline,2,1,source,options,4);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
  }
 }
-int main(){try{verifyIndexedFramePipeline();verifyIndexedDissolve();verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
+int main(){try{verifyIndexedDocumentTweens();verifyIndexedFramePipeline();verifyIndexedDissolve();verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
  auto a=fixtureRaster({0xff0000ff},-2,3),b=fixtureRaster({0xffff0000},-2,3);auto blend=crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,.25,.75,1);CHECK(blend.opacity==.5&&blend.surface.pixels==std::vector<Pixel>{0xffbf0040});auto green=fixtureRaster({0xff00ff00},-2,3);CHECK(crossfadeTweenSurface(nullptr,&green,{-2,3,1,1},.5,1,1,1).surface.pixels==std::vector<Pixel>{0x8000ff00});CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},0,1,1,1).surface.pixels==a.pixels);CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},1,1,1,1).surface.pixels==b.pixels);bool rejected=false;try{crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,1,1,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  CHECK(tweenProgress(.25,TweenEasing::Linear)==.25);CHECK(tweenProgress(.25,TweenEasing::EaseIn)==.0625);CHECK(tweenProgress(.25,TweenEasing::EaseOut)==.4375);CHECK(tweenProgress(.25,TweenEasing::EaseInOut)==.15625);CHECK(std::abs(tweenProgress(.25,TweenEasing::Custom,{.42,0,1,1})-.09346465067959621)<1e-12);
  timeline::Timeline t(fixture());CrossfadeTweenOptions o;o.betweenMode=TweenBetweenMode::Crossfade;o.frameCount=1;o.duration=90;const auto source=prepareCrossfadeTweenSource(t,"f0","A",TweenLayerScope::All,{},TweenBetweenMode::Crossfade);CHECK(source.endFrameId=="f1"&&source.layerIds==std::vector<std::string>{"A"});auto frame=prepareCrossfadeTweenFrame(t,2,1,source,o,1);CHECK(frame.cels.size()==2);CHECK(frame.cels[0].surface->pixels==std::vector<Pixel>({0xff008080,0x80ff0000}));CHECK(frame.cels[0].opacity==1&&frame.cels[0].zIndex==0);CHECK(frame.cels[1].surface->pixels==t.resolveSurface("B0").surface->pixels&&frame.cels[1].zIndex==7&&frame.cels[1].opacity==.4);for(const auto& c:frame.cels)CHECK(c.id.empty()&&c.frameId.empty()&&!c.linkedCelId&&!c.runtimeSharedCelId);frame.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("B0").surface->pixels[0]==0xff884422);
