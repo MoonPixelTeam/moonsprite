@@ -27267,6 +27267,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "splitLayerStyles maps style colors through document context, finds source bounds by palette-aware visibility, samples resolved source colors including masks, and creates indexed effect surfaces when document mode is indexed. Map sampled effect colors to existing visible IDs as legacy paletteColorIdForCanvas does, preserving original source storage, linked frame identities and existing structure history. Seven indexed effect fixtures compare generated geometry and mapped pixels with equivalent RGBA-source splits under mapped styles; single history and undo/redo checked. Release builds passed; indexed-runtime passed. Existing document-layer-groups test executes styleSplitCheck successfully before failing unrelated empty-group copy assertion; full test not reported passing. No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "layerPasteInheritance20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy layer paste appends frames then inheritAnimationFrameCelLinks follows canonical source content with palette-aware animationCelHasContent and copies text/tilemap/freeTiles payloads. Native paste now creates missing ordinary surfaces in document target format, checks indexed visibility through existing RasterColorContext, resolves inherited chains across staged and existing Cels, and transfers all canonical payloads. Six fixtures cover visible low ID, transparent zero and missing high ID with auto-link on/off, two appended frames, one history and undo/redo. Release indexed-runtime and document-layer-groups builds passed; all three associated CTests passed (oracle 0.75s, runtime 0.04s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
       }
     },
     {
@@ -41672,6 +41680,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "splitLayerStyles maps style colors through document context, finds source bounds by palette-aware visibility, samples resolved source colors including masks, and creates indexed effect surfaces when document mode is indexed. Map sampled effect colors to existing visible IDs as legacy paletteColorIdForCanvas does, preserving original source storage, linked frame identities and existing structure history. Seven indexed effect fixtures compare generated geometry and mapped pixels with equivalent RGBA-source splits under mapped styles; single history and undo/redo checked. Release builds passed; indexed-runtime passed. Existing document-layer-groups test executes styleSplitCheck successfully before failing unrelated empty-group copy assertion; full test not reported passing. No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "layerPasteInheritance20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy layer paste appends frames then inheritAnimationFrameCelLinks follows canonical source content with palette-aware animationCelHasContent and copies text/tilemap/freeTiles payloads. Native paste now creates missing ordinary surfaces in document target format, checks indexed visibility through existing RasterColorContext, resolves inherited chains across staged and existing Cels, and transfers all canonical payloads. Six fixtures cover visible low ID, transparent zero and missing high ID with auto-link on/off, two appended frames, one history and undo/redo. Release indexed-runtime and document-layer-groups builds passed; all three associated CTests passed (oracle 0.75s, runtime 0.04s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
       }
     },
     {

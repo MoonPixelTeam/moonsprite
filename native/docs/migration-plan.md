@@ -7650,3 +7650,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 图层组验收夹具与旧版语义对齐
 
 核对旧版layer-operations.ts的createLayerGroup/ungroupSelected及动画选择规范化，修正document-layer-groups过时夹具与断言，不修改生产行为。清空显式选择后仍承接活动图层，因此先建含图层组，再从纯组选中创建空同级组，实际验证空组不能复制或合并且不新增历史。新建组按文档顺序设置所选图层，撤销不恢复点击顺序；解组历史只恢复结构，不恢复先前组选中和折叠状态。Release定向构建及完整document-layer-groups CTest通过（0.03秒），解除上一批记录的空组复制失败及随后暴露的选择状态过时期望。来源覆盖和diff检查通过；未重建GUI、未人工图像验收，整体迁移INCOMPLETE。来源见groupFixtureAlignment20261118。
+
+## 2026-11-18 图层粘贴追加帧的索引色与链接继承
+
+依据旧版workspace-commands-clipboard.ts追加帧后的inheritAnimationFrameCelLinks，图层粘贴补齐普通空Cel的目标格式、色板感知内容判断及text/tilemap/freeTiles载荷继承。连续追加帧时从暂存Cel和已有时间轴共同解析规范来源，避免第二个新增帧无法找到前一个暂存链接的来源；保留单条结构事务。六组夹具覆盖低位可见ID、透明零号、缺失高位ID与自动链接开/关，检查两个追加帧、原始来源、格式、撤销重做。Release indexed-runtime及document-layer-groups构建成功，三项关联CTest通过（0.75/0.04/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见layerPasteInheritance20261118。
