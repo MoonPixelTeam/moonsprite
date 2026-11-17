@@ -44,7 +44,7 @@ bool Document::generateTransformTween(const std::string& start,const std::string
  for(auto& layer:validated.state_.layers){const auto* c=validated.findCel(layer.id,edit.afterFrame);if(!c)continue;const auto resolved=validated.resolveSurface(c->id);if(resolved.source&&resolved.source->opacity&&std::isfinite(*resolved.source->opacity))layer.opacity=std::clamp(*resolved.source->opacity,0.,1.);}
  for(const auto& l:validated.state().layers)edit.layerHistory.afterLayerOpacityProjection.push_back({l.id,l.opacity});
  auto activeLayer=edit.afterActive,activeFrame=edit.afterFrame,anchor=*edit.afterFrameAnchor;auto selectionAfter=resized?edit.pixelSelectionHistory.afterPixelsSelection:selection_;auto selectedAfter=ids;reserveHistoryEntries();
- timeline_=std::move(validated);nextFrameId_=next;activeLayerId_=std::move(activeLayer);activeFrameId_=std::move(activeFrame);frameAnchor_=std::move(anchor);selectedFrames_=std::move(selectedAfter);timelineSelection_={};if(resized){width_=canvas.width;height_=canvas.height;setSelectionValue(std::move(selectionAfter));selectionPivotHistory_.pivot=pivot;++selectionPivotHistory_.serial;}
+ clearAnimationItemSelection();timeline_=std::move(validated);nextFrameId_=next;activeLayerId_=std::move(activeLayer);activeFrameId_=std::move(activeFrame);frameAnchor_=std::move(anchor);selectedFrames_=std::move(selectedAfter);timelineSelection_={};if(resized){width_=canvas.width;height_=canvas.height;setSelectionValue(std::move(selectionAfter));selectionPivotHistory_.pivot=pivot;++selectionPivotHistory_.serial;}
  change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"变换补间");return true;
 }
 }

@@ -17365,6 +17365,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
         ],
         "nativeAdaptation": "Preserve absent non-target Cel slots in between candidates and allow sparse generated frames in transform/between transaction validation and active opacity projection. Selected between targets still generate their tween surface. Focused tests cover Current/All empty layers, generation, Undo/Redo and encoded manifest slots. Test fixtures initialize display geometry as the Aseprite import builder does. Both animation-transform and animation-crossfade CTests passed in 0.34 seconds. Mixed tile admission remains gated."
+      },
+      "tweenMaskContext20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts"
+        ],
+        "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
       }
     },
     {
@@ -17459,6 +17466,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
         ],
         "nativeAdaptation": "Preserve absent non-target Cel slots in between candidates and allow sparse generated frames in transform/between transaction validation and active opacity projection. Selected between targets still generate their tween surface. Focused tests cover Current/All empty layers, generation, Undo/Redo and encoded manifest slots. Test fixtures initialize display geometry as the Aseprite import builder does. Both animation-transform and animation-crossfade CTests passed in 0.34 seconds. Mixed tile admission remains gated."
+      },
+      "tweenMaskContext20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts"
+        ],
+        "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
       }
     },
     {
@@ -17705,6 +17719,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
         ],
         "nativeAdaptation": "Preserve absent non-target Cel slots in between candidates and allow sparse generated frames in transform/between transaction validation and active opacity projection. Selected between targets still generate their tween surface. Focused tests cover Current/All empty layers, generation, Undo/Redo and encoded manifest slots. Test fixtures initialize display geometry as the Aseprite import builder does. Both animation-transform and animation-crossfade CTests passed in 0.34 seconds. Mixed tile admission remains gated."
+      },
+      "tweenMaskContext20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts"
+        ],
+        "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
       }
     },
     {
@@ -25874,6 +25895,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
         ],
         "nativeAdaptation": "Preserve absent non-target Cel slots in between candidates and allow sparse generated frames in transform/between transaction validation and active opacity projection. Selected between targets still generate their tween surface. Focused tests cover Current/All empty layers, generation, Undo/Redo and encoded manifest slots. Test fixtures initialize display geometry as the Aseprite import builder does. Both animation-transform and animation-crossfade CTests passed in 0.34 seconds. Mixed tile admission remains gated."
+      },
+      "tweenMaskContext20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection.ts"
+        ],
+        "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
       }
     },
     {
