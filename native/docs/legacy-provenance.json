@@ -24478,6 +24478,15 @@
         ],
         "adaptation": "Remove whole-document free-tile menu exclusions for anti-alias and convolution; reuse existing selected raster/mask preview controllers and preserve legacy special-target filtering. Replacement remains separately gated pending its resource/cache semantics.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document filter menu opening, cancellation preserving pixels/resources/history, and refusal of special-only targets. No new manual visual acceptance."
+      },
+      "mixedRasterReplacementEntry20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts",
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/history.ts"
+        ],
+        "adaptation": "Remove whole-document free-tile exclusion from Replace Color menu, enabling existing ordinary-layer and palette replacement in mixed projects. Keep native special-layer rejection pending a product decision on legacy cache-only edits. Do not claim special-layer replacement migration complete.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document replacement menu, detached preview, cancellation, commit, undo/redo and unchanged free resources."
       }
     },
     {
@@ -32259,7 +32268,8 @@
         "legacy/src/renderer/src/store/workspace-commands-layer-adjustment.ts",
         "legacy/src/renderer/src/store/workspace-commands-selection-move.ts",
         "legacy/src/renderer/src/store/workspace-convolution-preview.ts",
-        "legacy/src/renderer/src/store/workspace-commands-selection-anti-alias.ts"
+        "legacy/src/renderer/src/store/workspace-commands-selection-anti-alias.ts",
+        "legacy/src/renderer/src/core/history.ts"
       ],
       "scope": "Tilemap V1 partial migration. Evidence: stable tileset/tile IDs and sparse cell authority; legacy flips-first square-only rotations; raster slicing clips to canvas and pads/deduplicates RGBA; create/hybrid/edit/paint modes, shared source-tile propagation, native layer creation placement; primary/secondary tile choices; cancel and one-step undo; native schema21 raw padded tileset sheets and sparse cel metadata; detached bounded resource copy; native PixelDialog and dock column. Necessary adaptation: TypeScript objects/canvas become C++ value State plus existing raster fallback/compositor; existing native pixel font, skin and column/dialog controls reused; SVG icon geometry converted only by existing importer. Known gaps remain: full legacy tool coverage, clipboard/frame structure/resize/filter/global raster operations on tilemap documents, full tileset management/reordering/drag/edit commands, ASE tilemap import/export, live tile brush preview details and legacy incremental history/cache performance; full Timeline history and tile edit cache rebuild are temporary performance differences, so this is NOT complete behavioral/performance equivalence. Explicit code gates refuse unsupported damaging operations. No hidden WebView2. Tests are pending writer execution; provenance coverage alone does not validate runtime. Preserve legacy/LICENSE Source-Available terms and attribution; do not assume MIT. 2026-10-23 TI whole Frame copy/cut/paste complete path: same identity shares live resources; cross identity snapshots/remaps referenced native tilesets once with stable tile IDs/slots and existing target owner retained. Source grid/surface dimensions preserved. Kind incompatibility atomic rejection and portable authoritative resource payload are user-required native adaptations. Existing structure delta paste plus affected resources; cut retains owner resources, at least one frame, rebases surviving cel/mask links and loops; duration/disabled/batch mask links retained. Real copy/cut/paste command and existing Frame context route. Cel/free-tile/add/delete/drag-copy unrelated gates remain closed; no broader tilemap equivalence claim.; 2026-10-23 TI whole Cel block: actual workspace-commands-animation-cel-clipboard.ts40-335, workspace-animation-cel-links.ts7/22, workspace-commands-animation-cel-properties.ts181, workspace-cut.ts9, workspace-animation-mask-slots.ts63 and linked-cel deletion test. Native authoritative grid/resource adaptation: sourceIdentity shares live sets or cross identity clones each referenced set once preserving tileIDs/slots/transforms/source grid, optional affected-resource history plus single timeline/selection/links/appended100ms frames transaction. Same-document paste leaves masks; cross replaces only present source masks. Canonical overwrite/cut promotes unselected survivor; cut preserves masks/resources/opacity and undo keeps cleared selection. Kind/grid/reference/lock/active-edit rejection atomic. Free tiles, pixel-selection floating clipboard, Cel drag-copy/move/connect/disconnect/delete remain gaps. Existing menu/context/Ctrl+C/X/V and legacy icons reused.",
       "tilesetManagement20261022": "Stable-ID add/reorder/delete/write, clear-unused scans all cel authorities including hidden/locked/disabled/shared layers. Slot moves use metadata-only history. Native panel preserves primary/secondary roles, explicit modifier/range selection, 360ms hold, outline/right-selected dragging, cancel/capture loss, delete and shared chrome/context actions. Skin selection API shares physical-pixel render/hit bounds. Existing full State copy for resource mutations remains a known performance difference. Free-tile authority, Ctrl-wheel size preference and other registered tilemap gaps remain unmigrated. Runtime validation recorded separately.",
@@ -32370,6 +32380,15 @@
         ],
         "adaptation": "Remove whole-document free-tile menu exclusions for anti-alias and convolution; reuse existing selected raster/mask preview controllers and preserve legacy special-target filtering. Replacement remains separately gated pending its resource/cache semantics.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document filter menu opening, cancellation preserving pixels/resources/history, and refusal of special-only targets. No new manual visual acceptance."
+      },
+      "mixedRasterReplacementEntry20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts",
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/history.ts"
+        ],
+        "adaptation": "Remove whole-document free-tile exclusion from Replace Color menu, enabling existing ordinary-layer and palette replacement in mixed projects. Keep native special-layer rejection pending a product decision on legacy cache-only edits. Do not claim special-layer replacement migration complete.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document replacement menu, detached preview, cancellation, commit, undo/redo and unchanged free resources."
       }
     },
     {
