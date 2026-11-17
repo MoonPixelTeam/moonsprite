@@ -7714,3 +7714,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 新增空帧承接图层格式
 
 对照旧版 animation.ts::addBlankAnimationFrame/blankSurfaceFromLayer，普通图层新增空帧时沿用当前解析源图层格式，源缺失时回退文档模式；瓦片/自由瓦片维持原RGBA渲染路径。新增16组文档/图层RGBA与Indexed、复制帧和自动链接开关组合，核对空帧1×1零值或复制原像素、格式、默认/复制时长及禁用状态、来源zIndex和规范链接、单条历史与撤销重做。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.71/0.04秒）。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见newFrameLayerFormat20261118。
+
+## 2026-11-18 清空Cel格式与链接验收
+
+对照旧版 workspace-commands-animation-cel-properties.ts 删除Cel与workspace-animation-cel-delete.test.ts来源移交契约，现有原生实现通过12组RGBA/Indexed、显式/运行时共享链接、删除源/成员/源及成员组合。检查清空后保留稀疏尺寸、世界偏移、storage origin、格式与透明度，重置所删zIndex，存活成员像素及规范链接有效，撤销恢复原链接、重做及色板不变。生产实现无需修改。Release indexed-runtime-tests构建成功，indexed-runtime-oracle与indexed-runtime CTest通过（0.70/0.04秒）；来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；仅证明上述清空Cel边界，不代表整个动画领域迁移完成，生产索引色准入仍关闭，整体INCOMPLETE。来源见celDeleteFormats20261118。

@@ -41937,6 +41937,13 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "addBlankAnimationFrame uses blankSurfaceFromLayer for ordinary layers, preserving displayed source format independently of document mode. Native addFrame follows resolved source format for ordinary/text/adjustment layers, retaining existing RGBA rendered special layers and document-mode fallback if source absent. Sixteen document/layer format, duplicate and auto-link combinations verify raw pixels or 1x1 zero blank, frame duration/disabled, source z-index and canonical links, single history, undo-redo. Mixed fixtures do not open indexed production gates."
+      },
+      "celDeleteFormats20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/store/workspace-animation-cel-delete.test.ts"
+        ],
+        "nativeAdaptation": "Verify existing deleteSelectedCels against legacy source handoff and zero-storage clearing: twelve RGBA/indexed, explicit/runtime shared links and root/member/root-plus-member selection cases. Preserve sparse dimensions, offsets, storage origins, raw survivor pixels, opacity, reset cleared z-index, canonical link validity, original links on undo, redo and palette data. Production behavior unchanged; indexed admission remains closed."
       }
     },
     {
