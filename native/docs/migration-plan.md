@@ -7772,3 +7772,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 自由瓦片工程活动蒙版剪贴板门禁
 
 对照workspace-commands-clipboard.ts及workspace-commands-selection-effects.ts，活动蒙版使用正常像素剪贴板与蒙版编辑路径，不应被自由实例菜单门禁拒绝。自由瓦片剪贴板包装检测到活动蒙版后回到既有可用条件。复用实际菜单检查，将蒙版拥有者设为网格图层并加入无关自由瓦片层，验证Copy拥有者像素、Cut背景色填充、Paste预览/取消/提交、翻转及Undo/Redo，原有网格引用和资源保持。唯一正式Release构建退出0（mixed-free-mask-clipboard-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedFreeMaskClipboard20261118。
+
+## 2026-11-18 混合网格工程普通图层选区翻转入口
+
+对照workspace-commands-selection-flip.ts，普通图层选区翻转不因工程包含无关网格瓦片而禁用。网格菜单包装放行普通图层，仍沿用原菜单条件和Document目标校验。实际水平/垂直菜单检查验证选区像素镜像位置、范围外像素保留、瓦片引用/资源不变、单次历史与Undo/Redo。唯一正式Release构建退出0（mixed-grid-raster-flip-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridRasterFlip20261118。
