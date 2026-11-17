@@ -1,6 +1,7 @@
 #include "layer_compositor.h"
 #include "raster_snapshot.h"
 #include "document.h"
+#include "free_tile_selection_target.h"
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -28,6 +29,9 @@ namespace moon {struct RasterHistoryFixture {
   const auto local=d.wandReferencePixels(false);CHECK(local==std::vector<Pixel>({0,0xff112233,0xff112233,0xffabcdef,0}));
   auto selection=magicWandSelection(local,5,1,1,0);CHECK(selectionContains(selection,1,0)&&selectionContains(selection,2,0)&&!selectionContains(selection,0,0)&&!selectionContains(selection,3,0));
   CHECK(d.wandReferencePixels(true)==local);
+  const auto preview=freeTilePlacementComposite(d,{0,0,5,1},{0,0xff112233,0xff112233,0,0},{0,0,5,1});
+  CHECK(preview==local);
+  CHECK(freeTilePlacementComposite(d,{0,0,5,1},{0,0xff112233,0xff112233,0,0},{1,0,2,1})==std::vector<Pixel>({0xff112233,0xff112233}));
   CHECK(d.canvasPixels()==std::vector<Pixel>({0,7,8,0,0})&&d.historyPosition()==h&&d.timeline_.resolveSurface(d.cel().id).surface->pixels==before);
  }
 };}

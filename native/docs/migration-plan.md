@@ -7618,3 +7618,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 魔棒索引色参考快照
 
 对照旧版 canvas-input-selection-begin.ts 的当前图层 worker 色板输入和可见图层合成取色，原生魔棒手势捕获统一使用 Document::wandReferencePixels。当前图层按实际存储范围解析索引颜色，画布外部保持透明；可见图层合成传入文档色板。现有后台控制器继续处理拖动、释放和取消。Release indexed-runtime 构建及 CTest 通过（旧版 oracle 生成0.84秒、runtime 0.02秒），新增同色不同ID、零号不透明颜色、稀疏外部、合成一致性及原始像素/历史不变检查。编辑器调用点已源码核对，未重建正式 GUI、未做人工验收，索引色生产入口仍关闭，整体 INCOMPLETE。来源见 indexedWandReference20261118。
+
+## 2026-11-18 自由瓦片悬停预览颜色解析
+
+依据旧版 canvas-render-free-tile-brush.ts 与 document-model.ts，悬停预览按目标栅格格式解析原像素及写入颜色，随后传入文档色板合成。编辑器与定向测试复用 freeTilePlacementComposite，覆盖索引色、稀疏存储、零号不透明颜色及局部裁剪。Release indexed-runtime 构建及 CTest 通过（oracle 0.71秒、runtime 0.02秒）。未重建 GUI、未做人工图像验收；索引色生产入口仍关闭，整体 INCOMPLETE。来源见 freePlacementColor20261118。

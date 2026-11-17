@@ -33017,6 +33017,13 @@
           "legacy/src/renderer/src/core/animation.ts:497-585"
         ],
         "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
+      },
+      "freePlacementColor20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-render-free-tile-brush.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "renderCanvasFreeTileBrush resolves replacement via resolveLayerCanvasColor, reads original with readLayerColorAt, blends and samples composite replacement. Extract existing native replacement preparation into freeTilePlacementComposite used by editor; resolve indexed target colors only within actual storage, normalize ink according to target format and pass document RasterColorContext to full composite. Directed indexed-runtime checks exercise shared production helper with sparse storage, opaque palette zero, full and clipped previews, preserving raw pixels/history. Release indexed-runtime build/CTest passed (oracle 0.71s, runtime 0.02s). GUI call site inspected; no GUI rebuild or manual acceptance, indexed production admission still closed."
       }
     },
     {
@@ -35271,7 +35278,14 @@
       ],
       "freeTileSelectionCreation20261030": "Free-tile Edit selection creation: reuse marquee/ellipse/lasso/polygon/brush gestures, combination, cancellation and selection history; target eligibility follows selectedFreeTileSelectionTarget, document-space masks may extend beyond source bounds. Magic samples only transformed primary source in legacy noncompact padded raster, then clips result to document; native asynchronous worker and 16M temporary-pixel limit retained. Paint selection and unported source content transforms remain unavailable; no derived cache writes.",
       "timelineContentFlips20261030": "Legacy flipSelectedTimelineContents: explicit Cel pairs take precedence, otherwise selected layer/group rows cross selected frames or all frames; skip hidden/locked/text/mask targets. Selected free instances and pixel/floating selections retain precedence. Resolve/deduplicate shared owner before edit, mirror raster storage via existing local pixel history preserving linked aliases; tilemap cell placement/orientation uses exact legacy mirroredTilemapCell enumeration; free instances toggle unlocked flip flags without positions/source edits. Stage all child changes before publication; one grouped transaction restores focus/selection, undo/redo, native bounded memory. Native independent free Cel/source ownership admission still applies: linked free-instance Cels and grid/free shared resource ownership are not imported/supported, despite legacy test coverage. Rotation menus remain unavailable on free layers because legacy rotateWorkspaceContent explicitly rejects special kinds. See docs/timeline-content-flips-20261030.md.",
-      "linkedFreeCels20261107": "Legacy animation.ts connectAnimationCels/linkAnimationFrameCels/inheritAnimationFrameCelLinks assigns source.freeTiles and shared surface; disconnect materializes independent payload. Native reuses existing canonical resolveSurface source with a freeTileCel content accessor, keeps cel() slot identity, routes free instance/source edit, property/flag/move/placement/clipboard/selection/flip and UI content reads to canonical authority. Existing Cel/Timeline edit histories capture roots while preserving active frame; import validates and renders roots, encode writes resolved free payload, aliases retain explicit links; frame creation and local clipboard auto-link guards removed. Lifecycle and twelve-operation editing matrix plus real context/shortcut tests cover connect/unlink, frame deletion, explicit/automatic links, native/recovery reopen and Undo/Redo. No new shared-storage architecture; unimplemented unrelated operations and manual acceptance remain incomplete."
+      "linkedFreeCels20261107": "Legacy animation.ts connectAnimationCels/linkAnimationFrameCels/inheritAnimationFrameCelLinks assigns source.freeTiles and shared surface; disconnect materializes independent payload. Native reuses existing canonical resolveSurface source with a freeTileCel content accessor, keeps cel() slot identity, routes free instance/source edit, property/flag/move/placement/clipboard/selection/flip and UI content reads to canonical authority. Existing Cel/Timeline edit histories capture roots while preserving active frame; import validates and renders roots, encode writes resolved free payload, aliases retain explicit links; frame creation and local clipboard auto-link guards removed. Lifecycle and twelve-operation editing matrix plus real context/shortcut tests cover connect/unlink, frame deletion, explicit/automatic links, native/recovery reopen and Undo/Redo. No new shared-storage architecture; unimplemented unrelated operations and manual acceptance remain incomplete.",
+      "freePlacementColor20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-render-free-tile-brush.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "renderCanvasFreeTileBrush resolves replacement via resolveLayerCanvasColor, reads original with readLayerColorAt, blends and samples composite replacement. Extract existing native replacement preparation into freeTilePlacementComposite used by editor; resolve indexed target colors only within actual storage, normalize ink according to target format and pass document RasterColorContext to full composite. Directed indexed-runtime checks exercise shared production helper with sparse storage, opaque palette zero, full and clipped previews, preserving raw pixels/history. Release indexed-runtime build/CTest passed (oracle 0.71s, runtime 0.02s). GUI call site inspected; no GUI rebuild or manual acceptance, indexed production admission still closed."
+      }
     },
     {
       "file": "src/pixel_text_area.cpp",
@@ -41548,6 +41562,13 @@
           "legacy/src/renderer/src/core/selection.ts"
         ],
         "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
+      },
+      "freePlacementColor20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-render-free-tile-brush.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "renderCanvasFreeTileBrush resolves replacement via resolveLayerCanvasColor, reads original with readLayerColorAt, blends and samples composite replacement. Extract existing native replacement preparation into freeTilePlacementComposite used by editor; resolve indexed target colors only within actual storage, normalize ink according to target format and pass document RasterColorContext to full composite. Directed indexed-runtime checks exercise shared production helper with sparse storage, opaque palette zero, full and clipped previews, preserving raw pixels/history. Release indexed-runtime build/CTest passed (oracle 0.71s, runtime 0.02s). GUI call site inspected; no GUI rebuild or manual acceptance, indexed production admission still closed."
       }
     },
     {

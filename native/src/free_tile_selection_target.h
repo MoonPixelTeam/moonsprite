@@ -1,9 +1,24 @@
 #pragma once
 #include "document.h"
+#include "layer_compositor.h"
 #include <algorithm>
 #include <stdexcept>
 
 namespace moon {
+// Legacy canvas-render-free-tile-brush: resolve the target layer's write color,
+// blend over its original color, then sample the full replacement composite.
+inline std::vector<Pixel> freeTilePlacementComposite(const Document& doc,PixelRegion area,const std::vector<Pixel>& pixels,PixelRegion region){
+ const RasterColorContext colors(doc.palette().entries,doc.palette().order(),doc.colorMode(),doc.pixelFormat());
+ const auto* surface=doc.activeSurfaceIfPresent();const bool indexed=surface&&surface->format==timeline::RasterFormat::Indexed;
+ std::vector<Pixel> replacement(std::size_t(region.w)*region.h);
+ for(int y=region.y;y<region.y+region.h;++y)for(int x=region.x;x<region.x+region.w;++x){
+  const auto local=surface?raster::worldIndex(*surface,x,y):std::nullopt;
+  const auto base=local?colors.toolColor(surface->format,surface->pixels[*local]):0;
+  const auto ink=color_mode::resolveLayerCanvasColor(doc.colorMode(),doc.pixelFormat(),indexed,false,doc.palette().entries,doc.palette().order(),pixels[std::size_t(y-area.y)*area.w+x-area.x]);
+  replacement[std::size_t(y-region.y)*region.w+x-region.x]=(ink>>24)?brushComposite(base,ink,100):base;
+ }
+ return compositeNormalRegion(doc.displayTimeline(),doc.frame().id,{region.x,region.y,region.w,region.h},doc.layer().id,&replacement,region.w,region.x,region.y,false,{},{},nullptr,nullptr,&colors);
+}
 // Legacy workspace-selection-timeline-flip: explicit Cel picks, otherwise
 // selected layer/group rows crossed with selected frames (all frames by default).
 inline std::vector<std::string> timelineContentFlipTargets(const Document& doc) {
