@@ -27381,6 +27381,13 @@
           "legacy/src/renderer/src/core/palette-layout.ts"
         ],
         "nativeAdaptation": "createBackgroundLayer renders indexed pattern/tile using findOrAddPaletteColor(document,color,true): first exact color reuse, hidden entry promotion, transparent ID0 insertion, monotonically allocated names/IDs and cached repeated RGBA. Detached palette staged into existing structure history with paletteKind13, matching DocumentStructureSnapshot ownership of entries/order/slots/columns/nextColorId but excluding UI role/selected colors. Existing full-frame link and focus semantics retained. Native integer exhaustion and document budget reject before live publication. Regression covers solid/image tile, dimensions, transparent RGB, hidden color reuse, exact new color, duplicate input cache, linked frames, focus, single history and undo/redo plus exhausted allocator rejection."
+      },
+      "newLayerColorMode20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-creation.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Actual addLayer calls createSparseLayer(document.colorMode), including adjustment layers. Native structural creation now initializes every frame Cel with Indexed format in indexed documents, otherwise RGBA; retain 1x1 zero storage, detached ownership and existing placement/focus/history. Twelve mode/group/adjustment fixtures cover RGBA/grayscale/indexed, root/group creation, two frames, undo-redo, and ordinary layer first paint followed by undo creation/replay paint, with unchanged palette."
       }
     },
     {
@@ -41895,6 +41902,13 @@
           "legacy/src/renderer/src/core/palette-layout.ts"
         ],
         "nativeAdaptation": "createBackgroundLayer renders indexed pattern/tile using findOrAddPaletteColor(document,color,true): first exact color reuse, hidden entry promotion, transparent ID0 insertion, monotonically allocated names/IDs and cached repeated RGBA. Detached palette staged into existing structure history with paletteKind13, matching DocumentStructureSnapshot ownership of entries/order/slots/columns/nextColorId but excluding UI role/selected colors. Existing full-frame link and focus semantics retained. Native integer exhaustion and document budget reject before live publication. Regression covers solid/image tile, dimensions, transparent RGB, hidden color reuse, exact new color, duplicate input cache, linked frames, focus, single history and undo/redo plus exhausted allocator rejection."
+      },
+      "newLayerColorMode20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-creation.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Actual addLayer calls createSparseLayer(document.colorMode), including adjustment layers. Native structural creation now initializes every frame Cel with Indexed format in indexed documents, otherwise RGBA; retain 1x1 zero storage, detached ownership and existing placement/focus/history. Twelve mode/group/adjustment fixtures cover RGBA/grayscale/indexed, root/group creation, two frames, undo-redo, and ordinary layer first paint followed by undo creation/replay paint, with unchanged palette."
       }
     },
     {

@@ -7702,3 +7702,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出合成修复正式程序集成
 
 精灵表颜色状态校验、选区背景预设、帧序列与工程缩略图合成及静态空Cel导出改动已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志export-composite-gui-build.log；产物本地时间2026-11-18 05:59:32，31,802,880 bytes。使用正式主题和指针参数，Start-Process -Wait -PassThru确认--frame-png-export-check、--sheet-import-check均退出0。实际入口检查不替代新增像素夹具或人工图像验收；未进行人工图像验收，不开放生产索引色准入，整体迁移INCOMPLETE。未提交生成物、缓存和用户数据。
+
+## 2026-11-18 新建图层的颜色模式
+
+对照旧版 workspace-commands-layer-creation.ts::addLayer 调用 createSparseLayer(document.colorMode)，普通层及渐变映射调整层的每帧空Cel均按文档模式初始化格式，索引色使用Indexed，RGBA/灰度使用RGBA；保持1×1零值、独立所有权和既有插入、焦点及结构历史。新增12组模式/根层或组内/普通或调整层夹具，验证两帧空Cel、撤销重做和普通层首次绘画后连续撤销创建并重放绘画，核对像素、格式及色板不变。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.79/0.04秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见newLayerColorMode20261118。
