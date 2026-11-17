@@ -7574,3 +7574,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色预览窗口取色
 
 依据旧版PreviewPanel的createCompositePointSampler预览文档取色，将文档色板传入原生previewSample的帧／覆盖层合成。正式Release构建成功，--preview-panel-check退出0，新增隔离索引色双帧夹具，核对活动帧／播放帧颜色、前景／背景回调标记及源ID、修订和历史保留，完成后恢复原面板状态。未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedPreviewSample20261118。
+
+## 2026-11-18 索引色选区背景预设
+
+依据旧版background-preset-images.ts，选区背景预设的合成及单层直接采样接入文档色板，保留选区外清零、空内容不生成及RGBA PNG规则。Release定向构建与background-preset检查通过（0.10秒），覆盖单层／多层、不透明度、链接活动帧、完整／裁切／遮罩／空选区，与转换后RGBA像素及PNG比较并解码检查，核对源ID、修订与历史不变。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedBackgroundPreset20261118。
