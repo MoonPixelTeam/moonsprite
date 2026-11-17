@@ -7550,3 +7550,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色动画与逐帧导出
 
 动画导出共享准备路径及全帧裁切边界接入文档真实色板；逐帧图片合成与单层直接像素路径均解析 indexed ID，沿用既有裁切、缩放、保护和编码器。正式 Release 构建成功，gif-export／frame-png-export 两项定向检查通过（0.15秒），比较索引色与转换后RGBA输出、链接帧、裁切及200%缩放，并解码PNG核对像素，检查源数据未修改。本批不代表PSD等其他导出路径已完成，也未做实际indexed GUI或人工图像验收；生产索引色入口仍关闭，整体 INCOMPLETE。来源见 indexedAnimationExport20261118。
+
+## 2026-11-18 索引色 PSD 导出
+
+按旧版 scaledRaster 的色板感知边界与首个同 ID 色板项采样，补齐索引色分层像素和合成预览；蒙版与效果元数据沿用原规则。正式 Release 构建成功，psd-export 定向检查通过（0.11秒），覆盖链接活动帧、双图层、不透明度、有无活动帧蒙版及100/150/200%缩放，与转为RGBA后的PSD逐字节比较，并检查导出不修改原始ID、修订和历史。首轮夹具在切帧前创建非自动链接蒙版，已改为在实际导出帧创建。未做实际indexed GUI或人工图像验收，生产索引色入口仍关闭，整体 INCOMPLETE。来源见 indexedPsdExport20261118。
