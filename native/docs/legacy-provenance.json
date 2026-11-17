@@ -25140,6 +25140,13 @@
           "legacy/src/renderer/src/components/PixelUtilityIcon.tsx"
         ],
         "nativeAdaptation": "FileLocationPicker local gallery selects executable gallery directory, independent of save location preference. Enable shared native export location menu action using existing galleryDirectory, ensure directory and show errors; preserve filename, reuse converted legacy image utility icon. Formal palette-paths check validates enabled action, icon, selected directory/filename and actual PNG export without document mutation in test-owned gallery. Existing recent/project/chooser paths remain tested."
+      },
+      "paintFlipTimelineMenu20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-flip.ts",
+          "legacy/src/renderer/src/store/workspace-selection-timeline-flip.ts"
+        ],
+        "nativeAdaptation": "Actual native menu integration check for explicit marquee and extra selected timeline Cel: both flip commands enabled through menu registry and item availability, invoke only active Cel, preserve unrelated frame and selected Cels, one history, Undo. Uses existing grid-transform-entry-only smoke and formal binary."
       }
     },
     {

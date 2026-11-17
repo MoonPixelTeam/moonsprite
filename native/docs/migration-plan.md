@@ -7734,3 +7734,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Paint选区翻转与额外时间轴选择
 
 对照workspace-commands-selection-flip.ts，显式画布选区会绕过whole-Cel时间轴翻转，Paint分支在普通多目标分支之前仅翻转活动layer/frame。原生删除额外组、图层、Cel及帧选择的拒绝条件，继续复用既有规范来源、整格翻转历史、蒙版选择及锁定/隐藏行为。已有菜单paintCellFlipAvailable门禁直接承接此变更。扩展三类时间轴选择和移动/复制夹具变体的水平/垂直翻转，核对资源ID、逐像素sourcePoint镜像、无关帧及焦点/选择不变、单次历史和Undo/Redo。首轮期望简单切换flip位，但既有算法可用旋转与翻转的等价表示，已改为逐像素映射断言，未修改生产算法。Release tilemap-document构建及完整定向CTest通过（0.39秒），来源1043文件及diff检查通过。未重建正式GUI、未做人工图像验收；整体迁移INCOMPLETE。来源见paintFlipTimelineContext20261118。
+
+## 2026-11-18 Paint时间轴上下文翻转正式菜单验证
+
+将上一阶段Paint选区翻转改动编入唯一正式产物native/build/Release/moonsprite-native.exe，新增实际菜单双轴检查：显式画布选区和两个时间轴Cel选择共存时，menuCommands与菜单项均可用，只改活动Cel，另一帧引用、当前选择及焦点保留，单条历史和Undo恢复。Release moonsprite-native构建退出0（paint-flip-menu-build.log）；Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针参数退出0，包含原有四种瓦片模式变换入口检查。来源覆盖1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。
+
+另核对旧版workspace-commands-selection-move.ts居中路径：未进入Paint整格移动，而是直接编辑像素缓存；原生目前拒绝特殊层居中。资源/实例持久化修复的行为差异已向用户提出，尚待答复，本批未修改居中语义。

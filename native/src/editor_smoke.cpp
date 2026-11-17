@@ -10531,6 +10531,11 @@ void Editor::smokeTilemapSelectionDelete(){
   currentDocument().previewSelection({});useMoveTool();ui::KeyMessage key(ui::kKeyDownMessage,ui::kKeyT,ui::kKeyCtrlModifier,0,0);onProcessMessage(&key);verify();
   currentDocument().previewSelection({});currentDocument().setLayerLocked(true);beginLayerTransform();require(!currentDocument().selection()&&!currentDocument().floating(),"Grid transform UI locked rejection");replaceDocumentForSmoke(Document());refresh();
  });
+ runSelectionSmokeCase([this]{
+  auto require=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;currentPlayback().playing=false;paletteFocused_=false;currentView().frameSelection=false;
+  replaceDocumentForSmoke(Document(6,2));auto& d=currentDocument();d.beginStroke({0,0},0xff123456);d.commitStroke();require(d.convertLayerToTilemap(2,2,U"Paint timeline flip"),"Paint menu fixture");d.addFrame(true);const auto otherFrame=d.frame().id;d.selectFrame(d.timeline().state().frames.front().id);d.setTilemapMode(tiles::Mode::Paint);const auto active=d.cel().id,other=d.timeline().findCel(d.layer().id,otherFrame)->id;d.selectTimelineCel(active,0,{active,other});d.previewSelection(SelectionMask{0,0,2,2,{}});const auto refs=d.cel().tilemap->cells,otherRefs=d.timeline().findCelById(other)->tilemap->cells;const auto rows=d.timelineSelection();const auto history=d.historyPosition();refresh();
+  for(const auto* command:{"flipHorizontal","flipVertical"}){require(menuCommands_.enabled(command)&&menuItems_.at(command)->available()&&menuCommands_.invoke(command),"Paint timeline flip actual menu enabled");require(d.cel().id==active&&d.cel().tilemap->cells!=refs&&d.timeline().findCelById(other)->tilemap->cells==otherRefs&&d.timelineSelection().cels==rows.cels&&d.historyPosition()==history+1,"Paint timeline menu active-only history");d.undo();require(d.cel().tilemap->cells==refs,"Paint timeline menu Undo");refresh();}replaceDocumentForSmoke(Document());refresh();
+ });
  if(std::wstring(GetCommandLineW()).find(L"--grid-transform-entry-only")!=std::wstring::npos)return;
  smokeLinkedHybridFloating();
  smokeLinkedEditFloating();
