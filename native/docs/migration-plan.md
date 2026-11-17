@@ -7610,3 +7610,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 渐变可见图层索引色参考补齐
 
 依据旧版 pending-gradient-session.ts 的合成取色，补齐瓦片与普通/稀疏/空 Cel 渐变开始及参考选项更新时的文档色板上下文，包含蒙版共享更新路径。Release tilemap-document 检查通过（0.89秒）：六组混合格式场景覆盖 Create/Hybrid/Edit、普通/稀疏/空 Cel，验证初始区域、切换参考选项、取消、瓦片资源、单次提交、撤销重做及参考源不变。测试夹具直接安装混合格式状态，未开放索引色生产导入入口；未重建 GUI、未做人工图像验收，整体 INCOMPLETE。来源见 indexedGradientReference20261118。
+
+## 2026-11-18 索引色图层样式栅格化
+
+对照旧版 workspace-commands-layer-creation.ts::rasterizeLayer，栅格化按色板识别内容边界、合成样式并保留源索引格式；RGBA输出按文档颜色模式规范化。自由瓦片暂存转换承接文档色板、模式和精度。Release text-rasterization 定向检查通过（0.05秒），覆盖索引色边界、逐帧蒙版、样式消耗、链接帧独立烘焙、单条历史、撤销恢复原索引像素/链接/蒙版及重做，原有文字转换检查亦通过。未重建 GUI、未做人工图像验收；索引色生产入口仍关闭，整体 INCOMPLETE。来源见 indexedStyleRasterization20261118。
