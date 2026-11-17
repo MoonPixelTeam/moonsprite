@@ -4735,6 +4735,43 @@ void Editor::smokeFilterPresets(){
  openFilterPreset(FilterPreset::CrtSubtle,1,true);if(currentDocument().timeline().state().layers.size()!=1||currentDocument().historySize()!=lcdHistory||currentDocument().revision()!=lcdRevision||currentDocument().dirty()||currentDocument().filterPreviewActive())throw std::runtime_error("LCD cancel leaked preview");
  if(!menuCommands_.invoke("lcdScreen")||currentDocument().timeline().state().layers.size()!=5||currentDocument().timeline().state().groups.size()!=1||!currentDocument().groupSelectionOnly()||currentDocument().historySize()!=lcdHistory+1||currentDocument().filterPreviewActive())throw std::runtime_error("LCD real menu structural commit");
  refresh();ui::Manager::getDefault()->dispatchMessages();writeSmokeFrame(display()->nativeSurface().get(),assets_.parent_path()/"lcd-filter-result-smoke.bmp");currentDocument().undo();refresh();if(currentDocument().timeline().state().layers.size()!=1||!currentDocument().timeline().state().layers[0].visible)throw std::runtime_error("LCD undo");currentDocument().redo();refresh();if(currentDocument().timeline().state().groups.size()!=1||currentDocument().timeline().state().layers[4].visible)throw std::runtime_error("LCD redo");replaceDocumentForSmoke(Document());refresh();
+ // Structural effects preserve the free-tile authority instead of editing its cache.
+ replaceDocumentForSmoke(Document(12,12));
+ auto require=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
+ require(currentDocument().createFreeTileLayer(U"Free effects source"),"Free effects layer fixture");
+ SelectionClipboard image;image.width=image.height=2;image.pixels={0xff123456,0x80776655,0xffabcdef,0xff112233};
+ require(currentDocument().pasteFreeTilePixels(image,{4,4}),"Free effects content fixture");
+ currentDocument().setFreeTileInstanceView(false);currentDocument().previewSelection({});currentDocument().addLinkedFrame();
+ const auto sourceLayer=currentDocument().layer().id,sourceCel=currentDocument().cel().id;
+ const auto sourceData=*currentDocument().layer().freeTiles;const auto sourceResources=currentDocument().timeline().state().tilesets;
+ const auto sourceInstances=*currentDocument().freeTileCel().freeTiles;
+ const auto sourcePixels=currentDocument().freeTileCel().surface->pixels;
+ const auto layers=currentDocument().timeline().state().layers.size(),groups=currentDocument().timeline().state().groups.size();
+ auto sourceIntact=[&](const Document& doc){
+  const auto& state=doc.timeline().state();const auto layer=std::find_if(state.layers.begin(),state.layers.end(),[&](const auto& l){return l.id==sourceLayer;});
+  const auto owner=doc.timeline().resolveSurface(sourceCel);
+  require(layer!=state.layers.end()&&layer->kind=="free-tile"&&layer->freeTiles&&*layer->freeTiles==sourceData&&owner.source&&owner.source->freeTiles&&*owner.source->freeTiles==sourceInstances&&owner.surface&&owner.surface->pixels==sourcePixels,"Structural effects changed free source authority");
+  require(state.tilesets.size()==sourceResources.size(),"Structural effects changed free resource count");
+  for(const auto& original:sourceResources){const auto found=std::find_if(state.tilesets.begin(),state.tilesets.end(),[&](const auto& set){return set.id==original.id;});require(found!=state.tilesets.end()&&found->pixels==original.pixels&&found->tileIds==original.tileIds&&found->tileWidth==original.tileWidth&&found->tileHeight==original.tileHeight,"Structural effects changed free resource identity or pixels");}
+ };
+ currentDocument().markSaved();refresh();const auto specialHistory=currentDocument().historyPosition(),specialRevision=currentDocument().revision();
+ for(const auto& def:filterPresetDefinitions()){const auto id="filter:"+std::string(def.id);require(menuItems_.at(id)->available(),"Free preset filter actual menu disabled");}
+ openFilterPreset(FilterPreset::CrtSubtle,1);require(currentDocument().historyPosition()==specialHistory&&currentDocument().revision()==specialRevision&&!currentDocument().dirty()&&!currentDocument().filterPreviewActive(),"Free preset filter cancel leaked preview");sourceIntact(currentDocument());
+ openFilterPreset(FilterPreset::CrtSubtle,2);require(currentDocument().timeline().state().layers.size()==layers+1&&currentDocument().historyPosition()==specialHistory+1&&!currentDocument().filterPreviewActive(),"Free preset filter apply did not add one layer/history");sourceIntact(currentDocument());
+ const auto presetLayer=currentDocument().layer().id;currentDocument().undo();require(currentDocument().timeline().state().layers.size()==layers,"Free preset Undo");sourceIntact(currentDocument());currentDocument().redo();require(currentDocument().layer().id==presetLayer,"Free preset Redo identity");sourceIntact(currentDocument());currentDocument().undo();
+ currentDocument().selectTimelineLayer(sourceLayer);refresh();require(menuItems_.at("lcdScreen")->available(),"Free LCD actual menu disabled");
+ openFilterPreset(FilterPreset::CrtSubtle,1,true);require(currentDocument().historyPosition()==specialHistory&&!currentDocument().filterPreviewActive(),"Free LCD cancel leaked preview");sourceIntact(currentDocument());
+ menuItems_.at("lcdScreen")->Click();require(currentDocument().timeline().state().layers.size()==layers+4&&currentDocument().timeline().state().groups.size()==groups+1&&currentDocument().historyPosition()==specialHistory+1&&!currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(sourceLayer)].visible,"Free LCD menu did not create channels/hide source");sourceIntact(currentDocument());
+ const auto lcdGroup=currentDocument().timeline().state().groups.back().id;currentDocument().undo();require(currentDocument().timeline().state().layers.size()==layers&&currentDocument().timeline().state().layers[currentDocument().timeline().layerIndex(sourceLayer)].visible,"Free LCD Undo visibility");currentDocument().redo();require(currentDocument().timeline().state().groups.back().id==lcdGroup,"Free LCD Redo identity");sourceIntact(currentDocument());currentDocument().undo();
+ currentDocument().selectTimelineLayer(sourceLayer);timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0xff336699;
+ require(currentDocument().beginLayerStyle()&&currentDocument().commitLayerStyle(style),"Free split style fixture");refresh();const auto splitHistory=currentDocument().historyPosition();
+ const auto styled=compositeNormalRegion(currentDocument().timeline(),currentDocument().frame().id,{0,0,12,12});
+ require(menuItems_.at("splitLayerStyles")->available(),"Free split style actual menu disabled");menuItems_.at("splitLayerStyles")->Click();require(currentDocument().timeline().state().layers.size()==layers+1&&currentDocument().timeline().state().groups.size()==groups+1&&currentDocument().historyPosition()==splitHistory+1&&!currentDocument().layerStyle(sourceLayer),"Free style split structural transaction");sourceIntact(currentDocument());
+ require(compositeNormalRegion(currentDocument().timeline(),currentDocument().frame().id,{0,0,12,12})==styled,"Free style split changed rendered output");
+ const auto splitGroup=currentDocument().timeline().state().groups.back().id;currentDocument().undo();require(currentDocument().layerStyle(sourceLayer)&&currentDocument().timeline().state().layers.size()==layers,"Free split Undo style");currentDocument().redo();require(currentDocument().timeline().state().groups.back().id==splitGroup,"Free split Redo identity");sourceIntact(currentDocument());
+ const auto path=assets_.parent_path()/"free-structural-effects-test-owned.moonsprite";project::saveDocumentAtomic(currentDocument(),path);std::ifstream input(path,std::ios::binary);auto bytes=std::make_shared<project::Bytes>(std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>());auto reopened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes)));sourceIntact(reopened);require(compositeNormalRegion(reopened.timeline(),reopened.frame().id,{0,0,12,12})==styled,"Free structural effects saved-file reopen");
+ replaceDocumentForSmoke(Document());refresh();
+
 }
 void Editor::smokeCurrentMigrationBatch(){ui::Manager::getDefault()->dispatchMessages();smokeCanvasCrop();smokeBackgroundPreset();smokeLayerQuickActions();smokeTemporaryBrushCapture();smokeCanvasResize();}
 

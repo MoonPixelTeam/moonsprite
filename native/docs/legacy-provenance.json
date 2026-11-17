@@ -24414,6 +24414,14 @@
           "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
         ],
         "adaptation": "Remove obsolete menu-only exclusions for free-tile image size/canvas size and free/grid crop/current-frame trim/all-frame trim. Reuse existing resource resize/canvas transactions, canonical linked owners, source identities and undo/redo. Existing runtime special-layer fixtures now check actual PixelMenuItem availability and use Click for image-size/crop/trim rather than command dispatch that bypasses menu gating. No new layout, icons or core algorithm. Official Release build, --image-resize-check and --canvas-resize-check passed (2026-11-17). Image-size menu opens the real modal; crop/both trim menus execute through Click; canvas-size availability plus existing dialog cancel/apply checked. Source identity, linked owner and undo/redo preserved. No new visual acceptance."
+      },
+      "freeStructuralEffectsEntries20261117": {
+        "sources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-adjustment.ts",
+          "legacy/src/renderer/src/store/workspace-filter-preview.ts",
+          "legacy/src/renderer/src/store/workspace-layer-style-split.ts"
+        ],
+        "adaptation": "Remove stale free-document exclusions for six filter preset menu entries, LCD and split layer styles. Reuse existing native detached filter tasks, structure transactions, resolved canonical source and style sampler; effects add ordinary layers/groups while retaining free instances/source resources. Runtime integration adds free linked-frame fixtures, menu availability, preset cancel/apply, actual LCD/split menu Click, source authority/resource invariance, undo/redo identities and saved-file reopen. Color adjustment/fill and other free operations remain gated where core migration is missing. Official Release build and --filter-presets-check passed (2026-11-17). Six preset entries available; representative preset cancel/apply, actual LCD/style-split menu Click, exact free authority/resource retention, stable undo/redo identities, rendered style-split equality and actual saved-file reopen passed. No new visual acceptance."
       }
     },
     {
@@ -32257,6 +32265,14 @@
           "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
         ],
         "adaptation": "Remove obsolete menu-only exclusions for free-tile image size/canvas size and free/grid crop/current-frame trim/all-frame trim. Reuse existing resource resize/canvas transactions, canonical linked owners, source identities and undo/redo. Existing runtime special-layer fixtures now check actual PixelMenuItem availability and use Click for image-size/crop/trim rather than command dispatch that bypasses menu gating. No new layout, icons or core algorithm. Official Release build, --image-resize-check and --canvas-resize-check passed (2026-11-17). Image-size menu opens the real modal; crop/both trim menus execute through Click; canvas-size availability plus existing dialog cancel/apply checked. Source identity, linked owner and undo/redo preserved. No new visual acceptance."
+      },
+      "freeStructuralEffectsEntries20261117": {
+        "sources": [
+          "legacy/src/renderer/src/store/workspace-commands-layer-adjustment.ts",
+          "legacy/src/renderer/src/store/workspace-filter-preview.ts",
+          "legacy/src/renderer/src/store/workspace-layer-style-split.ts"
+        ],
+        "adaptation": "Remove stale free-document exclusions for six filter preset menu entries, LCD and split layer styles. Reuse existing native detached filter tasks, structure transactions, resolved canonical source and style sampler; effects add ordinary layers/groups while retaining free instances/source resources. Runtime integration adds free linked-frame fixtures, menu availability, preset cancel/apply, actual LCD/split menu Click, source authority/resource invariance, undo/redo identities and saved-file reopen. Color adjustment/fill and other free operations remain gated where core migration is missing. Official Release build and --filter-presets-check passed (2026-11-17). Six preset entries available; representative preset cancel/apply, actual LCD/style-split menu Click, exact free authority/resource retention, stable undo/redo identities, rendered style-split equality and actual saved-file reopen passed. No new visual acceptance."
       }
     },
     {

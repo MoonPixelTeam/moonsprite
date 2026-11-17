@@ -7403,3 +7403,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 移除自由瓦片图像大小／画布大小，以及自由／网格裁切、当前帧修剪、全帧修剪的残留菜单禁用条件。实际 legacy 来源为 workspace-commands-document-io.ts，直接复用已迁移的资源图像缩放、画布几何事务与既有弹窗。修正原检查仅调用 menuCommands 而绕过 PixelMenuItem 可用性的覆盖缺口；旧的“自由图像大小必须禁用”断言更新为已迁移入口。
 
 唯一正式 Release 构建、--image-resize-check 和 --canvas-resize-check 全部退出 0，检查真实菜单／对话框路径、取消／应用、原资源与关联 owner、裁切与两种修剪的 Undo／Redo。来源覆盖 1042 文件和快照、diff 通过；沿用已通过的核心 oracle，不新增全仓回归、图像人工验收或性能工作。详见[几何菜单记录](special-geometry-menu-entries-20261117.md)。其它自由瓦片操作仍按实际迁移状态继续，整体 INCOMPLETE，阶段保存推送 dev。
+
+
+## 2026-11-17 自由瓦片结构效果入口
+
+依据实际 legacy layer-adjustment、filter-preview 与 layer-style-split，移除六种预设滤镜、LCD、拆分图层样式的残留自由瓦片菜单禁用。直接复用已有任务生命周期、原生弹窗、源缓存读取与结构事务，效果创建普通层／组，保留权威实例及源资源。颜色调整、填充等仍缺核心特殊层逻辑的入口不放开。
+
+唯一正式 Release 构建及 --filter-presets-check 退出 0，覆盖自由瓦片关联帧、六预设菜单可用性、代表预设取消／提交、LCD 和样式拆分真实菜单、原实例／资源保留、可见性、Undo／Redo 标识、拆分前后合成一致与实际保存重开。来源覆盖 1042 文件／快照及 diff 通过；未重复底层矩阵、全仓测试或新增人工图像验收。详见[结构效果入口记录](free-structural-effects-entries-20261117.md)。整体 INCOMPLETE，阶段保存推送 dev。
