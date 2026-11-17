@@ -7458,3 +7458,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 组蒙版补间与移动边界
 
 迁移完整后代组判定、组蒙版变换及形变覆盖率插值，两项定向 CTest 通过。详见 [记录](group-tween-masks-20261117.md)。正式界面的组选择传递与混合特殊工程准入仍待完成，整体 INCOMPLETE。
+
+## 2026-11-17 正式补间对话框组选择
+
+接通选中组的递归后代目标，正式 Release 构建与实际对话框生成／组外保留／撤销重做检查通过。详见 [记录](group-tween-ui-20261117.md)。混合特殊工程准入仍待迁移，整体 INCOMPLETE。
