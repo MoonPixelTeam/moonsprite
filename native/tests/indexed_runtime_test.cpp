@@ -22,6 +22,16 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
 namespace moon {struct RasterHistoryFixture {
+ static void imagePasteColorModes(){
+  for(auto mode:{color_mode::Mode::Indexed,color_mode::Mode::Grayscale,color_mode::Mode::Rgba})for(auto precision:{color_mode::PixelFormat::Rgba32,color_mode::PixelFormat::Rgb565}){
+   Document d(8,8);d.addLinkedFrame();const auto owner=d.layer().id;d.colorMode_=mode;d.pixelFormat_=precision;d.palette_.entries={{0,U"empty",0},{7,U"red",0xff1122cc},{8,U"blue",0xffcc2211}};d.palette_.setOrder({0,7,8});
+   const RasterColorContext colors(d.palette_.entries,d.palette_.order(),mode,precision);SelectionClipboard clip;clip.width=3;clip.height=1;clip.pixels={0xff1122cc,0x00123456,0xffcc2211};clip.mask={1,1,0};const auto input=clip.pixels;const auto h=d.historyPosition();
+   CHECK(d.pastePixelsAsNewLayer(clip,{2,3}));const auto pasted=d.layer().id;const auto& surface=d.activeSurface();const auto format=mode==color_mode::Mode::Indexed?RasterFormat::Indexed:RasterFormat::Rgba;
+   CHECK(surface.format==format&&surface.width==3&&surface.height==1&&surface.offsetX==2&&surface.offsetY==3);const std::vector<Pixel> expected{colors.colorValue(format,input[0]),colors.colorValue(format,input[1]),0};CHECK(surface.pixels==expected);CHECK(clip.pixels==input&&d.historyPosition()==h+1);
+   for(const auto& f:d.timeline_.state().frames)if(f.id!=d.frame().id){const auto resolved=d.timeline_.resolveSurface(d.timeline_.findCel(pasted,f.id)->id);CHECK(resolved.surface&&resolved.surface->format==format&&resolved.surface->pixels==std::vector<Pixel>{0});}
+   d.undo();CHECK(d.layer().id==owner&&!d.timeline_.hasLayer(pasted));d.redo();CHECK(d.layer().id==pasted&&d.activeSurface().pixels==expected);
+  }
+ }
  static void layerPasteFrameInheritance(){
   for(Pixel value:{7u,0u,0xf0000000u})for(bool automatic:{false,true}){
    Document source(1,1);source.addLinkedFrame();source.addLinkedFrame();auto clip=source.copyLayerClipboard();CHECK(clip);
@@ -113,7 +123,7 @@ namespace moon {struct RasterHistoryFixture {
   CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
-int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();
+int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);

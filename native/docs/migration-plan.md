@@ -7654,3 +7654,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 图层粘贴追加帧的索引色与链接继承
 
 依据旧版workspace-commands-clipboard.ts追加帧后的inheritAnimationFrameCelLinks，图层粘贴补齐普通空Cel的目标格式、色板感知内容判断及text/tilemap/freeTiles载荷继承。连续追加帧时从暂存Cel和已有时间轴共同解析规范来源，避免第二个新增帧无法找到前一个暂存链接的来源；保留单条结构事务。六组夹具覆盖低位可见ID、透明零号、缺失高位ID与自动链接开/关，检查两个追加帧、原始来源、格式、撤销重做。Release indexed-runtime及document-layer-groups构建成功，三项关联CTest通过（0.75/0.04/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见layerPasteInheritance20261118。
+
+## 2026-11-18 粘贴为新图层的颜色模式写入
+
+对照旧版workspace-commands-clipboard.ts::pasteAsNewLayer及document-model.ts::writeLayerColor，新图层按文档模式创建表面，未遮罩的剪贴板颜色映射为现有索引ID或应用灰度/RGBA精度规范化；遮罩外及其他帧保留空零值。沿用位置、选区、蒙版退出与单条结构历史。六组模式/精度夹具覆盖索引色、灰度、RGBA与rgba32/rgb565、透明RGB、剪贴板遮罩、非活动帧格式、源剪贴板保留和撤销重做。Release indexed-runtime与document-layer-groups构建成功，三项关联CTest通过（0.70/0.03/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见imageLayerColor20261118。

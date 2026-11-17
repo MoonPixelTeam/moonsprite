@@ -302,9 +302,10 @@ bool Document::pastePixelsAsNewLayer(const SelectionClipboard& clip,Point positi
  do{added.id="layer-native-"+std::to_string(identity_)+"-"+std::to_string(++counter);}while(timeline_.hasLayer(added.id));
  added.name=U"粘贴图层";added.groupId=layer().groupId;
  auto& layers=e.layerHistory.afterLayerStructure->layers;layers.insert(layers.begin()+index,added);
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
  for(const auto& frame:timeline_.state().frames){DocumentCel cel;cel.id="cel-"+added.id+"-"+frame.id;cel.layerId=added.id;cel.frameId=frame.id;cel.opacity=1;timeline::Surface surface;
-  if(frame.id==activeFrameId_){surface.width=clip.width;surface.height=clip.height;surface.offsetX=position.x;surface.offsetY=position.y;surface.pixels=clip.pixels;if(!clip.mask.empty())for(std::size_t i=0;i<surface.pixels.size();++i)if(clip.mask[i]!=1)surface.pixels[i]=0;}
-  else{surface.width=surface.height=1;surface.pixels={0};}
+  if(frame.id==activeFrameId_){surface.width=clip.width;surface.height=clip.height;surface.offsetX=position.x;surface.offsetY=position.y;surface.format=animationTargetFormat(colorMode_,added.kind);surface.pixels.resize(clip.pixels.size());for(std::size_t i=0;i<surface.pixels.size();++i)if(clip.mask.empty()||clip.mask[i]==1)surface.pixels[i]=colors.colorValue(surface.format,clip.pixels[i]);}
+  else{surface.width=surface.height=1;surface.format=animationTargetFormat(colorMode_,added.kind);surface.pixels={0};}
   raster::validate(surface);cel.surface=std::move(surface);e.layerHistory.structureCelBytes+=groupCelStorageBytes(cel);e.layerHistory.structureCels.push_back(std::move(cel));
  }
  e.afterActive=added.id;e.afterTimelineSelection=TimelineSelection{};e.afterTimelineSelection->layers={added.id};e.afterTimelineSelection->layerAnchor=added.id;e.afterSelection=std::vector<std::string>{};e.afterFrameAnchor=std::string{};e.layerHistory.afterGroupUi->selected.clear();e.layerHistory.afterGroupUi->focus.reset();

@@ -27275,6 +27275,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy layer paste appends frames then inheritAnimationFrameCelLinks follows canonical source content with palette-aware animationCelHasContent and copies text/tilemap/freeTiles payloads. Native paste now creates missing ordinary surfaces in document target format, checks indexed visibility through existing RasterColorContext, resolves inherited chains across staged and existing Cels, and transfers all canonical payloads. Six fixtures cover visible low ID, transparent zero and missing high ID with auto-link on/off, two appended frames, one history and undo/redo. Release indexed-runtime and document-layer-groups builds passed; all three associated CTests passed (oracle 0.75s, runtime 0.04s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "imageLayerColor20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace.test.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy pasteAsNewLayer creates a layer in document color mode and writes each unmasked clipboard RGBA color through writeLayerColor. Native pastePixelsAsNewLayer now selects target storage format, maps indexed colors to visible palette IDs and applies grayscale/RGBA precision color-write normalization; masked pixels and other frames remain zero without color quantization. Existing placement, selection, mask-context exit and structure history are retained. Six mode/precision fixtures cover indexed, grayscale and RGBA with rgba32/rgb565, transparent RGB, clipping mask, inactive frame format, clipboard preservation and undo/redo. Release builds and all three associated CTests passed (oracle 0.70s, runtime 0.03s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
       }
     },
     {
@@ -41688,6 +41696,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy layer paste appends frames then inheritAnimationFrameCelLinks follows canonical source content with palette-aware animationCelHasContent and copies text/tilemap/freeTiles payloads. Native paste now creates missing ordinary surfaces in document target format, checks indexed visibility through existing RasterColorContext, resolves inherited chains across staged and existing Cels, and transfers all canonical payloads. Six fixtures cover visible low ID, transparent zero and missing high ID with auto-link on/off, two appended frames, one history and undo/redo. Release indexed-runtime and document-layer-groups builds passed; all three associated CTests passed (oracle 0.75s, runtime 0.04s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
+      },
+      "imageLayerColor20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace.test.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Legacy pasteAsNewLayer creates a layer in document color mode and writes each unmasked clipboard RGBA color through writeLayerColor. Native pastePixelsAsNewLayer now selects target storage format, maps indexed colors to visible palette IDs and applies grayscale/RGBA precision color-write normalization; masked pixels and other frames remain zero without color quantization. Existing placement, selection, mask-context exit and structure history are retained. Six mode/precision fixtures cover indexed, grayscale and RGBA with rgba32/rgb565, transparent RGB, clipping mask, inactive frame format, clipboard preservation and undo/redo. Release builds and all three associated CTests passed (oracle 0.70s, runtime 0.03s, groups 0.03s). No official GUI rebuild/manual acceptance; indexed production admission remains closed."
       }
     },
     {
