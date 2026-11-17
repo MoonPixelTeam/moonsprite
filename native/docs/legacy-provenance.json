@@ -20877,6 +20877,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy brush preview resolves original and replacement layer colors before full composition; adaptive contrast samples the rendered backdrop. Native shared canvas_feedback_composite helpers retain existing sparse bounds, mask isolation, dense RGBA row copies and deferred floating overlays, resolve brushPreview storage IDs to RGBA and pass document palette to all feedback composites. Editor keeps existing caches and feedback geometry. Indexed-runtime regression covers sparse exterior, opaque ID zero, clipped region, palette changes and raw/history preservation. Production indexed admission remains closed; GUI rebuild and manual acceptance not performed in this stage. Release indexed-runtime build and CTest passed (oracle 0.67s, runtime 0.02s), including full-surface actual brush preview/commit/undo and attached/isolated mask previews. Fixture initializes palette order to retain IDs under legacy history normalization. Sparse opaque-zero expansion is not asserted equal to full storage painting; dedicated sparse preview expectations retained."
+      },
+      "mixedGridRasterCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Legacy selection Cut operates on ordinary active layer independently of unrelated grid tilemap content. mixedPixelCopyContext now admits ordinary layers before consulting tilemap-only Cut availability, retaining pixel scope and all existing core deletion/history rules. Actual formal menu regression verifies Copy payload, selected-only removal, exterior pixel preservation, tile resources unchanged, one history and Undo/Redo in a grid-plus-raster document."
       }
     },
     {
@@ -25154,6 +25161,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Existing explicit pixel selection override takes priority over selected Cels for Cut, matching selectionOverride routing. Extend actual grid-transform-entry-only menu smoke with Select All pixel scope then clipped marquee: enabled Cut copies RGBA 2x2 payload, clears marquee, keeps both tilemap Cel references/timeline selection/history, and clears competing Cel/frame clipboard payloads. Normal timeline scope routing unchanged."
+      },
+      "mixedGridRasterCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Legacy selection Cut operates on ordinary active layer independently of unrelated grid tilemap content. mixedPixelCopyContext now admits ordinary layers before consulting tilemap-only Cut availability, retaining pixel scope and all existing core deletion/history rules. Actual formal menu regression verifies Copy payload, selected-only removal, exterior pixel preservation, tile resources unchanged, one history and Undo/Redo in a grid-plus-raster document."
       }
     },
     {

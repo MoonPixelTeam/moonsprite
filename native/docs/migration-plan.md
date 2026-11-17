@@ -7752,3 +7752,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Paint剪切正式程序与作用域验证
 
 对照app-document-shortcuts.ts的selectionOverride优先级和workspace-commands-clipboard.ts剪切，扩展实际菜单检查：两个时间轴Cel共存时先用正式Select All声明像素作用域，再限定2x2选区，菜单/registry均允许Cut；实际剪贴板RGBA正确、选区结束、两个Cel引用和时间轴选择不变、无内容历史、没有竞争的帧/Cel载荷。普通时间轴剪贴板路由保持原行为。上一批Paint剪切多选门禁和提示改动已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release构建退出0（paint-cut-menu-build.log），Start-Process -Wait -PassThru正式主题/指针参数运行--tileset-management-check --grid-transform-entry-only退出0，同时包含既有变换与翻转入口检查。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE；瓦片居中行为差异仍待用户答复。来源见paintCutTimelineMenu20261118。
+
+## 2026-11-18 混合网格工程普通图层剪切入口
+
+对照workspace-commands-clipboard.ts的选区剪切及app-document-shortcuts.ts作用域路由，修复mixedPixelCopyContext对普通图层误用tilemapSelectionCutAvailable造成的菜单拒绝：普通图层直接承接既有像素剪切，特殊层仍使用其专用准入。实际菜单新增网格层加普通层夹具，验证像素载荷、选区内删除、外部像素保留、瓦片引用/资源不变、一次历史及Undo/Redo。唯一正式Release moonsprite-native构建退出0（mixed-grid-raster-cut-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only与正式主题/指针参数退出0，包含现有变换、翻转和Paint剪切入口。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridRasterCut20261118。
