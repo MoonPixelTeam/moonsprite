@@ -7678,3 +7678,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合格式倍率识别色板快照
 
 对照旧版 image-scale-detection.ts::detectDocumentPixelScale 的可见图层合成取色，倍率识别后台任务在捕获内容包含索引色Cel时保存文档色板，即使文档模式为RGBA/灰度。复用已有色板预算、后台快照与samePaletteData过期检查，目标缩放事务不变。夹具验证RGBA文档加索引色参考层正确识别4倍像素倍率，源ID与历史不变；捕获前、已排队及worker完成后直接修改色板均拒绝过期结果。Release image-resize-task-tests构建及完整image-resize-task CTest通过（0.08秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见mixedScaleDetection20261118。
+
+## 2026-11-18 正式程序集成：背景与图像缩放
+
+近期图层剪贴板、选区笔刷、索引色背景扩展/创建及混合格式倍率识别改动已编入唯一正式产物 native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志 migration-background-gui-build.log；产物本地时间2026-11-18 05:44:41，31,803,392 bytes。正式程序使用仓库主题和指针参数，Start-Process -Wait -PassThru确认 --background-layer-check、--image-resize-check 均退出0。首次PowerShell直接调用GUI子系统程序未等待且LASTEXITCODE为空，未将其作为成功证据，随后显式等待取得退出码。构建期间未改实现，用户已有editor_lifecycle.cpp/main.cpp状态保留且未暂存，未提交生成物。上述检查覆盖已有背景对话框创建/转换及图像缩放实际入口，不直接证明仍关闭的indexed生产入口，也未进行新增人工图像验收；整体INCOMPLETE。
