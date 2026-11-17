@@ -22,6 +22,31 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
 namespace moon {struct RasterHistoryFixture {
+ static void mixedAntiAlias(){
+  for(int mode:{0,1,2}){
+   Document d(7,7);auto state=d.timeline_.state();auto& target=*state.cels.front().surface;
+   target.pixels.assign(49,0);for(int i=1;i<6;++i)target.pixels[i*7+i]=0xff4040c0;
+   auto layer=state.layers.front();layer.id="reference";state.layers.push_back(layer);
+   auto cel=state.cels.front();cel.id="reference-cel";cel.layerId=layer.id;cel.surface->format=RasterFormat::Indexed;cel.surface->pixels.assign(49,7);state.cels.push_back(cel);
+   d.palette_.entries={{0,U"transparent",0},{7,U"background",0xffc08040}};d.palette_.setOrder({0,7});
+   d.timeline_=Timeline(state);d.projectActiveCelOpacities();
+   CHECK(d.beginAntiAliasPreview());AntiAliasOptions options;options.colorSource=mode;
+   auto mixed=d.captureAntiAliasSurfaceTask(options);CHECK(mixed);
+   auto rgba=*mixed;auto reference=rgba.simulation.state();auto& surface=*reference.cels.back().surface;surface.format=RasterFormat::Rgba;surface.pixels.assign(49,0xffc08040);rgba.simulation=Timeline(std::move(reference));
+   CHECK(Document::runAntiAliasSurfaceTask(*mixed,{}));CHECK(Document::runAntiAliasSurfaceTask(rgba,{}));CHECK(mixed->surfaces.produced==rgba.surfaces.produced);
+   CHECK(mixed->surfaces.results.size()==rgba.surfaces.results.size());
+   for(std::size_t i=0;i<mixed->surfaces.results.size();++i)CHECK(mixed->surfaces.results[i].pixels==rgba.surfaces.results[i].pixels);
+   CHECK(mixed->surfaces.produced.front());
+   d.palette_.entries[1].color=0xff112233;CHECK(!d.publishAntiAliasSurfaceTask(std::move(*mixed)));d.cancelColorAdjustment();
+   CHECK(d.historySize()==0&&d.timeline_.state().cels.back().surface->pixels==std::vector<Pixel>(49,7));
+   d.palette_.entries[1].color=0xffc08040;CHECK(d.beginAntiAliasPreview());auto commit=d.captureAntiAliasSurfaceTask(options);
+   CHECK(commit&&Document::runAntiAliasSurfaceTask(*commit,{})&&d.publishAntiAliasSurfaceTask(std::move(*commit))&&d.commitAntiAliasAdjustment());
+   CHECK(d.historySize()==1&&d.activeSurface().pixels==rgba.surfaces.results[0].pixels);
+   const std::vector<Pixel> after=d.activeSurface().pixels;d.undo();CHECK(d.activeSurface().pixels==state.cels.front().surface->pixels);d.redo();CHECK(d.activeSurface().pixels==after);
+   CHECK(d.timeline_.state().cels.back().surface->pixels==std::vector<Pixel>(49,7));
+  }
+ }
+
  static void wandReference(){
   Document d(5,1);auto state=d.timeline_.state();auto& source=*state.cels.front().surface;
   source.width=3;source.height=1;source.offsetX=1;source.format=RasterFormat::Indexed;source.pixels={7,8,0};
@@ -60,7 +85,7 @@ namespace moon {struct RasterHistoryFixture {
   CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
-int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();
+int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);

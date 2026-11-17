@@ -858,6 +858,7 @@ void antiAliasTaskStorage(const Document::AntiAliasSurfaceTask& task){
  const auto remaining=adjustmentByteLimit-s.baseBytes-task.simulationBytes;
  if(task.scratchBytes>remaining||s.plannedBytes>(remaining-task.scratchBytes)/2)throw std::length_error("Anti-alias worker exceeds pixel budget");
  if(s.source.palettes){const auto used=adjustmentPaletteBudget(*s.source.palettes,s.baseBytes+task.simulationBytes+task.scratchBytes+s.plannedBytes*2);if(s.source.palettes->baseline.entries.size()>(adjustmentByteLimit-used)/128)throw std::length_error("Anti-alias palette lookup exceeds budget");}
+ if(task.referencePalettes&&task.referencePalettes!=s.source.palettes){const auto used=adjustmentPaletteBudget(*task.referencePalettes,s.baseBytes+task.simulationBytes+task.scratchBytes+s.plannedBytes*2);if(task.referencePalettes->baseline.entries.size()>(adjustmentByteLimit-used)/128)throw std::length_error("Anti-alias reference palette exceeds budget");}
 }
 bool antiAliasCompositeContextEqual(const timeline::Timeline& a,const timeline::Timeline& b){
  const auto& x=a.state();const auto& y=b.state();if(x.layers.size()!=y.layers.size()||x.cels.size()!=y.cels.size()||x.groups.size()!=y.groups.size())return false;
@@ -1118,13 +1119,19 @@ std::optional<Document::AntiAliasSurfaceTask> Document::captureAntiAliasSurfaceT
  if(masks){auto& source=task.surfaces.source;source.width=width_;source.height=height_;source.identity=identity_;source.revision=contentRevision_;source.previewRevision=gradientRevision_;source.layerId=p.layerId;source.frameId=p.frameId;source.selection=p.selection;source.documentBytes=adjustmentStorageBudget(p.baseline,4);source.colorMode=colorMode_;source.pixelFormat=pixelFormat_;source.palettes=p.palettes;for(const auto& id:p.targets)source.targets.push_back({id,adjustmentMask(p.baseline,id)->mask.surface});}
  else{auto source=captureGradientMapTask();if(!source)return {};task.surfaces.source=std::move(*source);}
  task.simulation=p.baseline;task.frames=p.targetFrames;
+ task.referencePalettes=p.palettes?p.palettes:std::make_shared<const AdjustmentPalettes>(AdjustmentPalettes{palette_,palette_});
+ adjustmentPaletteBudget(*task.referencePalettes,used);
  if(task.frames.size()!=p.targets.size())throw std::logic_error("Missing anti-alias target frames");
  for(int id:palette_.order()){const auto* entry=paletteEntry(id);if(entry&&entry->id&&(entry->color>>24))task.palette.push_back(entry->color);}return task;
 }
 bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::function<bool()>& cancelled){
  auto& s=task.surfaces;s.completed=false;s.results.clear();s.produced.clear();s.plans.clear();s.plannedBytes=0;task.scratchBytes=0;auto stop=[&]{return cancelled&&cancelled();};if(stop())return false;
  const auto& captured=s.source;const int width=captured.width,height=captured.height;
+ if(!task.referencePalettes)throw std::logic_error("Missing anti-alias reference palette");
+ const auto& referencePalette=task.referencePalettes->baseline;
+ std::optional<RasterColorContext> referenceColors;
  std::optional<RasterColorContext> colors;if(captured.palettes){const auto used=adjustmentPaletteBudget(*captured.palettes,s.baseBytes+task.simulationBytes);if(captured.palettes->baseline.entries.size()>(adjustmentByteLimit-used)/128)throw std::length_error("Anti-alias palette lookup exceeds budget");const auto& p=captured.palettes->baseline;colors.emplace(p.entries,p.order(),captured.colorMode,captured.pixelFormat);}
+ if(!colors)referenceColors.emplace(referencePalette.entries,referencePalette.order(),captured.colorMode,captured.pixelFormat);
  if(task.frames.size()!=captured.targets.size()||task.simulationBytes!=adjustmentStorageBudget(task.simulation,1))throw std::logic_error("Invalid anti-alias simulation");
  for(std::size_t i=0;i<captured.targets.size();++i){if(stop())return false;if(!task.simulation.hasFrame(task.frames[i]))throw std::logic_error("Missing anti-alias target frame");const auto& target=captured.targets[i];
   auto plan=antiAliasSurfacePlan(target.surface,width,height);const auto bytes=convolutionSurfaceBytes(plan.geometry);if(bytes>adjustmentByteLimit-s.plannedBytes)throw std::length_error("Anti-alias result exceeds pixel budget");s.plannedBytes+=bytes;s.plans.push_back(std::move(plan));
@@ -1148,7 +1155,7 @@ bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::fun
    const auto active=std::find_if(task.simulation.state_.layers.begin(),task.simulation.state_.layers.end(),[&](const auto& l){return l.id==layerId;});
    const bool omit=sampling&&(active==task.simulation.state_.layers.end()||!active->background)&&std::any_of(task.simulation.state_.layers.begin(),task.simulation.state_.layers.end(),[](const auto& l){return bool(l.background);});
    if(omit){saved=task.simulation.state_.layers;auto& layers=task.simulation.state_.layers;layers.erase(std::remove_if(layers.begin(),layers.end(),[](const auto& l){return bool(l.background);}),layers.end());task.simulation.invalidateCompositeOrder();}
-   try{auto out=compositeNormalRegion(task.simulation,task.frames[i],region,{},nullptr,0,0,0,false,{},{},nullptr,nullptr,colors?&*colors:nullptr);if(omit){task.simulation.state_.layers=std::move(saved);task.simulation.invalidateCompositeOrder();}return out;}
+   try{auto out=compositeNormalRegion(task.simulation,task.frames[i],region,{},nullptr,0,0,0,false,{},{},nullptr,nullptr,colors?&*colors:&*referenceColors);if(omit){task.simulation.state_.layers=std::move(saved);task.simulation.invalidateCompositeOrder();}return out;}
    catch(...){if(omit){task.simulation.state_.layers=std::move(saved);task.simulation.invalidateCompositeOrder();}throw;}
   };
   std::vector<Pixel> input(antiAliasCanvasCount(width,height)),composite(input.size()),canvas;
@@ -1164,6 +1171,7 @@ bool Document::runAntiAliasSurfaceTask(AntiAliasSurfaceTask& task,const std::fun
 }
 bool Document::publishAntiAliasSurfaceTask(AntiAliasSurfaceTask&& task){
  if(!adjustment_||!task.surfaces.completed)return false;auto& p=*adjustment_;if(task.maskContext!=p.maskContext||task.maskContext!=activeMaskId_)return false;
+ if(!task.referencePalettes||!indexed_adjustment::samePaletteData(palette_,task.referencePalettes->baseline))return false;
  if(task.frames!=p.targetFrames||!antiAliasCompositeContextEqual(timeline_,task.simulation))return false;
  const auto& captured=task.surfaces.source;if(captured.colorMode!=colorMode_||captured.pixelFormat!=pixelFormat_||bool(captured.palettes)!=bool(p.palettes))return false;
  if(p.palettes&&(!indexed_adjustment::samePaletteData(p.palettes->baseline,captured.palettes->baseline)||!indexed_adjustment::samePaletteData(palette_,captured.palettes->baseline)))return false;

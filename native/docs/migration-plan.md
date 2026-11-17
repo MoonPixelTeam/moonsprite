@@ -7638,3 +7638,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色笔刷与选区反馈
 
 依据旧版 canvas-brush-composite-preview.ts、canvas-render-brush.ts 的图层颜色解析及 canvas-adaptive-contrast.ts 的显示背景取样，为普通笔刷悬停和选区自动反色取样接入文档色板。brushPreview返回的索引存储词先解析为RGBA，再传入合成器；稀疏外部保持透明，已有密集RGBA逐行复制、蒙版隔离、浮动覆盖及缓存继续复用。共享canvas_feedback_composite.h供编辑器与定向检查使用。Release indexed-runtime构建及CTest通过（旧版oracle0.67秒、runtime0.02秒），覆盖稀疏/裁切、零号不透明颜色、色板变化、完整表面实际落笔与撤销、关联蒙版及隔离预览。新增夹具初始未设置可见色板顺序，撤销按旧规则规范化隐藏ID；补齐夹具顺序后通过。稀疏不透明零号扩展与显示外部的差异未据此改变存储语义。来源覆盖1043文件及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见indexedCanvasFeedback20261118。
+
+## 2026-11-18 自动抗锯齿混合格式合成参考
+
+依据旧版tools-outline.ts::antiAliasSelection及collectAntiAliasCanvasColors，自动取色及画布候选均应按文档色板解析全部参考图层。原生AntiAliasSurfaceTask独立捕获只读referencePalettes，目标编辑色板保持原规则；已有目标色板时复用快照及查找上下文，纳入原内存预算，发布时拒绝色板过期结果。新增RGBA目标加索引色参考层夹具，对照等价RGBA参考的自动/画布/色板三种模式，检查实际产生编辑、单条提交、撤销重做、参考ID不变和过期拒绝。Release indexed-runtime与indexed-antialias构建成功，四项关联CTest通过（总4.06秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见mixedAntiAliasReference20261118。

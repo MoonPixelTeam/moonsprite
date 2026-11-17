@@ -644,6 +644,7 @@ public:
   struct ConvolutionTask {int width,height;std::uint64_t identity,revision;std::string layerId,frameId;std::optional<SelectionMask> selection;std::vector<std::pair<std::string,std::vector<Pixel>>> targets;color_mode::PixelFormat pixelFormat=color_mode::PixelFormat::Rgba32;color_mode::Mode colorMode=color_mode::Mode::Rgba;};
   struct AntiAliasSurfaceTask {
     ConvolutionSurfaceTask surfaces;timeline::Timeline simulation;
+    std::shared_ptr<const AdjustmentPalettes> referencePalettes;
     std::vector<std::string> frames;std::vector<Pixel> palette;AntiAliasOptions options;
     std::size_t simulationBytes=0,scratchBytes=0;std::string maskContext;
   };

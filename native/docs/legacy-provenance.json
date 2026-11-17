@@ -4735,6 +4735,14 @@
           "legacy/src/renderer/src/core/selection.ts"
         ],
         "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
+      },
+      "mixedAntiAliasReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/tools-outline.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-anti-alias.ts",
+          "legacy/src/renderer/src/store/workspace-anti-alias.test.ts"
+        ],
+        "nativeAdaptation": "antiAliasSelection collects canvas candidates and automatic samples from the palette-aware document composite, even when target format is RGBA. Capture independent immutable reference palettes in the existing background surface task; target editing palettes remain separate. Reuse indexed target palette snapshot when available; guard reference snapshot memory and reject palette-stale publication. Mixed-format checks compare automatic/canvas/palette results with equivalent RGBA references, verify candidates produced, stale rejection and source/history preservation. Production indexed admission remains closed. Release indexed-runtime and indexed-antialias builds passed; all four associated CTests passed in 4.06s (oracles 1.93s/0.80s, anti-alias 1.23s, runtime 0.04s). Mixed cases verify commit, single history, undo/redo and unchanged reference IDs. No official GUI rebuild or manual acceptance in this stage."
       }
     },
     {
@@ -5942,6 +5950,14 @@
           "legacy/src/renderer/src/core/selection.ts"
         ],
         "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
+      },
+      "mixedAntiAliasReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/tools-outline.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-anti-alias.ts",
+          "legacy/src/renderer/src/store/workspace-anti-alias.test.ts"
+        ],
+        "nativeAdaptation": "antiAliasSelection collects canvas candidates and automatic samples from the palette-aware document composite, even when target format is RGBA. Capture independent immutable reference palettes in the existing background surface task; target editing palettes remain separate. Reuse indexed target palette snapshot when available; guard reference snapshot memory and reject palette-stale publication. Mixed-format checks compare automatic/canvas/palette results with equivalent RGBA references, verify candidates produced, stale rejection and source/history preservation. Production indexed admission remains closed. Release indexed-runtime and indexed-antialias builds passed; all four associated CTests passed in 4.06s (oracles 1.93s/0.80s, anti-alias 1.23s, runtime 0.04s). Mixed cases verify commit, single history, undo/redo and unchanged reference IDs. No official GUI rebuild or manual acceptance in this stage."
       }
     },
     {
@@ -41623,6 +41639,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Legacy brush preview resolves original and replacement layer colors before full composition; adaptive contrast samples the rendered backdrop. Native shared canvas_feedback_composite helpers retain existing sparse bounds, mask isolation, dense RGBA row copies and deferred floating overlays, resolve brushPreview storage IDs to RGBA and pass document palette to all feedback composites. Editor keeps existing caches and feedback geometry. Indexed-runtime regression covers sparse exterior, opaque ID zero, clipped region, palette changes and raw/history preservation. Production indexed admission remains closed; GUI rebuild and manual acceptance not performed in this stage. Release indexed-runtime build and CTest passed (oracle 0.67s, runtime 0.02s), including full-surface actual brush preview/commit/undo and attached/isolated mask previews. Fixture initializes palette order to retain IDs under legacy history normalization. Sparse opaque-zero expansion is not asserted equal to full storage painting; dedicated sparse preview expectations retained."
+      },
+      "mixedAntiAliasReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/tools-outline.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-anti-alias.ts",
+          "legacy/src/renderer/src/store/workspace-anti-alias.test.ts"
+        ],
+        "nativeAdaptation": "antiAliasSelection collects canvas candidates and automatic samples from the palette-aware document composite, even when target format is RGBA. Capture independent immutable reference palettes in the existing background surface task; target editing palettes remain separate. Reuse indexed target palette snapshot when available; guard reference snapshot memory and reject palette-stale publication. Mixed-format checks compare automatic/canvas/palette results with equivalent RGBA references, verify candidates produced, stale rejection and source/history preservation. Production indexed admission remains closed. Release indexed-runtime and indexed-antialias builds passed; all four associated CTests passed in 4.06s (oracles 1.93s/0.80s, anti-alias 1.23s, runtime 0.04s). Mixed cases verify commit, single history, undo/redo and unchanged reference IDs. No official GUI rebuild or manual acceptance in this stage."
       }
     },
     {
