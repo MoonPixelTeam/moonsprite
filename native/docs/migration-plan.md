@@ -7474,3 +7474,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 混合瓦片补间预览
 
 三条补间临时预览时间轴保留资源目录及画布信息，定向构建与测试通过。详见 [记录](mixed-tween-preview-20261117.md)。资源感知画布扩展与生成准入仍未完成，整体 INCOMPLETE。
+
+## 2026-11-17 混合瓦片补间生成
+
+接通混合工程的普通图层补间，画布扩展复用资源调整事务并保留单步历史；正式构建、实际对话框及两项核心测试通过。详见 [记录](mixed-tween-generation-20261117.md)。整体 INCOMPLETE。

@@ -17378,6 +17378,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection.ts"
         ],
         "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
+      },
+      "mixedTweenGeneration20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:281-310",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-585"
+        ],
+        "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
       }
     },
     {
@@ -17485,6 +17493,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:354-383"
         ],
         "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
+      },
+      "mixedTweenGeneration20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:281-310",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-585"
+        ],
+        "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
       }
     },
     {
@@ -24601,6 +24617,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:180-185"
         ],
         "nativeAdaptation": "Formal dialog uses Document::selectedLayerIdsWithGroups to pass selected layer and recursive group descendants in timeline order. Existing scope controls and generation transaction retained. Official --moon-crossfade-check exercises Selected scope with a group-only selection, both descendants, unchanged outside layer, and Undo/Redo. Release build and focused GUI diagnostic exit 0."
+      },
+      "mixedTweenGeneration20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:281-310",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-585"
+        ],
+        "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
       }
     },
     {
@@ -25920,6 +25944,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection.ts"
         ],
         "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
+      },
+      "mixedTweenGeneration20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:281-310",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-585"
+        ],
+        "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
       }
     },
     {
@@ -32527,7 +32559,15 @@
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document replacement menu, detached preview, cancellation, commit, undo/redo and unchanged free resources."
       },
       "mixedSelectionEntries20261117": "Legacy workspace-commands-selection-transform.ts beginLayerTransform/beginFreeTransform chooses selected targets; workspace-commands-selection-flip.ts activePaintLayer/selectedTransformLayersForSession selects actual raster or mask. Apply free-source-specific UI admission only to an actual free source; ordinary layers and masks use existing menu admission/core. Actual mixed raster horizontal/vertical flip and transform/quad preview cancellation check existing transactions and resource preservation.",
-      "mixedRasterClipboardEntries20261117": "Legacy src/renderer/src/store/workspace-commands-clipboard.ts copySelection reads the active layer and selection, independent of unrelated free layers. Native ordinary raster targets bypass free-source-specific menu admission, retaining existing clipboard scope, locks and transactions. Actual menu Copy/Cut/Paste checks exact RGBA, cut undo, floating cancel, history and resource preservation."
+      "mixedRasterClipboardEntries20261117": "Legacy src/renderer/src/store/workspace-commands-clipboard.ts copySelection reads the active layer and selection, independent of unrelated free layers. Native ordinary raster targets bypass free-source-specific menu admission, retaining existing clipboard scope, locks and transactions. Actual menu Copy/Cut/Paste checks exact RGBA, cut undo, floating cancel, history and resource preservation.",
+      "mixedTweenGeneration20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:281-310",
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-585"
+        ],
+        "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
+      }
     },
     {
       "file": "tests/tilemap_document_test.cpp",
