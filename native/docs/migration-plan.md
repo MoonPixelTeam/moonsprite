@@ -7578,3 +7578,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色选区背景预设
 
 依据旧版background-preset-images.ts，选区背景预设的合成及单层直接采样接入文档色板，保留选区外清零、空内容不生成及RGBA PNG规则。Release定向构建与background-preset检查通过（0.10秒），覆盖单层／多层、不透明度、链接活动帧、完整／裁切／遮罩／空选区，与转换后RGBA像素及PNG比较并解码检查，核对源ID、修订与历史不变。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedBackgroundPreset20261118。
+
+## 2026-11-18 索引色缩时录像采集
+
+依据旧版timelapse.ts的色板感知合成与最近邻采样，将文档色彩上下文随受修订保护的PixelPreparation捕获，传入既有分块合成。Release定向构建及timelapse检查通过（0.55秒），覆盖索引色单层／多层、不透明度、链接活动帧、原尺寸及641缩至640的低质量采样、PNG编码解码和RGBA参考一致，并检查源ID、修订、历史及模式变化后的失效保护。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedTimelapse20261118。

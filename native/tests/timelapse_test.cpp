@@ -66,7 +66,13 @@ void localRecordingReadContract(){
  CHECK(readLibraryFrame(legacy,*frame.local)==png);
  CHECK(!std::filesystem::exists(owned/"unavailable-primary"));
 }
-int main(){try{linkedFrameRecording();localRecordingReadContract();
+void indexedCapture(){
+ using namespace timelapse;
+ for(bool layered:{false,true})for(int width:{128,641}){
+  Document d(width,2);d.beginStroke({1,0},d.palette().entries.front().color);d.commitStroke();d.beginStroke({width-1,1},d.palette().entries.back().color);d.commitStroke();if(layered){d.addLayer();d.beginStroke({1,0},d.palette().entries.back().color);d.commitStroke();d.setLayerOpacity(.5);}d.addLinkedFrame(true);CHECK(d.convertColorMode(color_mode::Mode::Indexed));const auto raw=d.timeline().resolveSurface(d.cel().id).surface->pixels;const auto revision=d.revision(),history=d.historyPosition();PixelPreparation capture(d,Quality::Low);CHECK(capture.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(10)));auto frozen=capture.finish();auto pixels=materialize(*frozen);Prepared prepared;prepared.pixels=frozen;CHECK(decodeRecordingPng(encodePreparedPng(prepared)).pixels==pixels);CHECK(d.revision()==revision&&d.historyPosition()==history&&d.timeline().resolveSurface(d.cel().id).surface->pixels==raw);CHECK(d.convertColorMode(color_mode::Mode::Rgba));CHECK(!capture.matches(d));PixelPreparation reference(d,Quality::Low);CHECK(reference.advance(d,std::chrono::steady_clock::now()+std::chrono::seconds(10)));CHECK(pixels==materialize(*reference.finish()));d.undo();CHECK(d.colorMode()==color_mode::Mode::Indexed&&d.timeline().resolveSurface(d.cel().id).surface->pixels==raw);
+ }
+}
+int main(){try{indexedCapture();linkedFrameRecording();localRecordingReadContract();
  using namespace timelapse;Settings s;CHECK(!s.enabled&&!s.recordUndoSteps&&s.fps==12&&s.speed==8&&s.mode==Mode::Smart);CHECK(captureDimensions(1024,512,Quality::Low).width==640);
  s.enabled=true;SmartState smart;for(int i=0;i<181;++i){Frame f;f.id="frame-"+std::to_string(i);f.capturedAt=i;f.width=f.height=1;f.changeScore=i%3==0?.9:.1;append(s,smart,std::move(f),Mode::Smart);}CHECK(s.snapshots.size()==121);CHECK(s.snapshots[60].capturedAt==120&&s.snapshots.back().capturedAt==180);
  auto p=videoPlan(s,.1);CHECK(p.size()==1&&p[0].snapshotIndex==120);
