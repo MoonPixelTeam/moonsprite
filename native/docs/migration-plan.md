@@ -7686,3 +7686,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 精灵表后台导入颜色状态校验
 
 对照旧版 workspace-sprite-sheet-import.ts 的异步源状态校验及 sprite-sheet-import.ts 的色板感知合成，原生任务在创建时冻结渲染所需的颜色ID、颜色值、条目顺序、可见顺序、文档模式和像素精度，捕获、后台排队/完成及提交前拒绝过期结果。色板名称、UI角色和分配器不进入渲染校验，保留导入期间重命名及撤销后名称不丢失的既有行为；快照不复制名称，并在现有256MiB工作预算中计入并存色板/查找表。新增20组无revision变更夹具覆盖五类颜色状态和四个阶段。Release sheet-import-task-tests定向构建成功，sheet-import-task CTest通过（0.20秒）；来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色入口仍关闭，整体迁移INCOMPLETE。来源见sheetImportColorGuard20261118。
+
+## 2026-11-18 选区背景预设承接完整合成
+
+对照旧版 background-preset-images.ts::encodeSelectionBackgroundPreset 直接消费 compositeRegion 的逻辑，删除原生额外的单图层表面直拷。该直拷会覆盖已计算的蒙版、图层样式和Cel透明度；透明RGB及索引色解析改为完全复用已有共享合成器的单层分支。新增四组精确像素夹具覆盖黑色蒙版遮挡、颜色叠加、半透明Cel及关闭样式，同时核对PNG编码、源像素和历史不变；保留原有透明RGB、选区裁剪、多层及索引色用例。Release background-preset-tests定向构建成功，background-preset CTest通过（0.09秒），来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色入口保持关闭，整体迁移INCOMPLETE。来源见backgroundPresetEffects20261118。

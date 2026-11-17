@@ -10,6 +10,21 @@ void check(bool v){static unsigned index=0;++index;if(!v)throw std::runtime_erro
 std::vector<std::uint8_t> read(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);return{std::istreambuf_iterator<char>(f),{}};}
 void verifyPng(const StaticImageExport& image){const auto& b=image.png;std::vector<unsigned char> compressed;auto be=[&](int i){return(std::uint32_t(b[i])<<24)|(std::uint32_t(b[i+1])<<16)|(std::uint32_t(b[i+2])<<8)|b[i+3];};for(std::size_t off=8;off+12<=b.size();){auto length=be(int(off));if(std::string(b.begin()+off+4,b.begin()+off+8)=="IDAT")compressed.insert(compressed.end(),b.begin()+off+8,b.begin()+off+8+length);off+=12+length;}std::vector<unsigned char> decoded((image.width*4+1)*image.height);uLongf n=decoded.size();check(uncompress(decoded.data(),&n,compressed.data(),compressed.size())==Z_OK && n==decoded.size());for(int y=0;y<image.height;++y){check(decoded[y*(image.width*4+1)]==0);for(int x=0;x<image.width;++x)for(int c=0;c<4;++c)check(decoded[y*(image.width*4+1)+1+x*4+c]==std::uint8_t(image.pixels[y*image.width+x]>>(c*8)));}}
 int main(){try{
+ // Preset pixels must include the same effects as legacy compositeRegion.
+ for(int effect=0;effect<4;++effect){
+  timeline::State state;state.frames={{"f",100}};state.layers.push_back({"l",U"Layer"});
+  timeline::Cel cel;cel.id="c";cel.layerId="l";cel.frameId="f";cel.surface=timeline::Surface{2,1,0,0,{},{},{0xff123456,0xff123456}};
+  if(effect==0){timeline::MaskSlot mask;mask.ownerId="l";mask.frameId="f";mask.mask.id="m";mask.mask.surface=timeline::Surface{2,1,0,0,{},{},{0xff000000,0}};state.masks.push_back(mask);}
+  if(effect==1){timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0xffabcdef;state.layers.front().layerStyles=style;}
+  if(effect==2)cel.opacity=.5;
+  if(effect==3){timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0xffabcdef;style.enabled=false;state.layers.front().layerStyles=style;}
+  state.cels.push_back(cel);auto doc=Document::fromImported(2,1,std::move(state),{},"preset-effects",U"Effects",std::make_shared<const std::vector<std::uint8_t>>());
+  const auto revision=doc.revision(),history=doc.historySize();const auto image=encodeSelectionBackgroundPreset(doc,SelectionMask{0,0,2,1,{}});
+  check(bool(image));const Pixel expected=effect==1?0xffabcdef:effect==2?0x80123456:0xff123456;
+  check(image->pixels==std::vector<Pixel>({effect==0?0:expected,expected}));verifyPng(*image);
+  check(doc.revision()==revision&&doc.historySize()==history&&doc.pixels()==std::vector<Pixel>({0xff123456,0xff123456}));
+ }
+
  {Document seed(4,3);seed.beginStroke({1,1},0xff123456);seed.commitStroke();seed.addFrame(true);auto value=decodeAseprite(encodeAseprite(seed));const auto empty=value.activeFrame;value.timeline.cels.erase(std::remove_if(value.timeline.cels.begin(),value.timeline.cels.end(),[&](const auto& c){return c.frameId==empty;}),value.timeline.cels.end());auto doc=documentFromAseprite(std::move(value));const auto count=doc.timeline().state().cels.size(),revision=doc.contentRevision();for(auto selection:{SelectionMask{0,0,4,3,{}},SelectionMask{-1,-1,3,3,{}}})check(!encodeSelectionBackgroundPreset(doc,selection));check(doc.timeline().state().cels.size()==count&&doc.contentRevision()==revision&&!doc.dirty());doc.selectFrame(doc.timeline().state().frames.back().id);auto out=encodeSelectionBackgroundPreset(doc,SelectionMask{0,0,4,3,{}});check(out&&out->pixels[5]==0xff123456);verifyPng(*out);}
 
  {timeline::State state;state.frames.push_back({"f",100});state.layers.push_back({"l0",U"L",true,false,1});timeline::Cel cel0;cel0.id="c0";cel0.layerId="l0";cel0.frameId="f";cel0.surface=timeline::Surface{4,3,0,0,{},{},{3351057u,2150768378u,0u,0u,0u,0u,4291322890u,0u,0u,0u,0u,1064849438u}};state.cels.push_back(cel0);auto doc=Document::fromImported(4,3,std::move(state),{},"oracle",U"O",std::make_shared<const std::vector<std::uint8_t>>());auto out=encodeSelectionBackgroundPreset(doc,SelectionMask{0,0,4,3,{}});check(bool(out)&&out->width==4&&out->height==3&&out->pixels==std::vector<Pixel>{3351057u,2150768378u,0u,0u,0u,0u,4291322890u,0u,0u,0u,0u,1064849438u});verifyPng(*out);}
