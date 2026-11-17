@@ -24502,7 +24502,8 @@
         "adaptation": "Allow the already migrated whole-text box/glyph centering transaction when unrelated grid/free-tile layers exist. Preserve existing special-layer selection restrictions and text metadata/owner offset history.",
         "acceptance": "Official Release build and --free-tile-transform-check exit 0: actual center menu updates boxed text origin and surface offsets, preserves glyph pixels/free resources, undo/redo and centered no-op. No new visual acceptance."
       },
-      "mixedQuickAntiAlias20261117": "Legacy src/renderer/src/components/app/QuickCommandBar.tsx resolveCommand quickAntiAlias invokes onOpenAntiAlias without a document-wide free-tile gate. Native uses the existing shared menu availability checks and preview controller; mixed raster quick invocation/cancel checks pixels, resources and history. Special targets remain filtered by existing core."
+      "mixedQuickAntiAlias20261117": "Legacy src/renderer/src/components/app/QuickCommandBar.tsx resolveCommand quickAntiAlias invokes onOpenAntiAlias without a document-wide free-tile gate. Native uses the existing shared menu availability checks and preview controller; mixed raster quick invocation/cancel checks pixels, resources and history. Special targets remain filtered by existing core.",
+      "mixedSelectionEntries20261117": "Legacy workspace-commands-selection-transform.ts beginLayerTransform/beginFreeTransform chooses selected targets; workspace-commands-selection-flip.ts activePaintLayer/selectedTransformLayersForSession selects actual raster or mask. Apply free-source-specific UI admission only to an actual free source; ordinary layers and masks use existing menu admission/core. Actual mixed raster horizontal/vertical flip and transform/quad preview cancellation check existing transactions and resource preservation."
     },
     {
       "couplingFloatingLifecycle20261113": "Legacy DocumentSession.freeTransformActive (workspace-types.ts) and explicit floating settlement in workspace-commands-selection-floating.ts. Preserve existing native algorithms and no-floating-mode rule; directly session-own mode, project explicit final commit/cancel or history notifications rather than refresh. FloatingSettled is a native final-state notification, not a history edit; playback ignores it.",
@@ -32404,7 +32405,8 @@
         ],
         "adaptation": "Remove whole-document free-tile exclusion from Replace Color menu, enabling existing ordinary-layer and palette replacement in mixed projects. Keep native special-layer rejection pending a product decision on legacy cache-only edits. Do not claim special-layer replacement migration complete.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document replacement menu, detached preview, cancellation, commit, undo/redo and unchanged free resources."
-      }
+      },
+      "mixedSelectionEntries20261117": "Legacy workspace-commands-selection-transform.ts beginLayerTransform/beginFreeTransform chooses selected targets; workspace-commands-selection-flip.ts activePaintLayer/selectedTransformLayersForSession selects actual raster or mask. Apply free-source-specific UI admission only to an actual free source; ordinary layers and masks use existing menu admission/core. Actual mixed raster horizontal/vertical flip and transform/quad preview cancellation check existing transactions and resource preservation."
     },
     {
       "file": "tests/tilemap_document_test.cpp",

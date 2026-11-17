@@ -113,7 +113,7 @@ void Editor::createTilesetPanel(){
  for(auto id:blocked){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;const bool paintFlip=std::string(id)=="flipHorizontal"||std::string(id)=="flipVertical";it->second->available=[this,previous,paintFlip]{return (!currentDocument().hasTilemapContent()||(paintFlip&&(currentDocument().floating()||currentDocument().paintCellFlipAvailable())))&&(!previous||previous());};}
  // Legacy beginLayerTransform/beginFreeTransform: single editable source target.
  for(const auto* id:{"transform","freeTransform"}){auto found=menuItems_.find(id);if(found==menuItems_.end())continue;auto previous=found->second->available;const bool free=std::string(id)=="freeTransform";found->second->available=[this,previous,free]{
-  if(!currentDocument().hasFreeTileContent()||currentDocument().layer().kind=="tilemap")return !previous||previous();
+  if(!currentDocument().hasFreeTileContent()||currentDocument().layer().kind!="free-tile"||!currentDocument().activeMaskId().empty())return !previous||previous();
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||currentView().frameSelection||!freeTileSelectionTargetBounds(currentDocument())||currentDocument().hasSelectedGroups())return false;
   for(const auto& layer:currentDocument().timelineSelection().layers)if(layer!=currentDocument().layer().id)return false;
   for(const auto& id:currentDocument().timelineSelection().cels){const auto* c=currentDocument().timeline().findCelById(id);if(!c||c->layerId!=currentDocument().layer().id||c->frameId!=currentDocument().frame().id)return false;}
@@ -122,7 +122,7 @@ void Editor::createTilesetPanel(){
  };}
  for(const auto* id:{"flipHorizontal","flipVertical"}){auto it=menuItems_.find(id);if(it==menuItems_.end())continue;auto previous=it->second->available;it->second->available=[this,previous]{
   if((currentDocument().hasTilemapContent()||currentDocument().hasFreeTileContent())&&!currentDocument().selection()&&!currentDocument().floating()&&!(currentDocument().layer().kind=="free-tile"&&!currentDocument().selectedFreeTileInstances().empty()))return documentOpen_&&!homeOpen_&&pending_==Pending::None&&!historyGestureBusy()&&!timelineContentFlipTargets(currentDocument()).empty();
-  if(!currentDocument().hasFreeTileContent()||currentDocument().layer().kind=="tilemap")return !previous||previous();
+  if(!currentDocument().hasFreeTileContent()||currentDocument().layer().kind!="free-tile"||!currentDocument().activeMaskId().empty())return !previous||previous();
   if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||currentDocument().layer().kind!="free-tile"||!currentDocument().activeMaskId().empty()||currentDocument().hasSelectedGroups()||currentDocument().layerEffectivelyLocked(currentDocument().layer())||!currentDocument().layerEffectivelyVisible(currentDocument().layer()))return false;
   if(auto target=currentDocument().floatingTransform())return !target->quad&&bool(freeTileSelectionTargetBounds(currentDocument()));
   if(currentDocument().selection())return bool(freeTileSelectionTargetBounds(currentDocument()));
