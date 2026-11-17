@@ -17,7 +17,7 @@ Bytes encodeProjectPreview(const Document& d) {
   const int w=std::max(1,int(std::lround(d.width()*scale))),h=std::max(1,int(std::lround(d.height()*scale)));
   const RasterColorContext colors(d.palette().entries,d.palette().order(),d.colorMode(),d.pixelFormat());
   const auto* surface=d.activeSurfaceIfPresent();
-  const bool direct=surface && surface->width==d.width() && surface->height==d.height() && !surface->offsetX && !surface->offsetY && d.timeline().state().groups.empty() && d.timeline().state().layers.size()==1 && !timeline::styleVisible(d.layer().layerStyles) && d.layer().visible && d.layer().blendMode=="normal" && frameCelOpacity(d.timeline(),d.layer(),d.frame().id)==1;
+  const bool direct=surface && d.layer().kind.empty() && !d.layer().clippingMask && !timeline::resolvedMask(d.timeline().state(),d.layer().id,d.frame().id) && surface->width==d.width() && surface->height==d.height() && !surface->offsetX && !surface->offsetY && d.timeline().state().groups.empty() && d.timeline().state().layers.size()==1 && !timeline::styleVisible(d.layer().layerStyles) && d.layer().visible && d.layer().blendMode=="normal" && frameCelOpacity(d.timeline(),d.layer(),d.frame().id)==1;
   const auto composed=direct?std::vector<Pixel>{}:compositeNormalRegion(d.timeline(),d.frame().id,{0,0,d.width(),d.height()},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);
   Bytes scan;scan.reserve((w*4+1)*h);
   for(int y=0;y<h;++y){scan.push_back(0);for(int x=0;x<w;++x){

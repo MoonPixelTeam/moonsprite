@@ -7690,3 +7690,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 选区背景预设承接完整合成
 
 对照旧版 background-preset-images.ts::encodeSelectionBackgroundPreset 直接消费 compositeRegion 的逻辑，删除原生额外的单图层表面直拷。该直拷会覆盖已计算的蒙版、图层样式和Cel透明度；透明RGB及索引色解析改为完全复用已有共享合成器的单层分支。新增四组精确像素夹具覆盖黑色蒙版遮挡、颜色叠加、半透明Cel及关闭样式，同时核对PNG编码、源像素和历史不变；保留原有透明RGB、选区裁剪、多层及索引色用例。Release background-preset-tests定向构建成功，background-preset CTest通过（0.09秒），来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色入口保持关闭，整体迁移INCOMPLETE。来源见backgroundPresetEffects20261118。
+
+## 2026-11-18 帧序列导出与工程缩略图合成
+
+对照旧版 document-export.worker.ts 的逐帧导出及 project-format-manifest.ts::encodeProjectPreview，帧序列共用栅格准备删除覆盖合成结果的表面直拷，PNG/JPEG/BMP/SVG/ICO继续共用该路径；工程缩略图的直接采样补齐蒙版、裁剪和特殊图层排除条件，其余沿用共享合成。新增五组精确像素夹具覆盖蒙版遮挡、颜色叠加、半透明Cel、禁用样式和透明RGB，检查PNG、裁剪与2倍缩放、空Cel帧、与独立预期图像一致的工程PNG及源像素/焦点/历史不变。首轮夹具以正式导入创建无Cel帧被结构准入拒绝，已改为测试专用状态安装，不改变生产准入。Release frame-png-export-tests定向构建成功，frame-png-export CTest通过（0.06秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见frameAndProjectComposite20261118。

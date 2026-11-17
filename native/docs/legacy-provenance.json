@@ -11640,6 +11640,14 @@
       "indexedRasterCodec20261114": {
         "legacyEvidence": "project-format-raster encodeSparseRasterData/encodeRuntimeRasterData: 64px tiles, nonzero raw words, equal-size raw fallback, sparse format byte and empty runtime header. project-format-encode keeps surface format, idx32 paths and preview/compression policies. project-format-decode decodePixels keys include format; unaligned stored indexed views copy their backing, while aligned views and RGBA retain ZIP storage. local-history-delta transfer preserves Uint32Array versus Uint8ClampedArray and runtime aliases; project-format-manifest preview resolves palette colors before PNG encoding.",
         "nativeAdaptation": "Extract existing native encoder into checked little-endian project_raster_encode; retain raw uint32 IDs, link identities, empty-frame storage and caller-owned save/history state. History cost/compare adapters retain format, typed view, backing/alias semantics and reject stale native formats transactionally. Preview supplies existing RasterColorContext to direct and composited paths. Node oracle executes unchanged legacy modules: 140 codecs and 74 decoded storage/cost cases; test-only friend bypass exercises 12 encodings, six decoded comparison/format-rejection captures and two previews without opening production indexed admission. docs/indexed-raster-codec-migration-20261114.md records remaining gates."
+      },
+      "frameAndProjectComposite20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/workers/document-export.worker.ts",
+          "legacy/src/renderer/src/core/project-format-manifest.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "Frame sequence raster preparation consumes shared composite output without a redundant surface copy overriding masks, styles and effective Cel opacity. Project preview direct sampling excludes active mask, clipping and special layer kinds, preserving existing bounded thumbnail size/centre sampling and transparent RGB rules. Five exact pixel fixtures validate black mask, overlay, half Cel opacity, disabled style and transparent RGB; frame PNG bytes, trim/2x scale, absent frame Cel, project thumbnail equivalence to independently constructed expected image, original pixels/focus/history are checked. Fixture-only timeline installation exercises absent slots without broadening production import admission."
       }
     },
     {
@@ -15391,6 +15399,14 @@
           "legacy/src/renderer/src/core/document-composite.ts"
         ],
         "nativeAdaptation": "Supply authoritative document palette/order/mode/precision to animation frame composition and all-frame trim bounds. Shared PreparedAnimationExport supplies GIF and animated image consumers. Frame-sequence raster preparation also resolves indexed words through the palette in its existing single-layer direct-pixel path, retaining transparent RGB. Reuse existing crop, scale, protection and encoders. Tests compare indexed exports to converted RGBA, linked animation frames, trim/200 percent scale and unchanged raw source; PNG test decodes encoded bytes. Formal Release build and gif-export/frame-png-export tests passed. Does not establish PSD or every other export path or production indexed admission."
+      },
+      "frameAndProjectComposite20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/workers/document-export.worker.ts",
+          "legacy/src/renderer/src/core/project-format-manifest.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "Frame sequence raster preparation consumes shared composite output without a redundant surface copy overriding masks, styles and effective Cel opacity. Project preview direct sampling excludes active mask, clipping and special layer kinds, preserving existing bounded thumbnail size/centre sampling and transparent RGB rules. Five exact pixel fixtures validate black mask, overlay, half Cel opacity, disabled style and transparent RGB; frame PNG bytes, trim/2x scale, absent frame Cel, project thumbnail equivalence to independently constructed expected image, original pixels/focus/history are checked. Fixture-only timeline installation exercises absent slots without broadening production import admission."
       }
     },
     {
@@ -15420,6 +15436,14 @@
           "legacy/src/renderer/src/core/document-composite.ts"
         ],
         "nativeAdaptation": "Supply authoritative document palette/order/mode/precision to animation frame composition and all-frame trim bounds. Shared PreparedAnimationExport supplies GIF and animated image consumers. Frame-sequence raster preparation also resolves indexed words through the palette in its existing single-layer direct-pixel path, retaining transparent RGB. Reuse existing crop, scale, protection and encoders. Tests compare indexed exports to converted RGBA, linked animation frames, trim/200 percent scale and unchanged raw source; PNG test decodes encoded bytes. Formal Release build and gif-export/frame-png-export tests passed. Does not establish PSD or every other export path or production indexed admission."
+      },
+      "frameAndProjectComposite20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/workers/document-export.worker.ts",
+          "legacy/src/renderer/src/core/project-format-manifest.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "Frame sequence raster preparation consumes shared composite output without a redundant surface copy overriding masks, styles and effective Cel opacity. Project preview direct sampling excludes active mask, clipping and special layer kinds, preserving existing bounded thumbnail size/centre sampling and transparent RGB rules. Five exact pixel fixtures validate black mask, overlay, half Cel opacity, disabled style and transparent RGB; frame PNG bytes, trim/2x scale, absent frame Cel, project thumbnail equivalence to independently constructed expected image, original pixels/focus/history are checked. Fixture-only timeline installation exercises absent slots without broadening production import admission."
       }
     },
     {

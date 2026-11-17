@@ -1,12 +1,38 @@
 #include "frame_png_export.h"
+#include "project_preview.h"
 #include <windows.h>
 #include <zlib.h>
 #include <fstream>
 #include <iostream>
 using namespace moon;
+namespace moon {struct RasterHistoryFixture {
+ static void install(Document& d,timeline::State state){d.timeline_=timeline::Timeline(std::move(state));d.activeLayerId_="l";d.activeFrameId_="f";d.projectActiveCelOpacities();}
+};}
 void check(bool v){static int n=0;++n;if(!v)throw std::runtime_error("Frame PNG regression "+std::to_string(n));}
 void verifyPng(const StaticImageExport& image){const auto& b=image.png;std::vector<unsigned char> compressed;auto be=[&](int i){return(std::uint32_t(b[i])<<24)|(std::uint32_t(b[i+1])<<16)|(std::uint32_t(b[i+2])<<8)|b[i+3];};for(std::size_t off=8;off+12<=b.size();){auto length=be(int(off));if(std::string(b.begin()+off+4,b.begin()+off+8)=="IDAT")compressed.insert(compressed.end(),b.begin()+off+8,b.begin()+off+8+length);off+=12+length;}std::vector<unsigned char> decoded((image.width*4+1)*image.height);uLongf n=decoded.size();check(uncompress(decoded.data(),&n,compressed.data(),compressed.size())==Z_OK && n==decoded.size());for(int y=0;y<image.height;++y){check(decoded[y*(image.width*4+1)]==0);for(int x=0;x<image.width;++x)for(int c=0;c<4;++c)check(decoded[y*(image.width*4+1)+1+x*4+c]==std::uint8_t(image.pixels[y*image.width+x]>>(c*8)));}}
 int main(){try{
+ // Legacy frame export and project thumbnails consume the composed image.
+ for(int effect=0;effect<5;++effect){
+  timeline::State state;state.frames={{"f",100},{"empty",100}};state.layers.push_back({"l",U"Layer"});
+  timeline::Cel cel;cel.id="c";cel.layerId="l";cel.frameId="f";cel.surface=timeline::Surface{2,1,0,0,{},{},{0xff123456,0xff123456}};
+  if(effect==0){timeline::MaskSlot mask;mask.ownerId="l";mask.frameId="f";mask.mask.id="m";mask.mask.surface=timeline::Surface{2,1,0,0,{},{},{0xff000000,0}};state.masks.push_back(mask);}
+  if(effect==1){timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0xffabcdef;state.layers.front().layerStyles=style;}
+  if(effect==2)cel.opacity=.5;
+  if(effect==3){timeline::ColorOverlayStyle style;style.overlayEnabled=true;style.color=0xffabcdef;style.enabled=false;state.layers.front().layerStyles=style;}
+  if(effect==4)cel.surface->pixels[0]=0x00123456;
+  state.cels.push_back(cel);Document doc(2,1);RasterHistoryFixture::install(doc,std::move(state));
+  const auto revision=doc.revision(),history=doc.historySize();FramePngExportOptions options;
+  const Pixel color=effect==1?0xffabcdef:effect==2?0x80123456:0xff123456;
+  const std::vector<Pixel> expected{effect==0?0:effect==4?0x00123456:color,color};
+  auto image=encodeFramePng(doc,"f",options);check(image.pixels==expected);verifyPng(image);
+  auto reference=Document::fromImage(2,1,expected,U"Reference");check(project::encodeProjectPreview(doc)==project::encodeProjectPreview(reference));
+  options.frames.trim=true;options.frames.scalePercent=200;image=encodeFramePng(doc,"f",options);
+  const bool trim=effect==0||effect==4;check(image.width==(trim?2:4)&&image.height==2);
+  check(image.pixels== (trim?std::vector<Pixel>(4,color):std::vector<Pixel>(8,color)));verifyPng(image);
+  options.frames.trim=false;options.frames.scalePercent=100;image=encodeFramePng(doc,"empty",options);check(image.pixels==std::vector<Pixel>({0,0}));verifyPng(image);
+  check(doc.revision()==revision&&doc.historySize()==history&&doc.frame().id=="f"&&doc.pixels()==cel.surface->pixels);
+ }
+
  {Document indexed(4,2);indexed.beginStroke({1,1},indexed.palette().entries.front().color);indexed.commitStroke();indexed.convertColorMode(color_mode::Mode::Indexed);const auto raw=indexed.cel().surface->pixels;const auto revision=indexed.revision();FramePngExportOptions settings;const auto a=encodeFramePng(indexed,indexed.frame().id,settings);check(indexed.revision()==revision&&indexed.cel().surface->pixels==raw);indexed.convertColorMode(color_mode::Mode::Rgba);const auto b=encodeFramePng(indexed,indexed.frame().id,settings);check(a.pixels==b.pixels&&a.png==b.png);indexed.undo();settings.frames.trim=true;settings.frames.scalePercent=200;const auto trimmed=encodeFramePng(indexed,indexed.frame().id,settings);check(trimmed.width==2&&trimmed.height==2&&trimmed.pixels==std::vector<Pixel>(4,indexed.palette().entries[1].color));verifyPng(trimmed);}
 
  timeline::State oracle;oracle.layers.push_back({"l",U"L"});
