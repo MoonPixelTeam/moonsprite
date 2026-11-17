@@ -7414,3 +7414,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 自由瓦片前景色填充
 
 按旧版选中实例与共享源语义接通填充菜单和 F 快捷键，复用既有资源事务，详情见 [迁移记录](free-source-foreground-fill-20261117.md)。正式 Release 构建及 `--free-tile-transform-check` 通过（退出码 0），来源覆盖检查通过；未追加无关回归。反色、内容旋转及居中继续保留为后续迁移项。
+
+## 2026-11-17 混合工程普通图层编辑
+
+补齐混合工程的反色、颜色调整、内容旋转与居中实际菜单，默认调色采用旧版多选目标和像素选区优先规则。详见 [迁移记录](mixed-raster-edit-entries-20261117.md)。特殊图层继续保持旧版目标限制；正式 Release 构建与 `--free-tile-transform-check` 通过（退出码 0），来源覆盖检查通过。
