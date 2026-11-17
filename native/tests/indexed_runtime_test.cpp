@@ -22,6 +22,14 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
 namespace moon {struct RasterHistoryFixture {
+ static void newFrameLayerFormat(){
+  for(bool indexedDocument:{false,true})for(bool indexedLayer:{false,true})for(bool duplicate:{false,true})for(bool autoLink:{false,true}){
+   Document d(3,2);d.colorMode_=indexedDocument?color_mode::Mode::Indexed:color_mode::Mode::Rgba;auto state=d.timeline_.state();state.layers.front().autoLinkAnimationCels=autoLink;state.frames.front().duration=240;state.frames.front().disabled=true;auto& c=state.cels.front();c.opacity=.65;c.zIndex=3;c.surface->format=indexedLayer?RasterFormat::Indexed:RasterFormat::Rgba;c.surface->pixels.assign(6,indexedLayer?1:0xff123456);d.timeline_=Timeline(std::move(state));d.projectActiveCelOpacities();
+   const auto source=d.cel().id,oldFrame=d.frame().id;const auto raw=d.pixels();const auto history=d.historyPosition();d.addFrame(duplicate);const auto created=d.frame().id;
+   auto verify=[&]{CHECK(d.frame().id==created&&d.frame().duration==(duplicate?240:100)&&d.frame().disabled==duplicate);const auto resolved=d.timeline_.resolveSurface(d.cel().id);CHECK(resolved.surface&&resolved.surface->format==(indexedLayer?RasterFormat::Indexed:RasterFormat::Rgba));if(duplicate||autoLink)CHECK(resolved.surface->pixels==raw);else CHECK(resolved.surface->width==1&&resolved.surface->height==1&&resolved.surface->pixels==std::vector<Pixel>{0});CHECK(bool(d.cel().linkedCelId)==autoLink);if(autoLink)CHECK(resolved.source->id==source);if(duplicate||autoLink)CHECK(resolved.source->zIndex==3);};verify();CHECK(d.historyPosition()==history+1);
+   d.undo();CHECK(d.frame().id==oldFrame&&d.pixels()==raw&&d.timeline_.state().frames.size()==1);d.redo();verify();
+  }
+ }
  static void duplicateAbsentCelFormat(){
   for(bool indexedDocument:{false,true})for(bool indexedLayer:{false,true}){
    Document d(3,2);d.colorMode_=indexedDocument?color_mode::Mode::Indexed:color_mode::Mode::Rgba;
@@ -188,7 +196,7 @@ namespace moon {struct RasterHistoryFixture {
   CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
-int main(int argc,char** argv){try{RasterHistoryFixture::duplicateAbsentCelFormat();RasterHistoryFixture::newLayerColorModes();RasterHistoryFixture::indexedBackgroundCreation();RasterHistoryFixture::indexedBackgroundResize();RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();RasterHistoryFixture::wholeLayerColorClipboard();
+int main(int argc,char** argv){try{RasterHistoryFixture::newFrameLayerFormat();RasterHistoryFixture::duplicateAbsentCelFormat();RasterHistoryFixture::newLayerColorModes();RasterHistoryFixture::indexedBackgroundCreation();RasterHistoryFixture::indexedBackgroundResize();RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();RasterHistoryFixture::wholeLayerColorClipboard();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);

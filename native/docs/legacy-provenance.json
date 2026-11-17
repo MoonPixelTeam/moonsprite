@@ -5958,6 +5958,12 @@
           "legacy/src/renderer/src/store/workspace-anti-alias.test.ts"
         ],
         "nativeAdaptation": "antiAliasSelection collects canvas candidates and automatic samples from the palette-aware document composite, even when target format is RGBA. Capture independent immutable reference palettes in the existing background surface task; target editing palettes remain separate. Reuse indexed target palette snapshot when available; guard reference snapshot memory and reject palette-stale publication. Mixed-format checks compare automatic/canvas/palette results with equivalent RGBA references, verify candidates produced, stale rejection and source/history preservation. Production indexed admission remains closed. Release indexed-runtime and indexed-antialias builds passed; all four associated CTests passed in 4.06s (oracles 1.93s/0.80s, anti-alias 1.23s, runtime 0.04s). Mixed cases verify commit, single history, undo/redo and unchanged reference IDs. No official GUI rebuild or manual acceptance in this stage."
+      },
+      "newFrameLayerFormat20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "addBlankAnimationFrame uses blankSurfaceFromLayer for ordinary layers, preserving displayed source format independently of document mode. Native addFrame follows resolved source format for ordinary/text/adjustment layers, retaining existing RGBA rendered special layers and document-mode fallback if source absent. Sixteen document/layer format, duplicate and auto-link combinations verify raw pixels or 1x1 zero blank, frame duration/disabled, source z-index and canonical links, single history, undo-redo. Mixed fixtures do not open indexed production gates."
       }
     },
     {
@@ -41925,6 +41931,12 @@
           "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts"
         ],
         "nativeAdaptation": "cloneAnimationCelsForLayer uses blankSurfaceFromLayer(targetLayer) for absent frames. Native duplicates missing-frame Cel as 1x1 zero storage with active displayed source layer format, falling back to document mode when absent; existing nonempty Cel cloning stays unchanged. Four document/layer format combinations validate missing-frame format, copied source raw pixels, undo-redo and first paint on missing frame followed by undo duplicate/replay paint. Mixed fixture states do not broaden production indexed admission."
+      },
+      "newFrameLayerFormat20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "addBlankAnimationFrame uses blankSurfaceFromLayer for ordinary layers, preserving displayed source format independently of document mode. Native addFrame follows resolved source format for ordinary/text/adjustment layers, retaining existing RGBA rendered special layers and document-mode fallback if source absent. Sixteen document/layer format, duplicate and auto-link combinations verify raw pixels or 1x1 zero blank, frame duration/disabled, source z-index and canonical links, single history, undo-redo. Mixed fixtures do not open indexed production gates."
       }
     },
     {

@@ -7710,3 +7710,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 复制图层的缺失帧格式
 
 对照旧版 animation.ts::cloneAnimationCelsForLayer/blankSurfaceFromLayer，复制图层时缺失帧的空Cel承接活动显示源图层格式；活动帧也缺失时回退文档模式。保留1×1零值及非空Cel原始复制逻辑。四组文档/图层RGBA与Indexed组合夹具验证空Cel格式、已有帧原始像素、复制撤销重做，以及缺失帧首次绘画后连续撤销复制并重放绘画。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.71/0.04秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见duplicateAbsentCelFormat20261118。
+
+## 2026-11-18 新增空帧承接图层格式
+
+对照旧版 animation.ts::addBlankAnimationFrame/blankSurfaceFromLayer，普通图层新增空帧时沿用当前解析源图层格式，源缺失时回退文档模式；瓦片/自由瓦片维持原RGBA渲染路径。新增16组文档/图层RGBA与Indexed、复制帧和自动链接开关组合，核对空帧1×1零值或复制原像素、格式、默认/复制时长及禁用状态、来源zIndex和规范链接、单条历史与撤销重做。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.71/0.04秒）。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见newFrameLayerFormat20261118。
