@@ -16781,7 +16781,15 @@
         "legacy/src/renderer/src/core/runtime-raster.ts"
       ],
       "scope": "Pure CPU dense RGBA Cel thumbnail renderer: original content bounds before canvas clipping, pixel-perfect scale, nearest sampling, offsets, alpha/opacity, shared transparent background retaining zero-alpha RGB, checker blend. Seven byte hashes obtained from actual old TypeScript renderer plus original nonsquare canvas/offset cases, Release checks always execute. This module is compiled into moon-core; it is now wired into registered density UI/cache/queue.",
-      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim."
+      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim.",
+      "indexedThumbnails20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-thumbnail.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/components/panels/layer-timeline-cell-cache.ts"
+        ],
+        "nativeAdaptation": "Pass authoritative RasterColorContext into normal and hidden timeline thumbnails. Content framing uses palette-aware visibility; sampled indexed words resolve through last-duplicate-ID Map semantics before RGBA output, with missing IDs transparent. Normal thumbnail binding/cache keys include raster format and ordered palette ID/color pairs so palette edits refresh unchanged pixel storage; hidden bindings retain their existing document revision key. Reuse existing layout, checkerboard, opacity, queue and cache. Tests compare indexed and resolved RGBA rendering across both framing/background modes and three opacities, plus opaque ID0, low IDs, missing high IDs, transparent RGB, palette change, duplicate ID and raw source preservation. Formal Release build and cel-thumbnail test passed; no actual indexed GUI or image acceptance; indexed production admission remains closed."
+      }
     },
     {
       "file": "src/cel_thumbnail.cpp",
@@ -16793,7 +16801,15 @@
         "legacy/src/renderer/src/core/runtime-raster.ts"
       ],
       "scope": "Pure CPU dense RGBA Cel thumbnail renderer: original content bounds before canvas clipping, pixel-perfect scale, nearest sampling, offsets, alpha/opacity, shared transparent background retaining zero-alpha RGB, checker blend. Seven byte hashes obtained from actual old TypeScript renderer plus original nonsquare canvas/offset cases, Release checks always execute. This module is compiled into moon-core; it is now wired into registered density UI/cache/queue.",
-      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim."
+      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim.",
+      "indexedThumbnails20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-thumbnail.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/components/panels/layer-timeline-cell-cache.ts"
+        ],
+        "nativeAdaptation": "Pass authoritative RasterColorContext into normal and hidden timeline thumbnails. Content framing uses palette-aware visibility; sampled indexed words resolve through last-duplicate-ID Map semantics before RGBA output, with missing IDs transparent. Normal thumbnail binding/cache keys include raster format and ordered palette ID/color pairs so palette edits refresh unchanged pixel storage; hidden bindings retain their existing document revision key. Reuse existing layout, checkerboard, opacity, queue and cache. Tests compare indexed and resolved RGBA rendering across both framing/background modes and three opacities, plus opaque ID0, low IDs, missing high IDs, transparent RGB, palette change, duplicate ID and raw source preservation. Formal Release build and cel-thumbnail test passed; no actual indexed GUI or image acceptance; indexed production admission remains closed."
+      }
     },
     {
       "file": "tests/cel_thumbnail_test.cpp",
@@ -16805,7 +16821,15 @@
         "legacy/src/renderer/src/core/runtime-raster.ts"
       ],
       "scope": "Pure CPU dense RGBA Cel thumbnail renderer: original content bounds before canvas clipping, pixel-perfect scale, nearest sampling, offsets, alpha/opacity, shared transparent background retaining zero-alpha RGB, checker blend. Seven byte hashes obtained from actual old TypeScript renderer plus original nonsquare canvas/offset cases, Release checks always execute. This module is compiled into moon-core; it is now wired into registered density UI/cache/queue.",
-      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim."
+      "adaptation": "Existing timeline::Surface dense packed RGBA adapter. Finite representable target-size validation replaces unrepresentable native allocation; source-size JS-safe-integer guard preserved. Indexed/sparse surfaces remain outside native dense RGBA baseline; owner cache/queue now use registered pipeline; no replacement performance design or UI claim.",
+      "indexedThumbnails20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-thumbnail.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/components/panels/layer-timeline-cell-cache.ts"
+        ],
+        "nativeAdaptation": "Pass authoritative RasterColorContext into normal and hidden timeline thumbnails. Content framing uses palette-aware visibility; sampled indexed words resolve through last-duplicate-ID Map semantics before RGBA output, with missing IDs transparent. Normal thumbnail binding/cache keys include raster format and ordered palette ID/color pairs so palette edits refresh unchanged pixel storage; hidden bindings retain their existing document revision key. Reuse existing layout, checkerboard, opacity, queue and cache. Tests compare indexed and resolved RGBA rendering across both framing/background modes and three opacities, plus opaque ID0, low IDs, missing high IDs, transparent RGB, palette change, duplicate ID and raw source preservation. Formal Release build and cel-thumbnail test passed; no actual indexed GUI or image acceptance; indexed production admission remains closed."
+      }
     },
     {
       "file": "src/cel_thumbnail_pipeline.h",
@@ -25266,6 +25290,14 @@
           "legacy/src/renderer/src/components/animation-tween-preview.ts"
         ],
         "nativeAdaptation": "Capture the authoritative document palette, visible order, mode and precision for the modal tween lifetime. Pass RasterColorContext through between/transform source planning, preview bounds/compositing, path artwork and endpoint shape. Map morph intermediate RGBA to existing palette IDs. Convert detached indexed path artwork and endpoint surfaces to RGBA before native UI uploads, following tweenPreviewCanvas palette Map semantics; document surfaces and palette remain unchanged. Production indexed admission remains closed; GUI diagnostic uses existing RGBA fixtures."
+      },
+      "indexedThumbnails20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-thumbnail.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/components/panels/layer-timeline-cell-cache.ts"
+        ],
+        "nativeAdaptation": "Pass authoritative RasterColorContext into normal and hidden timeline thumbnails. Content framing uses palette-aware visibility; sampled indexed words resolve through last-duplicate-ID Map semantics before RGBA output, with missing IDs transparent. Normal thumbnail binding/cache keys include raster format and ordered palette ID/color pairs so palette edits refresh unchanged pixel storage; hidden bindings retain their existing document revision key. Reuse existing layout, checkerboard, opacity, queue and cache. Tests compare indexed and resolved RGBA rendering across both framing/background modes and three opacities, plus opaque ID0, low IDs, missing high IDs, transparent RGB, palette change, duplicate ID and raw source preservation. Formal Release build and cel-thumbnail test passed; no actual indexed GUI or image acceptance; indexed production admission remains closed."
       }
     },
     {

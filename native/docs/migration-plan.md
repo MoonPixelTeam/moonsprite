@@ -7542,3 +7542,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色动画链接命令
 
 显式链接帧、自动链接继承、连接单元格及其可用性改用旧版色板感知内容判断，避免把低位颜色 ID 当空像素、把缺失高位 ID 当可见像素。普通新建空帧保留 indexed 格式，特殊瓦片继续采用原格式。正式 Release 构建成功；indexed-animation-oracle 与 indexed-animation 两项检查通过（1.20秒），保留576组旧版对照并新增低位可见、透明、缺失高位、有色ID0及撤销重做场景。首轮连接测试目标已链接导致无操作返回false，夹具先断开后重验通过。未做实际 indexed GUI 验收，生产索引色入口仍关闭，整体 INCOMPLETE。来源见 indexedFrameLinks20261118。
+
+## 2026-11-18 索引色时间轴缩略图
+
+按旧版 animation-thumbnail 迁移色板感知内容取景与采样颜色解析，普通和隐藏时间轴均接入文档色板。普通缓存键包含格式和色板 ID／颜色序列，色板变化无需修改像素即可刷新；沿用既有布局、队列与缓存。正式 Release 构建成功，cel-thumbnail 定向检查通过（0.02秒），覆盖两种取景、两种背景、三种透明度、重复／缺失／低位ID、有色ID0、透明RGB和源数据保留。未做实际 indexed GUI 或人工图像验收，生产索引色入口仍关闭，整体 INCOMPLETE。此前核对的 Cel 复制遮罩会在粘贴前重建，未修改该路径。来源见 indexedThumbnails20261118。
