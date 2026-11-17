@@ -7434,3 +7434,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 混合工程选区变换菜单补齐
 
 自由瓦片源专用菜单门禁仅作用于实际自由源，普通图层及活动蒙版沿用原有目标判断。混合普通图层水平／垂直翻转、Transform、Free Transform 的实际菜单及取消／撤销重做通过正式构建定向检查。详见 [记录](mixed-selection-entries-20261117.md)。整体迁移仍未完成。
+
+## 2026-11-17 混合工程普通图层剪贴板入口
+
+修复自由瓦片专用门禁误拦截普通图层复制、剪切和粘贴。正式构建和一次定向检查通过，详见 [记录](mixed-raster-clipboard-entries-20261117.md)。用户已确认特殊图层替色采用实际资源同步修复，下一批继续实现。整体 INCOMPLETE。
