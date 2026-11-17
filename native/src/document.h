@@ -734,9 +734,10 @@ private:
   struct FreeTileSourceStroke;
   std::shared_ptr<FreeTileSourceStroke> freeSourceStroke_;
   bool fillFreeTileSourcePixels(Point,Pixel,WandOptions,const PatternFillOptions*);
+  bool fillFreeTileSourceSelection(Pixel);
   Document* freeTileSourceStrokeDocument()const;
   Point freeTileSourceStrokePoint(Point,bool pointerSample=false)const;
-  bool beginFreeTileSourceStroke(Point,Pixel,BrushOptions,const PatternBrush*,double,const std::unordered_map<std::size_t,Pixel>*,bool,bool=false,repeat::Mode=repeat::Mode::Off);
+  bool beginFreeTileSourceStroke(Point,Pixel,BrushOptions,const PatternBrush*,double,const std::unordered_map<std::size_t,Pixel>*,bool,bool=false,repeat::Mode=repeat::Mode::Off,bool=false);
   void publishFreeTileSourceStroke();
   void publishFreeTileSourceStroke(FreeTileSourceStroke&);
   struct FreeTileSelectionMove;

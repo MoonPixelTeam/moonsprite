@@ -2379,6 +2379,7 @@ bool Document::centerActiveContent(bool horizontal,bool vertical){auto selection
  reserveHistoryEntries();change_={};applyEdit(edit,true);publishChange();pushEdit(std::move(edit),U"移动图层内容");return true;
 }
 bool Document::fillSelectionOrCanvas(Pixel color){if(!activeMaskId_.empty()){commitFloatingPaste();return fillAttachedMaskSelection(color);}
+ if(layer().kind=="free-tile"){commitFloatingPaste();return fillFreeTileSourceSelection(color);}
  const bool indexed=colorMode_==color_mode::Mode::Indexed;const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);color=indexed?colors.packedValue(timeline::RasterFormat::Indexed,colors.colorId(color)):normalizeCanvasPacked(color);const auto commandLayers=selectedLayerIdsWithGroups();
  commitFloatingPaste();cancelStroke();
  // Legacy single-target fillForeground edits the active display raster, then

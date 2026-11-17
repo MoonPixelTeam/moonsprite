@@ -7410,3 +7410,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 依据实际 legacy layer-adjustment、filter-preview 与 layer-style-split，移除六种预设滤镜、LCD、拆分图层样式的残留自由瓦片菜单禁用。直接复用已有任务生命周期、原生弹窗、源缓存读取与结构事务，效果创建普通层／组，保留权威实例及源资源。颜色调整、填充等仍缺核心特殊层逻辑的入口不放开。
 
 唯一正式 Release 构建及 --filter-presets-check 退出 0，覆盖自由瓦片关联帧、六预设菜单可用性、代表预设取消／提交、LCD 和样式拆分真实菜单、原实例／资源保留、可见性、Undo／Redo 标识、拆分前后合成一致与实际保存重开。来源覆盖 1042 文件／快照及 diff 通过；未重复底层矩阵、全仓测试或新增人工图像验收。详见[结构效果入口记录](free-structural-effects-entries-20261117.md)。整体 INCOMPLETE，阶段保存推送 dev。
+
+## 2026-11-17 自由瓦片前景色填充
+
+按旧版选中实例与共享源语义接通填充菜单和 F 快捷键，复用既有资源事务，详情见 [迁移记录](free-source-foreground-fill-20261117.md)。正式 Release 构建及 `--free-tile-transform-check` 通过（退出码 0），来源覆盖检查通过；未追加无关回归。反色、内容旋转及居中继续保留为后续迁移项。

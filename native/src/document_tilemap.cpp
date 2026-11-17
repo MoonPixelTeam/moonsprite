@@ -916,15 +916,16 @@ Point Document::freeTileSourceStrokePoint(Point point,bool pointerSample)const{
  const auto p=repeat::wrap({double(point.x),double(point.y)},width_,height_,pointerSample?freeSourceStroke_->repeatMode:repeat::Mode::Off);
  return freeSourceStroke_->local({int(p.x),int(p.y)});
 }
-bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool initial,bool replaceColor,repeat::Mode repeatMode){
+bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions brush,const PatternBrush* image,double angle,const std::unordered_map<std::size_t,Pixel>* baseline,bool initial,bool replaceColor,repeat::Mode repeatMode,bool selectionCommand){
  commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  const auto mapped=repeat::wrap({double(point.x),double(point.y)},width_,height_,repeatMode);point={int(mapped.x),int(mapped.y)};
- if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))return false;
+ if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile"||!layer().freeTiles||layer().freeTiles->sources.empty()||(!selectionCommand&&(hasSelectedGroups()||layerEffectivelyLocked(layer())||!layerEffectivelyVisible(layer()))))return false;
  const auto& state=timeline_.state();const DocumentLayer* target=&layer();const DocumentCel* slot=timeline_.resolveSurface(cel().id).source;
  // Legacy checks other free layers first, without changing the active drawing layer.
- for(const auto& candidate:state.layers)if(candidate.kind=="free-tile"&&candidate.id!=activeLayerId_){const auto* candidateSlot=timeline_.findCel(candidate.id,activeFrameId_);const auto* c=candidateSlot?timeline_.resolveSurface(candidateSlot->id).source:nullptr;if(c&&freeSourceHit(state,candidate,*c,point)){target=&candidate;slot=c;break;}}
- if(!slot||!slot->freeTiles||!slot->surface||!target->freeTiles||target->freeTiles->sources.empty()||layerEffectivelyLocked(*target)||!layerEffectivelyVisible(*target))return false;
+ for(const auto& candidate:state.layers)if(!selectionCommand&&candidate.kind=="free-tile"&&candidate.id!=activeLayerId_){const auto* candidateSlot=timeline_.findCel(candidate.id,activeFrameId_);const auto* c=candidateSlot?timeline_.resolveSurface(candidateSlot->id).source:nullptr;if(c&&freeSourceHit(state,candidate,*c,point)){target=&candidate;slot=c;break;}}
+ if(!slot||!slot->freeTiles||!slot->surface||!target->freeTiles||target->freeTiles->sources.empty()||(!selectionCommand&&(layerEffectivelyLocked(*target)||!layerEffectivelyVisible(*target))))return false;
  const auto* hit=freeSourceHit(state,*target,*slot,point);const auto& data=*target->freeTiles;
+ if(selectionCommand){const auto primary=primaryFreeTileInstance();const auto chosen=std::find_if(slot->freeTiles->instances.begin(),slot->freeTiles->instances.end(),[&](const auto& i){return i.id==primary;});if(chosen==slot->freeTiles->instances.end())return false;hit=&*chosen;}
  const free_tiles::Source* source=hit?freeSourceFor(data,*hit):nullptr;
  if(!source){auto selected=std::find_if(data.sources.begin(),data.sources.end(),[&](const auto& s){return s.id==tileSelection_.tilesetId||s.tilesetId==tileSelection_.tilesetId;});source=selected==data.sources.end()?&data.sources.front():&*selected;}
  if(!source->visible||source->locked)return false;
@@ -942,8 +943,8 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
  d->anchor={slot->surface->offsetX+d->instance.x,slot->surface->offsetY+d->instance.y};
  PixelRegion transformed;for(int y:{0,set->tileHeight-1})for(int x:{0,set->tileWidth-1}){const auto p=free_tiles::transform(d->instance,source->offsetX+x,source->offsetY+y);transformed.include(p.first+d->anchor.x,p.second+d->anchor.y);}
  // Legacy compact source-edit raster and document-size padding.
- const int padding=std::clamp(std::max(width_,height_),16,128);const int left=std::min(point.x,transformed.x)-padding,top=std::min(point.y,transformed.y)-padding;
- const int right=std::max(point.x+1,transformed.x+transformed.w)+padding,bottom=std::max(point.y+1,transformed.y+transformed.h)+padding;
+ const int padding=std::clamp(std::max(width_,height_),16,128);const int left=std::min({point.x,transformed.x,selectionCommand?0:transformed.x})-padding,top=std::min({point.y,transformed.y,selectionCommand?0:transformed.y})-padding;
+ const int right=std::max({point.x+1,transformed.x+transformed.w,selectionCommand?width_:transformed.x})+padding,bottom=std::max({point.y+1,transformed.y+transformed.h,selectionCommand?height_:transformed.y})+padding;
  const auto count=std::uint64_t(right-left)*std::uint64_t(bottom-top);if(count>16*1024*1024)throw std::length_error("自由瓦片源临时画布超出原生内存预算");
  d->scan={transformed.x-left,transformed.y-top,transformed.w,transformed.h};d->origin={left,top};d->raster=std::make_unique<Document>(1,1);auto& edit=*d->raster;edit.pixelFormat_=pixelFormat_;edit.colorMode_=colorMode_;edit.width_=right-left;edit.height_=bottom-top;
  auto rasterState=edit.timeline_.state();auto& surface=*rasterState.cels.front().surface;surface.width=edit.width_;surface.height=edit.height_;surface.pixels=std::vector<Pixel>(std::size_t(count));rasterState.canvasWidth=edit.width_;rasterState.canvasHeight=edit.height_;
@@ -960,6 +961,25 @@ bool Document::beginFreeTileSourceStroke(Point point,Pixel color,BrushOptions br
 }
 // Legacy beginFreeTileEdit(fill): selection ?? transformed sourceRegion,
 // fill immediately, then publish and commit the existing shared-source edit.
+// Legacy fillForeground addresses the selected source, never the source under a pointer.
+bool Document::fillFreeTileSourceSelection(Pixel color){
+ if(active()||freeTilePaintMode()||!activeMaskId_.empty())return false;
+ const auto bounds=freeTileInstanceBounds(primaryFreeTileInstance());if(!bounds)return false;
+ HistoryLabelScope label(*this,selection_?U"填充选区前景色":U"填充画布前景色");
+ const Point seed=selection_?Point{selection_->x,selection_->y}:Point{bounds->x,bounds->y};
+ try{
+  if(!beginFreeTileSourceStroke(seed,color,{},nullptr,0,nullptr,false,false,repeat::Mode::Off,true))return false;
+  auto& d=*freeSourceStroke_;auto& raster=*d.raster;raster.cancelStroke();
+  auto selected=raster.selection_;if(selected){
+   const auto original=*selected;selected=rectangleSelection(original.x,original.y,original.width,original.height,raster.width_,raster.height_);
+   if(selected&&!original.mask.empty()){selected->mask.resize(std::size_t(selected->width)*selected->height);for(int y=0;y<selected->height;++y)for(int x=0;x<selected->width;++x)selected->mask[std::size_t(y)*selected->width+x]=original.mask[std::size_t(y+selected->y-original.y)*original.width+x+selected->x-original.x];}
+  }
+  if(!selected)selected=SelectionMask{d.scan.x,d.scan.y,d.scan.w,d.scan.h,{}};
+  raster.setSelectionValue(std::move(selected));
+  if(!raster.fillSelectionOrCanvas(color)){cancelFreeTileSourceStroke();return false;}
+  publishFreeTileSourceStroke();return commitFreeTileSourceStroke();
+ }catch(...){cancelFreeTileSourceStroke();throw;}
+}
 bool Document::fillFreeTileSourcePixels(Point point,Pixel color,WandOptions options,const PatternFillOptions* pattern){
  if(active()||freeTilePaintMode()||!activeMaskId_.empty()||layer().kind!="free-tile")return false;
  const bool patterned=pattern&&(!pattern->brushes.empty()||pattern->texture!=FillTexture::Solid);

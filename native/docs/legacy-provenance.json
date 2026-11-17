@@ -4705,6 +4705,15 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "freeSourceForegroundFill20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/free-tile-edit.ts",
+          "legacy/src/renderer/src/store/workspace-free-tile-transaction.ts"
+        ],
+        "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
       }
     },
     {
@@ -5869,6 +5878,15 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "freeSourceForegroundFill20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/free-tile-edit.ts",
+          "legacy/src/renderer/src/store/workspace-free-tile-transaction.ts"
+        ],
+        "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
       }
     },
     {
@@ -24422,6 +24440,15 @@
           "legacy/src/renderer/src/store/workspace-layer-style-split.ts"
         ],
         "adaptation": "Remove stale free-document exclusions for six filter preset menu entries, LCD and split layer styles. Reuse existing native detached filter tasks, structure transactions, resolved canonical source and style sampler; effects add ordinary layers/groups while retaining free instances/source resources. Runtime integration adds free linked-frame fixtures, menu availability, preset cancel/apply, actual LCD/split menu Click, source authority/resource invariance, undo/redo identities and saved-file reopen. Color adjustment/fill and other free operations remain gated where core migration is missing. Official Release build and --filter-presets-check passed (2026-11-17). Six preset entries available; representative preset cancel/apply, actual LCD/style-split menu Click, exact free authority/resource retention, stable undo/redo identities, rendered style-split equality and actual saved-file reopen passed. No new visual acceptance."
+      },
+      "freeSourceForegroundFill20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/free-tile-edit.ts",
+          "legacy/src/renderer/src/store/workspace-free-tile-transaction.ts"
+        ],
+        "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
       }
     },
     {
@@ -31992,6 +32019,15 @@
       "scaledBrushModes20261115": {
         "legacyEvidence": "brushMaskOffsets: inverse rotation and JS rounding; pattern-source subtracts image source, pattern-target subtracts first unrotated tool stamp anchor. Nonintrinsic coverage uses sample coordinates for Bayer; imageBrushMaskCache holds four FIFO origin phases. canvas-raster-start captures tool-size pattern origin before dynamic samples. paintBrush/paintLine own coverage, selection, symmetry and history. paintBrush claims raw coverage before multiplying image alpha; transparent foreground uses erase coverage key for every ink, while only Simple erases. resolveInkStampColor rounds coverage/opacity before source alpha; paintLayerValue blends the stamped byte without percent requantization.",
         "nativeAdaptation": "Reuse shared ImageBrushPatternSampler for scaled Paint/Source/Target, first tool-size target anchor and four-phase FIFO. Ordinary/dynamic/preview share raw coverage claims and stamped-byte color semantics; indexed geometry reuses shared sampler, free-source scratch growth preserves base size, hover uses scaled anchor. 450 real legacy transactions, 144 sample sequences, 27 linked checks and 9 targeted legacy tests passed. Final unique formal Release build passed (15:14:29, 30674944 bytes); 12 distinct focused CTests passed in final runs (46.02s and 9.15s), including free-tile project, attached masks and raster history. Earlier regression failures and fixes are recorded in the stage document. No layout or product redesign; production indexed admission remains closed. See docs/scaled-image-brush-modes-migration-20261115.md."
+      },
+      "freeSourceForegroundFill20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/free-tile-edit.ts",
+          "legacy/src/renderer/src/store/workspace-free-tile-transaction.ts"
+        ],
+        "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
       }
     },
     {
@@ -32273,6 +32309,15 @@
           "legacy/src/renderer/src/store/workspace-layer-style-split.ts"
         ],
         "adaptation": "Remove stale free-document exclusions for six filter preset menu entries, LCD and split layer styles. Reuse existing native detached filter tasks, structure transactions, resolved canonical source and style sampler; effects add ordinary layers/groups while retaining free instances/source resources. Runtime integration adds free linked-frame fixtures, menu availability, preset cancel/apply, actual LCD/split menu Click, source authority/resource invariance, undo/redo identities and saved-file reopen. Color adjustment/fill and other free operations remain gated where core migration is missing. Official Release build and --filter-presets-check passed (2026-11-17). Six preset entries available; representative preset cancel/apply, actual LCD/style-split menu Click, exact free authority/resource retention, stable undo/redo identities, rendered style-split equality and actual saved-file reopen passed. No new visual acceptance."
+      },
+      "freeSourceForegroundFill20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/free-tile-edit.ts",
+          "legacy/src/renderer/src/store/workspace-free-tile-transaction.ts"
+        ],
+        "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
+        "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
       }
     },
     {
