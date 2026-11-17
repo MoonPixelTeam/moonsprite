@@ -519,6 +519,7 @@ bool Document::tilemapSelectionCutAvailable()const{
  // Paint Cut only copies the resolved source and completes selection; its
  // pixel deletion is rejected by legacy. Explicit same-layer chains are read-only here.
  const bool paintCopyOnly=tileSelection_.mode==tiles::Mode::Paint&&!active()&&tilemapCellOwnerSupported(cel().id,true,true);
+ if(selection_&&activeMaskId_.empty()&&layer().kind=="tilemap"&&paintCopyOnly)return true;
  if(!selection_||(active()&&!createPending)||!activeMaskId_.empty()||layer().kind!="tilemap"||hasSelectedGroups()||!(paintCopyOnly||(floating_&&(linkedCreateFloatingSupported(*floating_)||linkedEditFloatingSupported(*floating_)||linkedHybridFloatingSupported(*floating_)))||linkedCreateSelectionAvailable()||linkedEditSelectionAvailable()||linkedHybridSelectionAvailable()||tilemapDeltaSupported()))return false;
  const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||(!layers.empty()&&layers.front()!=activeLayerId_))return false;
  if(!selectedFrames_.empty())return false;
@@ -529,6 +530,10 @@ bool Document::tilemapPaintSelectionDeleteBlocked()const{
  // legacy tools-fill.clearSelection first tests lock/content intersection; only
  // an edit reaching commitPixelEdit produces Paint's rasterization message.
  if(tileSelection_.mode!=tiles::Mode::Paint||!tilemapSelectionCutAvailable()||layerEffectivelyLocked(layer()))return false;
+ // Legacy multi-target delete filters special layers rather than attempting a Paint pixel edit.
+ const auto layers=selectedLayerIdsWithGroups();if(layers.size()>1||selectedFrames_.size()>1||timelineSelection_.cels.size()>1)return false;
+ if(!selectedFrames_.empty()&&layers.empty()){int editable=0;for(const auto& l:timeline_.state().layers)if(l.kind.empty()&&layerEffectivelyVisible(l)&&!layerEffectivelyLocked(l))++editable;if(editable>1)return false;}
+
  const auto clamped=rectangleSelection(selection_->x,selection_->y,selection_->width,selection_->height,width_,height_);if(!clamped)return false;
  const auto pixels=canvasPixels();int left=width_,top=height_,right=-1,bottom=-1;
  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x)if(pixels[std::size_t(y)*width_+x]>>24){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}

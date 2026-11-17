@@ -7740,3 +7740,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 将上一阶段Paint选区翻转改动编入唯一正式产物native/build/Release/moonsprite-native.exe，新增实际菜单双轴检查：显式画布选区和两个时间轴Cel选择共存时，menuCommands与菜单项均可用，只改活动Cel，另一帧引用、当前选择及焦点保留，单条历史和Undo恢复。Release moonsprite-native构建退出0（paint-flip-menu-build.log）；Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针参数退出0，包含原有四种瓦片模式变换入口检查。来源覆盖1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。
 
 另核对旧版workspace-commands-selection-move.ts居中路径：未进入Paint整格移动，而是直接编辑像素缓存；原生目前拒绝特殊层居中。资源/实例持久化修复的行为差异已向用户提出，尚待答复，本批未修改居中语义。
+
+## 2026-11-18 Paint剪切与额外时间轴选择
+
+对照workspace-commands-clipboard.ts::cutSelection，先复制活动图层像素选区，再按已有删除命令处理，最后结束选区，复制不受额外时间轴选择限制。原生对只读Paint剪切提前准入，保留浮动/其他瓦片模式门禁；底层deleteSelectedPixels既有多目标路径跳过特殊层且可编辑所选普通层，未改其逻辑。状态提示同步workspace-selection-effects-support.ts的多目标判定，批量删除过滤特殊层时不再误报单目标Paint需栅格化。六组Cel/帧头/组选择夹具扩展剪贴板像素与mask、选择清除、其他帧/引用/焦点/时间轴选择及历史不变、单/多目标提示。Release tilemap-document构建和完整定向CTest通过（0.39秒），来源1043文件快照及diff检查通过。未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见paintCutTimelineContext20261118。瓦片居中行为问题仍待用户答复，本阶段未修改该路径。

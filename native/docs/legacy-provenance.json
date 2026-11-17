@@ -32958,6 +32958,14 @@
           "legacy/src/renderer/src/core/document-composite-region.ts"
         ],
         "nativeAdaptation": "refreshPendingGradientRegion uses createCompositePointSampler when fillReference is visible-layers; selection compares resolved colors. Supply document RasterColorContext to all remaining gradient-reference composites, including tilemap begin, ordinary absent/full/sparse begin and option refresh shared with masks. Six directed mixed-format fixtures cover Create/Hybrid/Edit, full/sparse/absent RGBA targets, indexed top-layer barrier, initial and changed reference options, cancel, authoritative tile resources, one commit, undo/redo and reference source preservation. Friend fixture installs indexed test state without bypassing production admission gates. Release tilemap-document CTest passed (0.89s); no GUI build or manual acceptance."
+      },
+      "paintCutTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "Legacy Cut copies the active selection independently of timeline multi-selection, routes deletion through selectedEffectTargets, then clears selection. Allow read-only Paint Cut with extra timeline groups/layers/frames/Cels; retain original single-target pixel deletion refusal and multi-target special-layer filtering. Rasterization status probe follows the same multi-target routing. Six existing context variants check exact clipboard pixels/mask, selection completion, unchanged refs/history/unrelated frames, and single versus multi-target status."
       }
     },
     {
@@ -33452,6 +33460,14 @@
           "legacy/src/renderer/src/core/tilemap-document.ts"
         ],
         "nativeAdaptation": "With an explicit marquee, legacy bypasses whole-Cel timeline flip and invokes flipTilemapSelection for the active layer/frame before ordinary multi-target transform handling. Remove native Paint flip admission restrictions for extra selected groups/layers/Cels/frames; reuse existing canonical cell history and legacy locked/hidden discrete-flip behavior. Extend three timeline contexts and move/copy fixture variants with horizontal/vertical exact cell orientation, unrelated-frame preservation, timeline focus/selection, one history and undo/redo checks."
+      },
+      "paintCutTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "Legacy Cut copies the active selection independently of timeline multi-selection, routes deletion through selectedEffectTargets, then clears selection. Allow read-only Paint Cut with extra timeline groups/layers/frames/Cels; retain original single-target pixel deletion refusal and multi-target special-layer filtering. Rasterization status probe follows the same multi-target routing. Six existing context variants check exact clipboard pixels/mask, selection completion, unchanged refs/history/unrelated frames, and single versus multi-target status."
       }
     },
     {
