@@ -38668,6 +38668,13 @@
         "legacyEvidence": "Actual resizeActiveImage command and raw document image-resize snapshots; indexed storage always nearest-neighbor even for smooth, world-coordinate floor/ceil bounds and exact source arithmetic, reset storage origin, nonzero selection mask normalized to1. Undo/Redo restore raw IDs and geometry without changing current palette. synchronizeLinkedLayerContents chooses active source after independently placed owners resize. Actual visible-composite pixel-scale detector. MoonSprite Source-Available License1.0 checked.",
         "nativeAdaptation": "Reuse existing resizeImage transaction, ImageResizeTask bounded capture/detached executor/cancellation and64-row detection. Preserve indexed format/raw IDs, propagate document mode/precision/immutable palette to worker and compositor, validate stale mode/precision/palette and bound palette working storage. Retain UI palette roles and raw snapshot history. Production indexed new/convert/editable import remains gated. See docs/indexed-resize-migration-20261116.md.",
         "validation": "882 actual legacy resize/raw snapshot histories,24 independently placed linked-owner cases,17 frame-alias variants,32 actual legacy indexed composite detections and sync/background/history/cancel/stale/budget/three-encoder checks passed. Initial linked-owner mismatch fixed by preparing resize snapshots with actual active-source/frame-member order. Rebuild exit0;7 targeted CTest tests passed10.41s. Legacy targeted tests6 passed110 skipped11.00s. Official Release build exit0;sole executable updated2026-11-16 03:11:40,30750720bytes;actual --image-resize-check passed2.31s. Provenance984 and unchanged evidence digests,Editor597,architecture597 sources/265targets and diff passed;strict remains1 for known global migration gaps. Production indexed new/convert/editable import remains gated. No full manual desktop/image acceptance. See docs/indexed-resize-migration-20261116.md."
+      },
+      "mixedScaleDetection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/image-scale-detection.ts",
+          "legacy/src/renderer/src/core/document-composite.ts"
+        ],
+        "nativeAdaptation": "detectDocumentPixelScale scans palette-aware visible composite. Capture existing document palette for detection when any captured Cel stores indexed words, even in RGBA/grayscale document mode. Reuse existing palette budget, detached worker snapshot and samePaletteData stale guard. Regression uses RGBA document plus indexed 4x reference, verifies scale4 and unchanged IDs/history; direct palette mutation rejects at capture, queued worker and completed-worker phases without opening production indexed gates."
       }
     },
     {
@@ -38679,7 +38686,14 @@
         "legacy/src/renderer/src/core/free-tile.ts",
         "legacy/src/renderer/src/components/ImageResizeDialog.tsx"
       ],
-      "scope": "Image resize async native adaptation reuses RasterSnapshot bounded2ms/1MiB ticks and SheetImportTask detached executor pattern; isolated worker invokes existing Document.resizeImage for ordinary/grid/free/mask semantics and transfers its single history edit only after identity/revision/content/frame/layer/selection guards. Worker never references live Document; destructor/cancel never join; row and tile cancellation checks stop sampling. UI Apply starts timer, freezes draft, keeps Cancel/close active, queued worker smoke pumps real move/resize/paint and rejects cancelled output. Source legacy synchronous resizeActiveImage/defaults/snapshot history preserved; new cancellation is necessary native responsiveness adaptation requested by user. Timeline installation/history apply remains synchronous and can still copy surfaces; no claim all large-image stalls removed."
+      "scope": "Image resize async native adaptation reuses RasterSnapshot bounded2ms/1MiB ticks and SheetImportTask detached executor pattern; isolated worker invokes existing Document.resizeImage for ordinary/grid/free/mask semantics and transfers its single history edit only after identity/revision/content/frame/layer/selection guards. Worker never references live Document; destructor/cancel never join; row and tile cancellation checks stop sampling. UI Apply starts timer, freezes draft, keeps Cancel/close active, queued worker smoke pumps real move/resize/paint and rejects cancelled output. Source legacy synchronous resizeActiveImage/defaults/snapshot history preserved; new cancellation is necessary native responsiveness adaptation requested by user. Timeline installation/history apply remains synchronous and can still copy surfaces; no claim all large-image stalls removed.",
+      "mixedScaleDetection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/image-scale-detection.ts",
+          "legacy/src/renderer/src/core/document-composite.ts"
+        ],
+        "nativeAdaptation": "detectDocumentPixelScale scans palette-aware visible composite. Capture existing document palette for detection when any captured Cel stores indexed words, even in RGBA/grayscale document mode. Reuse existing palette budget, detached worker snapshot and samePaletteData stale guard. Regression uses RGBA document plus indexed 4x reference, verifies scale4 and unchanged IDs/history; direct palette mutation rejects at capture, queued worker and completed-worker phases without opening production indexed gates."
+      }
     },
     {
       "file": "src/image_scale_detection.h",

@@ -7674,3 +7674,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色背景创建与色板事务
 
 对照旧版 workspace-commands-layer-creation.ts::createBackgroundLayer、background-patterns.ts::renderBackgroundTileIndexed 和 document-model.ts::findOrAddPaletteColor，索引色背景创建按首次出现顺序复用首个同色条目、提升隐藏颜色到可见槽位、插入透明ID0及分配新ID；重复像素使用颜色缓存。暂存色板纳入现有结构历史，恢复entries/order/slots/columns/nextColorId，不改UI角色颜色及选中色。保留活动图层/帧、完整重复图像尺寸及各帧链接同一背景来源。原生整数耗尽与现有文档预算在发布前拒绝。新增solid/image两种夹具核对精确ID、透明RGB、隐藏色复用、新色分配、重复缓存、尺寸、来源不变、链接帧、单历史及撤销重做，补充色号耗尽拒绝不发布。Release indexed-runtime-tests与document-background-tests定向构建成功，最终三项关联CTest通过（oracle0.70秒、runtime0.03秒、background0.04秒）；来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见indexedBackgroundCreation20261118。
+
+## 2026-11-18 混合格式倍率识别色板快照
+
+对照旧版 image-scale-detection.ts::detectDocumentPixelScale 的可见图层合成取色，倍率识别后台任务在捕获内容包含索引色Cel时保存文档色板，即使文档模式为RGBA/灰度。复用已有色板预算、后台快照与samePaletteData过期检查，目标缩放事务不变。夹具验证RGBA文档加索引色参考层正确识别4倍像素倍率，源ID与历史不变；捕获前、已排队及worker完成后直接修改色板均拒绝过期结果。Release image-resize-task-tests构建及完整image-resize-task CTest通过（0.08秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见mixedScaleDetection20261118。
