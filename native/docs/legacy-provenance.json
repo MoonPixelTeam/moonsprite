@@ -27388,6 +27388,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Actual addLayer calls createSparseLayer(document.colorMode), including adjustment layers. Native structural creation now initializes every frame Cel with Indexed format in indexed documents, otherwise RGBA; retain 1x1 zero storage, detached ownership and existing placement/focus/history. Twelve mode/group/adjustment fixtures cover RGBA/grayscale/indexed, root/group creation, two frames, undo-redo, and ordinary layer first paint followed by undo creation/replay paint, with unchanged palette."
+      },
+      "duplicateAbsentCelFormat20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts"
+        ],
+        "nativeAdaptation": "cloneAnimationCelsForLayer uses blankSurfaceFromLayer(targetLayer) for absent frames. Native duplicates missing-frame Cel as 1x1 zero storage with active displayed source layer format, falling back to document mode when absent; existing nonempty Cel cloning stays unchanged. Four document/layer format combinations validate missing-frame format, copied source raw pixels, undo-redo and first paint on missing frame followed by undo duplicate/replay paint. Mixed fixture states do not broaden production indexed admission."
       }
     },
     {
@@ -41909,6 +41917,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "Actual addLayer calls createSparseLayer(document.colorMode), including adjustment layers. Native structural creation now initializes every frame Cel with Indexed format in indexed documents, otherwise RGBA; retain 1x1 zero storage, detached ownership and existing placement/focus/history. Twelve mode/group/adjustment fixtures cover RGBA/grayscale/indexed, root/group creation, two frames, undo-redo, and ordinary layer first paint followed by undo creation/replay paint, with unchanged palette."
+      },
+      "duplicateAbsentCelFormat20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts"
+        ],
+        "nativeAdaptation": "cloneAnimationCelsForLayer uses blankSurfaceFromLayer(targetLayer) for absent frames. Native duplicates missing-frame Cel as 1x1 zero storage with active displayed source layer format, falling back to document mode when absent; existing nonempty Cel cloning stays unchanged. Four document/layer format combinations validate missing-frame format, copied source raw pixels, undo-redo and first paint on missing frame followed by undo duplicate/replay paint. Mixed fixture states do not broaden production indexed admission."
       }
     },
     {

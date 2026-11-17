@@ -7706,3 +7706,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 新建图层的颜色模式
 
 对照旧版 workspace-commands-layer-creation.ts::addLayer 调用 createSparseLayer(document.colorMode)，普通层及渐变映射调整层的每帧空Cel均按文档模式初始化格式，索引色使用Indexed，RGBA/灰度使用RGBA；保持1×1零值、独立所有权和既有插入、焦点及结构历史。新增12组模式/根层或组内/普通或调整层夹具，验证两帧空Cel、撤销重做和普通层首次绘画后连续撤销创建并重放绘画，核对像素、格式及色板不变。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.79/0.04秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见newLayerColorMode20261118。
+
+## 2026-11-18 复制图层的缺失帧格式
+
+对照旧版 animation.ts::cloneAnimationCelsForLayer/blankSurfaceFromLayer，复制图层时缺失帧的空Cel承接活动显示源图层格式；活动帧也缺失时回退文档模式。保留1×1零值及非空Cel原始复制逻辑。四组文档/图层RGBA与Indexed组合夹具验证空Cel格式、已有帧原始像素、复制撤销重做，以及缺失帧首次绘画后连续撤销复制并重放绘画。Release indexed-runtime-tests构建成功，indexed-runtime-oracle及indexed-runtime CTest通过（0.71/0.04秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入仍关闭，整体迁移INCOMPLETE。来源见duplicateAbsentCelFormat20261118。
