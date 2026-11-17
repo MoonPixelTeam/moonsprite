@@ -5965,6 +5965,14 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "addBlankAnimationFrame uses blankSurfaceFromLayer for ordinary layers, preserving displayed source format independently of document mode. Native addFrame follows resolved source format for ordinary/text/adjustment layers, retaining existing RGBA rendered special layers and document-mode fallback if source absent. Sixteen document/layer format, duplicate and auto-link combinations verify raw pixels or 1x1 zero blank, frame duration/disabled, source z-index and canonical links, single history, undo-redo. Mixed fixtures do not open indexed production gates."
+      },
+      "paintMoveTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/tilemap-document.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection-move.ts"
+        ],
+        "nativeAdaptation": "Legacy Paint drag capture and keyboard cell movement resolve only the active tilemap Cel despite additional timeline Cel/frame/group selections. Native movement removes those admission restrictions and the editor frame-scope refusal; discrete flips retain existing restrictions. Reuses canonical cell-reference preview/history and existing lock/visibility gates. Six copy/move and Cel/frame/group selection fixtures verify active-only refs, unrelated frame preservation, timeline selection, cancel, single history, undo/redo, and keyboard movement with all-frame flag. Release tilemap-document CTest passed (0.39s)."
       }
     },
     {
@@ -21905,6 +21913,14 @@
           "legacy/src/renderer/src/core/selection.ts"
         ],
         "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
+      },
+      "paintMoveTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/tilemap-document.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection-move.ts"
+        ],
+        "nativeAdaptation": "Legacy Paint drag capture and keyboard cell movement resolve only the active tilemap Cel despite additional timeline Cel/frame/group selections. Native movement removes those admission restrictions and the editor frame-scope refusal; discrete flips retain existing restrictions. Reuses canonical cell-reference preview/history and existing lock/visibility gates. Six copy/move and Cel/frame/group selection fixtures verify active-only refs, unrelated frame preservation, timeline selection, cancel, single history, undo/redo, and keyboard movement with all-frame flag. Release tilemap-document CTest passed (0.39s)."
       }
     },
     {
@@ -33405,6 +33421,14 @@
           "legacy/src/renderer/src/core/document-composite-region.ts"
         ],
         "nativeAdaptation": "tools-fill sourceColorAt matches visible composite colors independently of target raster format. FillCompositeSource now always owns the document composite color context; its separate optional indexed-target context still controls staged ID resolution and writes. Directed mixed-format fixtures cover solid and pattern fills on full, sparse and absent RGBA target cels under an indexed reference layer, color barriers, unchanged reference IDs, one history entry and undo/redo. Release tilemap-document build and CTest passed (0.39s). No GUI rebuild or manual acceptance; indexed production admission remains closed."
+      },
+      "paintMoveTimelineContext20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/tilemap-document.ts",
+          "legacy/src/renderer/src/store/workspace-tile-selection-move.ts"
+        ],
+        "nativeAdaptation": "Legacy Paint drag capture and keyboard cell movement resolve only the active tilemap Cel despite additional timeline Cel/frame/group selections. Native movement removes those admission restrictions and the editor frame-scope refusal; discrete flips retain existing restrictions. Reuses canonical cell-reference preview/history and existing lock/visibility gates. Six copy/move and Cel/frame/group selection fixtures verify active-only refs, unrelated frame preservation, timeline selection, cancel, single history, undo/redo, and keyboard movement with all-frame flag. Release tilemap-document CTest passed (0.39s)."
       }
     },
     {

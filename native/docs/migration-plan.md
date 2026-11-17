@@ -7724,3 +7724,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 对照旧版 FileLocationPicker.tsx 的localGalleryDirectory与platform_dialogs.rs/default_file_directories、platform_gallery.rs/gallery_dir，本地图库固定为程序旁gallery目录，不跟随自定义保存偏好。原生共用导出路径菜单启用该入口，复用已有galleryDirectory及旧版image图标，确保目录存在，错误进入状态栏；选目录不改文件名。扩展正式palette-paths检查覆盖启用、图标、目录/文件名、实际PNG写入及源文档不变，使用独立测试目录；正式构建及运行结果随后记录。来源覆盖1043文件及diff检查通过，整体迁移INCOMPLETE。来源见exportGalleryEntry20261118。
 
 本阶段唯一正式Release构建退出0（export-gallery-entry-build.log），Start-Process -Wait -PassThru运行--palette-paths-check退出0，包含实际图库目录选择/PNG导出及原有工程根目录、最近路径、选择路径、色板PNG和异步序列检查。同期前几批图层/帧格式改动已编入正式程序，但本次UI检查不等于其索引色生产准入已开放。未人工图像验收，未提交生成物和用户数据。
+
+## 2026-11-18 Paint整格移动与额外时间轴选择
+
+对照旧版canvas-input-selection-begin.ts活动Cel捕获、tilemap-document.ts固定目标及workspace-tile-selection-move.ts键盘移动，移除原生Paint移动对额外Cel、帧头和图层组选择及frameSelection的拒绝，继续仅移动活动Cel；离散翻转限制保持原状。复用既有整格引用事务、锁定/隐藏门禁、取消及历史。六组复制/移动与三类时间轴选择夹具验证其他帧不变、活动目标和时间轴选择保留、单条历史、取消及撤销重做、全帧标志下键盘仍作用活动Cel。首轮夹具追加选择会切换活动帧，已改为使用正式replacement选择入口固定活动Cel；未因此修改生产语义。Release tilemap-document定向构建和CTest通过（0.39秒）。正式程序集成结果随后记录；整体迁移INCOMPLETE。来源见paintMoveTimelineContext20261118。
+
+本阶段唯一正式Release moonsprite-native构建退出0（paint-move-context-gui-build.log），已包含editor_input入口变更。来源覆盖1043文件及证据快照检查通过，diff检查通过。最小相关验证为tilemap-document回归及正式编译，未运行GUI自动检查或人工图像验收；未提交生成物和用户数据。
