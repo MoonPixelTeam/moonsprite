@@ -6365,8 +6365,13 @@ void Editor::smokePalettePngRecentPaths(){
 
     openPaletteSave();require(paletteInput_->text()==" a:b.png ","Palette save name lost");resolve(false);
 
-    currentPath()=owned/"project.moonsprite";openStaticExport();exportFilename_->setText("unchanged.png");PixelMenu menu(skin_);buildExportLocationMenu(menu);std::vector<PixelMenuItem*> items;for(auto w:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(w))items.push_back(item);require(items.size()==5&&!items[1]->isEnabled()&&items[2]->isEnabled()&&!items[3]->isEnabled(),"Export location menu entries");exportDirectory_.clear();items.back()->Click();require(exportDirectory_==owned&&exportFilename_->text()=="unchanged.png","Recent menu changed filename");exportDirectory_.clear();items[2]->Click();require(exportDirectory_==owned,"Project directory selection");
+    currentPath()=owned/"project.moonsprite";openStaticExport();exportFilename_->setText("unchanged.png");PixelMenu menu(skin_);buildExportLocationMenu(menu);std::vector<PixelMenuItem*> items;for(auto w:menu.children())if(auto item=dynamic_cast<PixelMenuItem*>(w))items.push_back(item);require(items.size()==5&&items[1]->isEnabled()&&items[2]->isEnabled()&&!items[3]->isEnabled(),"Export location menu entries");exportDirectory_.clear();items.back()->Click();require(exportDirectory_==owned&&exportFilename_->text()=="unchanged.png","Recent menu changed filename");exportDirectory_.clear();items[2]->Click();require(exportDirectory_==owned,"Project directory selection");
 
+    const auto previousGallerySettings=recentSettingsOverride_;recentSettingsOverride_=owned;
+    items[1]->Click();require(exportDirectory_==owned/"gallery"&&std::filesystem::is_directory(exportDirectory_)&&exportFilename_->text()=="unchanged.png","Gallery menu directory/filename");
+    require(items[1]->icon=="image"&&items[1]->iconSkin==&toolIcons_,"Gallery legacy icon");
+    exportFilename_->setText("gallery-export.png");resolve(true);require(pending_==Pending::None&&std::filesystem::exists(owned/"gallery/gallery-export.png")&&currentDocument().historySize()==history&&currentDocument().revision()==revision,"Gallery actual export/source preservation");
+    recentSettingsOverride_=previousGallerySettings;openStaticExport();
     chosen=owned/"chosen.png";items[0]->Click();require(exportDirectory_==owned&&exportFilename_->text()=="chosen.png","Choose path menu action");
 
     exportFilename_->setText("actual.png");resolve(true);require(pending_==Pending::None&&recent_export_paths::load(recentExportPathsPath()).front().filePath==(owned/"actual.png").u8string(),"Static success MRU");

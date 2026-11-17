@@ -7718,3 +7718,9 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 清空Cel格式与链接验收
 
 对照旧版 workspace-commands-animation-cel-properties.ts 删除Cel与workspace-animation-cel-delete.test.ts来源移交契约，现有原生实现通过12组RGBA/Indexed、显式/运行时共享链接、删除源/成员/源及成员组合。检查清空后保留稀疏尺寸、世界偏移、storage origin、格式与透明度，重置所删zIndex，存活成员像素及规范链接有效，撤销恢复原链接、重做及色板不变。生产实现无需修改。Release indexed-runtime-tests构建成功，indexed-runtime-oracle与indexed-runtime CTest通过（0.70/0.04秒）；来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；仅证明上述清空Cel边界，不代表整个动画领域迁移完成，生产索引色准入仍关闭，整体INCOMPLETE。来源见celDeleteFormats20261118。
+
+## 2026-11-18 导出路径本地图库入口
+
+对照旧版 FileLocationPicker.tsx 的localGalleryDirectory与platform_dialogs.rs/default_file_directories、platform_gallery.rs/gallery_dir，本地图库固定为程序旁gallery目录，不跟随自定义保存偏好。原生共用导出路径菜单启用该入口，复用已有galleryDirectory及旧版image图标，确保目录存在，错误进入状态栏；选目录不改文件名。扩展正式palette-paths检查覆盖启用、图标、目录/文件名、实际PNG写入及源文档不变，使用独立测试目录；正式构建及运行结果随后记录。来源覆盖1043文件及diff检查通过，整体迁移INCOMPLETE。来源见exportGalleryEntry20261118。
+
+本阶段唯一正式Release构建退出0（export-gallery-entry-build.log），Start-Process -Wait -PassThru运行--palette-paths-check退出0，包含实际图库目录选择/PNG导出及原有工程根目录、最近路径、选择路径、色板PNG和异步序列检查。同期前几批图层/帧格式改动已编入正式程序，但本次UI检查不等于其索引色生产准入已开放。未人工图像验收，未提交生成物和用户数据。

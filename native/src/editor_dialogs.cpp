@@ -427,7 +427,7 @@ void Editor::buildExportLocationMenu(PixelMenu& menu){
 
     auto choose=add(U"选择路径",[this]{try{chooseExportLocation();}catch(const std::exception& e){status_=unicodeText(e.what());}});choose->iconSkin=&toolIcons_;choose->icon="folderOpen";
 
-    add(U"本地图库 · 未接入");
+    auto gallery=add(U"本地图库",[this]{try{const auto directory=galleryDirectory();std::filesystem::create_directories(directory);exportDirectory_=directory;}catch(const std::exception& e){status_=unicodeText(e.what());}refresh();});gallery->iconSkin=&toolIcons_;gallery->icon="image";
 
     const auto project=currentPath().empty()?currentDocument().sourceFilePath():currentPath();
 
