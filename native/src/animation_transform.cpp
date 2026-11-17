@@ -62,17 +62,14 @@ CrossfadeTweenFrame prepareTransformTweenFrame(const timeline::Timeline& t,const
 }
 TweenRegion transformTweenPreviewBounds(const timeline::Timeline& t,const TransformTweenSource& source,const TransformTweenOptions& o){
  validateTransformTweenOptions(o);std::optional<TweenRegion> out;
- for(const auto& l:t.state().layers)if(timeline::isLayerEffectivelyVisible(t.state(),l))for(const auto& f:source.frameIds){auto r=resolve(t,slot(t,l.id,f));auto b=bounds(r.surface);if(b)include(out,*b);}
- for(const auto& id:source.layerIds)for(int step=0;step<=o.frameCount;++step){auto r=resolve(t,slot(t,id,transformTweenSourceFrameId(source,o,step)));auto b=bounds(r.surface);if(!b)continue;Surface s;s.width=b->width;s.height=b->height;s.offsetX=b->x;s.offsetY=b->y;const auto g=geometry(s,source.pivot,o,double(step)/o.frameCount);include(out,{g.left,g.top,g.width,g.height});}
+ for(const auto& l:t.state().layers)if(timeline::isLayerEffectivelyVisible(t.state(),l))for(const auto& f:source.frameIds){auto r=resolve(t,slot(t,l.id,f));auto b=bounds(r.surface);if(b)include(out,styledTweenBounds(t,l.id,*b));}
+ for(const auto& id:source.layerIds)for(int step=0;step<=o.frameCount;++step){auto r=resolve(t,slot(t,id,transformTweenSourceFrameId(source,o,step)));auto b=bounds(r.surface);if(!b)continue;Surface s;s.width=b->width;s.height=b->height;s.offsetX=b->x;s.offsetY=b->y;const auto g=geometry(s,source.pivot,o,double(step)/o.frameCount);include(out,styledTweenBounds(t,id,{g.left,g.top,g.width,g.height}));}
  if(o.path){const double anchorX=o.pathAnchor?o.pathAnchor->x:source.pivot.x+source.pivot.width/2.,anchorY=o.pathAnchor?o.pathAnchor->y:source.pivot.y+source.pivot.height/2.;for(const auto& point:*o.path){const double x=anchorX+point.x,y=anchorY+point.y;const int left=geometryCoordinate(std::floor(x)),top=geometryCoordinate(std::floor(y)),right=geometryCoordinate(std::ceil(x+1)),bottom=geometryCoordinate(std::ceil(y+1));include(out,{left,top,raster::coordinate(std::int64_t(right)-left),raster::coordinate(std::int64_t(bottom)-top)});}}
  return out.value_or(TweenRegion{});
 }
 TweenRegion transformTweenCanvasBounds(const timeline::Timeline& t,const std::vector<timeline::Cel>& generated,int width,int height){
  if(width<1||height<1)throw std::invalid_argument("Invalid tween canvas");std::optional<TweenRegion> out=TweenRegion{0,0,width,height};
- auto add=[&](const timeline::Cel& cel,const Surface* surface){auto content=bounds(surface);if(!content)return;CompositeRegion region{content->x,content->y,content->width,content->height};const auto layer=std::find_if(t.state().layers.begin(),t.state().layers.end(),[&](const auto& l){return l.id==cel.layerId;});if(layer!=t.state().layers.end()){
-  region=layerStyleOutputBounds(region,layer->layerStyles);auto parent=layer->groupId;std::unordered_set<std::string> visited;
-  while(parent&&visited.insert(*parent).second){const auto group=std::find_if(t.state().groups.begin(),t.state().groups.end(),[&](const auto& g){return g.id==*parent;});if(group==t.state().groups.end())break;region=layerStyleOutputBounds(region,group->layerStyles);parent=group->parentGroupId;}
- }include(out,{region.x,region.y,region.width,region.height});};
+ auto add=[&](const timeline::Cel& cel,const Surface* surface){auto content=bounds(surface);if(content)include(out,styledTweenBounds(t,cel.layerId,*content));};
  for(const auto& cel:t.state().cels){const auto resolved=resolve(t,&cel);if(!resolved.source)throw std::invalid_argument("Invalid tween source surface");if(resolved.source->id==cel.id)add(cel,resolved.surface);}
  for(const auto& cel:generated)add(cel,cel.surface?&*cel.surface:nullptr);return *out;
 }

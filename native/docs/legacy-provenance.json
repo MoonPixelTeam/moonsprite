@@ -17238,7 +17238,13 @@
       "scope": " 2026-10-17 moon-crossfade batch: Adjacent physical-frame crossfade only, current/selected/all unlocked layers including hidden, count1..120 default8, duration1..60000 initially source duration, 5 easings/custom32-step cubic, preview steps0..count+1 and once playback, original endpoints retained, unselected start-source clone, independent unlinked generated Cels, start-slot selected Z, automatic infinite forward loop and new-frame selection, atomic generation and one delta undo, project roundtrip. 2026-10-17 quantization-morph batch: Adjacent RGBA morph uses original content bounds, padded Float32 two-pass signed distance/nearest strict tie, source-grid resampling, interpolated bounds/offset Math.round, signed-distance shape and straight RGBA interpolation. Current empty endpoint rejects; all/selected empty layer fallback crossfade. Morph and crossfade mode choice, original new-open default morph restored only after implementation, preview/generation share prepared plan and existing atomic single-delta history/save path.",
       "adaptation": " Native explicit crossfade entry and disabled morph option preserve truthful mode boundary; legacy default morph is not silently reinterpreted. Frame/loop/path/morph tween remain incomplete. Native curve uses four numeric controls instead of legacy graphical editor. Preview caches source plan and remains outside Document history/dirty; generate stages validated candidate before publishing. Generated dense allocation128MiB, total document256MiB/10000frames and admitted1024canvas are explicit native constraints, fail before live mutation. Staging temporarily copies existing value-model timeline; history stores only generated frame/Cel delta plus metadata, indexed batch restore. Old Source-Available1.0 sources reused/adapted; no Aseprite EULA code/assets copied. Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged.",
       "tweenClosure20261019": "Independent curve draft child dialog; pure Editor 0.4 endpoint ghost with source/rotation/scale/count cache, move-tool gated bbox capture, miss consumption, physical-to-document drag, cancel/blur/close cleanup, nested curve suspension. Between morph/crossfade sparse candidates and original+generated canvas union autoCrop, canonical owner shifts, selection/pivot and layer-opacity projection in single detached-frame history. Preserve hidden RGB/raw unselected sparse clone and aliases through undo and project roundtrip. Necessary native adaptation: transient Editor surface + popup filters, native selection move tool, canvas1..1024 and allocation budgets. Path remains incomplete; coverage alone does not establish equivalence.",
-      "transformTweenMasks20261117": "Actual legacy src/renderer/src/core/animation-tween.ts prepareAnimationTweenFrame maskOutput resolves linked masks, independently clones nonselected/locked/nonmoving masks and transforms selected unlocked moveWithOwner layer masks with tweenSurface. Native candidate carries mask slots, preview composites them, Document assigns fresh IDs/frame slots and stores before/after masks in existing frame history; canvas resizing shifts mask offsets. Focused animation-transform covers layer locked x moveWithOwner, generated identity/offsets, UndoRedo and editable encode/read. Selected group masks and between/morph mask interpolation remain incomplete; mixed-special Document admission remains closed. No full tween parity claim."
+      "transformTweenMasks20261117": "Actual legacy src/renderer/src/core/animation-tween.ts prepareAnimationTweenFrame maskOutput resolves linked masks, independently clones nonselected/locked/nonmoving masks and transforms selected unlocked moveWithOwner layer masks with tweenSurface. Native candidate carries mask slots, preview composites them, Document assigns fresh IDs/frame slots and stores before/after masks in existing frame history; canvas resizing shifts mask offsets. Focused animation-transform covers layer locked x moveWithOwner, generated identity/offsets, UndoRedo and editable encode/read. Selected group masks and between/morph mask interpolation remain incomplete; mixed-special Document admission remains closed. No full tween parity claim.",
+      "styledTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267"
+        ],
+        "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
+      }
     },
     {
       "file": "src/animation_crossfade.cpp",
@@ -17284,6 +17290,12 @@
           "legacy/src/renderer/src/core/animation-tween.ts:354-383"
         ],
         "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
+      },
+      "styledTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267"
+        ],
+        "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
       }
     },
     {
@@ -17708,6 +17720,12 @@
           "legacy/src/renderer/src/core/animation-tween.ts:395-419"
         ],
         "nativeAdaptation": "Auto canvas bounds include layer style output followed by each ancestor group style, guarding parent cycles. Reuse native layerStyleOutputBounds matching the legacy stroke/shadow geometry. Shared bounds serve transform and between generation. Focused nested stroke/shadow and disabled-style checks executed; animation-transform and animation-crossfade CTests passed0.49s."
+      },
+      "styledTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267"
+        ],
+        "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
       }
     },
     {
@@ -17772,6 +17790,12 @@
           "legacy/src/renderer/src/core/animation-tween.ts:395-419"
         ],
         "nativeAdaptation": "Auto canvas bounds include layer style output followed by each ancestor group style, guarding parent cycles. Reuse native layerStyleOutputBounds matching the legacy stroke/shadow geometry. Shared bounds serve transform and between generation. Focused nested stroke/shadow and disabled-style checks executed; animation-transform and animation-crossfade CTests passed0.49s."
+      },
+      "styledTweenPreview20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267"
+        ],
+        "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
       }
     },
     {

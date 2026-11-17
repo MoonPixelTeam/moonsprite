@@ -19,5 +19,6 @@ CrossfadeTweenSource prepareCrossfadeTweenSource(const timeline::Timeline&,const
 std::size_t crossfadeTweenAllocationBytes(const timeline::Timeline&,int width,int height,const CrossfadeTweenOptions&);
 CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::size_t* remaining=nullptr,std::size_t maxPixels=16*1024*1024);
 std::vector<timeline::Pixel> compositeCrossfadeTweenPreview(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::optional<TweenRegion> region={});
+TweenRegion styledTweenBounds(const timeline::Timeline&,const std::string& layerId,TweenRegion);
 TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline&,const CrossfadeTweenSource&);
 }

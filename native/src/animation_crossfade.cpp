@@ -70,10 +70,16 @@ CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline& t,int w
  }
  return out;
 }
+TweenRegion styledTweenBounds(const timeline::Timeline& t,const std::string& layerId,TweenRegion bounds){
+ CompositeRegion region{bounds.x,bounds.y,bounds.width,bounds.height};const auto layer=std::find_if(t.state().layers.begin(),t.state().layers.end(),[&](const auto& l){return l.id==layerId;});if(layer!=t.state().layers.end()){
+  region=layerStyleOutputBounds(region,layer->layerStyles);auto parent=layer->groupId;std::unordered_set<std::string> visited;
+  while(parent&&visited.insert(*parent).second){const auto group=std::find_if(t.state().groups.begin(),t.state().groups.end(),[&](const auto& g){return g.id==*parent;});if(group==t.state().groups.end())break;region=layerStyleOutputBounds(region,group->layerStyles);parent=group->parentGroupId;}
+ }return {region.x,region.y,region.width,region.height};
+}
 TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline& t,const CrossfadeTweenSource& source){
  std::optional<TweenRegion> out;auto include=[&](std::optional<TweenRegion> b){if(b)out=out?std::optional<TweenRegion>{unite(out,b)}:b;};
- for(const auto& layer:t.state().layers)if(timeline::isLayerEffectivelyVisible(t.state(),layer))for(const auto& frame:{source.startFrameId,source.endFrameId})include(contentBounds(resolved(t,slot(t,layer.id,frame)).surface));
- for(const auto& part:source.layers)include(part.bounds);return out.value_or(TweenRegion{});
+ for(const auto& layer:t.state().layers)if(timeline::isLayerEffectivelyVisible(t.state(),layer))for(const auto& frame:{source.startFrameId,source.endFrameId}){auto content=contentBounds(resolved(t,slot(t,layer.id,frame)).surface);if(content)include(styledTweenBounds(t,layer.id,*content));}
+ for(const auto& part:source.layers)include(styledTweenBounds(t,part.layerId,part.bounds));return out.value_or(TweenRegion{});
 }
 std::vector<timeline::Pixel> compositeCrossfadeTweenPreview(const timeline::Timeline& t,int width,int height,const CrossfadeTweenSource& source,const CrossfadeTweenOptions& o,int step,std::optional<TweenRegion> region){
  const auto r=region.value_or(TweenRegion{0,0,width,height});if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>1024*1024)throw std::length_error("Tween preview exceeds pixel budget");raster::coordinate(std::int64_t(r.x)+r.width);raster::coordinate(std::int64_t(r.y)+r.height);std::size_t remaining=64*1024*1024;auto frame=prepareCrossfadeTweenFrame(t,width,height,source,o,step,&remaining,1024*1024);timeline::State state;state.layers=t.state().layers;state.groups=t.state().groups;state.tilesets=t.state().tilesets;state.canvasWidth=t.state().canvasWidth;state.canvasHeight=t.state().canvasHeight;state.frames={{source.startFrameId,o.duration}};for(std::size_t i=0;i<frame.cels.size();++i){auto& c=frame.cels[i];c.id="crossfade-preview-"+std::to_string(i);c.frameId=source.startFrameId;}for(std::size_t i=0;i<frame.masks.size();++i){frame.masks[i].frameId=source.startFrameId;frame.masks[i].mask.id="crossfade-preview-mask-"+std::to_string(i);}state.masks=std::move(frame.masks);state.cels=std::move(frame.cels);return compositeNormalRegion(timeline::Timeline(std::move(state)),source.startFrameId,{r.x,r.y,r.width,r.height});

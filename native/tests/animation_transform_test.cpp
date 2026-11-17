@@ -97,6 +97,9 @@ void verifyStyledTweenCanvasBounds(){
  timeline::ColorOverlayStyle stroke;stroke.stroke.enabled=true;stroke.stroke.position=1;stroke.stroke.size=2;state.layers[0].layerStyles=stroke;
  timeline::ColorOverlayStyle shadow;shadow.shadow.enabled=true;shadow.shadow.offsetX=3;shadow.shadow.offsetY=-4;shadow.shadow.blur=1;state.groups[0].layerStyles=shadow;state.groups[1].layerStyles=stroke;
  timeline::Timeline timeline(state);const auto result=transformTweenCanvasBounds(timeline,{},2,2);CHECK(result.x==-4&&result.y==-8&&result.width==13&&result.height==14);
+ TransformTweenOptions options;options.offsetX=0;options.frameCount=1;const auto source=prepareTransformTweenSource(timeline,"f","A",options);const auto preview=transformTweenPreviewBounds(timeline,source,options);CHECK(preview.x==-4&&preview.y==-8&&preview.width==13&&preview.height==14);
+ CrossfadeTweenSource between;between.startFrameId=between.endFrameId="f";between.layers.push_back({"A",{0,1,1,1}});const auto fade=crossfadeTweenPreviewBounds(timeline,between);CHECK(fade.x==preview.x&&fade.y==preview.y&&fade.width==preview.width&&fade.height==preview.height);
+
  state.layers[0].layerStyles->enabled=false;state.groups[0].layerStyles->enabled=false;state.groups[1].layerStyles->enabled=false;const auto plain=transformTweenCanvasBounds(timeline::Timeline(state),{},2,2);CHECK(plain.x==0&&plain.y==0&&plain.width==2&&plain.height==2);
 }
 int main(int argc,char** argv){try{verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();

@@ -7482,3 +7482,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 补间画布样式边界
 
 自动扩展画布计入图层及嵌套组样式外扩，复用既有样式边界算法，两项定向测试通过。详见 [记录](styled-tween-canvas-20261117.md)。整体 INCOMPLETE。
+
+## 2026-11-17 补间预览样式范围
+
+变换及 between 预览计入图层与嵌套父组样式外扩，复用自动画布的边界逻辑。两项定向测试通过，详见 [记录](styled-tween-preview-20261117.md)。整体 INCOMPLETE。
