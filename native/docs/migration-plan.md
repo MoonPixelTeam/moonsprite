@@ -7450,3 +7450,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 变换补间图层蒙版事务
 
 候选帧、预览和帧插入历史接入图层蒙版，保留锁定及随层移动规则。定向构建与 animation-transform 测试通过，详见 [记录](transform-tween-masks-20261117.md)。组蒙版变换与 between 蒙版仍未完成，混合工程门禁保留，整体 INCOMPLETE。
+
+## 2026-11-17 交叉淡化与形变图层蒙版
+
+迁移图层蒙版覆盖率插值、预览及帧插入历史。animation-crossfade 定向构建与检查通过；组蒙版插值和移动边界验收仍待补齐。详见 [记录](between-tween-masks-20261117.md)。整体 INCOMPLETE，混合特殊工程门禁保留。

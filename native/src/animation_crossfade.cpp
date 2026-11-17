@@ -49,7 +49,25 @@ CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline& t,int w
   }else if(a.surface){raster::validate(*a.surface);consume(a.surface->pixels.size()*sizeof(timeline::Pixel));c.surface=*a.surface;}
   else{consume(pixels*sizeof(timeline::Pixel));timeline::Surface empty;empty.width=width;empty.height=height;empty.pixels.resize(pixels);c.surface=std::move(empty);}
   out.cels.push_back(std::move(c));
- }return out;
+ }
+ // Legacy animation-tween.ts maskOutput and animation-tween-masks.ts:
+ // interpolate coverage in the moving owner's space; absent masks are neutral.
+ for(const auto& layer:t.state().layers){const auto* start=timeline::resolvedMask(t.state(),layer.id,source.startFrameId);const auto* end=timeline::resolvedMask(t.state(),layer.id,source.endFrameId);const auto part=std::find_if(source.layers.begin(),source.layers.end(),[&](const auto& p){return p.layerId==layer.id;});const bool selected=part!=source.layers.end();if(!start&&(!selected||!end))continue;const auto* original=start?start:end;timeline::MaskSlot slot;slot.ownerId=layer.id;slot.mask=*original;slot.mask.id.clear();slot.mask.linkedMaskId.clear();
+  if(selected&&!original->locked&&(!end||!end->locked)){
+   const auto a=contentBounds(resolved(t,t.findCel(layer.id,source.startFrameId)).surface).value_or(TweenRegion{});const auto b=part->morph?contentBounds(resolved(t,t.findCel(layer.id,source.endFrameId)).surface).value_or(TweenRegion{}):a;
+   auto lerp=[&](double x,double y){return x+(y-x)*progress;};const double tx=std::floor(lerp(a.x,b.x)+.5),ty=std::floor(lerp(a.y,b.y)+.5),tw=std::max(1.,std::floor(lerp(a.width,b.width)+.5)),th=std::max(1.,std::floor(lerp(a.height,b.height)+.5));
+   double left=0,top=0,right=0,bottom=0;bool first=true;
+   auto include=[&](const timeline::AttachedMask* mask,TweenRegion owner){if(!mask)return;const auto& m=mask->surface;const double x=mask->moveWithOwner?tx+(m.offsetX-owner.x)*tw/owner.width:m.offsetX,y=mask->moveWithOwner?ty+(m.offsetY-owner.y)*th/owner.height:m.offsetY,w=mask->moveWithOwner?m.width*tw/owner.width:m.width,h=mask->moveWithOwner?m.height*th/owner.height:m.height;if(first){left=x;top=y;right=x+w;bottom=y+h;first=false;}else{left=std::min(left,x);top=std::min(top,y);right=std::max(right,x+w);bottom=std::max(bottom,y+h);}};include(start,a);include(end,b);
+   const auto lx=std::floor(left),ly=std::floor(top),rw=std::max(1.,std::ceil(right)-lx),rh=std::max(1.,std::ceil(bottom)-ly);if(!std::isfinite(lx)||!std::isfinite(ly)||lx<std::numeric_limits<int>::min()||ly<std::numeric_limits<int>::min()||lx+rw>std::numeric_limits<int>::max()||ly+rh>std::numeric_limits<int>::max()||rw>16384||rh>16384||rw*rh>std::min<std::size_t>(maxPixels,16*1024*1024))throw std::length_error("Tween mask exceeds pixel budget");
+   timeline::Surface output;output.offsetX=int(lx);output.offsetY=int(ly);output.width=int(rw);output.height=int(rh);consume(std::size_t(output.width)*output.height*sizeof(timeline::Pixel));output.pixels.resize(std::size_t(output.width)*output.height);
+   auto coverage=[&](const timeline::AttachedMask* mask,TweenRegion owner,double x,double y){if(!mask||!mask->visible)return 255u;const auto& m=mask->surface;const double sx=std::floor((mask->moveWithOwner?owner.x+(x-tx)*owner.width/tw:x)-m.offsetX),sy=std::floor((mask->moveWithOwner?owner.y+(y-ty)*owner.height/th:y)-m.offsetY);if(sx<0||sy<0||sx>=m.width||sy>=m.height)return 255u;return timeline::maskCoverage(m.pixels[std::size_t(sy)*m.width+std::size_t(sx)]);};
+   for(int y=0;y<output.height;++y)for(int x=0;x<output.width;++x){const auto value=timeline::Pixel(std::floor(lerp(coverage(start,a,output.offsetX+x+.5,output.offsetY+y+.5),coverage(end,b,output.offsetX+x+.5,output.offsetY+y+.5))+.5));output.pixels[std::size_t(y)*output.width+x]=0xff000000u|value|(value<<8)|(value<<16);}
+   slot.mask.surface=std::move(output);slot.mask.visible=true;
+  }else consume(slot.mask.surface.pixels.size()*sizeof(timeline::Pixel));out.masks.push_back(std::move(slot));
+ }
+ // Unselected group masks are independently carried through this batch.
+ for(const auto& mask:t.state().masks)if(mask.group&&mask.frameId==source.startFrameId){auto copy=mask;copy.mask=*timeline::resolvedMask(t.state(),mask.ownerId,source.startFrameId);copy.mask.id.clear();copy.mask.linkedMaskId.clear();copy.frameId.clear();consume(copy.mask.surface.pixels.size()*sizeof(timeline::Pixel));out.masks.push_back(std::move(copy));}
+ return out;
 }
 TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline& t,const CrossfadeTweenSource& source){
  std::optional<TweenRegion> out;auto include=[&](std::optional<TweenRegion> b){if(b)out=out?std::optional<TweenRegion>{unite(out,b)}:b;};
@@ -57,6 +75,6 @@ TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline& t,const Crossf
  for(const auto& part:source.layers)include(part.bounds);return out.value_or(TweenRegion{});
 }
 std::vector<timeline::Pixel> compositeCrossfadeTweenPreview(const timeline::Timeline& t,int width,int height,const CrossfadeTweenSource& source,const CrossfadeTweenOptions& o,int step,std::optional<TweenRegion> region){
- const auto r=region.value_or(TweenRegion{0,0,width,height});if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>1024*1024)throw std::length_error("Tween preview exceeds pixel budget");raster::coordinate(std::int64_t(r.x)+r.width);raster::coordinate(std::int64_t(r.y)+r.height);std::size_t remaining=64*1024*1024;auto frame=prepareCrossfadeTweenFrame(t,width,height,source,o,step,&remaining,1024*1024);timeline::State state;state.layers=t.state().layers;state.groups=t.state().groups;state.frames={{source.startFrameId,o.duration}};for(std::size_t i=0;i<frame.cels.size();++i){auto& c=frame.cels[i];c.id="crossfade-preview-"+std::to_string(i);c.frameId=source.startFrameId;}state.cels=std::move(frame.cels);return compositeNormalRegion(timeline::Timeline(std::move(state)),source.startFrameId,{r.x,r.y,r.width,r.height});
+ const auto r=region.value_or(TweenRegion{0,0,width,height});if(r.width<1||r.height<1||std::uint64_t(r.width)*r.height>1024*1024)throw std::length_error("Tween preview exceeds pixel budget");raster::coordinate(std::int64_t(r.x)+r.width);raster::coordinate(std::int64_t(r.y)+r.height);std::size_t remaining=64*1024*1024;auto frame=prepareCrossfadeTweenFrame(t,width,height,source,o,step,&remaining,1024*1024);timeline::State state;state.layers=t.state().layers;state.groups=t.state().groups;state.frames={{source.startFrameId,o.duration}};for(std::size_t i=0;i<frame.cels.size();++i){auto& c=frame.cels[i];c.id="crossfade-preview-"+std::to_string(i);c.frameId=source.startFrameId;}for(std::size_t i=0;i<frame.masks.size();++i){frame.masks[i].frameId=source.startFrameId;frame.masks[i].mask.id="crossfade-preview-mask-"+std::to_string(i);}state.masks=std::move(frame.masks);state.cels=std::move(frame.cels);return compositeNormalRegion(timeline::Timeline(std::move(state)),source.startFrameId,{r.x,r.y,r.width,r.height});
 }
 }
