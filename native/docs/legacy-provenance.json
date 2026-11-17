@@ -17702,6 +17702,12 @@
           "legacy/src/renderer/src/core/animation-tween.ts:354-383"
         ],
         "nativeAdaptation": "Legacy preview spreads the document, retaining tilesets and canvas dimensions. Native temporary timelines now retain the same resource catalog and canvas metadata for between, transform and transform endpoint previews. Mixed grid/free fixtures verify target filtering, copied resource payload and successful construction of all three previews. animation-crossfade CTest passed; mixed Document generation remains gated pending resource-aware canvas resize."
+      },
+      "styledTweenCanvas20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:395-419"
+        ],
+        "nativeAdaptation": "Auto canvas bounds include layer style output followed by each ancestor group style, guarding parent cycles. Reuse native layerStyleOutputBounds matching the legacy stroke/shadow geometry. Shared bounds serve transform and between generation. Focused nested stroke/shadow and disabled-style checks executed; animation-transform and animation-crossfade CTests passed0.49s."
       }
     },
     {
@@ -17760,6 +17766,12 @@
           "legacy/src/renderer/src/store/workspace-animation-selection.ts"
         ],
         "nativeAdaptation": "Generation reuses clearAnimationItemSelection before installing generated timeline and frame selection, clearing active mask/isolation and session item selection while preserving row and pixel selections. Existing captured animation selection restores mask editing on Undo and cleared state on Redo. Transform and Crossfade/Morph tests cover locked/follow/missing-endpoint combinations with active isolated masks; both focused CTests passed in 0.35 seconds."
+      },
+      "styledTweenCanvas20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/core/animation-tween.ts:395-419"
+        ],
+        "nativeAdaptation": "Auto canvas bounds include layer style output followed by each ancestor group style, guarding parent cycles. Reuse native layerStyleOutputBounds matching the legacy stroke/shadow geometry. Shared bounds serve transform and between generation. Focused nested stroke/shadow and disabled-style checks executed; animation-transform and animation-crossfade CTests passed0.49s."
       }
     },
     {

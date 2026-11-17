@@ -92,7 +92,14 @@ void verifySparseTweenTransactions(){
   auto saved=project::readProjectManifest(project::encodeEditableProject(doc).bytes);CHECK((std::any_of(saved.cels.begin(),saved.cels.end(),[&](const auto& c){return c.layerId=="empty"&&c.frameId==frame;}))==false);
  }
 }
-int main(int argc,char** argv){try{verifySparseTweenTransactions();
+void verifyStyledTweenCanvasBounds(){
+ timeline::State state;state.layers={{"A",U"A"}};state.groups={{"inner",U"Inner"},{"outer",U"Outer"}};state.layers[0].groupId="inner";state.groups[0].parentGroupId="outer";state.frames={{"f",100}};state.cels={cel("a","A","f",0,{0xffffffff})};
+ timeline::ColorOverlayStyle stroke;stroke.stroke.enabled=true;stroke.stroke.position=1;stroke.stroke.size=2;state.layers[0].layerStyles=stroke;
+ timeline::ColorOverlayStyle shadow;shadow.shadow.enabled=true;shadow.shadow.offsetX=3;shadow.shadow.offsetY=-4;shadow.shadow.blur=1;state.groups[0].layerStyles=shadow;state.groups[1].layerStyles=stroke;
+ timeline::Timeline timeline(state);const auto result=transformTweenCanvasBounds(timeline,{},2,2);CHECK(result.x==-4&&result.y==-8&&result.width==13&&result.height==14);
+ state.layers[0].layerStyles->enabled=false;state.groups[0].layerStyles->enabled=false;state.groups[1].layerStyles->enabled=false;const auto plain=transformTweenCanvasBounds(timeline::Timeline(state),{},2,2);CHECK(plain.x==0&&plain.y==0&&plain.width==2&&plain.height==2);
+}
+int main(int argc,char** argv){try{verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();
  timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",100},{"pose-two",250},{"disabled",100,true},{"later",100}};s.cels={cel("a0","A","f0",1,{0xff0000ff,0xffff0000}),cel("a1","A","pose-two",5,{0xff00ff00,0xff00ff00},.8),cel("b0","B","f0",0,{0xff112233},.4)};timeline::Cel link;link.id="b1";link.layerId="B";link.frameId="pose-two";link.linkedCelId="b0";s.cels.push_back(link);s.loopSections={{"walk",U"Walk","f0","disabled","forward",2}};timeline::Timeline t(s);
  TransformTweenOptions o;o.scope=TransformTweenScope::Loop;o.loopSectionId="walk";o.frameCount=4;o.offsetX=8;o.opacity=50;auto source=prepareTransformTweenSource(t,"f0","A",o);CHECK(source.pivot.x==1&&source.pivot.width==6&&source.insertionFrameId=="disabled");CHECK(source.layerIds==std::vector<std::string>{"A"});CHECK(source.frameIds==std::vector<std::string>({"f0","pose-two"}));const int xs[]={3,9,7,13};const double op[]={.875,.6,.625,.4};std::size_t remaining=128*1024*1024;std::vector<timeline::Cel> all;
  for(int step=1;step<=4;++step){auto f=prepareTransformTweenFrame(t,source,o,step,remaining);CHECK(f.cels.size()==2&&f.cels[0].surface->offsetX==xs[step-1]&&std::abs(*f.cels[0].opacity-op[step-1])<1e-12);CHECK(f.cels[1].surface->pixels==s.cels[2].surface->pixels&&!f.cels[1].linkedCelId&&!f.cels[1].runtimeSharedCelId&&f.cels[1].opacity==.4);f.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("b0").surface->pixels[0]==0xff112233);all.insert(all.end(),f.cels.begin(),f.cels.end());}

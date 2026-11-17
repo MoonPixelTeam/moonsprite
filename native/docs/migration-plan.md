@@ -7478,3 +7478,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 混合瓦片补间生成
 
 接通混合工程的普通图层补间，画布扩展复用资源调整事务并保留单步历史；正式构建、实际对话框及两项核心测试通过。详见 [记录](mixed-tween-generation-20261117.md)。整体 INCOMPLETE。
+
+## 2026-11-17 补间画布样式边界
+
+自动扩展画布计入图层及嵌套组样式外扩，复用既有样式边界算法，两项定向测试通过。详见 [记录](styled-tween-canvas-20261117.md)。整体 INCOMPLETE。
