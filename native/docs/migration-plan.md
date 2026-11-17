@@ -7570,3 +7570,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色精灵表导入与预览
 
 按旧版compositeSpriteSheetRegion及buildImportedSpriteSheet，预览和切帧合成接入原文档色板，后台任务携带色板／模式／精度；导入以单个结构事务生成RGBA，撤销恢复原索引色模式和ID。正式Release构建成功，sheet-import-task定向检查通过（0.20秒），覆盖完整／选区输入、后台色板传递、RGBA参考及撤销重做；正式程序--sheet-import-check退出0，包含实际索引色预览像素、弹窗导入及撤销重做断言。本批未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedSheetImport20261118。
+
+## 2026-11-18 索引色预览窗口取色
+
+依据旧版PreviewPanel的createCompositePointSampler预览文档取色，将文档色板传入原生previewSample的帧／覆盖层合成。正式Release构建成功，--preview-panel-check退出0，新增隔离索引色双帧夹具，核对活动帧／播放帧颜色、前景／背景回调标记及源ID、修订和历史保留，完成后恢复原面板状态。未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedPreviewSample20261118。

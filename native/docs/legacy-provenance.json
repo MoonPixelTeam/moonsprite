@@ -2772,7 +2772,8 @@
         "legacy/src/renderer/src/components/WorkspacePanels.tsx",
         "native/src/editor_support.h",
         "native/src/editor_panels.cpp",
-        "native/docs/ui-design-spec.md"
+        "native/docs/ui-design-spec.md",
+        "legacy/src/renderer/src/core/document-composite-sampling.ts"
       ],
       "scope": "Existing shared preview/floating-column UI extracted behind narrow public declarations; existing layout and behavior retained.",
       "adaptation": "C01: extract existing PreviewPanel, DialogBackground, FloatingColumnSurface/DockFeedback and floating-panel resize helpers from editor_support.h; move zoomPreviewTo from editor_panels.cpp into preview_panel.cpp. Preserve existing method bodies, geometry, skin assets, timers, pointer capture, preview model and rendering. Standalone declarations compile without Editor; implementations include their own header first and cannot reach Editor/support transitively. Stable session document binding is explicit. Native adaptation retains the existing LAF widget/render implementation rather than React hooks. Build and GUI behavior validation is tracked separately in the audit.",
@@ -2785,7 +2786,8 @@
         ],
         "adaptation": "Remove four catalog rows and runtime sensitivity consumers; main/preview/reference panning uses default 1x pointer displacement. Ignore retired persisted settings and exclude them from writes while preserving other unknown records. Detach offline local-history service library from official app; retain existing offline evidence helpers/tests and Document replay compatibility. Stop migrating persisted editing history and toolbar content/group customization. Preserve ordinary Undo/Redo/history panel, recovery/backups, fixed toolbar/placement/flyouts and quick command bars. Do not touch user history files.",
         "validation": "Official Release build exit0; exe2026-11-16 17:26:41 /31001600bytes SHA256 559750D2B70F4811A17D1BEB503AA69CBCBF5756FEFB32FBFDD10DF262D2A462. Five targeted CTests passed in0.70s: document-transactions/editor-preferences/reference-images/preview-panel/history-commands. Formal preferences-catalog passed2.05s; --preferences-runtime-check/--preview-panel-check/--reference-panel-check exit0. Catalog356rows/14categories/95retainedlabels and four removed IDs excluded. Provenance1025/snapshots, Editor611, architecture611sources/279targets and baseline57requirements/756entries/671clauses passed. No new manual image acceptance or complete migration claim; global INCOMPLETE. See docs/feature-removal-20261116.md."
-      }
+      },
+      "indexedPreviewSample20261118": "Legacy PreviewPanel.tsx colorSource.read uses createCompositePointSampler(previewDocument); document-composite-sampling.ts resolves palette IDs through its Map. Native previewSample now passes document RasterColorContext into existing frame/overlay composition. Actual smokePreviewBehavior uses isolated indexed two-frame fixture and checks active/playback frame RGBA colors, primary/secondary callback flags and unchanged raw pixels/revision/history, restoring original panel state afterward. Official Release build passed; --preview-panel-check exited 0. No manual image acceptance or production indexed admission claimed."
     },
     {
       "file": "src/floating_column_surface.h",
