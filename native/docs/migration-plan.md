@@ -7642,3 +7642,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 自动抗锯齿混合格式合成参考
 
 依据旧版tools-outline.ts::antiAliasSelection及collectAntiAliasCanvasColors，自动取色及画布候选均应按文档色板解析全部参考图层。原生AntiAliasSurfaceTask独立捕获只读referencePalettes，目标编辑色板保持原规则；已有目标色板时复用快照及查找上下文，纳入原内存预算，发布时拒绝色板过期结果。新增RGBA目标加索引色参考层夹具，对照等价RGBA参考的自动/画布/色板三种模式，检查实际产生编辑、单条提交、撤销重做、参考ID不变和过期拒绝。Release indexed-runtime与indexed-antialias构建成功，四项关联CTest通过（总4.06秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见mixedAntiAliasReference20261118。
+
+## 2026-11-18 索引色图层样式拆分
+
+对照旧版workspace-layer-style-split.ts及对应测试，拆分时按文档色板判断源内容边界、解析原像素与样式颜色，并按文档模式生成效果表面；索引色效果按既有可见色板映射ID，不修改源存储或链接帧。新增七类效果夹具，对照映射样式后的RGBA参考拆分，检查几何、逐像素ID、单条历史、撤销重做和源像素/链接保留。Release indexed-runtime-tests与document-layer-groups-tests构建成功，indexed-runtime关联两项CTest通过（oracle0.71秒、runtime0.02秒）。document-layer-groups既有样式拆分检查先执行通过，随后在空组复制断言!empty.copyLayerClipboard()失败，未报告完整测试通过，未修改该行为。新增夹具的RGBA参考初始沿用了另一文档的活动ID，修正引用后通过。来源覆盖1043文件及diff检查通过；未重建正式GUI、未人工图像验收，生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedStyleSplit20261118。
