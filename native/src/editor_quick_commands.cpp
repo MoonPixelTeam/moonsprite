@@ -69,7 +69,6 @@ void Editor::syncQuickCommands(){
 }
 bool Editor::quickCommandEnabled(const std::string& id)const{
  if(!documentOpen_||homeOpen_||pending_!=Pending::None||historyGestureBusy()||imageResizeTask_)return false;
- if(id=="quickAntiAlias")return !currentDocument().active()&&!currentDocument().hasFreeTileContent();
  if(id=="deleteSelection")return bool(currentDocument().selection());
  if(id=="swapForegroundBackground")return true;
  if(id=="detectImageScale")return true;
