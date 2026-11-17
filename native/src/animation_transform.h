@@ -10,6 +10,7 @@ struct TransformTweenOptions:CrossfadeTweenOptions {
  double offsetX=16,offsetY=0,rotation=0,scale=100,opacity=100;
 };
 struct TransformTweenSource {std::vector<std::string> frameIds,layerIds;std::string insertionFrameId;TweenRegion pivot;};
+std::optional<timeline::Surface> transformTweenPathArtwork(const timeline::Timeline&,const TransformTweenSource&,const std::string& layerId);
 std::optional<timeline::Surface> transformTweenEndpointPreview(const timeline::Timeline&,const TransformTweenSource&,const TransformTweenOptions&);
 TweenPathPoint tweenTranslation(const TransformTweenOptions&,double progress);
 void validateTransformTweenOptions(const TransformTweenOptions&);

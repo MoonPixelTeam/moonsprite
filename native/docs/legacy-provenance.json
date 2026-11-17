@@ -17672,7 +17672,15 @@
       "adaptation": "Integer world bound validation and 256MiB peak budget for native value-owned detached Timeline/Surface staging; pure preview uses 64MiB owned copies, source alpha-crop temporary charged before allocation. Existing canvas cap1024 retained. Main-canvas endpoint overlay/drag and path remain unavailable; between autoCrop disabled.",
       "frameLoopTransform20261019": "Usable frame/loop parameter-dialog workflow: alpha-cropped nearest transform with a shared pose pivot; reverse playable loop pose cycling, clone unselected/locked surfaces, null-opacity fallback, original/new loop boundaries, pure cached preview bounds/playback/seek/cancel, single detached frame/Cel history, canvas union offset-only resize, selection/pivot undo, raw hidden RGB and file reopens. Main-canvas endpoint overlay/drag, path tween and independent curve-draft dialog remain unported; between auto-crop is explicitly disabled, old between generation unchanged. 1024 native canvas admission remains. Legacy dialog defaults all layers; omitted pure options default current. Icons/PixelEntry retain existing assets and no arrows.",
       "tweenClosure20261019": "Independent curve draft child dialog; pure Editor 0.4 endpoint ghost with source/rotation/scale/count cache, move-tool gated bbox capture, miss consumption, physical-to-document drag, cancel/blur/close cleanup, nested curve suspension. Between morph/crossfade sparse candidates and original+generated canvas union autoCrop, canonical owner shifts, selection/pivot and layer-opacity projection in single detached-frame history. Preserve hidden RGB/raw unselected sparse clone and aliases through undo and project roundtrip. Necessary native adaptation: transient Editor surface + popup filters, native selection move tool, canvas1..1024 and allocation budgets. Path remains incomplete; coverage alone does not establish equivalence.",
-      "pathTween20261019": "Relative polyline arc-length translation after easing; repeated points, fractional core coordinates, Math.round geometry displacement, no tangent auto-orientation. Original transform/loop/canvas/pivot/history/hidden-RGB/links/budget transaction reused. Path bounds include all folds and anchor without changing generation geometry; endpoint shape ignores path and ghost follows its end without drag in drawn mode. Native UI uses private pixel stroke/history/anchor/view/preset draft; Apply updates parent, current options not project-persisted. Tests cover pure legacy inputs, path transaction atomic failure/history, preset strict disk semantics, actual parent-child interaction and generated save/reopen. Preview integer region floor/ceil is necessary native boundary adaptation."
+      "pathTween20261019": "Relative polyline arc-length translation after easing; repeated points, fractional core coordinates, Math.round geometry displacement, no tangent auto-orientation. Original transform/loop/canvas/pivot/history/hidden-RGB/links/budget transaction reused. Path bounds include all folds and anchor without changing generation geometry; endpoint shape ignores path and ghost follows its end without drag in drawn mode. Native UI uses private pixel stroke/history/anchor/view/preset draft; Apply updates parent, current options not project-persisted. Tests cover pure legacy inputs, path transaction atomic failure/history, preset strict disk semantics, actual parent-child interaction and generated save/reopen. Preview integer region floor/ceil is necessary native boundary adaptation.",
+      "pathArtwork20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:214-221",
+          "legacy/src/renderer/src/components/AnimationTweenPathEditor.tsx:77-85",
+          "legacy/src/renderer/src/core/animation-tween.ts:128-138"
+        ],
+        "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
+      }
     },
     {
       "file": "src/animation_transform.cpp",
@@ -17746,6 +17754,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:281-383"
         ],
         "nativeAdaptation": "Multi-layer endpoint ghost filters layer visibility then reuses transform preview bounds and candidate compositing, preserving transformed masks and layer/group style expansion. Single-layer raw surface branch unchanged. Focused animation-transform Release build and CTest passed; tests cover masks, nested styles, unrelated distant locked layer, source purity and translation independence. Official GUI not rebuilt."
+      },
+      "pathArtwork20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:214-221",
+          "legacy/src/renderer/src/components/AnimationTweenPathEditor.tsx:77-85",
+          "legacy/src/renderer/src/core/animation-tween.ts:128-138"
+        ],
+        "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
       }
     },
     {
@@ -17824,6 +17840,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:281-383"
         ],
         "nativeAdaptation": "Multi-layer endpoint ghost filters layer visibility then reuses transform preview bounds and candidate compositing, preserving transformed masks and layer/group style expansion. Single-layer raw surface branch unchanged. Focused animation-transform Release build and CTest passed; tests cover masks, nested styles, unrelated distant locked layer, source purity and translation independence. Official GUI not rebuilt."
+      },
+      "pathArtwork20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:214-221",
+          "legacy/src/renderer/src/components/AnimationTweenPathEditor.tsx:77-85",
+          "legacy/src/renderer/src/core/animation-tween.ts:128-138"
+        ],
+        "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
       }
     },
     {
@@ -25066,6 +25090,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:180-185"
         ],
         "nativeAdaptation": "Formal dialog uses Document::selectedLayerIdsWithGroups to pass selected layer and recursive group descendants in timeline order. Existing scope controls and generation transaction retained. Official --moon-crossfade-check exercises Selected scope with a group-only selection, both descendants, unchanged outside layer, and Undo/Redo. Release build and focused GUI diagnostic exit 0."
+      },
+      "pathArtwork20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:214-221",
+          "legacy/src/renderer/src/components/AnimationTweenPathEditor.tsx:77-85",
+          "legacy/src/renderer/src/core/animation-tween.ts:128-138"
+        ],
+        "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
       }
     },
     {
