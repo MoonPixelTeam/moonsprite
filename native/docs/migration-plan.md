@@ -7566,3 +7566,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色 ASE 导出
 
 按旧版scaledLayerPixels的首个同ID色板项采样规则，将索引色ID解析为RGBA，直接压缩原始字节仅用于RGBA表面；每帧合成降级路径接入文档色板。Release定向构建及aseprite-io检查通过（0.34秒），覆盖双层双帧、不透明度、向后链接、蒙版合成及100/150/200%缩放，与转换后RGBA的ASE逐字节比较，并核对解码后的帧／层／链接及源数据保护。本批未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedAseExport20261118。
+
+## 2026-11-18 索引色精灵表导入与预览
+
+按旧版compositeSpriteSheetRegion及buildImportedSpriteSheet，预览和切帧合成接入原文档色板，后台任务携带色板／模式／精度；导入以单个结构事务生成RGBA，撤销恢复原索引色模式和ID。正式Release构建成功，sheet-import-task定向检查通过（0.20秒），覆盖完整／选区输入、后台色板传递、RGBA参考及撤销重做；正式程序--sheet-import-check退出0，包含实际索引色预览像素、弹窗导入及撤销重做断言。本批未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedSheetImport20261118。
