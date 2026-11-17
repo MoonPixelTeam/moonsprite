@@ -7396,3 +7396,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 移除菜单残留的跨工程自由瓦片帧／Cel 禁用条件，接通已完成的资源迁移核心。依据实际 legacy 动画剪贴板入口和用户明确批准的完整实例／资源迁移修复，直接复用 portable snapshots、transferFreeCelSources 和原历史事务。保持锁定、作用域、部分选区门禁及新系统图片优先。
 
 唯一正式 Release 构建及 --free-tile-transform-check 退出 0：实际 Ctrl+V／菜单、源文档替换、缺失源迁移、标识重映射、资源复用、Undo／Redo 及实际文件保存重开通过。初轮资源计数断言遗漏目标自带空白源，已修正并复验。来源覆盖 1042 文件及证据快照、diff 通过；未重复核心矩阵、全仓回归或新增图像验收。详见[入口补齐记录](free-tile-cross-document-entries-20261117.md)。整体 INCOMPLETE，阶段保存推送 dev。
+
+
+## 2026-11-17 自由／网格瓦片几何菜单
+
+移除自由瓦片图像大小／画布大小，以及自由／网格裁切、当前帧修剪、全帧修剪的残留菜单禁用条件。实际 legacy 来源为 workspace-commands-document-io.ts，直接复用已迁移的资源图像缩放、画布几何事务与既有弹窗。修正原检查仅调用 menuCommands 而绕过 PixelMenuItem 可用性的覆盖缺口；旧的“自由图像大小必须禁用”断言更新为已迁移入口。
+
+唯一正式 Release 构建、--image-resize-check 和 --canvas-resize-check 全部退出 0，检查真实菜单／对话框路径、取消／应用、原资源与关联 owner、裁切与两种修剪的 Undo／Redo。来源覆盖 1042 文件和快照、diff 通过；沿用已通过的核心 oracle，不新增全仓回归、图像人工验收或性能工作。详见[几何菜单记录](special-geometry-menu-entries-20261117.md)。其它自由瓦片操作仍按实际迁移状态继续，整体 INCOMPLETE，阶段保存推送 dev。
