@@ -7442,3 +7442,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 特殊图层资源替色
 
 按用户确认，网格／自由瓦片替色修改实际资源并刷新全部共享引用（含锁定图层）；选区映射资源像素，复用已有预览和历史事务。正式构建、实际菜单取消／提交／Undo／Redo／保存重开定向检查通过。详见 [记录](resource-replacement-20261117.md)。整体 INCOMPLETE，生产 indexed 准入仍关闭。
+
+## 2026-11-17 补间目标及非目标 Cel 数据
+
+按实际旧版补齐特殊／背景目标过滤和完整非目标 Cel 数据复制。两项定向测试通过；混合工程正式生成仍待蒙版补间事务完成，保留门禁。详见 [记录](tween-payload-migration-20261117.md)。整体 INCOMPLETE。
