@@ -38,6 +38,20 @@ void encoded(const Document& d){
 }
 }
 namespace moon {struct RasterHistoryFixture {
+ static void frameLinks(){
+  for(int variant=0;variant<4;++variant){
+   Document d(2,2);d.colorMode_=color_mode::Mode::Indexed;
+   d.palette_.entries={{0,U"transparent",0},{7,U"visible",0xff123456},{19,U"transparent high",0}};d.palette_.setOrder({0,7,19});
+   auto state=d.timeline_.state();auto& source=*state.cels.front().surface;source.format=timeline::RasterFormat::Indexed;source.pixels.assign(4,variant==0?7:variant==1?19:variant==2?0x80000001u:0);
+   if(variant==3)d.palette_.entries.front().color=0xffabcdef;
+   d.timeline_=timeline::Timeline(std::move(state));const auto layer=d.layer().id,first=d.frame().id,owner=d.cel().id;const bool visible=variant==0||variant==3;
+   d.addLinkedFrame();const auto added=d.frame().id;check(bool(d.cel().linkedCelId)==visible,"explicit indexed frame link");if(visible)check(*d.cel().linkedCelId==owner,"canonical indexed owner");else check(d.cel().surface&&d.cel().surface->format==timeline::RasterFormat::Indexed,"blank indexed frame format");
+   d.undo();check(d.timeline_.state().frames.size()==1,"indexed frame undo");d.redo();check(d.frame().id==added&&bool(d.cel().linkedCelId)==visible,"indexed frame redo");
+   d.selectFrame(first);d.setLayerAutoLinkAnimationCels(layer,true);d.addFrame();check(bool(d.cel().linkedCelId)==visible,"indexed auto link visibility");
+   d.undo();d.selectFrame(added);if(visible)check(d.disconnectSelectedCels(),"prepare independent indexed target");d.selectFrame(first);d.clearTimelineSelection();d.selectTimelineCel(owner);d.selectTimelineCel(d.timeline_.findCel(layer,added)->id,1);check(d.canConnectSelectedCels()==visible,"indexed connect availability");
+   if(visible){check(d.connectSelectedCels(),"indexed connect command");d.undo();d.redo();check(d.timeline_.resolveSurface(d.timeline_.findCel(layer,added)->id).source->id==owner,"indexed connect redo owner");}
+  }
+ }
  static void palette(Document& d,const JsonArray& entries,const JsonArray& order){d.palette_.entries.clear();d.palette_.slots.clear();for(const auto& v:entries){const auto e=v.GetObject();d.palette_.entries.push_back({int(e.GetNamedNumber(L"id")),U"color",Pixel(e.GetNamedNumber(L"color"))});}std::vector<int> ids;for(auto id:words(order))ids.push_back(int(id));d.palette_.setOrder(std::move(ids));d.palette_.nextId=500;}
  static std::unique_ptr<Document> make(const JsonObject& row,bool target=false,bool linked=false){
   auto d=std::make_unique<Document>(8,6);d->colorMode_=mode(row.GetNamedString(target?L"targetMode":L"sourceMode"));palette(*d,row.GetNamedArray(target?L"targetEntries":L"entries"),row.GetNamedArray(target?L"targetOrder":L"order"));
@@ -100,7 +114,7 @@ namespace moon {struct RasterHistoryFixture {
   check(d->pasteCelClipboard(clip),"multi restart");d->commitFloatingPaste();compare();check(d->historySize()==1,"multi single transaction");encoded(*d);d->undo();check(d->timeline_.state().frames.size()==2,"multi undo appended frames");for(const auto& c:state.cels)if(c.surface)sameWords(d->timeline_.resolveSurface(c.id).surface->pixels,c.surface->pixels,"multi undo raw");encoded(*d);d->redo();compare();encoded(*d);
  }
 };}
-int run(int argc,wchar_t** argv){check(argc==2,"oracle path");std::ifstream in(std::filesystem::path(argv[1]),std::ios::binary);const std::string bytes{std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};const auto root=JsonObject::Parse(winrt::to_hstring(bytes));unsigned count=0,linked=0;
+int run(int argc,wchar_t** argv){check(argc==2,"oracle path");std::ifstream in(std::filesystem::path(argv[1]),std::ios::binary);const std::string bytes{std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};const auto root=JsonObject::Parse(winrt::to_hstring(bytes));unsigned count=0,linked=0;RasterHistoryFixture::frameLinks();
  for(const auto& value:root.GetNamedArray(L"conversions")){const auto row=value.GetObject();context=winrt::to_string(row.GetNamedString(L"name"));RasterHistoryFixture::conversion(row,false);if(count%6==0){RasterHistoryFixture::conversion(row,true);++linked;}++count;}
  for(const auto& value:root.GetNamedArray(L"selections")){const auto row=value.GetObject();context=winrt::to_string(row.GetNamedString(L"name"));RasterHistoryFixture::selectionPaste(row,false);if(count%9==0){RasterHistoryFixture::selectionPaste(row,true);++linked;}++count;}
  for(const auto& value:root.GetNamedArray(L"centers")){const auto row=value.GetObject();context=winrt::to_string(row.GetNamedString(L"name"));RasterHistoryFixture::center(row,false);if(count%15==0){RasterHistoryFixture::center(row,true);++linked;}++count;}

@@ -7538,3 +7538,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色模式转换事务
 
 按旧版 convertDocumentColorMode／ensureIndexedPalette 补齐 RGBA、灰度和索引色之间的转换，保留共享存储、几何与原始撤销数据，缺少透明 ID 0 时按旧版添加色板项和可见槽位。沿用独立模式／色板／表面历史，蒙版与独立瓦片资源不参与像素转换。正式 Release 构建成功；document-pixel-format 定向检查通过，覆盖空色板、有色 ID 0、关联图层／链接帧、偏移及 Undo/Redo。新增夹具曾直接读取链接 Cel 的空 optional，已改为解析实际表面；直接启动的测试进程曾占用测试 exe，结束该测试进程后重新构建验收通过。未做实际 indexed GUI 或保存重开验收，生产索引色新建、导入和菜单入口仍关闭，整体 INCOMPLETE。来源见 indexedModeTransaction20261118。
+
+## 2026-11-18 索引色动画链接命令
+
+显式链接帧、自动链接继承、连接单元格及其可用性改用旧版色板感知内容判断，避免把低位颜色 ID 当空像素、把缺失高位 ID 当可见像素。普通新建空帧保留 indexed 格式，特殊瓦片继续采用原格式。正式 Release 构建成功；indexed-animation-oracle 与 indexed-animation 两项检查通过（1.20秒），保留576组旧版对照并新增低位可见、透明、缺失高位、有色ID0及撤销重做场景。首轮连接测试目标已链接导致无操作返回false，夹具先断开后重验通过。未做实际 indexed GUI 验收，生产索引色入口仍关闭，整体 INCOMPLETE。来源见 indexedFrameLinks20261118。

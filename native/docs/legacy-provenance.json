@@ -5914,7 +5914,16 @@
         "adaptation": "Allow the already migrated whole-text box/glyph centering transaction when unrelated grid/free-tile layers exist. Preserve existing special-layer selection restrictions and text metadata/owner offset history.",
         "acceptance": "Official Release build and --free-tile-transform-check exit 0: actual center menu updates boxed text origin and surface offsets, preserves glyph pixels/free resources, undo/redo and centered no-op. No new visual acceptance."
       },
-      "resourceReplacement20261117": "Legacy src/renderer/src/store/workspace-commands-color.ts applyColorReplacementTarget selects unlocked layer/frame/cell owners and core/tools-fill.ts replaceLayerColor matches exact RGBA with optional canvas-clipped selection. User explicitly approved replacing actual tile resources and all shared references including locked layers instead of legacy cache-only writes. Reuse synchronizePaletteResources with optional owner list and world-selection predicate: grid sourcePoint and free_tiles::transform map selected resource pixels, refresh every dependent owned cache. Existing detached AdjustmentPreview handles cancel/disable; resource replacement commits existing full timeline snapshot history atomically with mixed raster changes. Actual menu grid/free x whole/selection validates detached resources, locked shared cache, one history, UndoRedo and file save/reopen. Indexed production admission and unrelated migration gaps remain."
+      "resourceReplacement20261117": "Legacy src/renderer/src/store/workspace-commands-color.ts applyColorReplacementTarget selects unlocked layer/frame/cell owners and core/tools-fill.ts replaceLayerColor matches exact RGBA with optional canvas-clipped selection. User explicitly approved replacing actual tile resources and all shared references including locked layers instead of legacy cache-only writes. Reuse synchronizePaletteResources with optional owner list and world-selection predicate: grid sourcePoint and free_tiles::transform map selected resource pixels, refresh every dependent owned cache. Existing detached AdjustmentPreview handles cancel/disable; resource replacement commits existing full timeline snapshot history atomically with mixed raster changes. Actual menu grid/free x whole/selection validates detached resources, locked shared cache, one history, UndoRedo and file save/reopen. Indexed production admission and unrelated migration gaps remain.",
+      "indexedFrameLinks20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/animation-cel-content-cache.ts",
+          "legacy/src/renderer/src/core/animation-slot-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts"
+        ],
+        "nativeAdaptation": "Use existing palette-aware Timeline content detection for explicit linked frames, automatic frame inheritance and selected-Cel connect availability/source selection, matching legacy animationCelHasContent. New empty frame surfaces retain animationTargetFormat. Preserve existing history, metadata and canonical link ownership. Added indexed fixtures cover low opaque ID, transparent ID, missing high-bit ID, opaque ID 0, blank format and undo/redo; existing 576 legacy animation oracle cases remain enabled. Production indexed admission remains closed."
+      }
     },
     {
       "file": "tests/document_test.cpp",
@@ -41996,6 +42005,15 @@
           "legacy/src/renderer/src/store/workspace-floating-preview.ts"
         ],
         "nativeAdaptation": "Copy-time RGBA snapshots coexist with raw local IDs; portable Cels map into the current target format without RGBA precision requantization. Local whole-Cel dispatch requires its raw session clipboard, and cross paste restores the target clipboard on success, rejection and exceptions. Multi-Cel selection source visits only its converted cropped surface inside common union bounds, preserving zero padding masks and target opacity metadata. Local frame drag retains raw snapshots; structure sharing and blank slots retain format. Indexed center reuses immediate transform and existing point/dense history. Actual legacy oracle: 576 conversion/selection/center cases, 52 linked variants and 12 real pasteCelSelection multi-Cel cases passed. Source destruction, target clipboard isolation, appended slots, cancel/commit/Undo/Redo and three production encoders/raw ID decoding are checked. Editable indexed import remains rejected. Nine distinct targeted CTest tests passed across the initial batch and final raster-history rerun; legacy three files/24 tests passed. See docs/indexed-animation-migration-20261115.md; production indexed admission and overall migration remain incomplete."
+      },
+      "indexedFrameLinks20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/core/animation-cel-content-cache.ts",
+          "legacy/src/renderer/src/core/animation-slot-selection.ts",
+          "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts"
+        ],
+        "nativeAdaptation": "Use existing palette-aware Timeline content detection for explicit linked frames, automatic frame inheritance and selected-Cel connect availability/source selection, matching legacy animationCelHasContent. New empty frame surfaces retain animationTargetFormat. Preserve existing history, metadata and canonical link ownership. Added indexed fixtures cover low opaque ID, transparent ID, missing high-bit ID, opaque ID 0, blank format and undo/redo; existing 576 legacy animation oracle cases remain enabled. Production indexed admission remains closed."
       }
     },
     {
