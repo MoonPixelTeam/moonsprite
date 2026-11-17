@@ -24,12 +24,12 @@ void CanvasReferenceController::completeImport(Editor& e){auto& s=canvasReferenc
    // Prepare the display allocation before publishing a document/history edit.
    // A failed upload must leave an existing reference and its source untouched.
    CanvasReferenceUiState::Cached prepared;
-   if(active){prepared.source=result.source;prepared.image=std::move(result.image);prepared.started=GetTickCount64();prepared.surface=os::instance()->makeRgbaSurface(prepared.image.width,prepared.image.height);if(!prepared.surface)throw std::bad_alloc();uploadRgbaRegion(*prepared.surface,prepared.image.pixels.data(),prepared.image.width,prepared.image.height,prepared.image.width,0,0);s.cache.try_emplace(id);}
+   if(active){prepared.source=result.source;prepared.image=std::move(result.image);prepared.started=GetTickCount64();prepared.surface=os::instance()->makeRgbaSurface(prepared.image.width,prepared.image.height);if(!prepared.surface)throw std::bad_alloc();uploadRgbaRegion(*prepared.surface,prepared.image.pixels.data(),prepared.image.width,prepared.image.height,prepared.image.width,0,0);s.cache.try_emplace(std::make_pair(request.identity,id));}
    auto& selection=s.selected.try_emplace(request.identity).first->second;
    const auto& image=active?prepared.image:result.image;
    if(!request.replace.empty())changed=owner->replaceCanvasReference(id,result.source,image.width,image.height);
    else{CanvasReference r;r.id=id;r.name=request.name;r.src=result.source;r.x=request.point.x;r.y=request.point.y;const double scale=std::min(1.,240./std::max(image.width,image.height))/request.zoom;r.width=image.width*scale;r.height=image.height*scale;auto selected=id;changed=owner->addCanvasReference(r);if(changed)selection.swap(selected);}
-   if(active&&changed){s.cache.at(id)=std::move(prepared);if(s.cache.at(id).image.animation)s.animationTimer.start();}
+   if(active&&changed){s.cache.at(std::make_pair(request.identity,id))=std::move(prepared);if(s.cache.at(std::make_pair(request.identity,id)).image.animation)s.animationTimer.start();}
    if(active)e.refresh();
   }catch(const std::exception& ex){e.status_=U"参考图导入失败："+unicodeText(ex.what());e.refresh();}
  }
@@ -38,10 +38,10 @@ void CanvasReferenceController::completeImport(Editor& e){auto& s=canvasReferenc
 CanvasReferenceUiState::~CanvasReferenceUiState(){importTimer.stop();animationTimer.stop();dialog.reset();if(gestureOwner)gestureOwner->finishCanvasReference(true);}
 void CanvasReferenceController::tick(Editor& e){
  auto& s=canvasReferenceState(e);bool active=false,changed=false;
- for(auto it=s.cache.begin();it!=s.cache.end();){const auto* r=e.currentDocument().canvasReference(it->first);if(!r||r->src!=it->second.source){it=s.cache.erase(it);continue;}auto& c=it->second;
+ for(auto it=s.cache.begin();it!=s.cache.end();){const auto identity=it->first.first;const auto owner=e.resolveSession(identity);const auto* document=identity==e.currentDocument().identity()?&e.currentDocument():owner?&owner->value:nullptr;const auto* r=document?document->canvasReference(it->first.second):nullptr;if(!r||r->src!=it->second.source){it=s.cache.erase(it);continue;}auto& c=it->second;
   if(c.image.animation&&!c.failed){active=true;try{if(advanceCanvasReferenceImage(c.image,GetTickCount64()-c.started)){uploadRgbaRegion(*c.surface,c.image.pixels.data(),c.image.width,c.image.height,c.image.width,0,0);changed=true;}}catch(const std::exception& ex){c.failed=true;e.status_=U"参考图动画读取失败："+unicodeText(ex.what());changed=true;}}++it;
  }
- if(!active)s.animationTimer.stop();if(changed)e.invalidateRect(e.canvasViewport());
+ if(!active)s.animationTimer.stop();if(changed)e.invalidateRect(e.documentWorkspaceViewport());
 }
 CanvasReferenceUiState& canvasReferenceState(Editor& e){auto p=std::dynamic_pointer_cast<CanvasReferenceUiState>(e.getProperty("moonsprite.canvas-references"));if(!p){p=std::make_shared<CanvasReferenceUiState>(e);e.setProperty(p);}return *p;}
 ReferencePlacement CanvasReferenceController::screen(const Editor& e,const ReferencePlacement& r,bool floating){
@@ -55,7 +55,7 @@ ReferencePlacement CanvasReferenceController::document(const Editor& e,const Ref
 TransformPoint CanvasReferenceController::point(const Editor& e,gfx::Point p,bool floating){const auto stage=e.canvasViewport();return floating?TransformPoint{double(p.x-stage.x)/uiScale,double(p.y-stage.y)/uiScale}:e.canvasDocumentPoint(p);}
 std::vector<const CanvasReference*> canvasReferenceDrawOrder(const Editor& e){std::vector<const CanvasReference*> out;for(const auto& r:e.currentDocument().canvasReferences())out.push_back(e.currentDocument().canvasReference(r.id));std::stable_sort(out.begin(),out.end(),[](auto a,auto b){return a->floating.value_or(false)<b->floating.value_or(false);});return out;}
 CanvasReferenceUiState::Cached& canvasReferenceCached(Editor& e,const CanvasReference& r){
- auto& c=canvasReferenceState(e).cache[r.id];if(c.source==r.src)return c;c={};c.source=r.src;
+ auto& c=canvasReferenceState(e).cache[{e.currentDocument().identity(),r.id}];if(c.source==r.src)return c;c={};c.source=r.src;
  try{c.image=decodeCanvasReferenceImage(*r.src);c.started=GetTickCount64();c.surface=os::instance()->makeRgbaSurface(c.image.width,c.image.height);if(!c.surface)throw std::bad_alloc();uploadRgbaRegion(*c.surface,c.image.pixels.data(),c.image.width,c.image.height,c.image.width,0,0);if(c.image.animation)canvasReferenceState(e).animationTimer.start();}
  catch(const std::exception& ex){c.failed=true;e.status_=U"参考图读取失败："+unicodeText(ex.what());}return c;
 }
@@ -66,7 +66,7 @@ std::optional<std::uint32_t> CanvasReferenceController::sample(Editor& e,gfx::Po
 void CanvasReferenceController::paint(Editor& e,ui::Graphics& g){
  if(e.homeOpen_||!e.documentOpen_)return;
  auto& state=canvasReferenceState(e);
- for(auto it=state.cache.begin();it!=state.cache.end();){const auto* r=e.currentDocument().canvasReference(it->first);if(!r||r->src!=it->second.source)it=state.cache.erase(it);else ++it;}
+ for(auto it=state.cache.begin();it!=state.cache.end();){if(it->first.first!=e.currentDocument().identity()){++it;continue;}const auto* r=e.currentDocument().canvasReference(it->first.second);if(!r||r->src!=it->second.source)it=state.cache.erase(it);else ++it;}
  if(e.currentDocument().canvasReferences().empty())return;const auto stage=e.canvasViewport();const auto origin=e.bounds().origin();
  for(const auto* r:canvasReferenceDrawOrder(e)){auto& c=canvasReferenceCached(e,*r);if(c.failed)continue;auto screen=CanvasReferenceController::screen(e,*r,r->floating.value_or(false));const double a=screen.angle*3.141592653589793/180,co=std::cos(a),si=std::sin(a),w=screen.width*uiScale,h=screen.height*uiScale,cx=stage.x-origin.x+(screen.x+screen.width/2)*uiScale,cy=stage.y-origin.y+(screen.y+screen.height/2)*uiScale;
   const double sx=w/c.image.width*(screen.flipX?-1:1),sy=h/c.image.height*(screen.flipY?-1:1);g.save();g.concat(gfx::Matrix::MakeAll(float(co*sx),float(-si*sy),float(cx-co*sx*c.image.width/2+si*sy*c.image.height/2),float(si*sx),float(co*sy),float(cy-si*sx*c.image.width/2-co*sy*c.image.height/2),0,0,1));ui::Paint paint(gfx::rgba(255,255,255,int(std::floor(r->opacity.value_or(1)*255+.5))));paint.blendMode(os::BlendMode::SrcOver);const bool pixelated=e.runtimePreferences_.index("editing.referenceScaling.Select")==1;g.drawSurface(c.surface.get(),{0,0,c.image.width,c.image.height},{0,0,c.image.width,c.image.height},os::Sampling(pixelated?os::Sampling::Filter::Nearest:os::Sampling::Filter::Linear),&paint);g.restore();
@@ -78,7 +78,7 @@ void CanvasReferenceController::paint(Editor& e,ui::Graphics& g){
 void CanvasReferenceController::finish(Editor& e,bool cancel){auto& s=canvasReferenceState(e);if(!s.gestureOwner)return;const auto owner=s.gestureOwner;
  try{owner->finishCanvasReference(cancel);}catch(...){owner->finishCanvasReference(true);s.gestureOwner.reset();s.gestureId.clear();s.handle.clear();if(e.hasCapture())e.releaseMouse();e.refresh();throw;}
  s.gestureOwner.reset();s.gestureId.clear();s.handle.clear();if(e.hasCapture())e.releaseMouse();e.refresh();}
-void CanvasReferenceController::close(Editor& e){const auto p=std::dynamic_pointer_cast<CanvasReferenceUiState>(e.getProperty("moonsprite.canvas-references"));if(!p)return;if(p->dialog){p->dialog->closeWindow(nullptr);p->dialog.reset();}CanvasReferenceController::finish(e,true);p->animationTimer.stop();p->cache.clear();}
+void CanvasReferenceController::close(Editor& e){const auto p=std::dynamic_pointer_cast<CanvasReferenceUiState>(e.getProperty("moonsprite.canvas-references"));if(!p)return;if(p->dialog){p->dialog->closeWindow(nullptr);p->dialog.reset();}CanvasReferenceController::finish(e,true);}
 void CanvasReferenceController::dispose(Editor& e){
  const auto p=std::dynamic_pointer_cast<CanvasReferenceUiState>(e.getProperty("moonsprite.canvas-references"));if(!p)return;
  p->importTimer.stop();p->animationTimer.stop();if(p->dialog){p->dialog->closeWindow(nullptr);p->dialog.reset();}

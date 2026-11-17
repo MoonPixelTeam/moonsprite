@@ -1159,7 +1159,20 @@
     "legacy/src/renderer/src/components/CanvasReferences.test.tsx": "a1b112a8fe57d8fd036c42b6367d4a8a2c830b16ff038f05bf310ff18427fa5b",
     "legacy/src/renderer/src/components/canvas-reference-geometry.ts": "71a6621c28ef79fe60e1e6945e6dad758d74290149ad5f82c757d5d75e082cda",
     "legacy/src/renderer/src/components/canvas-reference-input.ts": "5e1e56dd1bc5b0ddaa60f1b7fd3a9eea0cad01d19feb7ff7b76cbc98b20bfbb2",
-    "legacy/src/renderer/src/components/canvas-reference-sampling.ts": "149e833696095f6664b96b2a2cc829520d09d747430f83367daf7724fa0cffb7"
+    "legacy/src/renderer/src/components/canvas-reference-sampling.ts": "149e833696095f6664b96b2a2cc829520d09d747430f83367daf7724fa0cffb7",
+    "legacy/src/renderer/src/core/document-pane-layout.ts": "801fd927f85300c0011438b2b0ef69b5b9e530c47f2bcb619d8e7e00c112e354",
+    "legacy/src/renderer/src/core/document-pane-layout.test.ts": "4dfb3a9970e398866603c1e50709ce034aed8f4dbf186395c4722295321221bd",
+    "legacy/src/renderer/src/components/app/document-pane-resize.ts": "0aeac1577fe3179e1ce2ba161964e308d130acd661ffc65db9e64c442871b550",
+    "legacy/src/renderer/src/components/app/document-pane-resize.test.ts": "fc6f67b180eebf3fe947c1ce13cf67676164f3c49f05573c522d90c8edfc50cb",
+    "legacy/src/renderer/src/components/app/document-pane-dock-preview.ts": "2f5b46acf5f72a8967db54b6c14740a0aa13e66fe78f913212b1174ad526411d",
+    "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts": "406583bcaa1a0bcc2b4a498ac0404fb315230402e9b7a1ea92375b6f0bbaf521",
+    "legacy/src/renderer/src/components/app/useAppDocumentPanes.test.tsx": "9498a739e50fb40774d8dac4c27ddbd1dff90235d28e07240afacd464e022b2c",
+    "legacy/src/renderer/src/components/app/floating-document-return.ts": "7c87e3e32b5ad9478f5af7df4c3e2b941b9e090efcefcb2d76a47a179e3f54c7",
+    "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx": "06627702863d176fee6650655f39442b0db893702108ca500c40fafdfbf9a3ce",
+    "legacy/src/renderer/src/components/app/document-pane-hit-test.ts": "2131044fbd06374f135b78872c20be062888cad8a2136ecec4440f3d26119b2d",
+    "legacy/src/renderer/src/components/app/document-pane-dock-resize.ts": "3c6fb9f8838b2b314f130c79f5f70c2e5717e2e8ee05722c1e68d5f43be8c6d3",
+    "legacy/src/renderer/src/components/app/document-pane-dock-resize.test.ts": "27c7817994c47eceb8e6c81044061eef48632473f0c04249d2545034d14fbd16",
+    "legacy/src/renderer/src/components/app/document-tab-close-range.ts": "5a3f30204774a145133590b72f94127f33213f8afffab9a66964f771bbd5323a"
   },
   "files": [
     {
@@ -8849,6 +8862,17 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneLayout20261116": {
+        "sources": [
+          "legacy/src/renderer/src/core/document-pane-layout.ts",
+          "legacy/src/renderer/src/core/document-pane-layout.test.ts",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/document-pane-resize.test.ts",
+          "legacy/src/renderer/src/components/app/document-pane-dock-preview.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "validation": "Standalone document-pane-layout-tests built and passed 394 actual legacy transitions and focused detach/preview/resize/dock checks; no full application rebuild or UI integration yet."
       }
     },
     {
@@ -19509,6 +19533,22 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
       }
     },
     {
@@ -20202,7 +20242,24 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
-      }
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed."
     },
     {
       "file": "src/editor_desktop.h",
@@ -21221,6 +21278,14 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
       }
     },
     {
@@ -22292,6 +22357,47 @@
         "legacyEvidence": "Actual ColorValueControl trigger down/leave/end and RAF queue529-717: inclusive trigger edges, no sampling until leave, latest pending point, single capture, picker bypass, handled-null suppression, canvas before desktop, stale pixels may refresh latest lens but only exact sequence writes, release independent point capture and finish, cancel retains live color. Actual ColorPicker emitPointerColor/externalSampler retains HSV precision, strips/alpha and source role without regular callback; singleton finish on switch/unregister. Rust GetPixel/BitBlt DIB and CSS global magnifier11x11, original masks/pointers, contrast/saturate, shadow/style/size inspected. Internal project reuse checked under legacy/LICENSE; Aseprite reuse limited to existing MIT UI/laf.",
         "nativeAdaptation": "Native PixelButton property and16ms owner timer replace DOM capture/RAF; weak callbacks and explicit detach before base destruction, owner-scoped provider and document identity guard invalidate late captures. Detached promise workers capture coordinates only and never touch UI. Physical screen coordinates use existing Display transforms. Native canvas reads reuse existing eyedropper/raw alpha/repeat/mask source; native back surface replaces CSS-only emergency fallback. Source Display UILayer replaces viewport-fixed pointer-transparent lens, preserving original masks/pointers and existing shell helper. Bind actual migrated ColorValueControl triggers only; preset swatches remain unchanged. Retain precise source HSV and own emitted echo across external completion. Full cross-canvas/reference surface registration and generic runtime/remaining color trigger migration remain separate gaps. See docs/global-color-drag-migration-20261116.md.",
         "validation": "Formal Release build exit0; sole exe updated2026-11-16 15:01:31,30973440bytes. Actual legacy2files10tests passed13.97s;37 extracted async snapshots match. Native10service/picker checks passed1.90s;formal color-editor-popup passed1.85s;8related checks passed19.75s. Real Windows screen fixture verifies point/region/BGRA/radius/GDI cleanup. Native input diagnostic uses visible picker role controls in deterministic workspace/fitCanvas (hidden legacy primaryRole fixture corrected), inclusive edge/click vs drag,5schemes x2quantization,alpha/corners/source callback isolation,canvas raw alpha,one pointer-transparent UILayer,Escape/disabled/lost capture,document pixels/history/secondary isolation. Viewed lens BMP and Editor-paint-plus-lens BMP (child controls not recursively painted;transparent empty canvas). No multi-monitor,1x,full workspace manual or performance claim. Overall INCOMPLETE and production indexed admission remains closed."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed.",
+      "paneControls20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/document-tab-close-range.ts",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/CanvasStage.tsx"
+        ],
+        "adaptation": "Native per-session inactive scrollbar controls preserve original view ownership through a scoped active-context binding; shared PixelScrollBar and dialog compositing retained. Tab context closes visible left/right/other documents in legacy order and stops after cancellation, reopens the saved source for duplicate view rather than cloning unsaved content, and reuses the existing folder command. Official integration acceptance pending."
+      },
+      "documentPaneDragOverlay20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/store/document-file-service.ts"
+        ],
+        "adaptation": "Port document/header drag ghost pointer offsets and tab return preview into a parent-owned native DockFeedback overlay above pane surfaces and controls. Preserve resize exclusion and capture/focus/Esc cancellation. Duplicate views keep saved/source targets and may save back to their own original path as legacy document-file-service does; unrelated Save As ownership and concurrent writer guards remain. Integration checks exercise overlay visibility/order/release, inactive quick-bar owner activation, duplicate identity and source-path save without changing original session artwork. Current build/runtime acceptance pending."
+      },
+      "paneScrollbarActivation20261117": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx"
+        ],
+        "adaptation": "EditorCanvasHost.tsx:304 activates on pointer-down except middle pan, and on wheel. Native inactive scrollbar forwards the first event to the newly bound active scrollbar to retain capture. Scoped view updates and compositor reused. Official runtime passed thumb press/activation/release; final same-scope runtime also passed middle-button non-activation."
       }
     },
     {
@@ -23008,6 +23114,48 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed.",
+      "paneControls20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/document-tab-close-range.ts",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/CanvasStage.tsx"
+        ],
+        "adaptation": "Native per-session inactive scrollbar controls preserve original view ownership through a scoped active-context binding; shared PixelScrollBar and dialog compositing retained. Tab context closes visible left/right/other documents in legacy order and stops after cancellation, reopens the saved source for duplicate view rather than cloning unsaved content, and reuses the existing folder command. Official integration acceptance pending."
+      },
+      "documentPaneDragOverlay20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/store/document-file-service.ts"
+        ],
+        "adaptation": "Port document/header drag ghost pointer offsets and tab return preview into a parent-owned native DockFeedback overlay above pane surfaces and controls. Preserve resize exclusion and capture/focus/Esc cancellation. Duplicate views keep saved/source targets and may save back to their own original path as legacy document-file-service does; unrelated Save As ownership and concurrent writer guards remain. Integration checks exercise overlay visibility/order/release, inactive quick-bar owner activation, duplicate identity and source-path save without changing original session artwork. Current build/runtime acceptance pending."
+      },
+      "paneCloseAndOcclusion20261117": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/core/panel-preferences.ts"
+        ],
+        "adaptation": "Close-range timer waits for the target document identity, including its queued saves and deferred close. Production menu integration checks close-right visible order, cancellation stopping the remaining sequence, and restart/discard progression. Native pointer dispatch rejects pane handling when another visible widget is in front, matching browser event targeting; a covered-header integration fixture checks no capture. Nonresponsive floating viewport resize clamps position without altering size, following resizeFloatingPosition. Current close-range check passed; latest occlusion build/runtime pending."
       }
     },
     {
@@ -24201,6 +24349,55 @@
         "legacyEvidence": "Actual whole core/canvas-color-sampling.ts executed in Node VM; surface Set order, intent/new registration, source exclusion, passive reads, handled-null, transparent RGBA, cursor switching, pointer-specific end, begin replacement and source/target removal. Actual useCanvasColorSampling.ts latest-session/mask/source reader and actual eyedropper-only active intent; canvas-sampling-start.ts callback queues source role/sample and passes target color/client coords to source lens; canvas-pointer-move.ts target routing before local sample; useCanvasDeviceRouter.ts middle/left navigation precedence. ColorValueControl and ColorReplacementDialog consume sampled/completed events. License2b/c and existing MIT UI inspected.",
         "nativeAdaptation": "Native registered Widget properties and physical-screen Manager hit testing replace HTML stage canvases/elementsFromPoint; contains clips the main Editor canvas viewport. Host captured mouse is one native pointer (token0), while shared router retains legacy pointer-id rules. Main Editor registers actual raw mask/composite/repeat/outside-transparent reader; global control drag consumes registry. Actual eyedropper intent routes target clicks before document activation/navigation and publishes shared role plus active popup/replacement color and completion. Captured callbacks preserve source document magnifier reader and gesture secondary. Release, lost capture, popup finish, document rebind and destruction detach routing. Native currently has only one main Editor canvas; split document panes and canvas reference overlays/readers remain UNMIGRATED, and are not represented by the test-only registered stage or screen fallback. Production indexed admission remains closed. See docs/canvas-color-sampling-migration-20261116.md.",
         "validation": "Formal Release build exit0; sole exe updated2026-11-16 16:05:28,31003136bytes. Whole actual legacy router84snapshots matched; legacy canvas-color-sampling.test.ts3tests passed2.94s. Six router/global CTests passed0.44s, formal color-editor-popup with registered stage input passed2.81s, eight related eyedropper/multi-document CTests passed9.36s; formal --sampling-zoom-check exit0. Input fixture verifies actual Manager hit test, passive/raw alpha/global drag, captured source routing, handled-null/transparent0, release, secondary intent, Space/Ctrl-left navigation vs Ctrl-right secondary, popup sampling completion, lost capture, document identity rebind, tool clear and unregister; source pixels/history preserved. Test-only registered stage is not production multiple-pane UI. Provenance1025/evidence, Editor611,architecture611sources/279targets,preferences360passed. Strict intentionally exits1 for known global gaps. No new image/manual/multimonitor/1x acceptance or performance claim; canvas references and document panes remain open, production indexed admission closed."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.test.tsx"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed.",
+      "paneControls20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/document-tab-close-range.ts",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/CanvasStage.tsx"
+        ],
+        "adaptation": "Native per-session inactive scrollbar controls preserve original view ownership through a scoped active-context binding; shared PixelScrollBar and dialog compositing retained. Tab context closes visible left/right/other documents in legacy order and stops after cancellation, reopens the saved source for duplicate view rather than cloning unsaved content, and reuses the existing folder command. Official integration acceptance pending."
+      },
+      "documentPaneDragOverlay20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/store/document-file-service.ts"
+        ],
+        "adaptation": "Port document/header drag ghost pointer offsets and tab return preview into a parent-owned native DockFeedback overlay above pane surfaces and controls. Preserve resize exclusion and capture/focus/Esc cancellation. Duplicate views keep saved/source targets and may save back to their own original path as legacy document-file-service does; unrelated Save As ownership and concurrent writer guards remain. Integration checks exercise overlay visibility/order/release, inactive quick-bar owner activation, duplicate identity and source-path save without changing original session artwork. Current build/runtime acceptance pending."
+      },
+      "paneCloseAndOcclusion20261117": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/DocumentTabs.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/core/panel-preferences.ts"
+        ],
+        "adaptation": "Close-range timer waits for the target document identity, including its queued saves and deferred close. Production menu integration checks close-right visible order, cancellation stopping the remaining sequence, and restart/discard progression. Native pointer dispatch rejects pane handling when another visible widget is in front, matching browser event targeting; a covered-header integration fixture checks no capture. Nonresponsive floating viewport resize clamps position without altering size, following resizeFloatingPosition. Current close-range check passed; latest occlusion build/runtime pending."
+      },
+      "paneScrollbarActivation20261117": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx"
+        ],
+        "adaptation": "EditorCanvasHost.tsx:304 activates on pointer-down except middle pan, and on wheel. Native inactive scrollbar forwards the first event to the newly bound active scrollbar to retain capture. Scoped view updates and compositor reused. Official runtime passed thumb press/activation/release; final same-scope runtime also passed middle-button non-activation."
       }
     },
     {
@@ -25180,6 +25377,22 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
       }
     },
     {
@@ -37722,7 +37935,8 @@
         "legacy/src/renderer/src/store/workspace-commands-view.ts",
         "legacy/src/renderer/src/store/workspace-session.ts",
         "native/.cache/aseprite/src/ui/widget.cpp",
-        "native/.cache/aseprite/src/ui/LICENSE.txt"
+        "native/.cache/aseprite/src/ui/LICENSE.txt",
+        "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx"
       ],
       "scope": "Native QuickCommandBar initial runtime integration: four bars, exact legacy metadata/icon assets, existing menu commands and explicit disabled missing commands, pointer-capture focus-preserving toggle/move, four-edge math, persisted JSON, preference name/edge/enabled/restore/collapse, opacity and pending-gradient control overlap. Direct detect-and-resize reuses existing bounded ImageResizeTask and one undo transaction. Still PARTIAL: missing outline/paste/tile commands and preference ordering, shortcut descriptions, active-only multi-pane semantics, cancellation/lost-capture and visual validation pending. Do not claim full quick-command or workspace migration.",
       "verification20261109": "Final consistent Release build0. Core four tests0. Official quick check PID42976=0; visible PID46192=0, actual Release/quick-command-bar.bmp inspected: expanded top icons/settings/move visible no overlap. Image-resize regression PID37568=0. First build executed while headers changed gave early0xC0000409/0xC0000374; superseded after final incremental recompilation by two successful runs. Hidden-window screenshot black rejected as visual evidence. Still partial: command reorder handles, missing outline/paste/tile underlying commands, shortcut description/tooltips, full multi-pane active document and cancellation/capture edge audit.",
@@ -37734,7 +37948,23 @@
       "tileRepeat20261109": "Legacy fixed 3/9 adjacent-copy preview, positive-modulo point mapping, rectangle/masked selection folding and rotation-aware fit port. Native menu/shortcut state and quick-bar toggle, session-owned identity guard; one existing composite/upload shared by repeated draws, checker and existing guides/overlays. 1024 actual legacy mapping/fit/selection oracle cases passed. Formal Release build exit 0, --tile-repeat-check exit 0; menu/shortcut/quick toggle/rotation fit/session restore/content-history invariants, nine offscreen copy center pixels and unchanged upload count verified. Window screenshot reviewed after correcting premature black capture by dispatching smoke from the live event loop. Repeated input seam editing, floating selections and all-tool wrap integration remain INCOMPLETE; do not claim complete tile-repeat migration.",
       "quickBarOcclusion20261109": "Preserve legacy quick-command bar drawing, opacity and actions while routing both bar and child control painting through existing Editor::compositeControl sibling floating-column/modal clipping. Aseprite Widget::paint traverses descendants breadth-first during transparent parent background replay; unadapted native quick-bar descendants could repaint above Preview despite sibling stacking. Existing whole-frame workspace move/resize comparison remains the oracle.",
       "sharedColors20261111": "Connect shared color roles and native preference lifecycle using legacy workspace-commands-color.ts and color-role-preferences.ts; route production color callbacks to shared operation and provide Runtime colors services. Validation in progress.",
-      "couplingDirectTools20261113": "Legacy workspace-types.ts::DocumentSession and workspace-session.ts::copyCanvasToolSettings/create-session defaults: tool settings, image pixels and temporary capture now belong directly to ProjectSession.tools. Editor currentTools selects that owner; tab activation no longer captures/restores 58 fields. Brush feedback and gestures remain local. Shape/gradient domain task inputs receive scalar settings only at dispatch, without extra path/pixel copies. Existing native defaults, explicit preset values, remapping and file/preference formats retained. Actual GUI verification recorded separately."
+      "couplingDirectTools20261113": "Legacy workspace-types.ts::DocumentSession and workspace-session.ts::copyCanvasToolSettings/create-session defaults: tool settings, image pixels and temporary capture now belong directly to ProjectSession.tools. Editor currentTools selects that owner; tab activation no longer captures/restores 58 fields. Brush feedback and gestures remain local. Shape/gradient domain task inputs receive scalar settings only at dispatch, without extra path/pixel copies. Existing native defaults, explicit preset values, remapping and file/preference formats retained. Actual GUI verification recorded separately.",
+      "documentPaneBars20261116": "EditorCanvasHost.tsx and QuickCommandBar.tsx:119-136 own controls per visible pane and activate the original owner before expansion. Native widgets retain stable document identity. Copy the requested configuration before activation refresh. Official runtime passed actual inactive toggle expansion and scrollbar owner/press/release routing.",
+      "floatingDocuments20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/FloatingDocumentWindow.tsx",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+          "legacy/src/renderer/src/components/floating-panel.tsx"
+        ],
+        "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "floatingSurface20261116": "FloatingDocumentWindow.tsx native adaptation uses parent-owned FloatingColumnSurface with original identity, sibling occlusion, shared skin and legacy title icons. Unpinned documents are below floating columns; pinned documents are above them. Official runtime and surface screenshot checked. Tab close-range ordering/cancel, disk-source duplicate identity/save/reopen and pane scrollbar ownership passed.",
+      "paneToggleOwner20261117": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/QuickCommandBar.tsx"
+        ],
+        "adaptation": "Inactive document toggle activates the owning session and expands its bar. Copy the requested Bar before activateProject refreshes the originating widget, preserving the pending expanded state across synchronous rebinding. Actual inactive toggle integration is included in document-panes-only; acceptance pending."
+      }
     },
     {
       "file": "src/quick_command_drag_handle.h",
@@ -42969,6 +43199,14 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
       }
     },
     {
@@ -43007,6 +43245,14 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "documentPaneHost20261116": {
+        "sources": [
+          "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+          "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+          "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+        ],
+        "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
       }
     },
     {
@@ -43084,6 +43330,72 @@
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
       }
+    },
+    {
+      "file": "src/document_pane_layout.h",
+      "scope": "Document pane immutable layout, docking geometry and resize transaction; production host integration pending",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/document-pane-layout.ts",
+        "legacy/src/renderer/src/core/document-pane-layout.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-preview.ts",
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+        "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+        "legacy/src/renderer/src/components/app/document-pane-hit-test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-resize.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-resize.test.ts",
+        "legacy/src/renderer/src/styles.css"
+      ],
+      "adaptation": "Port actual legacy immutable tree operations to shared const C++ nodes; native ID factory replaces crypto.randomUUID. 394 executed legacy oracle transitions and 7 legacy tests passed. Integrated in the production multi-document host; see document-panes-migration-20261116.md for runtime scope."
+    },
+    {
+      "file": "tests/document_pane_layout_test.cpp",
+      "scope": "Document pane immutable layout, docking geometry and resize transaction; production host integration pending",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/document-pane-layout.ts",
+        "legacy/src/renderer/src/core/document-pane-layout.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-preview.ts",
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.test.tsx",
+        "legacy/src/renderer/src/components/app/floating-document-return.ts",
+        "legacy/src/renderer/src/components/app/EditorCanvasHost.tsx",
+        "legacy/src/renderer/src/components/app/document-pane-hit-test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-resize.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-resize.test.ts",
+        "legacy/src/renderer/src/styles.css"
+      ],
+      "adaptation": "Port actual legacy immutable tree operations to shared const C++ nodes; inject native ID factory instead of crypto.randomUUID; native frame scheduling will own resize coalescing. Actual legacy module executes 394 transition oracle cases. No production split UI claimed."
+    },
+    {
+      "file": "scripts/make-document-pane-oracle.cjs",
+      "scope": "Document pane immutable layout, docking geometry and resize transaction; production host integration pending",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/core/document-pane-layout.ts",
+        "legacy/src/renderer/src/core/document-pane-layout.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.ts",
+        "legacy/src/renderer/src/components/app/document-pane-resize.test.ts",
+        "legacy/src/renderer/src/components/app/document-pane-dock-preview.ts",
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
+      ],
+      "adaptation": "Port actual legacy immutable tree operations to shared const C++ nodes; inject native ID factory instead of crypto.randomUUID; native frame scheduling will own resize coalescing. Actual legacy module executes 394 transition oracle cases. No production split UI claimed."
+    },
+    {
+      "file": "src/document_pane_workspace.h",
+      "scope": "Document workspace main/embedded/floating ownership transitions; UI integration pending",
+      "classification": "legacy-partial",
+      "sources": [
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts",
+        "legacy/src/renderer/src/components/app/useAppDocumentPanes.test.tsx",
+        "legacy/src/renderer/src/components/app/floating-document-return.ts",
+        "legacy/src/renderer/src/core/document-pane-layout.ts"
+      ],
+      "adaptation": "Translate useAppDocumentPanes React effects/callbacks to synchronous native UI state. Preserve document order, main-view promotion, floating return, secondary identity and content isolation. Integrated in the production host; document-panes-only runtime verifies split/float ownership, return and close paths."
     }
   ],
   "assetTransfers": [

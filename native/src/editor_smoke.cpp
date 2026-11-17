@@ -5,6 +5,8 @@
 #include "quick_command_drag_handle.h"
 
 #include "project_file.h"
+#include "project_encode.h"
+#include "ui/property.h"
 #include "recovery_store.h"
 #include "pixel_text_area.h"
 #include "project_import.h"
@@ -592,6 +594,214 @@ void Editor::smokeMultiDocument(){
     const auto directory=assets_.parent_path()/"multi-document-test-owned";std::filesystem::create_directories(directory);
 
     recoveryDirectory_=directory/"recovery";
+
+    if(std::wstring(GetCommandLineW()).find(L"--document-panes-only")!=std::wstring::npos){
+      std::ofstream stages(directory/"document-panes-stages.txt");
+      auto stage=[&](const char* name){stages<<name<<std::endl;};
+      stage("create");
+      // DocumentTabs chooses the first other visible session when docking
+      // the current main tab. Startup may already own a document session.
+      addProject(Document::withBuiltinPalette(16,16,U"Pane A"));const auto a=projects_.front();
+      addProject(Document::withBuiltinPalette(16,16,U"Pane B"));const auto b=activeSession_;
+      const auto aid=std::to_string(a->value->identity()),bid=std::to_string(b->value->identity());
+      layoutDocumentTab();
+      const auto tab=projectTabRects_[activeProject_].center();const auto workspace=documentWorkspaceViewport();const gfx::Point dock(workspace.x2()-2*uiScale,workspace.center().y);
+      stage("dock");
+      ui::MouseMessage tabDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,tab);processProjectTabs(&tabDown);
+      ui::MouseMessage tabMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,dock);onProcessMessage(&tabMove);
+      ui::Widget* dragOverlay=nullptr;
+      for(auto child:children())if(child->getProperty("moonsprite.document-pane-drag-overlay"))dragOverlay=child;
+      check(dragOverlay&&!dragOverlay->hasFlags(ui::HIDDEN)&&children().back()==dragOverlay,"Document drag preview is missing or below other controls");
+      ui::MouseMessage tabUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,dock);onProcessMessage(&tabUp);
+      check(dragOverlay->hasFlags(ui::HIDDEN),"Released document drag left preview visible");
+      check(!projectTabDragging_&&!hasCapture()&&activeSession_==a,"Actual tab docking did not settle capture/activate target");
+      layoutDocumentTab();layoutCanvasScrollBars();
+      check(documentPaneRegions().leaves.size()==2,"Split host did not create two viewports");
+      check(documentPanes_.main==aid&&documentPanes_.hidden(bid),"Split main/secondary tab ownership");
+      stage("paint");
+      const auto beforeA=a->value->canvasPixels(),beforeB=b->value->canvasPixels();
+      auto image=os::instance()->makeRgbaSurface(bounds().w,bounds().h);
+      {ui::Graphics g(image);paintDocumentPanes(g);}
+      check(activeSession_==a&&activeDocument_==a->value,"Painting changed active session");
+      check(a->value->canvasPixels()==beforeA&&b->value->canvasPixels()==beforeB,"Painting mutated artwork");
+      writeSmokeFrame(image.get(),directory/"document-panes.bmp");
+      stage("activate");
+      const auto point=documentPaneBounds(aid).center();
+      ui::MouseMessage click(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,point);
+      processDocumentPanes(&click);check(activeSession_==a&&documentPanes_.main==aid,"Pane activation changed main layout");
+      stage("sample");
+      b->value->beginStroke({8,8},0x80112233);b->value->commitStroke();
+      const auto bv=b->view.canvas;const auto samplePoint=gfx::Point(bv.x+int(8.5*b->view.zoom*uiScale),bv.y+int(8.5*b->view.zoom*uiScale));
+      const auto sample=sampleNativeCanvasColor(display()->nativeWindow()->pointToScreen(samplePoint));
+      check(sample&&*sample==0x80112233&&activeSession_==a&&activeDocument_==a->value,"Cross-pane sampling lost raw alpha or changed active document");
+      stage("pan");
+      const auto middlePoint=documentPaneBounds(bid).center();const auto previousCanvas=b->view.canvas;
+      ui::MouseMessage middleDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonMiddle,ui::kKeyNoneModifier,middlePoint);processDocumentPanes(&middleDown);
+      ui::MouseMessage middleMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonMiddle,ui::kKeyNoneModifier,middlePoint+gfx::Point(12,8));processDocumentPanes(&middleMove);
+      ui::MouseMessage middleUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonMiddle,ui::kKeyNoneModifier,middlePoint+gfx::Point(12,8));processDocumentPanes(&middleUp);
+      check(activeSession_==a&&activeDocument_==a->value&&b->view.canvas!=previousCanvas,"Inactive middle pan changed active owner or failed to move target");
+      stage("pane-scrollbars");
+      runtimePreferences_.values["editing.canvasViewScrollbarsEnabled"]="true";
+      const auto savedBView=b->view.canvas;const auto savedBZoom=b->view.zoom;
+      b->view.zoom=64;b->view.canvas={documentPaneBounds(bid).x-100,documentPaneBounds(bid).y-100,2048,2048};
+      layoutCanvasScrollBars();raiseDockWidgets();
+      PixelScrollBar* secondaryScroll=nullptr;
+      for(auto child:children())if(child->getProperty("moonsprite.document-controls."+bid)&&child->isVisible())if(auto scroll=dynamic_cast<PixelScrollBar*>(child))secondaryScroll=scroll;
+      check(secondaryScroll,"Inactive pane scrollbar missing");
+      const auto beforeScrollA=a->view.canvas,beforeScrollB=b->view.canvas;
+      secondaryScroll->changed(30);
+      check(activeSession_==a&&activeDocument_==a->value&&a->view.canvas==beforeScrollA&&b->view.canvas!=beforeScrollB,"Pane scrollbar changed another document or lost owner");
+      const auto scrollPoint=secondaryScroll->thumbBounds().center();
+      ui::MouseMessage scrollMiddle(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonMiddle,ui::kKeyNoneModifier,scrollPoint);
+      secondaryScroll->onProcessMessage(&scrollMiddle);
+      check(activeSession_==a&&!manager()->getCapture(),"Inactive scrollbar middle press activated its document");
+      ui::MouseMessage scrollDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,scrollPoint),scrollUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,scrollPoint);
+      secondaryScroll->onProcessMessage(&scrollDown);
+      check(activeSession_==b&&activeDocument_==b->value,"Inactive scrollbar press did not activate its document");
+      if(auto captured=manager()->getCapture())captured->sendMessage(&scrollUp);
+      check(!manager()->getCapture(),"Scrollbar activation lost release routing");
+      for(std::size_t i=0;i<projects_.size();++i)if(projects_[i]==a){activateProject(i);break;}
+      b->view.canvas=savedBView;b->view.zoom=savedBZoom;layoutCanvasScrollBars();
+      stage("pane-quick-bar");
+      const auto savedQuickBars=quickBarsConfig_;
+      const auto savedQuickEnabled=runtimePreferences_.values["quickCommands.quickCommandBarEnabled"];
+      runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]="true";quickBarsConfig_=quick::defaultBars();syncQuickCommands();
+      QuickCommandBar* secondaryQuick=nullptr;
+      for(auto child:children())if(child->getProperty("moonsprite.document-controls."+bid)&&child->isVisible())if(auto bar=dynamic_cast<QuickCommandBar*>(child)){secondaryQuick=bar;break;}
+      check(secondaryQuick,"Inactive pane quick bar missing");
+      PixelButton* quickToggle=nullptr;for(auto child:secondaryQuick->children())if(auto button=dynamic_cast<PixelButton*>(child)){quickToggle=button;break;}
+      check(quickToggle,"Inactive pane quick toggle missing");const auto quickPoint=quickToggle->bounds().center();
+      ui::MouseMessage quickDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,quickPoint),quickUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,quickPoint);
+      quickToggle->onProcessMessage(&quickDown);quickToggle->onProcessMessage(&quickUp);
+      check(activeSession_==b&&activeDocument_==b->value,"Inactive quick bar did not activate its owner");
+      bool expanded=false;for(const auto& bar:quickBarsConfig_)expanded=expanded||bar.expanded;
+      check(expanded,"Inactive quick bar toggle did not expand");
+      quickBarsConfig_=savedQuickBars;runtimePreferences_.values["quickCommands.quickCommandBarEnabled"]=savedQuickEnabled;
+      for(std::size_t i=0;i<projects_.size();++i)if(projects_[i]==a){activateProject(i);break;}syncQuickCommands();
+      stage("resize");
+      const auto original=documentPanes_.layout;const auto bar=documentPaneRegions().dividers.front();
+      const gfx::Point at(int(bar.bounds.left+bar.bounds.width/2),int(bar.bounds.top+bar.bounds.height/2));
+      ui::MouseMessage down(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at);processDocumentPanes(&down);
+      ui::MouseMessage move(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at+gfx::Point(30,0));processDocumentPanes(&move);
+      check(documentPaneResize_.has_value()&&documentPanes_.layout==original,"Resize preview committed early");
+      releaseMouse();processDocumentPanes(&move);
+      check(!documentPaneResize_&&documentPanes_.layout==original,"Resize lost capture did not cancel");
+      processDocumentPanes(&down);
+      ui::MouseMessage resizeUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,at+gfx::Point(40,0));processDocumentPanes(&resizeUp);
+      check(!documentPaneResize_&&documentPanes_.layout!=original,"Resize release coordinate did not commit");
+      stage("return");
+      const auto secondary=documentPaneBounds(bid);const gfx::Point header(secondary.x+8*uiScale,secondary.y-10*uiScale);
+      ui::MouseMessage headerDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,header);processDocumentPanes(&headerDown);
+      const auto rc=uiLogical(bounds());const auto strip=uiPhysical(gfx::Rect(rc.x+3,rc.y+Layout::documentY+5,1,1)).origin();
+      ui::MouseMessage headerMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,strip);processDocumentPanes(&headerMove);
+      ui::MouseMessage headerUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,strip);processDocumentPanes(&headerUp);
+      check(!documentPanes_.visible()&&!documentPanes_.hidden(bid)&&!hasCapture(),"Header return to tabs retained secondary pane/capture");
+      stage("floating");
+      const auto artwork=b->value->canvasPixels();const auto history=b->value->historyPosition();
+      floatDocumentPane(bid,documentWorkspaceViewport().center());
+      check(documentPanes_.floating.size()==1&&documentPanes_.hidden(bid)&&activeSession_==b,"Float did not detach/activate its original document");
+      auto floatingFrame=[&]{const auto& r=documentPanes_.floating.front().initial;return gfx::Rect(int(r.left),int(r.top),int(r.width),int(r.height));};
+      auto frame=floatingFrame();
+      {
+       const auto originalBounds=bounds();const auto originalFrame=frame;
+       auto outside=frame;outside.x=originalBounds.x2()-20;outside.y=originalBounds.y2()-20;
+       documentPanes_.floating.front().initial=workspace::panes::rectangle(outside.x,outside.y,outside.w,outside.h);
+       auto smaller=originalBounds;smaller.w-=40;smaller.h-=40;setBounds(smaller);layoutDocumentPanes();
+       const auto clamped=floatingFrame();
+       check(clamped.x==std::max(smaller.x,smaller.x2()-outside.w)&&clamped.y==std::max(smaller.y,smaller.y2()-outside.h)&&clamped.size()==outside.size(),"Viewport resize did not clamp floating position while preserving size");
+       setBounds(originalBounds);documentPanes_.floating.front().initial=workspace::panes::rectangle(originalFrame.x,originalFrame.y,originalFrame.w,originalFrame.h);layoutDocumentPanes();
+      }
+      check(!documentPaneBounds(bid).isEmpty()&&documentPaneAt(documentPaneBounds(bid).center())==bid,"Floating canvas ownership or viewport missing");
+      {ui::Graphics g(image);paintDocumentPanes(g);}
+      raiseDockWidgets();
+      bool surfacePainted=false;
+      std::ofstream floatingEvidence(directory/"document-floating-surface.txt");floatingEvidence<<frame.x<<" "<<frame.y<<" "<<frame.w<<" "<<frame.h<<" painting="<<documentPanePainting_<<"\n";
+      for(auto child:children())if(child->getProperty("moonsprite.document-pane."+bid)){
+        surfacePainted=true;floatingEvidence<<child->bounds().x<<" "<<child->bounds().y<<" "<<child->bounds().w<<" "<<child->bounds().h<<" hidden="<<child->hasFlags(ui::HIDDEN)<<"\n";
+        check(frontWidgetAt(child->bounds().center(),false)==this,"Floating surface blocked canvas input routing");
+        ui::Graphics g(nullptr,image,child->bounds().x,child->bounds().y);ui::PaintEvent ev(child,&g);static_cast<FloatingColumnSurface*>(child)->onPaint(ev);
+      }
+      check(surfacePainted,"Floating document has no native drawing surface");
+      {
+       ui::Widget blocker(ui::kGenericWidget);addChild(&blocker);
+       const gfx::Rect blockedHeader(frame.x+10*uiScale,frame.y+5*uiScale,60*uiScale,12*uiScale);blocker.setBounds(blockedHeader);blocker.setVisible(true);
+       ui::MouseMessage blockedDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,blockedHeader.center());
+       const bool handled=processDocumentPanes(&blockedDown);removeChild(&blocker);
+       check(!handled&&!hasCapture(),"Covered floating header intercepted pointer input");
+      }
+      writeSmokeFrame(image.get(),directory/"document-floating.bmp");
+      const auto pin=frame.origin()+gfx::Point(frame.w-(5+15+17)*uiScale,10*uiScale);
+      ui::MouseMessage pinDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,pin);processDocumentPanes(&pinDown);
+      check(!documentPanes_.floating.front().pinned,"Floating pin committed before release");
+      ui::MouseMessage pinUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,pin);processDocumentPanes(&pinUp);
+      check(documentPanes_.floating.front().pinned,"Floating pin control did not pin");
+      const auto title=frame.origin()+gfx::Point(20*uiScale,10*uiScale);
+      ui::MouseMessage floatDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,title);processDocumentPanes(&floatDown);
+      ui::MouseMessage floatMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,title+gfx::Point(20,24));processDocumentPanes(&floatMove);
+      ui::MouseMessage floatUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,title+gfx::Point(20,24));processDocumentPanes(&floatUp);
+      check(!hasCapture()&&floatingFrame()!=frame,"Floating title movement failed");frame=floatingFrame();
+      const gfx::Point corner(frame.x2()-1,frame.y2()-1);
+      ui::MouseMessage cornerDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,corner);processDocumentPanes(&cornerDown);
+      ui::MouseMessage cornerMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,corner-gfx::Point(40,30));processDocumentPanes(&cornerMove);
+      ui::MouseMessage cornerUp(ui::kMouseUpMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,corner-gfx::Point(40,30));processDocumentPanes(&cornerUp);
+      check(!hasCapture()&&floatingFrame().w<=frame.w&&floatingFrame().h<=frame.h,"Floating resize failed");
+      frame=floatingFrame();const auto returnTitle=frame.origin()+gfx::Point(20*uiScale,10*uiScale);
+      ui::MouseMessage returnDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,returnTitle);processDocumentPanes(&returnDown);
+      processDocumentPanes(&headerMove);
+      check(bool(getProperty("moonsprite.pane-return-preview."+bid)),"Floating tab preview missing");
+      for(auto child:children())if(child->getProperty("moonsprite.document-pane."+bid))check(child->hasFlags(ui::HIDDEN),"Returning floating frame remained visible");
+      ui::KeyMessage cancelReturn(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);processDocumentPanes(&cancelReturn);
+      check(!getProperty("moonsprite.pane-return-preview."+bid)&&documentPanes_.floating.size()==1&&!hasCapture(),"Cancelled floating return lost detached state");
+      frame=floatingFrame();const auto retryTitle=frame.origin()+gfx::Point(20*uiScale,10*uiScale);
+      ui::MouseMessage retryDown(ui::kMouseDownMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,retryTitle);processDocumentPanes(&retryDown);
+      ui::MouseMessage retryMove(ui::kMouseMoveMessage,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,retryTitle+gfx::Point(30*uiScale,30*uiScale));processDocumentPanes(&retryMove);
+      processDocumentPanes(&headerMove);processDocumentPanes(&headerUp);
+      check(documentPanes_.floating.empty()&&!documentPanes_.hidden(bid)&&!hasCapture(),"Floating tab return retained detached state/capture");
+      check(b->value->canvasPixels()==artwork&&b->value->historyPosition()==history,"Floating operations changed artwork/history");
+      stage("duplicate-view");
+      const auto savedSource=directory/"duplicate-source.moonsprite";
+      Document fixture=Document::withBuiltinPalette(3,2,U"Duplicate source");fixture.beginStroke({1,1},0xff123456);fixture.commitStroke();
+      project::saveDocumentAtomic(fixture,savedSource);
+      openPath(savedSource);check(pending_==Pending::None,"Duplicate source fixture did not open");
+      const auto sourceSession=activeSession_;const auto sourceIdentity=currentDocument().projectId();const auto savedPixels=currentDocument().canvasPixels();
+      currentDocument().beginStroke({0,0},0xffabcdef);currentDocument().commitStroke();
+      const auto count=projects_.size();setProperty(std::make_shared<ui::Property>("moonsprite.duplicate-document-open"));openPath(savedSource);
+      check(pending_==Pending::None&&projects_.size()==count+1&&activeSession_!=sourceSession,"Duplicate view reused existing session");
+      check(currentDocument().projectId()!=sourceIdentity&&currentDocument().canvasPixels()==savedPixels&&sourceSession->value->canvasPixels()!=savedPixels,"Duplicate view copied unsaved pixels or reused project identity");
+      check(savePath(savedSource)&&pending_==Pending::None,"Duplicate view cannot save back to its source path");
+      check(sourceSession->value->dirty()&&sourceSession->value->canvasPixels()!=savedPixels,"Duplicate save changed original in-memory artwork");
+      const auto duplicateId=currentDocument().projectId();const auto duplicateSaved=directory/"duplicate-saved.moonsprite";
+      project::saveDocumentAtomic(currentDocument(),duplicateSaved);
+      std::ifstream duplicateInput(duplicateSaved,std::ios::binary);auto duplicateBytes=std::make_shared<project::Bytes>(std::istreambuf_iterator<char>(duplicateInput),std::istreambuf_iterator<char>());
+      auto reopened=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(duplicateBytes)));
+      check(reopened.projectId()==duplicateId&&reopened.canvasPixels()==savedPixels,"Duplicate view save/reopen lost identity or pixels");
+      stage("close-range");
+      addProject(Document::withBuiltinPalette(2,2,U"Close anchor"));const auto closeAnchor=activeSession_;
+      addProject(Document::withBuiltinPalette(2,2,U"Close first"));const auto closeFirst=activeSession_;
+      currentDocument().beginStroke({0,0},0xff123456);currentDocument().commitStroke();
+      addProject(Document::withBuiltinPalette(2,2,U"Close second"));const auto closeSecond=activeSession_;
+      currentDocument().beginStroke({0,0},0xffabcdef);currentDocument().commitStroke();
+      auto runCloseRight=[&]{
+       bool invoked=false;std::exception_ptr failure;ui::Timer choose(20,this);
+       choose.Tick.connect([&]{choose.stop();ui::MenuItem* command=nullptr;
+        std::function<void(ui::Widget*)> visit=[&](ui::Widget* parent){for(auto child:parent->children()){if(child->getProperty("moonsprite.pane-menu.close-right"))command=dynamic_cast<ui::MenuItem*>(child);visit(child);}};visit(manager());
+        try{check(command,"Close-right context menu item missing");auto popup=command->window();command->Click();invoked=true;popup->closeWindow(nullptr);}catch(...){failure=std::current_exception();if(command)command->window()->closeWindow(nullptr);}
+       });choose.start();showDocumentPaneMenu(std::to_string(closeAnchor->value->identity()),canvasViewport().center(),false);choose.stop();if(failure)std::rethrow_exception(failure);check(invoked,"Close-right command was not invoked");
+      };
+      auto pumpClose=[&](auto settled){const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);while(!settled()&&std::chrono::steady_clock::now()<deadline){manager()->generateMessages();manager()->dispatchMessages();std::this_thread::sleep_for(std::chrono::milliseconds(1));}check(settled(),"Close-range did not settle");};
+      const auto beforeCloseCount=projects_.size();runCloseRight();pumpClose([&]{return pending_==Pending::CloseDocument;});
+      check(activeSession_==closeFirst,"Close-right did not follow visible tab order");resolve(false);
+      // Give the production range timer time to observe cancellation, then
+      // assert no subsequent document was closed or prompted.
+      const auto cancelDeadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(60);
+      while(std::chrono::steady_clock::now()<cancelDeadline){manager()->generateMessages();manager()->dispatchMessages();std::this_thread::sleep_for(std::chrono::milliseconds(1));}
+      check(pending_==Pending::None&&projects_.size()==beforeCloseCount&&closeFirst->value->dirty()&&closeSecond->value->dirty(),"Cancelled close-range continued or changed artwork");
+      runCloseRight();pumpClose([&]{return pending_==Pending::CloseDocument;});check(activeSession_==closeFirst,"Restarted close-range skipped first tab");resolve(true);
+      pumpClose([&]{return pending_==Pending::CloseDocument;});check(activeSession_==closeSecond,"Close-range skipped next tab");resolve(true);
+      pumpClose([&]{return pending_==Pending::None&&projects_.size()==beforeCloseCount-2;});
+      std::ofstream(directory/"document-panes-result.txt")<<"Split isolation, sampling, pan, resize/cancel, return; floating ownership, paint, pin, move, resize and tab return passed.\n";
+      return;
+    }
 
     if(std::wstring(GetCommandLineW()).find(L"--timeline-properties-only")!=std::wstring::npos){
       std::function<void()> scenario=[&]{

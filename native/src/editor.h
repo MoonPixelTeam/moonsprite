@@ -1,5 +1,6 @@
 #pragma once
 #include "tile_repeat.h"
+#include "document_pane_workspace.h"
 #include "isometric_settings.h"
 #include "project_backup.h"
 #include "quick_command_bar.h"
@@ -2021,6 +2022,29 @@ private:
   double canvasScale() const;
 
   CanvasRenderer renderer_;
+  workspace::panes::Workspace documentPanes_;
+  // Each visible document retains its viewport and native renderer; selecting
+  // another pane must not transfer view state or upload ownership.
+  struct DocumentPaneView {gfx::Rect bounds;CanvasRenderer renderer;};
+  std::map<std::uint64_t,DocumentPaneView> documentPaneViews_;
+  std::uint64_t documentPaneSequence_=0;
+  bool documentPanePainting_=false;
+  std::optional<workspace::panes::ResizeGesture> documentPaneResize_;
+  std::string documentPaneResizeId_;
+  void paintDocumentPanes(ui::Graphics&);
+  void paintDocumentPaneDrag(ui::Graphics&);
+  void syncDocumentPaneDrag();
+  bool processDocumentPanes(ui::Message*);
+  std::optional<gfx::Rect> documentPaneViewport_;
+  void reconcileDocumentPanes();
+  workspace::panes::Regions documentPaneRegions()const;
+  gfx::Rect documentWorkspaceViewport()const;
+  gfx::Rect documentPaneBounds(const std::string&)const;
+  std::string documentPaneAt(gfx::Point)const;
+  void layoutDocumentPanes();
+  void floatDocumentPane(const std::string&,gfx::Point);
+  void returnFloatingDocumentPane(const std::string&,std::optional<int> index={});
+  void showDocumentPaneMenu(const std::string&,gfx::Point,bool floating);
 
   unsigned chromePaints_=0;
 

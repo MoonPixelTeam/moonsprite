@@ -4,6 +4,7 @@
 #include "selection_pattern_brush.h"
 #include "recovery_store.h"
 #include "project_import.h"
+#include "project_zip_writer.h"
 #include "project_file.h"
 #include "webp_export.h"
 #include "new_document_dialog.h"
@@ -29,9 +30,42 @@
 #include "project_restore_report.h"
 #include "runtime_diagnostics.h"
 #include <utility>
+#include "ui/property.h"
+#include "floating_panel_geometry.h"
+#include "floating_column_surface.h"
 
 namespace moon::editor {
 namespace {
+struct PaneHeaderDrag final:ui::Property {
+ std::string document;gfx::Point start,last;bool moved=false;int direction=0;
+ bool floating=false;int resizeEdges=0;gfx::Rect initialFrame;
+ int action=0;gfx::Rect actionBounds;
+ std::optional<workspace::panes::Placement> placement;
+ std::optional<workspace::panes::DockTarget> dockTarget;
+ std::optional<int> returnIndex;
+ std::optional<std::vector<workspace::panes::DockTarget>> captured;
+ explicit PaneHeaderDrag(const char* name="moonsprite.pane-header-drag"):ui::Property(name){}
+};
+gfx::Rect floatingPaneFrame(const workspace::panes::Floating& f){
+ return {int(std::round(f.initial.left)),int(std::round(f.initial.top)),int(std::round(f.initial.width)),int(std::round(f.initial.height))};
+}
+workspace::panes::Rect paneRect(gfx::Rect r){return workspace::panes::rectangle(r.x,r.y,r.w,r.h);}
+struct PaneViewport final:ui::Property {
+ gfx::Rect bounds;
+ explicit PaneViewport(gfx::Rect value):ui::Property("moonsprite.pane-viewport"),bounds(value){}
+};
+struct PaneSurfacePaint final:ui::Property {
+ std::string document;
+ explicit PaneSurfacePaint(std::string id):ui::Property("moonsprite.pane-surface-paint"),document(std::move(id)){}
+};
+struct PaneCloseRange final:ui::Property {
+ std::vector<std::string> documents;std::string waiting;ui::Timer timer;
+ explicit PaneCloseRange(ui::Widget* owner):ui::Property("moonsprite.pane-close-range"),timer(16,owner){}
+};
+struct PaneMiddlePan final:ui::Property {
+ std::weak_ptr<Document> document;gfx::Point last;
+ PaneMiddlePan():ui::Property("moonsprite.pane-middle-pan"){}
+};
 // Observe settled selection state only; this helper never mutates Document.
 template<class View> void projectOrdinarySelectionPivot(View& view,const Document& source){
  const bool transient=source.floating()||source.paintCellMoving()||source.layerMoveActive();
@@ -224,7 +258,7 @@ void Editor::restoreProject(std::size_t index){
 
     symmetryIdentity_=currentDocument().identity();ink_=currentDocument().palette().primary;paletteFocused_=false;
 
-    documentOpen_=true;homeOpen_=false;revealProjectTab_=true;constrainCanvas();refresh();
+    documentOpen_=true;homeOpen_=false;revealProjectTab_=true;reconcileDocumentPanes();layoutDocumentPanes();constrainCanvas();refresh();
 
   }
 
@@ -287,14 +321,397 @@ void Editor::addProject(Document next,std::filesystem::path path){
 
   }
 
+void Editor::reconcileDocumentPanes(){
+ std::vector<std::string> open;for(const auto& session:projects_)if(session->value)open.push_back(std::to_string(session->value->identity()));
+ documentPanes_.reconcile(open,documentOpen_?std::to_string(currentDocument().identity()):std::string{});
+ for(auto it=documentPaneViews_.begin();it!=documentPaneViews_.end();)if(!workspace::panes::has(open,std::to_string(it->first)))it=documentPaneViews_.erase(it);else ++it;
+}
+workspace::panes::Regions Editor::documentPaneRegions()const{
+ const auto area=documentWorkspaceViewport();return workspace::panes::regions(documentPaneResize_?workspace::panes::resize(documentPanes_.visible(),documentPaneResizeId_,documentPaneResize_->ratio):documentPanes_.visible(),workspace::panes::rectangle(area.x,area.y,area.w,area.h),6*uiScale);
+}
+gfx::Rect Editor::documentPaneBounds(const std::string& id)const{
+ if(advancedActive())return {};
+ for(const auto& floating:documentPanes_.floating)if(floating.document==id){const auto frame=floatingPaneFrame(floating);return {frame.x+2*uiScale,frame.y+FloatingColumnChrome::bodyTop({0,0,0,0})*uiScale,std::max(1,frame.w-4*uiScale),std::max(1,frame.h-(FloatingColumnChrome::bodyTop({0,0,0,0})+2)*uiScale)};}
+ const auto regions=documentPaneRegions();for(const auto& pane:regions.leaves)if(pane.node->document==id){const auto& r=pane.bounds;const int x=int(std::round(r.left)),y=int(std::round(r.top)),right=int(std::round(r.right)),bottom=int(std::round(r.bottom));const int header=workspace::panes::has(documentPanes_.paneOnly,id)?21*uiScale:0;return {x,y+header,std::max(0,right-x),std::max(0,bottom-y-header)};}
+ return id==documentPanes_.main?documentWorkspaceViewport():gfx::Rect{};
+}
+void Editor::floatDocumentPane(const std::string& id,gfx::Point anchor){
+ if(pending_!=Pending::None||!workspace::panes::has(documentPanes_.open,id))return;
+ auto source=documentPaneBounds(id);if(source.isEmpty())source=documentWorkspaceViewport();
+ const auto viewport=uiLogical(bounds()),logicalSource=uiLogical(source),point=uiLogical(gfx::Rect(anchor.x,anchor.y,1,1));
+ auto position=workspace::panes::floatingPosition({double(point.x-viewport.x),double(point.y-viewport.y)},workspace::panes::rectangle(0,0,viewport.w,viewport.h),paneRect(logicalSource));
+ const auto physical=uiPhysical(gfx::Rect(viewport.x+int(position.left),viewport.y+int(position.top),int(position.width),int(position.height)));
+ documentPanes_.floatDocument(id,paneRect(physical));
+ for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==id){activateProject(i);break;}
+ refresh();
+}
+std::string Editor::documentPaneAt(gfx::Point point)const{
+ for(bool pinned:{true,false})for(auto it=documentPanes_.floating.rbegin();it!=documentPanes_.floating.rend();++it)if(it->pinned==pinned&&floatingPaneFrame(*it).contains(point))return documentPaneBounds(it->document).contains(point)?it->document:std::string{};
+ const auto regions=documentPaneRegions();for(const auto& pane:regions.leaves)if(documentPaneBounds(pane.node->document).contains(point))return pane.node->document;
+ return documentPaneBounds(documentPanes_.main).contains(point)?documentPanes_.main:std::string{};
+}
+void Editor::returnFloatingDocumentPane(const std::string& id,std::optional<int> index){
+ documentPanes_.returnFloating(id,index);
+ if(index)std::stable_sort(projects_.begin(),projects_.end(),[&](const auto& a,const auto& b){const auto rank=[&](const auto& s){return std::find(documentPanes_.open.begin(),documentPanes_.open.end(),std::to_string(s->value->identity()))-documentPanes_.open.begin();};return rank(a)<rank(b);});
+ for(std::size_t i=0;i<projects_.size();++i)if(projects_[i]==activeSession_)activeProject_=i;
+ for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==documentPanes_.active){activateProject(i);break;}
+ refresh();
+}
+void Editor::showDocumentPaneMenu(const std::string& id,gfx::Point point,bool floating){
+ PixelMenu menu(skin_);
+ auto add=[&](const std::u32string& caption,const char* icon,std::function<void()> action){auto item=new PixelMenuItem(font_,skin_,caption);item->iconSkin=&toolIcons_;item->icon=icon;item->Click.connect(std::move(action));menu.addChild(item);return item;};
+ if(floating){
+  const auto it=std::find_if(documentPanes_.floating.begin(),documentPanes_.floating.end(),[&](const auto& f){return f.document==id;});if(it==documentPanes_.floating.end())return;const bool pinned=it->pinned;
+  auto pin=add(pinned?U"取消置顶":U"置顶","pin",[this,id,pinned]{documentPanes_.pin(id,!pinned);raiseDockWidgets();invalidate();});pin->checked=[pinned]{return pinned;};
+  menu.addChild(new PixelMenuSeparator(skin_));add(U"返回标签栏","move",[this,id]{returnFloatingDocumentPane(id);});
+  add(U"关闭","close",[this,id]{for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==id){activateProject(i);ask(Pending::CloseDocument);break;}});
+ }else if(workspace::panes::has(documentPanes_.paneOnly,id)){
+  add(U"浮动文档","move",[this,id,point]{floatDocumentPane(id,point);});
+ }else{
+  auto activate=[this,id]{for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==id){activateProject(i);return currentDocument().identity()==projectDocument(i).identity();}return false;};
+  add(U"关闭","close",[this,activate]{if(activate())ask(Pending::CloseDocument);});
+  menu.addChild(new PixelMenuSeparator(skin_));
+  auto closeRange=[this,id](int scope){
+   auto range=std::dynamic_pointer_cast<PaneCloseRange>(getProperty("moonsprite.pane-close-range"));
+   if(!range){range=std::make_shared<PaneCloseRange>(this);setProperty(range);
+    range->timer.Tick.connect([this,weak=std::weak_ptr<PaneCloseRange>(range)]{
+     const auto state=weak.lock();if(!state)return;
+     if(pending_!=Pending::None||scriptSaving_)return;
+     if(!state->waiting.empty()){
+      const auto waiting=std::find_if(projects_.begin(),projects_.end(),[&](const auto& owner){return std::to_string(owner->value->identity())==state->waiting;});
+      if(waiting!=projects_.end()){
+       const auto identity=(*waiting)->value->identity();
+       if(backgroundSaveBusy(identity)||std::any_of(deferredSaveCloses_.begin(),deferredSaveCloses_.end(),[&](const auto& close){return close.identity==identity;})||std::any_of(queuedSaves_.begin(),queuedSaves_.end(),[&](const auto& save){return save.identity==identity;}))return;
+       state->documents.clear();state->timer.stop();state->waiting.clear();return;
+      }state->waiting.clear();
+     }
+     while(!state->documents.empty()){
+      const auto target=state->documents.front();state->documents.erase(state->documents.begin());
+      for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==target){
+       state->waiting=target;activateProject(i);ask(Pending::CloseDocument);return;
+      }
+     }state->timer.stop();
+    });
+   }
+   range->documents.clear();range->waiting.clear();
+   std::vector<std::string> visible;for(const auto& owner:projects_){const auto target=std::to_string(owner->value->identity());if(!documentPanes_.hidden(target))visible.push_back(target);}
+   const auto at=std::find(visible.begin(),visible.end(),id);if(at==visible.end())return;
+   for(auto it=visible.begin();it!=visible.end();++it)if((scope==0&&it<at)||(scope==1&&it>at)||(scope==2&&it!=at))range->documents.push_back(*it);
+   if(!range->documents.empty())range->timer.start();
+  };
+  add(U"关闭左侧标签","close",[closeRange]{closeRange(0);});
+  add(U"关闭右侧标签","close",[closeRange]{closeRange(1);})->setProperty(std::make_shared<ui::Property>("moonsprite.pane-menu.close-right"));
+  add(U"关闭其他标签","close",[closeRange]{closeRange(2);});
+  menu.addChild(new PixelMenuSeparator(skin_));
+  add(U"重复视图","copy",[this,activate]{
+   if(!activate())return;const auto source=projectFolderSource();if(source.empty()){status_=U"此工程没有可重新打开的文件路径。";invalidate();return;}
+   setProperty(std::make_shared<ui::Property>("moonsprite.duplicate-document-open"));
+   struct Reset{Editor& editor;~Reset(){editor.removeProperty("moonsprite.duplicate-document-open");}} reset{*this};openPath(source);
+  });
+  add(U"浮动文档","move",[this,id,point]{floatDocumentPane(id,point);});
+  add(U"在文件夹中打开","folderOpen",[this,activate]{if(activate())openProjectFolder();});
+ }
+ menu.showPopup(point,display());requestFocus();
+}
+void Editor::layoutDocumentPanes(){
+ if(documentPanePainting_)return;
+ const auto viewport=bounds();
+ auto previousViewport=std::dynamic_pointer_cast<PaneViewport>(getProperty("moonsprite.pane-viewport"));
+ if(previousViewport&&previousViewport->bounds!=viewport){
+  for(auto& floating:documentPanes_.floating){auto frame=floatingPaneFrame(floating);
+   frame.x=std::clamp(frame.x,viewport.x,std::max(viewport.x,viewport.x2()-frame.w));
+   frame.y=std::clamp(frame.y,viewport.y,std::max(viewport.y,viewport.y2()-frame.h));
+   floating.initial=paneRect(frame);
+  }
+ }
+ if(!previousViewport)setProperty(std::make_shared<PaneViewport>(viewport));else previousViewport->bounds=viewport;
+
+ // A real sibling surface provides native occlusion over docked controls.
+ const auto existing=children();
+ for(auto child:existing)if(child->getProperty("moonsprite.document-pane-surface")){
+  bool live=false;for(const auto& f:documentPanes_.floating)if(child->getProperty("moonsprite.document-pane."+f.document)){live=true;break;}
+  if(!live){removeChild(child);delete child;}
+ }
+ for(const auto& f:documentPanes_.floating){
+  FloatingColumnSurface* surface=nullptr;
+  for(auto child:children())if(child->getProperty("moonsprite.document-pane."+f.document)){surface=dynamic_cast<FloatingColumnSurface*>(child);break;}
+  if(!surface){surface=new FloatingColumnSurface;surface->setProperty(std::make_shared<ui::Property>("moonsprite.document-pane-surface"));surface->setProperty(std::make_shared<ui::Property>("moonsprite.document-pane."+f.document));addChild(surface);
+   surface->paint=[this,surface,id=f.document](ui::Graphics& child){
+    ui::Graphics g(child.display(),base::AddRef(child.getInternalSurface()),bounds().x,bounds().y);
+    g.saveClip();g.clipRect(child.getClipBounds().offset(surface->bounds().origin()-bounds().origin()));
+    setProperty(std::make_shared<PaneSurfacePaint>(id));
+    struct Restore{Editor& editor;~Restore(){editor.removeProperty("moonsprite.pane-surface-paint");}} restore{*this};
+    paintDocumentPanes(g);g.restoreClip();
+   };
+  }
+  surface->setVisible(!advancedActive()&&!homeOpen_&&!getProperty("moonsprite.pane-return-preview."+f.document));const auto frame=floatingPaneFrame(f);if(surface->bounds()!=frame)surface->setBounds(frame);
+ }
+ if(advancedActive())return;
+ if(!documentPanes_.visible()&&documentPanes_.floating.empty()){
+  if(documentOpen_){auto& previous=documentPaneViews_[currentDocument().identity()].bounds;const auto full=documentWorkspaceViewport();if(!previous.isEmpty()&&previous!=full)currentView().canvas.offset(full.center()-previous.center());previous=full;}return;
+ }
+ for(const auto& session:projects_){if(!session->value)continue;const auto id=session->value->identity();const auto area=documentPaneBounds(std::to_string(id));if(area.isEmpty())continue;
+  auto& display=documentPaneViews_[id];if(!display.bounds.isEmpty()&&display.bounds!=area)session->view.canvas.offset(area.center()-display.bounds.center());else if(display.bounds.isEmpty())session->view.canvas.offset(area.center()-documentWorkspaceViewport().center());display.bounds=area;
+ }
+}
+
+// EditorCanvasHost: render secondary sessions without rebinding global panels,
+// listeners or gesture owners. Restore the active context before returning.
+void Editor::paintDocumentPanes(ui::Graphics& g){
+ const auto surfacePaint=std::dynamic_pointer_cast<PaneSurfacePaint>(getProperty("moonsprite.pane-surface-paint"));
+ if(advancedActive()){paintCanvas(g);return;}
+ const bool split=bool(documentPanes_.visible())||!documentPanes_.floating.empty();
+ if(!split)paintCanvas(g);
+ const auto selected=activeSession_;const auto document=activeDocument_;
+ const auto repeated=tileRepeatIdentity_;documentPanePainting_=true;
+ struct Restore {Editor& e;std::shared_ptr<ProjectSession> session;std::shared_ptr<Document> document;std::uint64_t repeat;~Restore(){e.activeSession_=session;e.activeDocument_=document;e.tileRepeatIdentity_=repeat;e.documentPanePainting_=false;}} restore{*this,selected,document,repeated};
+ if(split){auto ordered=projects_;
+  auto rank=[&](const auto& session){const auto id=std::to_string(session->value->identity());int n=0;for(const auto& f:documentPanes_.floating){++n;if(f.document==id)return n+(f.pinned?1000:0);}return 0;};
+  std::stable_sort(ordered.begin(),ordered.end(),[&](const auto& a,const auto& b){return rank(a)<rank(b);});
+  for(const auto& session:ordered){
+  if(!session->value)continue;const auto id=session->value->identity();
+  const auto pane=documentPaneBounds(std::to_string(id));if(pane.isEmpty())continue;
+  const auto floating=std::find_if(documentPanes_.floating.begin(),documentPanes_.floating.end(),[&](const auto& f){return f.document==std::to_string(id);});
+  if(surfacePaint){if(surfacePaint->document!=std::to_string(id))continue;}
+  else if(floating!=documentPanes_.floating.end())continue;
+  activeSession_=session;activeDocument_=session->value;tileRepeatIdentity_=id;
+  if(floating!=documentPanes_.floating.end()){
+   const auto frame=floatingPaneFrame(*floating).offset(-bounds().origin());
+   UiPaintScale scale(g,frame.origin());const gfx::Rect local(0,0,frame.w/uiScale,frame.h/uiScale);FloatingColumnChrome::paint(skin_,g,local);
+   auto back=FloatingColumnChrome::closeBounds(local),pin=back;pin.x-=UiSpacing::iconSize+UiSpacing::related;
+   g.saveClip();g.clipRect({0,0,std::max(0,pin.x-UiSpacing::related),FloatingColumnChrome::headerHeight});FloatingColumnChrome::drawTitle(skin_,font_,g,local,session->value->name());g.restoreClip();
+   for(const auto& action:std::array<std::pair<gfx::Rect,const char*>,2>{{{pin,"pin"},{back,"move"}}}){const auto hit=uiPhysical(action.first).offset(floatingPaneFrame(*floating).origin());const auto press=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.pane-header-drag"));const bool hover=paletteMousePosition_&&hit.contains(*paletteMousePosition_);const bool held=press&&press->document==std::to_string(id)&&press->actionBounds==hit;skin_.draw(g,held&&hover?"icon_button.pressed":hover?"icon_button.hover":floating->pinned&&action.second==std::string("pin")?"icon_button.selected":"icon_button.normal",action.first);toolIcons_.draw(g,action.second,{action.first.x+2,action.first.y+2,11,11},true);}
+  }
+  if(session==selected)paintCanvas(g);
+  else{auto& cache=documentPaneViews_[id].renderer;std::swap(renderer_,cache);
+   struct RestoreRenderer {CanvasRenderer& a;CanvasRenderer& b;~RestoreRenderer(){std::swap(a,b);}} restoreRenderer{renderer_,cache};
+   renderer_.setRelativeLuminance(session->view.relativeLuminance);paintCanvas(g);
+  }
+ }}
+ activeSession_=selected;activeDocument_=document;tileRepeatIdentity_=repeated;
+ if(surfacePaint)return;
+ const auto paintedRegions=documentPaneRegions();
+ g.saveClip();
+ gfx::Region dockChrome(g.getClipBounds());
+ for(const auto& f:documentPanes_.floating)dockChrome-=gfx::Region(floatingPaneFrame(f).offset(-bounds().origin()));
+ g.clipRegion(dockChrome);
+ for(const auto& region:paintedRegions.leaves){
+  if(!workspace::panes::has(documentPanes_.paneOnly,region.node->document))continue;
+  const auto it=std::find_if(projects_.begin(),projects_.end(),[&](const auto& session){return std::to_string(session->value->identity())==region.node->document;});if(it==projects_.end())continue;
+  const auto& r=region.bounds;gfx::Rect header(int(std::round(r.left)),int(std::round(r.top)),int(std::round(r.width)),21*uiScale);header.offset(-bounds().origin());
+  g.saveClip();g.clipRect(header);g.fillRect(skin_["background"],header);
+  {UiPaintScale scale(g,header.origin());const gfx::Rect frame(0,0,header.w/uiScale,FloatingColumnChrome::headerHeight);const auto close=FloatingColumnChrome::closeBounds(frame);
+   g.saveClip();g.clipRect({0,0,std::max(0,close.x-UiSpacing::related),frame.h});FloatingColumnChrome::drawTitle(skin_,font_,g,frame,(*it)->value->name());g.restoreClip();toolIcons_.draw(g,"close",close,true);}g.restoreClip();
+ }
+ for(const auto& divider:paintedRegions.dividers){const auto& r=divider.bounds;gfx::Rect bar(int(std::round(r.left)),int(std::round(r.top)),int(std::round(r.width)),int(std::round(r.height)));bar.offset(-bounds().origin());g.fillRect(skin_["background"],bar);}
+ g.restoreClip();
+}
+
+void Editor::syncDocumentPaneDrag(){
+ auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.pane-header-drag"));
+ if(!drag)drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.tab-dock-drag"));
+ DockFeedback* overlay=nullptr;
+ for(auto child:children())if(child->getProperty("moonsprite.document-pane-drag-overlay")){overlay=static_cast<DockFeedback*>(child);break;}
+ const bool visible=drag&&drag->moved&&!drag->resizeEdges&&(!drag->floating||drag->returnIndex.has_value())&&!homeOpen_&&!advancedActive()&&pending_==Pending::None;
+ if(!overlay&&visible){overlay=new DockFeedback;overlay->setProperty(std::make_shared<ui::Property>("moonsprite.document-pane-drag-overlay"));overlay->paint=[this](ui::Graphics& g){paintDocumentPaneDrag(g);};addChild(overlay);}
+ if(overlay){if(overlay->bounds()!=bounds())overlay->setBounds(bounds());overlay->setVisible(visible);if(visible){if(children().back()!=overlay)moveChildTo(overlay,children().back());overlay->invalidate();}}
+}
+
+void Editor::paintDocumentPaneDrag(ui::Graphics& g){
+ auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.pane-header-drag"));
+ if(!drag)drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.tab-dock-drag"));
+ if(drag&&drag->moved){
+  auto regions=documentPaneRegions();if(regions.leaves.empty()){const auto area=documentWorkspaceViewport();regions=workspace::panes::regions(workspace::panes::create(documentPanes_.main),workspace::panes::rectangle(area.x,area.y,area.w,area.h));}
+  if(drag->placement)for(const auto& leaf:regions.leaves)if(leaf.node->document==(drag->placement->preview.empty()?drag->placement->target:drag->placement->preview)){
+   auto logical=leaf.bounds;logical.left/=uiScale;logical.top/=uiScale;logical.right/=uiScale;logical.bottom/=uiScale;logical.width/=uiScale;logical.height/=uiScale;
+   const auto preview=workspace::panes::previewRect(logical,drag->placement->direction);
+   gfx::Rect band(int(std::round(preview.left*uiScale)),int(std::round(preview.top*uiScale)),int(std::round(preview.width*uiScale)),int(std::round(preview.height*uiScale)));band.offset(-bounds().origin());g.fillRect(gfx::rgba(41,121,255,160),band);
+  }
+  if(drag->returnIndex&&!drag->resizeEdges){int index=0,x=uiPhysical(gfx::Rect(4,Layout::documentY,1,1)).x;
+   for(const auto& tab:projectTabRects_)if(!tab.isEmpty()){x=tab.x;if(index++==*drag->returnIndex)break;x=tab.x2();}
+   const int y=uiPhysical(gfx::Rect(0,Layout::documentY+3,1,1)).y;g.fillRect(gfx::rgba(41,121,255),{x-bounds().x,y-bounds().y,2*uiScale,(Layout::projectTabHeight-6)*uiScale});
+   if(drag->floating){
+    const auto owner=std::find_if(projects_.begin(),projects_.end(),[&](const auto& session){return std::to_string(session->value->identity())==drag->document;});
+    if(owner!=projects_.end()){
+     const int width=std::min(240*uiScale,std::max(120*uiScale,drag->initialFrame.w));
+     const double ratio=std::clamp(double(drag->start.x-drag->initialFrame.x)/std::max(1,drag->initialFrame.w),0.,1.);
+     const int left=std::clamp(drag->last.x-int(ratio*width),bounds().x,std::max(bounds().x,bounds().x2()-width));
+     const gfx::Rect ghost(left-bounds().x,Layout::documentY*uiScale,width,Layout::projectTabHeight*uiScale);
+     UiPaintScale scale(g,ghost.origin());const gfx::Rect local(0,0,width/uiScale,Layout::projectTabHeight);skin_.draw(g,"panel_tab_active",local);
+     g.saveClip();g.clipRect(local);toolIcons_.draw(g,"image",{3,2,11,11},true);font_.draw(g,(*owner)->value->name(),17,3,skin_["text"]);g.restoreClip();
+    }
+   }
+  }
+  if(!drag->floating&&!drag->resizeEdges){
+   const auto owner=std::find_if(projects_.begin(),projects_.end(),[&](const auto& session){return std::to_string(session->value->identity())==drag->document;});
+   if(owner!=projects_.end()){
+    const int width=std::clamp(drag->initialFrame.w,120*uiScale,240*uiScale);
+    const double ratio=std::clamp(double(drag->start.x-drag->initialFrame.x)/std::max(1,drag->initialFrame.w),0.,1.);
+    const gfx::Point origin(drag->last.x-int(ratio*width)-bounds().x,drag->last.y-std::clamp(drag->start.y-drag->initialFrame.y,0,drag->initialFrame.h)-bounds().y);
+    UiPaintScale scale(g,origin);const gfx::Rect local(0,0,width/uiScale,std::max(1,drag->initialFrame.h/uiScale));skin_.draw(g,"panel_tab_active",local);
+    g.saveClip();g.clipRect(local);toolIcons_.draw(g,"image",{3,2,11,11},true);font_.draw(g,(*owner)->value->name(),17,3,skin_["text"]);g.restoreClip();
+   }
+  }
+ }
+
+}
+
+bool Editor::processDocumentPanes(ui::Message* msg){
+ struct SyncDrag{Editor& e;~SyncDrag(){e.syncDocumentPaneDrag();}} syncDrag{*this};
+ if(advancedActive()||homeOpen_||pending_!=Pending::None){
+  const bool captured=documentPaneResize_.has_value()||bool(getProperty("moonsprite.pane-header-drag"))||bool(getProperty("moonsprite.pane-middle-pan"));
+  if(const auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.pane-header-drag")))removeProperty("moonsprite.pane-return-preview."+drag->document);
+  documentPaneResize_.reset();documentPaneResizeId_.clear();removeProperty("moonsprite.pane-header-drag");removeProperty("moonsprite.pane-middle-pan");
+  if(captured){if(hasCapture())releaseMouse();layoutDocumentPanes();layoutCanvasScrollBars();syncQuickCommands();invalidate();}return false;
+ }
+ const auto mouse=dynamic_cast<ui::MouseMessage*>(msg);
+ if(const auto pan=std::dynamic_pointer_cast<PaneMiddlePan>(getProperty("moonsprite.pane-middle-pan"))){
+  const auto owner=pan->document.lock();
+  if(!owner||!hasCapture()||msg->type()==ui::kFocusLeaveMessage){removeProperty("moonsprite.pane-middle-pan");if(hasCapture())releaseMouse();return true;}
+  if(mouse&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){
+   const auto delta=mouse->position()-pan->last;pan->last=mouse->position();
+   const auto previousSession=activeSession_;const auto previousDocument=activeDocument_;
+   struct RestorePan {Editor& e;std::shared_ptr<ProjectSession> session;std::shared_ptr<Document> document;~RestorePan(){e.activeSession_=session;e.activeDocument_=document;}} restorePan{*this,previousSession,previousDocument};
+   for(const auto& session:projects_)if(session->value==owner){activeSession_=session;activeDocument_=owner;panCanvasDisplay(delta.x,delta.y);constrainCanvas();if(msg->type()==ui::kMouseUpMessage)saveDocumentView();break;}
+   if(msg->type()==ui::kMouseUpMessage){removeProperty("moonsprite.pane-middle-pan");releaseMouse();}
+   // constrainCanvas lays out scrollbars for the temporary owner. Restore the
+   // active owner's controls before dispatching another pointer message.
+   activeSession_=previousSession;activeDocument_=previousDocument;
+   layoutCanvasScrollBars();
+   invalidateRect(documentPaneBounds(std::to_string(owner->identity())));return true;
+  }
+  return false;
+ }
+ if(const auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.pane-header-drag"))){
+  const bool cancel=!hasCapture()||msg->type()==ui::kFocusLeaveMessage||(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc);
+  if(cancel){removeProperty("moonsprite.pane-return-preview."+drag->document);removeProperty("moonsprite.pane-header-drag");if(hasCapture())releaseMouse();layoutDocumentPanes();layoutCanvasScrollBars();syncQuickCommands();invalidate();return true;}
+  if(mouse&&msg->type()==ui::kMouseMoveMessage){
+   const auto p=mouse->position();const auto previous=drag->last;drag->last=p;paletteMousePosition_=p;
+   if(drag->action){invalidateRect(drag->initialFrame);return true;}
+   drag->moved=drag->moved||std::hypot(double(p.x-drag->start.x),double(p.y-drag->start.y))>=5*uiScale;
+   if(!drag->moved)return true;
+   drag->placement.reset();drag->returnIndex.reset();
+   const auto rc=uiLogical(bounds());const auto strip=uiPhysical(gfx::Rect(rc.x,rc.y+Layout::documentY,rc.w,Layout::projectTabHeight));
+   if(strip.contains(p)){int index=0;for(const auto& tab:projectTabRects_)if(!tab.isEmpty()){if(p.x<tab.center().x)break;++index;}drag->returnIndex=index;drag->dockTarget.reset();}
+   else if(!drag->floating){std::vector<workspace::panes::DockTarget> targets;const auto dockRegions=documentPaneRegions();for(const auto& leaf:dockRegions.leaves)targets.push_back({leaf.node->document,leaf.bounds});
+    workspace::panes::DockOptions options;options.exclude=drag->document;options.current=drag->dockTarget;options.outerSlop=18*uiScale;options.previous=workspace::panes::Point{double(previous.x),double(previous.y)};
+    const auto hit=workspace::panes::dockTargetAt(targets,{double(p.x),double(p.y)},options);
+    drag->dockTarget=hit.target;
+    if(hit.target&&hit.direction)drag->placement=workspace::panes::Placement{drag->document,hit.target->pane,*hit.direction,{}};
+   }
+   if(drag->floating){
+    const auto previewKey="moonsprite.pane-return-preview."+drag->document;
+    if(drag->returnIndex&&!drag->resizeEdges)setProperty(std::make_shared<ui::Property>(previewKey));else removeProperty(previewKey);
+    auto it=std::find_if(documentPanes_.floating.begin(),documentPanes_.floating.end(),[&](const auto& f){return f.document==drag->document;});
+    if(it!=documentPanes_.floating.end()){
+     const auto viewport=bounds();const auto delta=p-drag->start;auto next=drag->initialFrame;
+     if(drag->resizeEdges)next=resizedPanel(next,delta,drag->resizeEdges,viewport,{280*uiScale,200*uiScale});
+     else {next.x=std::clamp(next.x+delta.x,viewport.x-next.w+160*uiScale,std::max(viewport.x-next.w+160*uiScale,viewport.x2()-120*uiScale));next.y=std::clamp(next.y+delta.y,viewport.y,std::max(viewport.y,viewport.y2()-FloatingColumnChrome::headerHeight*uiScale));}
+     it->initial=paneRect(next);layoutDocumentPanes();layoutCanvasScrollBars();syncQuickCommands();raiseDockWidgets();
+    }
+   }
+   invalidate();return true;
+  }
+  if(mouse&&msg->type()==ui::kMouseUpMessage){
+   removeProperty("moonsprite.pane-return-preview."+drag->document);removeProperty("moonsprite.pane-header-drag");releaseMouse();
+   if(drag->action){if(drag->actionBounds.contains(mouse->position())){
+    if(drag->action==3){for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==drag->document){activateProject(i);ask(Pending::CloseDocument);break;}}
+    else if(drag->action==2)returnFloatingDocumentPane(drag->document);
+    else{for(const auto& f:documentPanes_.floating)if(f.document==drag->document){documentPanes_.pin(drag->document,!f.pinned);break;}raiseDockWidgets();}
+   }invalidate();return true;}
+   if(drag->floating){if(drag->moved&&drag->returnIndex&&!drag->resizeEdges)returnFloatingDocumentPane(drag->document,drag->returnIndex);layoutDocumentTab();layoutCanvasScrollBars();invalidate();return true;}
+   if(drag->moved){if(drag->returnIndex){documentPanes_.returnPane(drag->document,*drag->returnIndex);
+     std::stable_sort(projects_.begin(),projects_.end(),[&](const auto& a,const auto& b){const auto rank=[&](const auto& session){return std::find(documentPanes_.open.begin(),documentPanes_.open.end(),std::to_string(session->value->identity()))-documentPanes_.open.begin();};return rank(a)<rank(b);});
+     for(std::size_t i=0;i<projects_.size();++i)if(projects_[i]==activeSession_)activeProject_=i;
+     for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==documentPanes_.active){activateProject(i);break;}
+    }else if(drag->placement){const auto& p=*drag->placement;documentPanes_.movePane(p.document,p.target,p.direction,[this]{return std::to_string(++documentPaneSequence_);});}
+   }
+   layoutDocumentTab();layoutCanvasScrollBars();invalidate();return true;
+  }
+  return false;
+ }
+ if(documentPaneResize_){
+  const bool cancel=!hasCapture()||msg->type()==ui::kFocusLeaveMessage||(msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc);
+  if(cancel){documentPaneResize_.reset();documentPaneResizeId_.clear();if(hasCapture())releaseMouse();invalidate();return true;}
+  if(mouse&&(msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage)){
+   documentPaneResize_->move({double(mouse->position().x),double(mouse->position().y)});
+   if(msg->type()==ui::kMouseUpMessage){if(const auto ratio=documentPaneResize_->finish(false))documentPanes_.layout=workspace::panes::resize(documentPanes_.layout,documentPaneResizeId_,*ratio);documentPaneResize_.reset();documentPaneResizeId_.clear();releaseMouse();layoutDocumentPanes();layoutCanvasScrollBars();}
+   invalidate();return true;
+  }
+  return false;
+ }
+ if(!mouse||hasCapture()||projectTabDragging_)return false;
+ if(msg->type()!=ui::kMouseDownMessage&&msg->type()!=ui::kMouseWheelMessage)return false;
+ if(frontWidgetAt(mouse->position(),false)!=this)return false;
+ // FloatingDocumentWindow activates on pointer down except middle-button pan.
+ // Pin groups precede unpinned groups; each group's last activation is on top.
+ const auto floatingSnapshot=documentPanes_.floating;
+ for(bool pinned:{true,false})for(auto it=floatingSnapshot.rbegin();it!=floatingSnapshot.rend();++it){
+  if(it->pinned!=pinned)continue;const auto frame=floatingPaneFrame(*it);if(!frame.contains(mouse->position()))continue;
+  const auto id=it->document;const auto at=mouse->position();const int edges=panelResizeEdges(frame,at);
+  const bool header=at.y<frame.y+FloatingColumnChrome::headerHeight*uiScale;
+  if(nativeCanvasColorCursor(*this))return false;
+  if(msg->type()==ui::kMouseDownMessage&&!mouse->middle()){
+   documentPanes_.activateFloating(id);for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==id){activateProject(i);break;}
+   if(mouse->right()&&header){showDocumentPaneMenu(id,at,true);return true;}
+   if(mouse->left()&&(header||edges)){
+    auto back=uiPhysical(FloatingColumnChrome::closeBounds({0,0,frame.w/uiScale,frame.h/uiScale}));back.offset(frame.origin());auto pin=back;pin.x-=(UiSpacing::iconSize+UiSpacing::related)*uiScale;
+    if(!edges&&(back.contains(at)||pin.contains(at))){
+     auto press=std::make_shared<PaneHeaderDrag>();press->document=id;press->floating=true;press->action=back.contains(at)?2:1;press->actionBounds=back.contains(at)?back:pin;press->initialFrame=frame;press->start=press->last=at;setProperty(press);captureMouse();invalidateRect(frame);return true;
+    }
+    auto drag=std::make_shared<PaneHeaderDrag>();drag->document=id;drag->start=drag->last=at;drag->floating=true;drag->resizeEdges=edges;drag->initialFrame=frame;setProperty(drag);captureMouse();return true;
+   }
+  }
+  if(mouse->middle()&&msg->type()==ui::kMouseDownMessage)for(const auto& session:projects_)if(session!=activeSession_&&std::to_string(session->value->identity())==id){auto pan=std::make_shared<PaneMiddlePan>();pan->document=session->value;pan->last=at;setProperty(pan);captureMouse();return true;}
+  return header||edges;
+ }
+ if(!documentPanes_.visible()){
+  const auto id=documentPaneAt(mouse->position());
+  if(!id.empty()&&id!=std::to_string(currentDocument().identity())&&!nativeCanvasColorCursor(*this)){
+   if(mouse->middle()&&msg->type()==ui::kMouseDownMessage){
+    for(const auto& session:projects_)if(std::to_string(session->value->identity())==id){auto pan=std::make_shared<PaneMiddlePan>();pan->document=session->value;pan->last=mouse->position();setProperty(pan);captureMouse();return true;}
+   }else if(msg->type()==ui::kMouseDownMessage)for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==id){activateProject(i);break;}
+  }
+  return false;
+ }
+ const auto point=mouse->position();const workspace::panes::Point hit{double(point.x),double(point.y)};const auto regions=documentPaneRegions();
+ if(msg->type()==ui::kMouseDownMessage&&mouse->left())for(const auto& bar:regions.dividers)if(workspace::panes::inside(hit,bar.bounds)){
+  // Recover the split container span from the captured divider and ratio.
+  const bool horizontal=bar.node->orientation==workspace::panes::Orientation::Horizontal;
+  const auto subtree=workspace::panes::leafIds(bar.node);double low=std::numeric_limits<double>::infinity(),high=-low;
+  for(const auto& leaf:regions.leaves)if(workspace::panes::has(subtree,leaf.node->document)){low=std::min(low,horizontal?leaf.bounds.left:leaf.bounds.top);high=std::max(high,horizontal?leaf.bounds.right:leaf.bounds.bottom);}
+  documentPaneResize_.emplace(bar.node->orientation,bar.node->ratio,hit,std::max(0.,high-low-6*uiScale));documentPaneResizeId_=bar.node->id;captureMouse();return true;
+ }
+ const auto leaf=workspace::panes::regionAt(regions.leaves,hit);if(!leaf)return false;
+ if(mouse->middle()){
+  if(msg->type()==ui::kMouseDownMessage)for(const auto& session:projects_)if(session!=activeSession_&&std::to_string(session->value->identity())==leaf->node->document){
+   auto pan=std::make_shared<PaneMiddlePan>();pan->document=session->value;pan->last=point;setProperty(pan);captureMouse();return true;
+  }
+  return false;
+ }
+ if(nativeCanvasColorCursor(*this))return false;
+ for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==leaf->node->document){
+  activateProject(i);
+  if(msg->type()==ui::kMouseDownMessage&&mouse->right()&&workspace::panes::has(documentPanes_.paneOnly,leaf->node->document)&&point.y<leaf->bounds.top+21*uiScale){showDocumentPaneMenu(leaf->node->document,point,false);return true;}
+  if(msg->type()==ui::kMouseDownMessage&&workspace::panes::has(documentPanes_.paneOnly,leaf->node->document)&&point.y<leaf->bounds.top+21*uiScale){if(mouse->left()){
+    const auto& r=leaf->bounds;const gfx::Rect frame(int(std::round(r.left)),int(std::round(r.top)),int(std::round(r.right))-int(std::round(r.left)),FloatingColumnChrome::headerHeight*uiScale);
+    auto close=FloatingColumnChrome::closeBounds({0,0,frame.w/uiScale,FloatingColumnChrome::headerHeight});close=uiPhysical(close);close.offset(frame.origin());
+    if(close.contains(point)){auto press=std::make_shared<PaneHeaderDrag>();press->document=leaf->node->document;press->action=3;press->actionBounds=close;press->initialFrame=frame;press->start=press->last=point;setProperty(press);captureMouse();}
+    else{auto drag=std::make_shared<PaneHeaderDrag>();drag->document=leaf->node->document;drag->start=drag->last=point;drag->initialFrame=frame;setProperty(drag);captureMouse();}
+   }return true;}
+  break;
+ }
+ return false;
+}
+
 void Editor::layoutDocumentTab() {
     struct AdvancedVisibility{Editor& e;~AdvancedVisibility(){e.applyAdvancedVisibility();}} advancedVisibility{*this};
 
-    if(!documentTabNew_)return;ensureProjects();
+    if(!documentTabNew_)return;ensureProjects();reconcileDocumentPanes();layoutDocumentPanes();
 
     const auto rc=uiLogical(bounds());const int available=std::max(1,rc.w-17);int total=0;
 
-    for(std::size_t i=0;i<projects_.size();++i){const int w=projectWidth(projectDocument(i));if(i==activeProject_ && revealProjectTab_){if(total<projectTabScroll_)projectTabScroll_=total;else if(total+w>projectTabScroll_+available)projectTabScroll_=total+w-available;}total+=w-1;}
+    for(std::size_t i=0;i<projects_.size();++i){if(documentPanes_.hidden(std::to_string(projectDocument(i).identity())))continue;const int w=projectWidth(projectDocument(i));if(i==activeProject_ && revealProjectTab_){if(total<projectTabScroll_)projectTabScroll_=total;else if(total+w>projectTabScroll_+available)projectTabScroll_=total+w-available;}total+=w-1;}
 
     revealProjectTab_=false;projectTabScroll_=std::clamp(projectTabScroll_,0,std::max(0,total-available));
 
@@ -308,7 +725,7 @@ void Editor::layoutDocumentTab() {
 
     projectTabRects_.clear();int x=rc.x-projectTabScroll_;
 
-    for(std::size_t i=0;i<projects_.size();++i){const int w=projectWidth(projectDocument(i));const gfx::Rect tab(x,rc.y+Layout::documentY,w,Layout::projectTabHeight);projectTabRects_.push_back(uiPhysical(tab));auto close=projectCloseButtons_[i];close->setBounds(uiPhysical(gfx::Rect(tab.x2()-Layout::inset-11,tab.y+2,11,11)));close->setVisible(tab.x>=rc.x && tab.x2()<=rc.x+available);close->setEnabled(pending_==Pending::None);x+=w-1;}
+    for(std::size_t i=0;i<projects_.size();++i){if(documentPanes_.hidden(std::to_string(projectDocument(i).identity()))){projectTabRects_.push_back({});projectCloseButtons_[i]->setVisible(false);continue;}const int w=projectWidth(projectDocument(i));const gfx::Rect tab(x,rc.y+Layout::documentY,w,Layout::projectTabHeight);projectTabRects_.push_back(uiPhysical(tab));auto close=projectCloseButtons_[i];close->setBounds(uiPhysical(gfx::Rect(tab.x2()-Layout::inset-11,tab.y+2,11,11)));close->setVisible(tab.x>=rc.x && tab.x2()<=rc.x+available);close->setEnabled(pending_==Pending::None);x+=w-1;}
 
     for(std::size_t i=projects_.size();i<projectCloseButtons_.size();++i)projectCloseButtons_[i]->setVisible(false);
 
@@ -329,25 +746,80 @@ void Editor::closeDocumentTab() {
     releaseProjectReferenceViews(currentDocument().identity(),referenceWindows_,referenceSessions_);
     projects_.erase(projects_.begin()+activeProject_);
 
-    if(!projects_.empty()){restoreProject(projects_.size()-1);}
+    if(!projects_.empty()){
+      // Reconcile against the remaining sessions before binding a fallback.
+      // Closing the main pane may promote an embedded view or substitute a
+      // visible tab; closing a secondary pane retains the main document.
+      std::vector<std::string> remaining;for(const auto& session:projects_)remaining.push_back(std::to_string(session->value->identity()));
+      const bool hadSplit=bool(documentPanes_.visible());
+      const auto fallback=hadSplit&&workspace::panes::has(remaining,documentPanes_.main)?documentPanes_.main:remaining.back();
+      documentPanes_.reconcile(remaining,fallback);
+      auto target=projects_.size()-1;
+      for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projects_[i]->value->identity())==documentPanes_.active){target=i;break;}
+      restoreProject(target);
+    }
 
     else{closedControlStates_.clear();for(auto child:children())closedControlStates_.push_back({child,child->isEnabled()});activeSession_=std::make_shared<ProjectSession>();bindProjectDocument(std::make_shared<Document>(Document::withBuiltinPalette()));currentPath().clear();documentOpen_=false;showHome(true);layoutDocumentTab();}
 
   }
 
 bool Editor::processProjectTabs(ui::Message* msg){
+ struct SyncDrag{Editor& e;~SyncDrag(){e.syncDocumentPaneDrag();}} syncDrag{*this};
 
     if(pending_!=Pending::None)return false;
 
     if(projectTabDragging_){
 
-      if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage){projectTabDragging_=false;return false;}
+      if(!hasCapture() || msg->type()==ui::kFocusLeaveMessage || (msg->type()==ui::kKeyDownMessage&&static_cast<ui::KeyMessage*>(msg)->scancode()==ui::kKeyEsc)){
+        projectTabDragging_=false;removeProperty("moonsprite.tab-dock-drag");if(hasCapture())releaseMouse();invalidate();return true;
+      }
 
-      if(msg->type()==ui::kMouseUpMessage){projectTabDragging_=false;releaseMouse();return true;}
+      if(msg->type()==ui::kMouseUpMessage){
+        const auto point=static_cast<ui::MouseMessage*>(msg)->position();projectTabDragging_=false;releaseMouse();
+        const auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.tab-dock-drag"));removeProperty("moonsprite.tab-dock-drag");
+        if(drag&&drag->moved&&drag->placement){
+          documentPanes_.split(*drag->placement,[this]{return std::to_string(++documentPaneSequence_);});
+          const auto selected=documentPanes_.active;
+          for(std::size_t i=0;i<projects_.size();++i)if(std::to_string(projectDocument(i).identity())==selected){activateProject(i);break;}
+          layoutDocumentPanes();layoutDocumentTab();layoutCanvasScrollBars();invalidate();
+        }
+        return true;
+      }
 
-      if(msg->type()==ui::kMouseMoveMessage){const auto point=static_cast<ui::MouseMessage*>(msg)->position();if(std::abs(point.x-projectTabPress_.x)<5*uiScale)return true;
+      if(msg->type()==ui::kMouseMoveMessage){const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+        auto drag=std::dynamic_pointer_cast<PaneHeaderDrag>(getProperty("moonsprite.tab-dock-drag"));
+        if(!drag){drag=std::make_shared<PaneHeaderDrag>("moonsprite.tab-dock-drag");drag->document=std::to_string(currentDocument().identity());drag->start=drag->last=projectTabPress_;drag->initialFrame=projectTabRects_[activeProject_];setProperty(drag);}
+        drag->moved=drag->moved||std::hypot(double(point.x-drag->start.x),double(point.y-drag->start.y))>=5*uiScale;
+        if(!drag->moved)return true;drag->placement.reset();
+        if(point.x>drag->last.x+.5*uiScale)drag->direction=1;else if(point.x<drag->last.x-.5*uiScale)drag->direction=-1;drag->last=point;
+        const auto rc=uiLogical(bounds());const auto strip=uiPhysical(gfx::Rect(rc.x,rc.y+Layout::documentY,rc.w,Layout::projectTabHeight));
+        if(!strip.contains(point)){
+          auto regions=documentPaneRegions();if(regions.leaves.empty())regions=workspace::panes::regions(workspace::panes::create(documentPanes_.main),workspace::panes::rectangle(documentWorkspaceViewport().x,documentWorkspaceViewport().y,documentWorkspaceViewport().w,documentWorkspaceViewport().h),6*uiScale);
+          if(!drag->captured){drag->captured.emplace();for(const auto& leaf:regions.leaves)drag->captured->push_back({leaf.node->document,leaf.bounds});}
+          workspace::panes::DockOptions options;options.strict=true;options.current=drag->dockTarget;options.captured=drag->captured;
+          const auto hit=workspace::panes::dockTargetAt(*drag->captured,{double(point.x),double(point.y)},options);
+          drag->dockTarget=hit.target;
+          if(hit.target&&hit.direction){
+            auto target=hit.target->pane;
+            if(target==drag->document)for(const auto& session:projects_){const auto id=std::to_string(session->value->identity());if(id!=drag->document&&!documentPanes_.hidden(id)){target=id;break;}}
+            if(target!=drag->document)drag->placement=workspace::panes::Placement{drag->document,target,*hit.direction,hit.target->pane};
+          }
+          invalidate();return true;
+        }
 
-        for(std::size_t i=0;i<projectTabRects_.size();++i)if(i!=activeProject_ && projectTabRects_[i].contains(point)){auto current=std::move(projects_[activeProject_]);projects_.erase(projects_.begin()+activeProject_);projects_.insert(projects_.begin()+i,std::move(current));activeProject_=i;projectTabPress_=point;layoutDocumentTab();invalidate();break;}return true;}
+        drag->captured.reset();drag->dockTarget.reset();
+        // DocumentTabs.tsx: directional insertion among visible tabs, with
+        // detached documents retained after the visible sequence.
+        std::vector<std::shared_ptr<ProjectSession>> visible,hidden;
+        std::size_t insertion=0;bool located=false;const double threshold=drag->direction>0?.3:.7;
+        for(std::size_t i=0;i<projects_.size();++i){
+          const auto& session=projects_[i];const auto id=std::to_string(session->value->identity());
+          if(documentPanes_.hidden(id)){hidden.push_back(session);continue;}
+          if(session==activeSession_)continue;
+          const auto& tab=projectTabRects_[i];if(!located&&point.x<tab.x+tab.w*threshold){insertion=visible.size();located=true;}visible.push_back(session);
+        }
+        if(!located)insertion=visible.size();visible.insert(visible.begin()+insertion,activeSession_);visible.insert(visible.end(),hidden.begin(),hidden.end());
+        if(visible!=projects_){projects_=std::move(visible);activeProject_=insertion;layoutDocumentTab();invalidate();}return true;}
 
     }
 
@@ -359,7 +831,7 @@ bool Editor::processProjectTabs(ui::Message* msg){
 
     if(msg->type()==ui::kMouseWheelMessage){projectTabScroll_+=mouse->wheelDelta().y*30;layoutDocumentTab();invalidate();return true;}
 
-    for(std::size_t i=0;i<projectTabRects_.size();++i)if(projectTabRects_[i].contains(mouse->position())){if(mouse->left() || mouse->middle()){activateProject(i);if(mouse->middle())ask(Pending::CloseDocument);else{projectTabDragging_=true;projectTabPress_=mouse->position();captureMouse();}return true;}}return false;
+    for(std::size_t i=0;i<projectTabRects_.size();++i)if(projectTabRects_[i].contains(mouse->position())){if(mouse->right()){showDocumentPaneMenu(std::to_string(projectDocument(i).identity()),mouse->position(),false);return true;}if(mouse->left() || mouse->middle()){activateProject(i);if(mouse->middle())ask(Pending::CloseDocument);else{projectTabDragging_=true;projectTabPress_=mouse->position();captureMouse();}return true;}}return false;
 
   }
 
@@ -419,7 +891,8 @@ void Editor::acceptOpen() {
 
     if(!openCandidate_) return;
 
-    if(!candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
+    const bool duplicate=bool(getProperty("moonsprite.duplicate-document-candidate"));removeProperty("moonsprite.duplicate-document-candidate");
+    if(!duplicate && !candidateRecovery_ && !openCandidate_->projectId().empty()){for(std::size_t i=0;i<projects_.size();++i)if(projectDocument(i).projectId()==openCandidate_->projectId()){openCandidate_.reset();activateProject(i);return;}}
 
     auto next=std::make_unique<Document>(std::move(*openCandidate_));if(candidateRecovery_)next->markRecovered(next->name()+U"（恢复）");const auto origin=candidateRecovery_?candidateRecoveryId_:std::string{};const auto path=candidateRecovery_?std::filesystem::path():candidatePath_;candidateRecovery_=false;candidateRecoveryId_.clear();openCandidate_.reset();addProject(std::move(*next),path);
     if(!origin.empty()){currentRecovery().originId=origin;currentRecovery().ownedId=origin;currentRecovery().ownedIdentity=currentDocument().identity();}
@@ -436,13 +909,15 @@ bool Editor::sameProjectPath(const std::filesystem::path& a,const std::filesyste
 
 void Editor::openPath(const std::filesystem::path& path) {
     if(scriptSaving_)return;
+    const bool duplicate=bool(getProperty("moonsprite.duplicate-document-open"));
+    removeProperty("moonsprite.duplicate-document-open");
 
     try {
       auto packageExtension=path.extension().wstring();std::transform(packageExtension.begin(),packageExtension.end(),packageExtension.begin(),[](wchar_t c){return ::towlower(c);});
       if(packageExtension==L".msext"){if(installExtensionPackage(font_,skin_,toolIcons_,display(),bounds(),path,script::executableDirectory()/"extensions",[this]{updateScriptsMenu();}))status_=U"扩展已安装";requestFocus();refresh();return;}
       for(const auto& job:backgroundSaves_)if(sameProjectPath(path,job.save.path)){if(const auto owner=saveProjectIndex(job.save.version.identity))activateProject(*owner);return;}
 
-      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
+      ensureProjects();for(std::size_t i=0;!duplicate&&i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved) || sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
 
       auto ext=path.extension().wstring();std::transform(ext.begin(),ext.end(),ext.begin(),[](wchar_t c){return ::towlower(c);});
 
@@ -451,7 +926,7 @@ void Editor::openPath(const std::filesystem::path& path) {
       const bool raster=ext==L".gif"||ext==L".png"||ext==L".jpg"||ext==L".jpeg"||ext==L".bmp"||ext==L".webp";
       auto restoreReport=std::make_shared<project::TimelapseRestoreReport>();
       auto detectedGif=std::make_shared<bool>(false);
-      DocumentLoadingDialog loading(font_,skin_,[path,ext,backup,ase,raster,restoreReport,detectedGif]() -> Document {
+      DocumentLoadingDialog loading(font_,skin_,[path,ext,backup,ase,raster,restoreReport,detectedGif,duplicate]() -> Document {
         if(!raster&&hasGifFileSignature(path)){*detectedGif=true;auto candidate=openGifAnimation(path,backup?path.stem().u32string():path.filename().u32string());if(backup)candidate.setSourceFilePath({});return candidate;}
         if(ext==L".psd")return openPsd(path);
         if(ase){auto candidate=openAseprite(path);candidate.setSourceFilePath(path);return candidate;}
@@ -470,6 +945,19 @@ void Editor::openPath(const std::filesystem::path& path) {
 
         if(!file.read(reinterpret_cast<char*>(bytes->data()),std::streamsize(bytes->size()))) throw std::runtime_error("Incomplete project read");
 
+        if(duplicate){
+          // workspace-commands-document-io.ts: reopen the source and replace
+          // only the document ID, retaining unknown archive resources.
+          project::Archive archive(bytes,limits);std::map<std::string,project::Bytes> files;
+          for(const auto& [name,entry]:archive.entries())files.emplace(name,archive.read(name,limits.expandedBytes));
+          auto& manifest=files.at("manifest.json");
+          auto root=winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(std::string(manifest.begin(),manifest.end())));
+          GUID guid;if(FAILED(CoCreateGuid(&guid)))throw std::runtime_error("Cannot create duplicate document identity");
+          wchar_t identifier[40];StringFromGUID2(guid,identifier,40);
+          root.GetNamedObject(L"document").SetNamedValue(L"id",winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::hstring(identifier)));
+          const auto text=winrt::to_string(root.Stringify());manifest.assign(text.begin(),text.end());
+          bytes=std::make_shared<project::Bytes>(project::encodeResourceArchive(files,limits,1));
+        }
         auto imported=project::prepareEditableImport(project::readProjectManifest(bytes,limits,restoreReport.get()));
 
         if(backup)imported.name=path.stem().u32string();
@@ -481,9 +969,9 @@ void Editor::openPath(const std::filesystem::path& path) {
       loading.setBounds({bounds().center().x-size.w/2,bounds().center().y-size.h/2,size.w,size.h});
       auto loaded=loading.run([this]{return pending_==Pending::None&&!currentDocument().strokeActive()&&!ui::Manager::getDefault()->getCapture();});
       // Another open may finish while this progress overlay is dismissed.
-      ensureProjects();for(std::size_t i=0;i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
+      ensureProjects();for(std::size_t i=0;!duplicate&&i<projects_.size();++i){const auto& saved=projectPath(i);if(sameProjectPath(path,saved)||sameProjectPath(path,projectDocument(i).sourceFilePath())){activateProject(i);recordHomeRecent(path);return;}}
       openCandidate_=std::move(loaded);candidatePath_=backup||ase||raster||ext==L".psd"||(*detectedGif&&ext!=L".moonsprite"&&ext!=L".bak")?std::filesystem::path{}:path;
-      candidateRecovery_=false;ask(Pending::Open);
+      candidateRecovery_=false;if(duplicate)setProperty(std::make_shared<ui::Property>("moonsprite.duplicate-document-candidate"));ask(Pending::Open);
       if(backup&&pending_==Pending::None)recordHomeRecent(path);
       if(ase&&!*detectedGif)status_=U"已打开 ASE；沿用原格式保存时将保存回源文件。";
       if(restoreReport->droppedTimelapseFrames){status_=timelapseRestoreWarning(*restoreReport);refresh();}
@@ -653,7 +1141,10 @@ bool Editor::savePath(const std::filesystem::path& path,bool background,bool sou
  if(value.gradientActive()&&(*owner!=activeProject_||!resolveGradientForIo()))return false;
  const bool ase=saveImageFormat(path)!=SaveImageFormat::Native;
 
-    for(std::size_t i=0;i<projects_.size();++i)if(i!=*owner && (sameProjectPath(path,projectPath(i))||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
+    // Legacy duplicate views retain their original saved/source path and may
+    // save back to it. Keep Save As ownership checks for unrelated targets.
+    const bool ownTarget=sameProjectPath(path,saveOwnerPath)||sameProjectPath(path,value.sourceFilePath());
+    for(std::size_t i=0;i<projects_.size();++i)if(!ownTarget && i!=*owner && (sameProjectPath(path,projectPath(i))||sameProjectPath(path,projectDocument(i).sourceFilePath()))){showSaveError(std::runtime_error("该路径已由另一个打开的工程使用，请选择其它名称"));return false;}
 
     for(const auto& job:backgroundSaves_)if(job.save.version.identity!=value.identity()&&sameProjectPath(path,job.save.path)){showSaveError(std::runtime_error("该路径正在由另一个工程保存，请选择其它名称"));return false;}
 

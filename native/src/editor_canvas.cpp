@@ -511,6 +511,8 @@ ui::Widget* Editor::frontWidgetAt(gfx::Point point,bool checkParentsVisibility){
 
       if(auto entry=dynamic_cast<PixelEntry*>(child);entry && entry->paletteViewport && !entry->paletteViewport().contains(point))continue;
 
+      if(child->getProperty("moonsprite.document-pane-drag-overlay"))continue;
+      if(child->getProperty("moonsprite.document-pane-surface"))return this;
       if(auto hit=child->pick(point,checkParentsVisibility))return hit;
 
     }
@@ -825,6 +827,14 @@ const char* Editor::cursorAt(gfx::Point position) const {InteractionScope intera
       if(hasCapture() && sizeDrag_==SizeDrag::Modal)return panelResizeCursor(sizeDragEdges_);
       if(hasCapture() && sizeDrag_==SizeDrag::ModalMove)return "move";
       return panelResizeCursor(panelResizeEdges(dialogDisplayBounds(),position));
+    }
+    for(bool pinned:{true,false})for(auto it=documentPanes_.floating.rbegin();it!=documentPanes_.floating.rend();++it)if(it->pinned==pinned){
+      const auto& r=it->initial;const gfx::Rect frame(int(r.left),int(r.top),int(r.width),int(r.height));
+      if(!frame.contains(position))continue;
+      if(const_cast<Editor*>(this)->frontWidgetAt(position,false)!=this)break;
+      if(const int edges=panelResizeEdges(frame,position))return panelResizeCursor(edges);
+      if(position.y<frame.y+FloatingColumnChrome::headerHeight*uiScale)return "default";
+      break;
     }
     if(sliceDrag_)return sliceDrag_==3?textResizeCursor(sliceHandle_):sliceDrag_==2?(sliceCopy_?"copy":"move"):"crosshair";
     if(textTransforming_)return textResizeCursor(textHandle_);
@@ -1372,7 +1382,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);if(target.intersects(viewport))renderer_.draw(g,target,canvasScale(),checkerboard_.light,checkerboard_.dark,checkerboard_.size);}
 
     phase.next(3);
-    paintFreeTileInstanceFeedback(g,cv);
+    if(!documentPanePainting_||activeSession_==projects_[activeProject_])paintFreeTileInstanceFeedback(g,cv);
     // legacy canvas-render-guides.ts: committed composite remains unchanged.
     if(canvasResizePreview_&&canvasResizeIdentity_==currentDocument().identity()&&canvasResizeRevision_==currentDocument().revision()){
       const auto v=*canvasResizePreview_;const double z=canvasScale();auto coord=[](double n){return int(std::clamp(std::floor(n+.5),-10000000.,10000000.));};
@@ -1422,12 +1432,14 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     if(currentView().isoViewEnabled)paintIsometricGuides(g,cv);
     phase.next(5);
+    if(!documentPanePainting_||activeSession_==projects_[activeProject_]){
     if(currentDocument().activeMaskId().empty() && currentDocument().layer().kind=="free-tile"){
       // The legacy preview placements render the same local replacement in
       // every visible repeat copy without changing shared source resources.
       // cv is already the current repeat copy in the enclosing overlay loop.
       g.saveClip();g.clipRect(cv);if(currentDocument().freeTilePaintMode())paintFreeTilePlacementPreview(g,cv);else paintBrushPreview(g,cv);g.restoreClip();
     }else paintBrushPreview(g,cv);
+    }
     phase.next(6);
 
     if(symmetryHas(currentDocument().symmetryAxes)){
@@ -1454,8 +1466,9 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
 
     }
 
-    if(currentTools().selectionTool && currentTools().selectionKind==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !currentTools().eyedropperTool && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !currentTools().handTool && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(currentDocument().width(),currentDocument().height(),{p.x,p.y},{p.x,p.y},currentTools().brushProfiles[0],currentTools().selectionBrushAngle,tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off);drawSelectionBrushCoverage(g,coverage,currentDocument().width(),currentDocument().height(),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off,cv,canvasScale());}}
+    if((!documentPanePainting_||activeSession_==projects_[activeProject_]) && currentTools().selectionTool && currentTools().selectionKind==5 && selectionBrushPointer_ && canvasOwnsPointer(*selectionBrushPointer_) && !currentTools().eyedropperTool && !eyedropperHeld_ && !eyedropperGesture_.active() && !spaceHeld_ && !currentTools().handTool && ((selectionDragging_ && !selectionBoxDragging_) || transformHit(*selectionBrushPointer_).empty())){const auto pointer=*selectionBrushPointer_;if((selectionDragging_ && !selectionBoxDragging_) || selectionHit(pointer)==0){auto coverage=selectionBrushStroke_;const auto p=canvasPoint(pointer);coverage.collect(currentDocument().width(),currentDocument().height(),{p.x,p.y},{p.x,p.y},currentTools().brushProfiles[0],currentTools().selectionBrushAngle,tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off);drawSelectionBrushCoverage(g,coverage,currentDocument().width(),currentDocument().height(),tileRepeatIdentity_==currentDocument().identity()?currentView().tileRepeat:repeat::Mode::Off,cv,canvasScale());}}
 
+    if(!documentPanePainting_||activeSession_==projects_[activeProject_]){
     for(const auto copy:repeated){const gfx::Rect target(cv.x+copy.x*cv.w,cv.y+copy.y*cv.h,cv.w,cv.h);g.saveClip();g.clipRect(target);paintAirbrushPreview(g,target);g.restoreClip();}paintLiquifyPreview(g,cv);
     paintSmoothCoverage(g,cv);
     if(currentDocument().gradientActive()){auto handle=[&](TransformPoint p){const int x=gradientRound(cv.x+p.x*canvasScale()),y=gradientRound(cv.y+p.y*canvasScale());g.fillRect(gfx::rgba(0,0,0,255),gfx::Rect(x-5,y-5,10,10));g.fillRect(gfx::rgba(255,255,255,255),gfx::Rect(x-3,y-3,6,6));};handle(currentTools().gradientRadial?resolveGradientGeometry(gradientSpec_).center:gradientSpec_.start);handle(gradientSpec_.end);}
@@ -1469,6 +1482,7 @@ void Editor::paintCanvas(ui::Graphics& g) {InteractionScope interactionScope(9,"
     paintMoveFeedback(g,cv);
     paintTextBox(g,cv);
     paintSelectionFeedback(g,cv,viewport);
+    }
 
     paintSelectionAnts(g,cv,viewport,antsOffset_);
 
@@ -1520,7 +1534,7 @@ void Editor::onPaint(ui::PaintEvent& ev) {
 
     // scheduler. Pan requests only the viewport and reuses composed content.
 
-    if(!homeOpen_ && pending_==Pending::None){
+    if(!homeOpen_ && pending_==Pending::None&&documentPanes_.floating.empty()){
 
       const auto ll=columnLayout(uiLogical(clientBounds()),2);
 
@@ -1532,11 +1546,11 @@ void Editor::onPaint(ui::PaintEvent& ev) {
 
       }
 
-      auto full=canvasFullViewport();full.offset(-bounds().origin());
+      auto full=documentWorkspaceViewport();full.offset(-bounds().origin());
 
       full.enlarge(uiScale);
 
-      if(full.contains(g.getClipBounds())) {paintCanvasBackdrop(g);paintCanvas(g);paintEyedropperLens(g);return;}
+      if(full.contains(g.getClipBounds())) {paintCanvasBackdrop(g);paintDocumentPanes(g);paintEyedropperLens(g);return;}
 
       const auto layout=workspaceLayout(uiLogical(clientBounds()));
 
@@ -1550,7 +1564,7 @@ void Editor::onPaint(ui::PaintEvent& ev) {
 
     }
 
-    if(homeOpen_)paintHome(g);else{paintChrome(g);paintTimelineGrid(g);paintCanvas(g);paintEyedropperLens(g);}
+    if(homeOpen_)paintHome(g);else{paintChrome(g);paintTimelineGrid(g);paintDocumentPanes(g);paintEyedropperLens(g);}
 
   }
 

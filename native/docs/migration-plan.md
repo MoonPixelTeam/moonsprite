@@ -7382,3 +7382,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 按实际 legacy canvas-color-sampling 完整路由、useCanvasColorSampling、捕获启动／移动和设备路由迁移注册来源、被动原始 RGBA、跨目标捕获与持续吸管意图。保留注册顺序、源画布排除、透明 0／已处理空样本、指针结束与目标切换清理；主 Editor 读取现有蒙版／合成／图层／重复画布，颜色控件全局拖动复用注册表。普通吸管、替色和颜色编辑器接入捕获路由与 sampled／completed 语义；导航优先级、共享主次色、源文档镜头、释放／取消及身份清理沿用实际旧版规则。原生 property／Manager 物理屏幕命中替代 DOM，不引入新界面布局。
 
 84 组完整实际旧版快照、旧版 3 项测试、15 项不同定向 CTest 和正式 --sampling-zoom-check 全部通过。正式 color-editor-popup 2.81 秒覆盖实际 Manager 命中、注册测试目标、原始 alpha、全局／捕获／意图、空样本／透明 0、导航、弹窗完成、丢失捕获、工程替换与源像素／历史隔离。正式 Release 构建退出 0，唯一 exe 于2026-11-16 16:05:28更新（31,003,136bytes）。来源1025／证据、Editor611、架构611源码／279targets、偏好360及diff通过；strict继续因全仓已知缺口退出1。详见[画布取色注册与路由迁移](canvas-color-sampling-migration-20261116.md)。当前生产只有一个主画布与工程页签，多文档分屏／多画布布局和 CanvasReferences 覆盖层仍未迁移，测试注册窗口、ReferenceImagePanel 与屏幕回退均不替代它们。整体 INCOMPLETE，生产 indexed 准入关闭。未进行新图像／完整人工桌面／多显示器／1×验收或性能工作；阶段保存推送 dev，不提交生成物与用户数据。
+
+
+## 2026-11-17 多文档分栏与浮动文档阶段
+
+直接迁移 legacy document-pane-layout、useAppDocumentPanes、DocumentTabs、EditorCanvasHost 与 FloatingDocumentWindow：分栏停靠／返回、独立 session 视图与绘制、跨窗格取色及中键平移、每窗格快捷栏／滚动条、浮窗移动／缩放／置顶／返回，以及标签关闭范围、按磁盘源重开的重复视图与打开所在目录。保留实际旧版活动文档播放规则、最小尺寸与视口位置裁切，复用原始图标及共享原生皮肤。
+
+沿用已通过的 394 组实际旧版布局对照及 7 项旧版测试；最终唯一正式 Release 构建和 document-panes-only 专项退出 0，来源覆盖 1042 文件及证据快照通过。覆盖身份与内容隔离、真实控件输入、拖动取消、批量关闭取消及重复视图保存重开。既有浮窗截图已核对；最后输入修正未新增图像验收。本轮不追加全仓回归，未做性能优化。详见[阶段记录](document-panes-migration-20261116.md)。参考图 SVG 浏览器完整兼容及其它台账缺口继续保留，整体 INCOMPLETE。

@@ -706,7 +706,7 @@ void Editor::paintDocumentTab(ui::Graphics& g) {
     // Respect the actual transformed clip before visiting every open project.
     if(g.getClipBounds().isEmpty() && !(smoke_ && _wgetenv(L"MOONSPRITE_PROJECT_TAB_REFERENCE"))){g.restoreClip();return;}
 
-    for(std::size_t i=0;i<projects_.size();++i){const auto& value=projectDocument(i);auto tab=uiLogical(projectTabRects_[i]);tab.offset(-bounds().x/uiScale,-bounds().y/uiScale);const bool active=i==activeProject_ && !homeOpen_;
+    for(std::size_t i=0;i<projects_.size();++i){if(projectTabRects_[i].isEmpty())continue;const auto& value=projectDocument(i);auto tab=uiLogical(projectTabRects_[i]);tab.offset(-bounds().x/uiScale,-bounds().y/uiScale);const bool active=i==activeProject_ && !homeOpen_;
 
       skin_.draw(g,active?"project_tab.active":"project_tab.inactive",tab);
 
@@ -835,9 +835,6 @@ void Editor::createToolOptions() {waitBrushWrites(this);
  createLiquifyOptions();
     createSmoothOptions();
     createAirbrushOptions();
-
-
-
     loadSessionToolPreferences(false);
 
     auto icon=[&](const char* name,const char32_t* hint,bool enabled=false) {
@@ -849,7 +846,6 @@ void Editor::createToolOptions() {waitBrushWrites(this);
     };
 
     auto label=[&](const char32_t* text) {auto control=button(text,[]{});control->labelOnly=true;control->setEnabled(false);toolControls_.push_back({control,font_.measure(text)});return control;};
-
     brushShapeButton_=icon("brush-round",U"笔刷形状",true);brushShapeButton_->Click.connect([this]{brushShapeMenu();});
 
     auto ditherButton=icon("dither",U"笔刷抖动",true);ditherButton->Click.connect([this]{showBrushDitherPopup();});imageBrushButton_=icon("image",U"图像笔刷",true);imageBrushButton_->Click.connect([this]{showPencilImageBrushes();});
@@ -888,7 +884,6 @@ void Editor::createToolOptions() {waitBrushWrites(this);
       return control;
 
     };
-
     brushSizeInput_=number(false);label(U"不透明度");brushOpacityInput_=number(true);
 
     {auto scrubLabel=static_cast<PixelButton*>(toolControls_[4].first);scrubLabel->setEnabled(true);scrubLabel->framePress=[this](const ui::MouseMessage& msg){numberScrubLastX_=msg.position().x;};scrubLabel->frameDrag=[this](int x){brushOpacityInput_->adjustNumber((x-numberScrubLastX_)*((os::instance()->keyModifiers() & ui::kKeyShiftModifier)?10:1));numberScrubLastX_=x;};}
@@ -909,7 +904,6 @@ void Editor::createToolOptions() {waitBrushWrites(this);
     for(int i=0;i<6;++i){auto b=icon(symmetryIcons[i],i<5?U"对称绘制":U"对称轴设置");b->setEnabled(true);symmetryButtons_[i]=b;b->Click.connect([this,i]{if(i==5)showSymmetryMenu();else toggleSymmetry(i);});}
 
     for(std::size_t i=symmetryStart;i+1<toolControls_.size();++i) toolControls_[i].gap=-1;
-
     commands_[3]->icon="undo";commands_[4]->icon="redo";
 
     for(auto b:{commands_[3],commands_[4]}) {b->iconSkin=&toolIcons_;b->iconWithCaption=true;}
@@ -2059,13 +2053,18 @@ void Editor::createEyedropperOptions(){
 
     registerNativeCanvasColorSurface(*this,[this](gfx::Point screen)->std::optional<Pixel>{
       if(!documentOpen_||homeOpen_||!display())return {};
-      const auto p=display()->nativeWindow()->pointFromScreen(screen);if(!canvasViewport().contains(p))return {};
+      const auto p=display()->nativeWindow()->pointFromScreen(screen);
+      const auto originalSession=activeSession_;const auto originalDocument=activeDocument_;const auto originalRepeat=tileRepeatIdentity_;const auto source=currentTools().eyedropperSource;
+      struct RestoreSample {Editor& e;std::shared_ptr<ProjectSession> session;std::shared_ptr<Document> document;std::uint64_t repeat;~RestoreSample(){e.activeSession_=session;e.activeDocument_=document;e.tileRepeatIdentity_=repeat;}} restoreSample{*this,originalSession,originalDocument,originalRepeat};
+      if((documentPanes_.visible()||!documentPanes_.floating.empty())&&!advancedActive())for(const auto& session:projects_)if(std::to_string(session->value->identity())==documentPaneAt(p)){activeSession_=session;activeDocument_=session->value;tileRepeatIdentity_=session->value->identity();break;}
+      if(!canvasViewport().contains(p))return {};
       if(const auto color=CanvasReferenceController::sample(*this,p))return color;
       auto at=canvasDocumentPoint(p);
       if(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({at.x,at.y},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return Pixel(0);at={mapped->local.x,mapped->local.y};}
       if(at.x<0||at.y<0||at.x>=currentDocument().width()||at.y>=currentDocument().height())return Pixel(0);
-      return sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),currentTools().eyedropperSource);
-    },[this](bool){updateNavigationCursor();},[this](gfx::Point screen){return documentOpen_&&!homeOpen_&&display()&&canvasViewport().contains(display()->nativeWindow()->pointFromScreen(screen));});
+      return sampleEyedropper(currentDocument(),int(std::floor(at.x)),int(std::floor(at.y)),source);
+    },[this](bool){updateNavigationCursor();},[this](gfx::Point screen){if(!documentOpen_||homeOpen_||!display())return false;const auto point=display()->nativeWindow()->pointFromScreen(screen);
+      if((documentPanes_.visible()||!documentPanes_.floating.empty())&&!advancedActive()){return !documentPaneAt(point).empty();}return canvasViewport().contains(point);});
     setGlobalColorDragEnvironment(this,[this]{
       GlobalColorDragEnvironment e;e.skin=&skin_;e.magnifier=eyedropperLensEnabled_;e.line=runtimePreferences_.index("tools.eyedropperMagnifierStyle.Select")==1;e.distortion=runtimePreferences_.flag("tools.eyedropperMagnifierDistortionEnabled");
       const double sizes[]{.5,.75,1,1.25};e.size=sizes[std::clamp(eyedropperLensSize_,0,3)];e.masks=eyedropperLensMasks_;e.pointers=eyedropperLensPointers_;

@@ -6,8 +6,15 @@
 #include "quick_command_composite.h"
 #include "quick_command_drag_handle.h"
 #include <winrt/base.h>
+#include "ui/property.h"
 namespace moon::editor {
 namespace {
+// EditorCanvasHost.tsx mounts a bar per canvas. Inactive document bars remain
+// collapsed; the first toggle activates that document and expands its bar.
+struct PaneQuickBars final:ui::Property {
+ std::map<std::uint64_t,std::array<QuickCommandBar*,4>> bars;
+ PaneQuickBars():ui::Property("moonsprite.pane-quick-bars"){}
+};
 const quick::Metadata* metadata(const std::string& id){for(auto& m:quick::metadata)if(id==m.id)return &m;return nullptr;}
 std::string utf8(const std::u16string& value){return winrt::to_string(winrt::hstring(reinterpret_cast<const wchar_t*>(value.data()),std::uint32_t(value.size())));}
 std::u16string utf16(const std::string& value){auto s=winrt::to_hstring(value);return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
@@ -27,7 +34,36 @@ void Editor::initializeQuickCommands(){
 }
 void Editor::saveQuickCommands(){try{if(!runtimePreferencesReadable_)throw std::runtime_error("原首选项读取失败，未覆盖");auto next=runtimePreferences_;next.values["quickCommands.bars.json"]=quick::encodeBars(quickBarsConfig_);if(!smoke_){auto text=next.encode();auto path=palettePreferencePath().parent_path()/"editor-preferences.txt";std::filesystem::create_directories(path.parent_path());writeExportBytesAtomic(path,{text.begin(),text.end()});}runtimePreferences_=std::move(next);}catch(const std::exception& e){status_=U"快捷指令栏保存失败："+unicodeText(e.what());}}
 void Editor::syncQuickCommands(){
- for(unsigned i=0;i<4;++i)if(auto b=quickBars_[i]){const bool show=documentOpen_&&!homeOpen_&&runtimePreferences_.flag("quickCommands.quickCommandBarEnabled")&&quickBarsConfig_[i].edge!=quick::Edge::None;
+ auto panes=std::dynamic_pointer_cast<PaneQuickBars>(getProperty("moonsprite.pane-quick-bars"));
+ if(!panes){panes=std::make_shared<PaneQuickBars>();setProperty(panes);}
+ // Widgets are parent-owned, and removed before discarding their identity.
+ for(auto it=panes->bars.begin();it!=panes->bars.end();){
+  const bool exists=std::any_of(projects_.begin(),projects_.end(),[&](const auto& session){return session->value->identity()==it->first;});
+  if(!exists){for(auto bar:it->second){removeChild(bar);delete bar;}it=panes->bars.erase(it);}else ++it;
+ }
+ if((documentPanes_.visible()||!documentPanes_.floating.empty())&&!advancedActive())for(const auto& session:projects_){
+  const auto identity=session->value->identity();if(session==activeSession_||documentPaneBounds(std::to_string(identity)).isEmpty())continue;
+  if(!panes->bars.count(identity)){
+   auto& bars=panes->bars[identity];
+   for(unsigned i=0;i<4;++i){auto b=new QuickCommandBar(font_,skin_,toolIcons_);addChild(b);bars[i]=b;b->setVisible(false);b->setProperty(std::make_shared<ui::Property>("moonsprite.document-controls."+std::to_string(identity)));
+    b->setProperty(std::make_shared<quick::Composite>([this](ui::Widget& widget,ui::PaintEvent& event,const quick::Composite::Paint& paint){compositeControl(widget,event,paint);}));
+    b->setProperty(std::make_shared<quick::ShortcutTooltip>([this](const std::string& id){return quick::primaryShortcut(shortcutBindings_,id);}));
+    b->changed=[this,identity,i](const quick::Bar& value){
+     const auto requested=value;
+     const auto it=std::find_if(projects_.begin(),projects_.end(),[&](const auto& owner){return owner->value->identity()==identity;});if(it==projects_.end()||pending_!=Pending::None)return;
+     const auto index=std::size_t(it-projects_.begin());activateProject(index);if(currentDocument().identity()!=identity)return;
+     quickBarsConfig_[i]=requested;saveQuickCommands();syncQuickCommands();
+    };
+   }
+  }
+ }
+ for(auto& [identity,bars]:panes->bars){
+  const auto area=documentPaneBounds(std::to_string(identity));
+  for(unsigned i=0;i<4;++i){auto b=bars[i];const bool show=!getProperty("moonsprite.pane-return-preview."+std::to_string(identity))&&documentOpen_&&!homeOpen_&&!advancedActive()&&(documentPanes_.visible()||!documentPanes_.floating.empty())&&identity!=currentDocument().identity()&&!area.isEmpty()&&runtimePreferences_.flag("quickCommands.quickCommandBarEnabled")&&quickBarsConfig_[i].edge!=quick::Edge::None;
+   b->setVisible(show);if(show){auto collapsed=quickBarsConfig_[i];collapsed.expanded=false;b->sync(collapsed,area,runtimePreferences_.flag("quickCommands.quickCommandBarTranslucent"),pending_==Pending::None&&!historyGestureBusy());}
+  }
+ }
+ for(unsigned i=0;i<4;++i)if(auto b=quickBars_[i]){for(const auto& session:projects_)b->removeProperty("moonsprite.document-controls."+std::to_string(session->value->identity()));b->setProperty(std::make_shared<ui::Property>("moonsprite.document-controls."+std::to_string(currentDocument().identity())));const bool show=!getProperty("moonsprite.pane-return-preview."+std::to_string(currentDocument().identity()))&&documentOpen_&&!homeOpen_&&runtimePreferences_.flag("quickCommands.quickCommandBarEnabled")&&quickBarsConfig_[i].edge!=quick::Edge::None;
   b->setVisible(show);if(show)b->sync(quickBarsConfig_[i],canvasViewport(),runtimePreferences_.flag("quickCommands.quickCommandBarTranslucent"),pending_==Pending::None&&!historyGestureBusy());
   if(show&&gradientPending_){for(auto control:gradientControls_)if(control.first->isVisible()&&control.first->bounds().intersects(b->bounds())){b->setVisible(false);break;}}}
 }

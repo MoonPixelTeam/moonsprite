@@ -17,6 +17,27 @@
 
 namespace moon::editor {
 namespace {
+// EditorCanvasHost activates the document before a scrollbar receives input.
+// Forward that first event to the newly bound active scrollbar so its capture
+// survives the inactive widget being hidden during activation.
+class PaneScrollBar final:public PixelScrollBar {
+public:
+ using PixelScrollBar::PixelScrollBar;
+ std::function<PixelScrollBar*()> activate;
+ std::function<void(ui::Widget&,ui::PaintEvent&,const std::function<void()>&)> composite;
+ void onPaint(ui::PaintEvent& event)override{if(composite)composite(*this,event,[&]{PixelScrollBar::onPaint(event);});else PixelScrollBar::onPaint(event);}
+ bool onProcessMessage(ui::Message* message)override{
+  if(isEnabled()&&activate&&((message->type()==ui::kMouseDownMessage&&!static_cast<ui::MouseMessage*>(message)->middle())||message->type()==ui::kMouseWheelMessage)){
+   if(auto target=activate();target&&target!=this)return target->onProcessMessage(message);
+  }
+  return PixelScrollBar::onProcessMessage(message);
+ }
+};
+struct PaneScrollBars final:ui::Property {
+ std::map<std::uint64_t,std::array<PixelScrollBar*,2>> bars;
+ bool layingOut=false;
+ PaneScrollBars():ui::Property("moonsprite.pane-scrollbars"){}
+};
 struct WorkspaceWrite {std::filesystem::path root;std::string sizes,panels;};
 void writeWorkspaceBatch(const WorkspaceWrite& value){
  std::filesystem::create_directories(value.root);
@@ -157,6 +178,9 @@ void Editor::dockColumn(int id,panels::Dock dock){initializeDocking();const auto
 void Editor::clipColumn(ui::Graphics& g,int id,bool physical)const {
 
     if(advancedActive())return;
+    if(id<0&&getProperty("moonsprite.pane-surface-paint")){
+      for(const auto& f:documentPanes_.floating)if(f.document==std::to_string(currentDocument().identity())&&f.pinned)return;
+    }
 
     if(!docking_.custom)return;const auto geometry=columnGeometry(uiLogical(bounds()));const auto damage=g.getClipBounds();gfx::Region clip(damage);const int own=id<0?-1:docking_.groupOf(id);
     const bool compare=smoke_ && _wgetenv(L"MOONSPRITE_OCCLUSION_REFERENCE");
@@ -302,20 +326,32 @@ void Editor::raiseDockWidgets() {
 
     };
 
-    for(auto bar:quickBars_)raise(bar);
+    // EditorCanvasHost mounts quick bars for every visible document pane.
+    // Keep them below floating columns and modal controls in the same order.
+    for(auto child:children())if(dynamic_cast<QuickCommandBar*>(child)||child->getProperty("moonsprite.document-controls."+std::to_string(currentDocument().identity())))raise(child);
+    for(const auto& session:projects_)for(auto child:children())if(child->getProperty("moonsprite.document-controls."+std::to_string(session->value->identity())))raise(child);
     const auto visibility=columnVisibility();std::vector<int> overlays;
 
     for(const auto& group:docking_.groups)for(int id:group.tabs)if(docking_.shown(id,visibility)){if(group.dock==panels::Dock::Floating && (docking_.custom || id==3))overlays.push_back(id);else column(id);}
 
+    auto pane=[&](const auto& floating){
+      for(auto child:children())if(child->getProperty("moonsprite.document-pane."+floating.document))raise(child);
+      for(auto child:children())if(child->getProperty("moonsprite.document-controls."+floating.document))raise(child);
+      if(floating.document==std::to_string(currentDocument().identity())){raise(canvasHorizontal_);raise(canvasVertical_);}
+    };
+    for(const auto& floating:documentPanes_.floating)if(!floating.pinned)pane(floating);
     if(pending_!=Pending::None)overlays.push_back(-1);
 
     std::stable_sort(overlays.begin(),overlays.end(),[this](int a,int b){if(a<0)return false;if(b<0)return true;return groupFocus(a)<groupFocus(b);});
 
-    for(int id:overlays){if(id>=0)column(id);else{raise(modalSurface_);const auto controls=children();for(auto child:controls)if(modalControl(child))raise(child);}}
+    for(int id:overlays)if(id>=0)column(id);
+    for(const auto& floating:documentPanes_.floating)if(floating.pinned)pane(floating);
+    for(int id:overlays){if(id<0){raise(modalSurface_);const auto controls=children();for(auto child:controls)if(modalControl(child))raise(child);}}
 
     // Legacy rail180, floating220+, rail with an open flyout240.
     if(toolRailFlyoutOpen_ && pending_==Pending::None){for(auto button:toolRail_)raise(button);raise(railScrollBar_);}
     if(dockFeedback_ && !dockFeedback_->hasFlags(ui::HIDDEN))raise(dockFeedback_);
+    for(auto child:children())if(child->getProperty("moonsprite.document-pane-drag-overlay")&&!child->hasFlags(ui::HIDDEN))raise(child);
     std::unordered_set<ui::Widget*> seen;std::vector<ui::Widget*> suffix;suffix.reserve(requested.size());
     // Raising a widget twice gives its last occurrence priority.
     for(auto at=requested.rbegin();at!=requested.rend();++at)if(seen.insert(*at).second)suffix.push_back(*at);
@@ -584,7 +620,17 @@ void Editor::updatePanelGesture(gfx::Point pointer) {
 
   }
 
-bool Editor::dispatchPanelGesture(ui::Message* msg){if(advancedActive()&&pending_==Pending::None&&panelGesture_.id<0&&sizeDrag_==SizeDrag::None)return false;return manager()->isWidgetClickable(this) && (processLayerLabelResize(msg) || processSizeDrag(msg) || processLoopTrack(msg) || processPanelGesture(msg));}
+bool Editor::dispatchPanelGesture(ui::Message* msg){
+ if(advancedActive()&&pending_==Pending::None&&panelGesture_.id<0&&sizeDrag_==SizeDrag::None)return false;
+ // Floating documents sit above docked columns; pinned documents also sit
+ // above floating columns. Do not start a gesture on the covered column.
+ if(msg->type()==ui::kMouseDownMessage&&pending_==Pending::None&&!homeOpen_&&!hasCapture()){
+  const auto point=static_cast<ui::MouseMessage*>(msg)->position();
+  for(const auto& pane:documentPanes_.floating)if(pane.pinned||topFloatingColumnAt(point)<0)
+   for(auto child:children())if(child->getProperty("moonsprite.document-pane."+pane.document)&&child->isVisible()&&child->bounds().contains(point))return false;
+ }
+ return manager()->isWidgetClickable(this) && (processLayerLabelResize(msg) || processSizeDrag(msg) || processLoopTrack(msg) || processPanelGesture(msg));
+}
 
 Editor::PanelResizeHit Editor::panelResizeAt(gfx::Point point)const{
     if(advancedActive())return {};
@@ -775,7 +821,7 @@ Point Editor::canvasPoint(gfx::Point p) const {
 
   }
 
-gfx::Rect Editor::canvasFullViewport() const {
+gfx::Rect Editor::documentWorkspaceViewport() const {
 
     const auto rc=uiLogical(clientBounds()); const auto l=workspaceLayout(rc);
 
@@ -787,6 +833,12 @@ gfx::Rect Editor::canvasFullViewport() const {
 
     return toDisplay(gfx::Rect(content.x+1,content.y+1,content.w-1,content.h-2));
 
+  }
+
+gfx::Rect Editor::canvasFullViewport() const {
+    if(documentPaneViewport_)return *documentPaneViewport_;
+    const auto pane=documentPaneBounds(std::to_string(currentDocument().identity()));
+    return pane.isEmpty()?documentWorkspaceViewport():pane;
   }
 
 gfx::Rect Editor::canvasViewport() const {
@@ -804,20 +856,58 @@ gfx::Rect Editor::canvasViewport() const {
   }
 
 void Editor::layoutCanvasScrollBars() {
-
-    if(!canvasHorizontal_)return;const auto r=canvasViewport(),full=canvasFullViewport();
-
-    const auto b=canvasDisplayBounds();auto setup=[&](PixelScrollBar* bar,bool vertical){const int size=vertical?b.h:b.w,start=vertical?r.y:r.x,page=vertical?r.h:r.w,origin=vertical?b.y:b.x;
-
-      const int upper=clampCanvasAxis(INT_MAX,start,page,size),lower=clampCanvasAxis(INT_MIN,start,page,size);
-
-      const auto track=PixelScrollBar::gridBounds(r,vertical);if(bar->bounds()!=track)bar->setDockBounds(track);bar->configure(upper-lower+page,page,upper-origin);bar->wheelStep=24*uiScale;
-
-      bar->setVisible(documentOpen_ && !homeOpen_ && (vertical?r.w<full.w:r.y2()<full.y2()));bar->setEnabled(pending_==Pending::None && !currentDocument().active());};
-
-    setup(canvasHorizontal_,false);setup(canvasVertical_,true);
-
+ if(!canvasHorizontal_)return;
+ auto state=std::dynamic_pointer_cast<PaneScrollBars>(getProperty("moonsprite.pane-scrollbars"));
+ if(!state){state=std::make_shared<PaneScrollBars>();setProperty(state);}
+ if(state->layingOut)return;
+ state->layingOut=true;struct Reset{bool& value;~Reset(){value=false;}} reset{state->layingOut};
+ auto configure=[&](PixelScrollBar* bar,bool vertical){
+  const auto r=canvasViewport(),full=canvasFullViewport(),b=canvasDisplayBounds();
+  const int size=vertical?b.h:b.w,start=vertical?r.y:r.x,page=vertical?r.h:r.w,origin=vertical?b.y:b.x;
+  const int upper=clampCanvasAxis(INT_MAX,start,page,size),lower=clampCanvasAxis(INT_MIN,start,page,size);
+  const auto track=PixelScrollBar::gridBounds(r,vertical);if(bar->bounds()!=track)bar->setDockBounds(track);
+  bar->configure(upper-lower+page,page,upper-origin);bar->wheelStep=24*uiScale;
+  bar->setVisible(!getProperty("moonsprite.pane-return-preview."+std::to_string(currentDocument().identity()))&&documentOpen_&&!homeOpen_&&(vertical?r.w<full.w:r.y2()<full.y2()));bar->setEnabled(pending_==Pending::None&&!currentDocument().active());
+ };
+ configure(canvasHorizontal_,false);configure(canvasVertical_,true);
+ for(auto it=state->bars.begin();it!=state->bars.end();){
+  if(std::none_of(projects_.begin(),projects_.end(),[&](const auto& owner){return owner->value->identity()==it->first;})){
+   for(auto bar:it->second){removeChild(bar);delete bar;}it=state->bars.erase(it);
+  }else ++it;
+ }
+ const auto selected=activeSession_;const auto document=activeDocument_;
+ struct Restore{Editor& e;std::shared_ptr<ProjectSession> session;std::shared_ptr<Document> document;~Restore(){e.activeSession_=session;e.activeDocument_=document;}} restore{*this,selected,document};
+ for(const auto& session:projects_){
+  const auto identity=session->value->identity();const auto area=documentPaneBounds(std::to_string(identity));
+  const bool show=session!=selected&&!area.isEmpty()&&!advancedActive()&&(documentPanes_.visible()||!documentPanes_.floating.empty());
+  if(show&&!state->bars.count(identity)){
+   auto& bars=state->bars[identity];
+   for(int axis=0;axis<2;++axis){
+    auto bar=new PaneScrollBar(skin_,axis!=0);addChild(bar);bar->setTransparent(false);bars[axis]=bar;
+    bar->composite=[this](ui::Widget& widget,ui::PaintEvent& event,const std::function<void()>& paint){compositeControl(widget,event,paint);};
+    bar->activate=[this,identity,axis]() -> PixelScrollBar* {
+     if(pending_!=Pending::None||homeOpen_)return nullptr;
+     for(std::size_t index=0;index<projects_.size();++index)if(projects_[index]->value->identity()==identity){activateProject(index);return currentDocument().identity()==identity?(axis?canvasVertical_:canvasHorizontal_):nullptr;}
+     return nullptr;
+    };
+    bar->setProperty(std::make_shared<ui::Property>("moonsprite.document-controls."+std::to_string(identity)));
+    bar->changed=[this,weak=std::weak_ptr<ProjectSession>(session),axis](int value){
+     const auto owner=weak.lock();if(!owner||pending_!=Pending::None)return;
+     const auto beforeSession=activeSession_;const auto beforeDocument=activeDocument_;
+     activeSession_=owner;activeDocument_=owner->value;
+     struct RestoreOwner{Editor& e;std::shared_ptr<ProjectSession> session;std::shared_ptr<Document> document;~RestoreOwner(){e.activeSession_=session;e.activeDocument_=document;}} restore{*this,beforeSession,beforeDocument};
+     const auto v=canvasViewport(),b=canvasDisplayBounds();const int upper=clampCanvasAxis(INT_MAX,axis?v.y:v.x,axis?v.h:v.w,axis?b.h:b.w);
+     panCanvasDisplay(axis?0:upper-value-b.x,axis?upper-value-b.y:0);constrainCanvas();saveDocumentView();
+     activeSession_=beforeSession;activeDocument_=beforeDocument;layoutCanvasScrollBars();invalidateRect(documentPaneBounds(std::to_string(owner->value->identity())));
+    };
+   }
   }
+  if(auto it=state->bars.find(identity);it!=state->bars.end()){
+   activeSession_=session;activeDocument_=session->value;
+   for(int axis=0;axis<2;++axis)if(show)configure(it->second[axis],axis!=0);else it->second[axis]->setVisible(false);
+  }
+ }
+}
 
 gfx::Rect Editor::changedCanvasPixels() const {
 
@@ -854,6 +944,11 @@ void Editor::invalidateStrokePixels(std::uint64_t before) {
   }
 
 void Editor::fitCanvas() {
+
+    if((documentPanes_.visible()||!documentPanes_.floating.empty())&&!advancedActive()){
+      const auto area=canvasViewport();currentView().zoom=std::max(1,std::min(8,std::min((area.w/uiScale-24)/currentDocument().width(),(area.h/uiScale-24)/currentDocument().height())));
+      const int w=int(currentDocument().width()*canvasScale()),h=int(currentDocument().height()*canvasScale());currentView().canvas={area.center().x-w/2,area.center().y-h/2,w,h};layoutCanvasScrollBars();invalidate();return;
+    }
 
     const auto rc=uiLogical(bounds()); const auto l=workspaceLayout(rc);
 
@@ -1379,6 +1474,10 @@ void Editor::layoutPickerColumn(int id){
 
 void Editor::compositeControl(ui::Widget& widget,ui::PaintEvent& ev,const std::function<void()>& paint){
       const int id=widgetColumn(&widget);
+      std::string paneOwner;
+      for(const auto& session:projects_)if(widget.getProperty("moonsprite.document-controls."+std::to_string(session->value->identity())))paneOwner=std::to_string(session->value->identity());
+      if(&widget==canvasHorizontal_||&widget==canvasVertical_)paneOwner=std::to_string(currentDocument().identity());
+      const bool pinnedOwner=std::any_of(documentPanes_.floating.begin(),documentPanes_.floating.end(),[&](const auto& pane){return pane.document==paneOwner&&pane.pinned;});
 
       auto& g=*ev.graphics();g.saveClip();
 
@@ -1388,7 +1487,7 @@ void Editor::compositeControl(ui::Widget& widget,ui::PaintEvent& ev,const std::f
 
       gfx::Region visible(widget.clientBounds());const auto geometry=columnGeometry(uiLogical(clientBounds()));
 
-      for(int other=0;other<panels::columnCount;++other){if(!geometry.shown[other] || !columnFloating(other))continue;
+      for(int other=0;other<panels::columnCount;++other){if(pinnedOwner || !geometry.shown[other] || !columnFloating(other))continue;
 
         if(id>=0 && docking_.groupOf(other)==docking_.groupOf(id))continue;
 
@@ -1400,6 +1499,15 @@ void Editor::compositeControl(ui::Widget& widget,ui::PaintEvent& ev,const std::f
 
       }
 
+      if(!modalControl(&widget)){
+        const auto& owner=paneOwner;
+        int ownRank=-1,rank=0;for(bool pinned:{false,true})for(const auto& f:documentPanes_.floating)if(f.pinned==pinned){if(f.document==owner)ownRank=rank;++rank;}
+        rank=0;for(bool pinned:{false,true})for(const auto& f:documentPanes_.floating)if(f.pinned==pinned){
+          const int currentRank=rank++;if(f.document==owner||currentRank<ownRank)continue;
+          if(id>=0&&columnFloating(id)&&!pinned)continue;
+          const auto& r=f.initial;visible-=gfx::Region(widget.toClient(gfx::Rect(int(r.left),int(r.top),int(r.width),int(r.height))));
+        }
+      }
       g.clipRegion(visible);
 
       auto paintControl=[&]{

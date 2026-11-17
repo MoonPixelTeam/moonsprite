@@ -151,6 +151,8 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       observeShortcutInputs(msg);syncShortcutTools(*msg);
     }
     struct ShortcutAfterMessage {std::function<void()> action;~ShortcutAfterMessage(){action();}} shortcutAfter{[this,msg,shortcutEvent]{if(shortcutEvent)syncShortcutTools(*msg);}};
+    if(projectTabDragging_&&processProjectTabs(msg))return true;
+    if(processDocumentPanes(msg))return true;
     if(CanvasReferenceController::process(*this,msg))return true;
     if(processQuickEyedropper(msg))return true;
     // The source toolbar is a sibling for column chrome layout, but belongs
