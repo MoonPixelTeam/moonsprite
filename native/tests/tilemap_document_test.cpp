@@ -653,6 +653,14 @@ static void checkIndexedGradientReference(){
   check(d.timeline().findCelById(cel.id)->surface->pixels==cel.surface->pixels,"indexed reference source preserved");
   d.undo();check(d.canvasPixels()==before&&sameSheet(),"indexed reference undo");
   d.redo();check(d.canvasPixels()==after,"indexed reference redo");
+  if(!tile){for(bool pattern:{false,true}){
+   d.undo();const auto baseline=d.canvasPixels();const auto position=d.historyPosition();
+   PatternFillOptions stamp;
+   check(pattern?d.fillPatternPixels({0,0},0xff778899,stamp,options):d.fillPixels({0,0},0xff778899,options),"RGBA fill reads indexed reference");
+   const auto filled=d.canvasPixels();check(filled==std::vector<Pixel>({0xff778899,0xff778899,baseline[2]})&&d.historyPosition()==position+1,"RGBA fill indexed color barrier and one history");
+   check(d.timeline().findCelById(cel.id)->surface->pixels==cel.surface->pixels,"fill preserves indexed reference source");
+   d.undo();check(d.canvasPixels()==baseline,"reference fill undo");d.redo();check(d.canvasPixels()==filled,"reference fill redo");
+  }}
  }
 }
 int main(){try{checkIndexedGradientReference();checkHybridLargeTileRegions();checkPaintMoveDirty();checkPaintSelectionRanges();checkTilemapTransformEntry();checkLinkedHybridDeferred();checkLinkedHybridFloatingRefusal();checkLinkedHybridFloating();checkLinkedEditFloating();checkLinkedCreateFloating();checkLinkedHybridStatic();checkLinkedEditStatic();checkLinkedCreateStatic();checkLinkedPaintMove();}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}return runExistingTilemapDocumentTests();}

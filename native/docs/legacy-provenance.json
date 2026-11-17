@@ -18671,6 +18671,13 @@
         "legacyEvidence": "Actual workspace-magic-eraser command matches the full source before selection intersection, then clearSelection clips to original visible content bounds. Indexed matching resolves first-ID RGBA even at tolerance zero; content bounds use any opaque duplicate. Existing PixelEdit point replay/cancel normalizes current palette while dense patches preserve raw words. Actual mask decoders canonicalize transparent RGB and admit opaque scalar grayscale. Internal reuse reviewed under legacy/LICENSE.",
         "nativeAdaptation": "Reuse Wand, RasterColorContext, compiled composite sampling bounds and existing stroke/MaskRasterHistory transactions. Resolve indexed active pixels before matching, pass palette context into visible composition, clip writes to original visible storage bounds, initialize pending lookup after reset, preserve sparse geometry/address/shared owners, and keep indexed cancellation context. No new UI/algorithm or performance project. New actual-legacy oracle and regression targets cover ordinary, masks, linked and codec cases; production indexed admission remains closed. See docs/magic-eraser-migration-20261116.md.",
         "validation": "2492 actual legacy indexed/RGBA magic eraser cases including60 dense histories,144 native linked/shared-owner/three-codec variants,and48 scalar-mask transactions passed. Legacy2 files/25 tests passed8.32s;9 focused CTests passed21.30s. Official Release and affected test builds exit0. Existing real-input smoke initially lacked isolated preferences; fixture now supplies a unique owned directory and restores prior override. Final official --magic-eraser-only exit0;sole exe2026-11-16 07:32:45,30764544bytes. Provenance996/evidence snapshots,Editor597,architecture597 sources/271targets and diff passed;strict exits1 for global known gaps. See docs/magic-eraser-migration-20261116.md. No full manual desktop/image acceptance or performance work;production indexed admission remains closed."
+      },
+      "mixedFillReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "tools-fill sourceColorAt matches visible composite colors independently of target raster format. FillCompositeSource now always owns the document composite color context; its separate optional indexed-target context still controls staged ID resolution and writes. Directed mixed-format fixtures cover solid and pattern fills on full, sparse and absent RGBA target cels under an indexed reference layer, color barriers, unchanged reference IDs, one history entry and undo/redo. Release tilemap-document build and CTest passed (0.39s). No GUI rebuild or manual acceptance; indexed production admission remains closed."
       }
     },
     {
@@ -33176,6 +33183,13 @@
           "legacy/src/renderer/src/core/document-composite-region.ts"
         ],
         "nativeAdaptation": "refreshPendingGradientRegion uses createCompositePointSampler when fillReference is visible-layers; selection compares resolved colors. Supply document RasterColorContext to all remaining gradient-reference composites, including tilemap begin, ordinary absent/full/sparse begin and option refresh shared with masks. Six directed mixed-format fixtures cover Create/Hybrid/Edit, full/sparse/absent RGBA targets, indexed top-layer barrier, initial and changed reference options, cancel, authoritative tile resources, one commit, undo/redo and reference source preservation. Friend fixture installs indexed test state without bypassing production admission gates. Release tilemap-document CTest passed (0.89s); no GUI build or manual acceptance."
+      },
+      "mixedFillReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/document-composite-region.ts"
+        ],
+        "nativeAdaptation": "tools-fill sourceColorAt matches visible composite colors independently of target raster format. FillCompositeSource now always owns the document composite color context; its separate optional indexed-target context still controls staged ID resolution and writes. Directed mixed-format fixtures cover solid and pattern fills on full, sparse and absent RGBA target cels under an indexed reference layer, color barriers, unchanged reference IDs, one history entry and undo/redo. Release tilemap-document build and CTest passed (0.39s). No GUI rebuild or manual acceptance; indexed production admission remains closed."
       }
     },
     {

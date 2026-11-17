@@ -7626,3 +7626,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 工程信息颜色模式与缩时统计
 
 对照旧版 ProjectInfoDialog.tsx 及中文文案，工程信息显示实际 RGBA/索引/灰度模式、缩时快照数量和数据量。数据量优先取内嵌数据长度，否则取本地引用长度，不读取录像文件、不触发刷新或写入。沿用既有 projectStorage 单位和面板布局。Release project-information-tests 构建及 project-information CTest 通过（0.05秒），覆盖内嵌优先、本地引用及空记录；未重建 GUI、未做弹窗运行或人工图像验收。整体迁移 INCOMPLETE。来源见 projectInfoRecording20261118。
+
+## 2026-11-18 混合格式填充参考取色
+
+对照旧版 tools-fill.ts::sourceColorAt，填充参考可见图层时始终传入文档色板，目标为RGBA时也能解析其他索引色图层；目标索引写入仍使用既有独立上下文。Release tilemap-document 构建及 CTest 通过（0.39秒），新增普通/稀疏/空Cel的纯色与图案填充，核对索引色边界、参考源不变、单条历史及撤销重做。未重建GUI、未做人工验收；索引色生产入口仍关闭，整体INCOMPLETE。来源见 mixedFillReference20261118。

@@ -27,15 +27,15 @@ public:
  ~FillSamplingScope(){slot_=previous_;}
 };
 class FillCompositeSource {
- const Document& d_;const RasterColorContext* colors_;const CompositeSamplingBounds* bounds_;
+ const Document& d_;RasterColorContext compositeColors_;const RasterColorContext* colors_;const CompositeSamplingBounds* bounds_;
  bool staged_;std::string root_;std::vector<Pixel> preview_;const std::vector<Pixel>& storage_;
 public:
- FillCompositeSource(const Document& d,const std::vector<Pixel>& storage,const timeline::Surface* sparse,const RasterColorContext* colors,const CompositeSamplingBounds* bounds):d_(d),colors_(colors),bounds_(bounds),staged_(sparse||!d.timeline().findCel(d.layer().id,d.frame().id)),storage_(storage){
+ FillCompositeSource(const Document& d,const std::vector<Pixel>& storage,const timeline::Surface* sparse,const RasterColorContext* colors,const CompositeSamplingBounds* bounds):d_(d),compositeColors_(fillColors(d)),colors_(colors),bounds_(bounds),staged_(sparse||!d.timeline().findCel(d.layer().id,d.frame().id)),storage_(storage){
   if(staged_&&colors_){preview_.reserve(storage.size());for(auto p:storage)preview_.push_back(colors_->rgba(timeline::RasterFormat::Indexed,p));}
   if(sparse)root_=d.timeline().resolveSurface(d.cel().id).source->id;
  }
  void changed(std::size_t index,std::size_t count,Pixel value){if(staged_&&colors_)std::fill_n(preview_.begin()+index,count,colors_->rgba(timeline::RasterFormat::Indexed,value));}
- std::vector<Pixel> read(CompositeRegion region)const{return compositeNormalRegion(d_.timeline(),d_.frame().id,region,staged_?d_.layer().id:std::string{},staged_?(colors_?&preview_:&storage_):nullptr,staged_?d_.width():0,0,0,false,{},root_,nullptr,nullptr,colors_,bounds_);}
+ std::vector<Pixel> read(CompositeRegion region)const{return compositeNormalRegion(d_.timeline(),d_.frame().id,region,staged_?d_.layer().id:std::string{},staged_?(colors_?&preview_:&storage_):nullptr,staged_?d_.width():0,0,0,false,{},root_,nullptr,nullptr,&compositeColors_,bounds_);}
  Pixel point(int x,int y)const{return read({x,y,1,1}).front();}
 };
 // tools-fill enqueueIfMatching paints the popped pixel before testing its
