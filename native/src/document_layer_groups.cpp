@@ -452,7 +452,7 @@ bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplic
  const bool ordinaryLocal=clip.sourceIdentity==identity_&&!hasFreeTileContent()&&!hasTilemapContent()&&clip.tilesets.empty()&&std::none_of(clip.layers.begin(),clip.layers.end(),[](const auto& l){return l.kind=="free-tile"||l.kind=="tilemap";});
  // Ordinary frame paste already permits a static pixel selection. Reusing the
  // structural transaction must not make the auto-link toggle disable paste.
- if(active()||(!ordinaryLocal&&(selection_||!activeMaskId_.empty())))throw std::runtime_error("Finish the active edit before frame paste");
+ if(active()||(clip.sourceIdentity!=identity_&&selection_)||(!ordinaryLocal&&!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before frame paste");
  const bool same=clip.sourceIdentity==identity_;const auto& original=timeline_.state();
  if(clip.width<1||clip.height<1||clip.layers.empty()||original.frames.size()+clip.items.size()>10000||std::max(original.layers.size(),clip.layers.size())>256)throw std::invalid_argument("Invalid frame clipboard extent");
  std::size_t pixels=0;auto charge=[&](std::size_t n){if(n>64*1024*1024-pixels)throw std::length_error("Frame paste memory limit");pixels+=n;};for(const auto& c:original.cels)if(c.surface)charge(c.surface->pixels.size());for(const auto& t:original.tilesets)charge(t.pixels.size());
