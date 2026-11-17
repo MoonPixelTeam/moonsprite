@@ -25240,6 +25240,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:128-138"
         ],
         "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
+      },
+      "indexedTweenUi20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts",
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx",
+          "legacy/src/renderer/src/components/animation-tween-preview.ts"
+        ],
+        "nativeAdaptation": "Capture the authoritative document palette, visible order, mode and precision for the modal tween lifetime. Pass RasterColorContext through between/transform source planning, preview bounds/compositing, path artwork and endpoint shape. Map morph intermediate RGBA to existing palette IDs. Convert detached indexed path artwork and endpoint surfaces to RGBA before native UI uploads, following tweenPreviewCanvas palette Map semantics; document surfaces and palette remain unchanged. Production indexed admission remains closed; GUI diagnostic uses existing RGBA fixtures."
       }
     },
     {

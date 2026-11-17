@@ -7530,3 +7530,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色补间文档事务
 
 三种补间接入文档真实色板、可见顺序、模式与精度，源规划、候选帧、预览和画布扩展使用同一色彩上下文。按旧版 paletteColorIdForCanvas 只映射现有颜色，不新增色板历史；帧插入复用现有单事务。Release 定向构建成功，animation-crossfade CTest 通过（0.27 秒），覆盖三种生成、预览一致、原始 ID、单历史、Undo/Redo、变换扩展画布及工程／恢复／历史编码的索引色清单元数据。未验证解码像素往返，未重建 GUI；生产索引色导入准入仍关闭，整体 INCOMPLETE。来源见 indexedDocumentTween20261118。
+
+## 2026-11-18 索引色补间对话框接线
+
+实际补间对话框将文档色板、顺序、模式和精度传入三种补间源规划、边界及预览；路径底图与终点轮廓按旧版 tweenPreviewCanvas 在上传前转换为 RGBA，文档原始 ID 不变。正式 Release 构建成功，--quantization-morph-check 退出0，覆盖既有 RGBA 对话框取消、应用、生成及撤销重做；未验证实际 indexed GUI 准入，生产索引色打开仍关闭。来源覆盖1042文件和 diff 检查通过；未做人工图像验收，整体迁移 INCOMPLETE。来源见 indexedTweenUi20261118。
