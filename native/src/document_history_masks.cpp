@@ -24,6 +24,7 @@ void Document::applyMaskHistoryResources(HistoryResourceReplay& prepared){
 }
 void Document::applyMaskHistoryContext(const MaskHistory& mask,bool forward){
 if(mask.maskContext){activeMaskId_=forward?mask.maskContext->after:mask.maskContext->before;maskIsolated_=forward?mask.maskContext->afterIsolated:mask.maskContext->beforeIsolated;}
+if(forward&&mask.maskToActivateOnRedo){activeMaskId_=*mask.maskToActivateOnRedo;maskIsolated_=false;}
 }
 std::size_t Document::MaskHistory::resourceBytes(const MaskRasterHistory* maskRaster)const{
  std::size_t size=0;

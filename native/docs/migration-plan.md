@@ -7796,3 +7796,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 特殊图层整帧粘贴选区与蒙版上下文
 
 对照workspace-commands-animation-frame-clipboard.ts，跨工程插入完整帧允许并保留静态像素选区；同工程帧插入、Undo与Redo显式退出蒙版编辑。特殊图层结构事务去除跨工程静态选区拒绝，同工程允许活动蒙版并应用既有普通层的退出蒙版、图层行和Cel选择历史规则；活动编辑及跨工程活动蒙版准入保持。新增八组网格/自由层、同/跨工程、蒙版隔离组合，验证选区保留、单条历史、蒙版退出及重入后Redo、帧结构、链接有效、保存重开。首次夹具误选空自由层导致创建蒙版失败，改选含像素网格层。扩大回归发现旧替色拒绝断言与用户批准资源同步冲突，改为接受后取消；又发现共用事务放宽影响特殊帧拖拽，已明确保留duplicate/drop路径原选区/蒙版拒绝。最终正式Release及测试构建退出0；frame-selection八组通过，完整free-tile-project回归通过（33.10秒），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见specialFrameSelectionContext20261118。
+
+## 2026-11-18 活动蒙版下整帧粘贴与跨工程历史上下文
+
+对照workspace-commands-clipboard.ts::pasteClipboard及workspace-commands-animation-frame-clipboard.ts，帧头作用域中的内部整帧载荷在外部系统图片优先检查之后、像素蒙版粘贴之前分流。registry与实际编辑器入口接通此路径。跨工程特殊图层帧事务允许活动蒙版，保留图层行选择，初次插入与Redo退出蒙版，Undo保留之后进入的蒙版上下文；复用maskToActivateOnRedo并使结构历史承接该已有字段。同工程继续使用明确的双向退出规则；特殊帧拖拽拒绝条件保留。扩展八组网格/自由层、同/跨工程、隔离组合，覆盖活动蒙版、Undo前及Redo前重入、静态选区、保存重开；正式菜单夹具在隔离蒙版活动时粘贴完整帧。正式Release及测试构建退出0，frame-selection通过，完整free-tile-project通过（42.85秒），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0。来源1043文件及快照检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见framePasteActiveMask20261118。

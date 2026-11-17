@@ -1587,7 +1587,14 @@
         "legacy/src/renderer/src/core/history.ts"
       ],
       "scope": "Composable MaskHistory (ten fields) and PixelSelectionHistory (five fields). Existing ordered replay fragments and original budget formulas move into private dedicated units; terminal mask-raster priority, parent focus/timeline metadata, children and notification ordering retained. Byte inverse proof recorded; runtime acceptance tracked separately in history-edit-contract.md. No new selection or mask semantics.",
-      "adaptation": "Native typed value payload and private replay/cost compilation boundary; retained original native implementation with Legacy semantic evidence. Does not claim complete selection snapshot migration."
+      "adaptation": "Native typed value payload and private replay/cost compilation boundary; retained original native implementation with Legacy semantic evidence. Does not claim complete selection snapshot migration.",
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
+      }
     },
     {
       "couplingStructuralRetentionAndContext20261113": {
@@ -20906,6 +20913,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
         ],
         "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
+      },
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
       }
     },
     {
@@ -22685,6 +22699,13 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
         ],
         "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
+      },
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
       }
     },
     {
@@ -25264,6 +25285,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy local pasteAnimationFrames inserts full frames without rejecting or changing a static canvas selection. Permit same-document static selection in existing tilemap/free frame transaction; retain active edit, special active-mask and cross-document selection restrictions pending their separate migration. Free menu frame-paste wrapper no longer rejects static selection. Actual grid-only and grid/free menu fixture checks all source layer pixels/grid refs/free instance counts, inserted Cel selection, preserved canvas selection, one history, Undo/Redo, resource preservation and valid links."
+      },
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
       }
     },
     {
@@ -27594,6 +27622,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy local/cross frame insertion preserves static pixel selection; local insertion, Undo and Redo explicitly exit mask editing. Remove cross-document static-selection rejection, permit local active mask, and apply existing local mask-exit and layer-row/Cel selection history rules to special-layer structural transaction. Keep active edits and cross-document active-mask admission unchanged. Eight grid/free, local/cross and isolation cases check selection preservation, one history, local mask exit including reenter-before-Redo, structure, valid links and save/reopen. Dedicated frame-selection test phase reuses this fixture. Preserve existing special frame drag/duplicate selection and active-mask rejection by distinguishing duplicate/drop insertion from clipboard paste; full regression checks this boundary."
+      },
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
       }
     },
     {
@@ -35671,6 +35706,13 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy local/cross frame insertion preserves static pixel selection; local insertion, Undo and Redo explicitly exit mask editing. Remove cross-document static-selection rejection, permit local active mask, and apply existing local mask-exit and layer-row/Cel selection history rules to special-layer structural transaction. Keep active edits and cross-document active-mask admission unchanged. Eight grid/free, local/cross and isolation cases check selection preservation, one history, local mask exit including reenter-before-Redo, structure, valid links and save/reopen. Dedicated frame-selection test phase reuses this fixture. Broader regression exposed obsolete mixedRasterReplacement refusal assertion predating user-approved resource synchronization (docs/resource-replacement-20261117.md); update to admission and cancellation, retaining existing resource-preservation assertions. Preserve existing special frame drag/duplicate selection and active-mask rejection by distinguishing duplicate/drop insertion from clipboard paste; full regression checks this boundary."
+      },
+      "framePasteActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy structured frame payload in frame-header scope precedes active pixel mask paste, after external OS image precedence. Admit this frame route in registry and editor. Cross-document special frame transaction accepts static active masks, preserves layer rows, exits mask on initial insert and Redo via existing maskToActivateOnRedo, while Undo retains later mask context; apply that existing field to structural replay as well as snapshots. Preserve special drag admission constraints. Extend eight grid/free local/cross isolation core cases to active masks, enter-before-Undo and enter-before-Redo; formal menu cases paste full frames while isolated mask active, retaining static selection and one content transaction."
       }
     },
     {
