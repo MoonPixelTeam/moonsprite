@@ -20884,6 +20884,12 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Legacy selection Cut operates on ordinary active layer independently of unrelated grid tilemap content. mixedPixelCopyContext now admits ordinary layers before consulting tilemap-only Cut availability, retaining pixel scope and all existing core deletion/history rules. Actual formal menu regression verifies Copy payload, selected-only removal, exterior pixel preservation, tile resources unchanged, one history and Undo/Redo in a grid-plus-raster document."
+      },
+      "mixedGridMaskPaste20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy pasteClipboard routes activeLayerMaskId to pasteSelection before Cel/frame/layer payloads. Admit active mask in the mixed grid pixel paste entry so existing mask floating conversion/preview/history can run; pixel scope and actual core mask editability remain authoritative. Formal menu fixture covers grid plus ordinary layer attached mask, Paste enabled/invoke, isolated preview/cancel, single commit, Undo/Redo and unchanged tile refs/resources."
       }
     },
     {
@@ -25168,6 +25174,12 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Legacy selection Cut operates on ordinary active layer independently of unrelated grid tilemap content. mixedPixelCopyContext now admits ordinary layers before consulting tilemap-only Cut availability, retaining pixel scope and all existing core deletion/history rules. Actual formal menu regression verifies Copy payload, selected-only removal, exterior pixel preservation, tile resources unchanged, one history and Undo/Redo in a grid-plus-raster document."
+      },
+      "mixedGridMaskPaste20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Legacy pasteClipboard routes activeLayerMaskId to pasteSelection before Cel/frame/layer payloads. Admit active mask in the mixed grid pixel paste entry so existing mask floating conversion/preview/history can run; pixel scope and actual core mask editability remain authoritative. Formal menu fixture covers grid plus ordinary layer attached mask, Paste enabled/invoke, isolated preview/cancel, single commit, Undo/Redo and unchanged tile refs/resources."
       }
     },
     {

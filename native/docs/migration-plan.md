@@ -7756,3 +7756,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合网格工程普通图层剪切入口
 
 对照workspace-commands-clipboard.ts的选区剪切及app-document-shortcuts.ts作用域路由，修复mixedPixelCopyContext对普通图层误用tilemapSelectionCutAvailable造成的菜单拒绝：普通图层直接承接既有像素剪切，特殊层仍使用其专用准入。实际菜单新增网格层加普通层夹具，验证像素载荷、选区内删除、外部像素保留、瓦片引用/资源不变、一次历史及Undo/Redo。唯一正式Release moonsprite-native构建退出0（mixed-grid-raster-cut-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only与正式主题/指针参数退出0，包含现有变换、翻转和Paint剪切入口。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridRasterCut20261118。
+
+## 2026-11-18 混合网格工程关联蒙版像素粘贴
+
+对照workspace-commands-clipboard.ts::pasteClipboard，活动蒙版应在普通Cel/帧/层载荷之前调用pasteSelection。mixedPixelPasteContext对活动蒙版准入，让现有beginMaskFloating转换、预览和历史接管；其余目标门禁保持。实际菜单覆盖网格层加普通层关联蒙版、粘贴启用与调用、预览无历史、取消基线、单条提交、Undo/Redo及瓦片引用/资源不变。首轮夹具在空普通层创建蒙版被合法拒绝，补上可见像素后使用正式创建入口；未改变创建规则。唯一正式Release构建退出0（mixed-grid-mask-paste-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0。来源1043文件及证据快照、diff检查通过。未人工图像验收，本批不宣称完成蒙版复制/剪切入口；整体迁移INCOMPLETE。来源见mixedGridMaskPaste20261118。
