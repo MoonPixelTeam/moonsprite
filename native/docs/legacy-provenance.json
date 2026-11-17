@@ -17738,6 +17738,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:234-267"
         ],
         "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
+      },
+      "endpointGhost20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:73-98",
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267",
+          "legacy/src/renderer/src/core/animation-tween.ts:281-383"
+        ],
+        "nativeAdaptation": "Multi-layer endpoint ghost filters layer visibility then reuses transform preview bounds and candidate compositing, preserving transformed masks and layer/group style expansion. Single-layer raw surface branch unchanged. Focused animation-transform Release build and CTest passed; tests cover masks, nested styles, unrelated distant locked layer, source purity and translation independence. Official GUI not rebuilt."
       }
     },
     {
@@ -17808,6 +17816,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:234-267"
         ],
         "nativeAdaptation": "Share styledTweenBounds for layer and recursive parent group style expansion across transform/between preview and automatic canvas bounds. Path points retain their separate unstyled geometry. Nested stroke/shadow preview bounds checked in both paths; focused Release builds and animation-transform/animation-crossfade CTests passed0.46s. Official GUI not rebuilt for this batch."
+      },
+      "endpointGhost20261117": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/components/AnimationTweenDialog.tsx:73-98",
+          "legacy/src/renderer/src/core/animation-tween.ts:234-267",
+          "legacy/src/renderer/src/core/animation-tween.ts:281-383"
+        ],
+        "nativeAdaptation": "Multi-layer endpoint ghost filters layer visibility then reuses transform preview bounds and candidate compositing, preserving transformed masks and layer/group style expansion. Single-layer raw surface branch unchanged. Focused animation-transform Release build and CTest passed; tests cover masks, nested styles, unrelated distant locked layer, source purity and translation independence. Official GUI not rebuilt."
       }
     },
     {

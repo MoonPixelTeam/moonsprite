@@ -78,13 +78,12 @@ std::optional<timeline::Surface> transformTweenEndpointPreview(const timeline::T
  validateTransformTweenOptions(options);if(source.layerIds.empty())return {};constexpr std::size_t maxPixels=1024*1024;std::size_t remaining=64*1024*1024;const auto endpoint=transformTweenSourceFrameId(source,options,options.frameCount);
  if(source.layerIds.size()==1){const auto r=resolve(t,slot(t,source.layerIds.front(),endpoint));auto b=bounds(r.surface);if(!b)return {};const auto bytes=std::size_t(b->width)*b->height*4;consume(remaining,bytes);auto cropped=crop(*r.surface,*b);TransformTweenOptions fixed;fixed.rotation=options.rotation;fixed.scale=options.scale;fixed.offsetX=fixed.offsetY=0;return transformTweenSurface(cropped,source.pivot,fixed,1,remaining,maxPixels);}
  TransformTweenOptions fixed=options;fixed.offsetX=fixed.offsetY=0;fixed.path.reset();fixed.pathAnchor.reset();
- std::optional<TweenRegion> region;auto chosen=[&](const std::string& id){return std::find(source.layerIds.begin(),source.layerIds.end(),id)!=source.layerIds.end();};
- for(const auto& l:t.state().layers)if(chosen(l.id)&&timeline::isLayerEffectivelyVisible(t.state(),l))for(const auto& f:source.frameIds){const auto r=resolve(t,slot(t,l.id,f));auto b=bounds(r.surface);if(b)include(region,*b);}
- for(const auto& id:source.layerIds)for(int step=0;step<=fixed.frameCount;++step){const auto r=resolve(t,slot(t,id,transformTweenSourceFrameId(source,fixed,step)));auto b=bounds(r.surface);if(!b)continue;timeline::Surface shape;shape.width=b->width;shape.height=b->height;shape.offsetX=b->x;shape.offsetY=b->y;const auto g=geometry(shape,source.pivot,fixed,double(step)/fixed.frameCount);include(region,{g.left,g.top,g.width,g.height});}
- if(!region)return {};if(std::uint64_t(region->width)*region->height>maxPixels)throw std::length_error("Tween endpoint preview exceeds pixel budget");
- timeline::State state;state.layers=t.state().layers;state.groups=t.state().groups;state.tilesets=t.state().tilesets;state.canvasWidth=t.state().canvasWidth;state.canvasHeight=t.state().canvasHeight;state.frames={{"tween-endpoint-preview",fixed.duration}};
- for(auto& l:state.layers){if(!chosen(l.id)){l.visible=false;continue;}const auto r=resolve(t,slot(t,l.id,endpoint));auto b=bounds(r.surface);if(!b)continue;const auto bytes=std::size_t(b->width)*b->height*4;consume(remaining,bytes);auto cropped=crop(*r.surface,*b);timeline::Cel c;c.id="endpoint-"+l.id;c.layerId=l.id;c.frameId=state.frames.front().id;if(r.source){c.zIndex=r.source->zIndex;c.opacity=r.source->opacity;}c.surface=transformTweenSurface(cropped,source.pivot,fixed,1,remaining,maxPixels);c.opacity=(r.source?r.source->opacity.value_or(l.opacity):l.opacity)*(fixed.opacity/100);state.cels.push_back(std::move(c));}
- timeline::Surface result;result.width=region->width;result.height=region->height;result.offsetX=region->x;result.offsetY=region->y;result.pixels=compositeNormalRegion(timeline::Timeline(std::move(state)),"tween-endpoint-preview",{region->x,region->y,region->width,region->height});return result;
+ auto state=t.state();
+ for(auto& layer:state.layers)layer.visible=layer.visible&&std::find(source.layerIds.begin(),source.layerIds.end(),layer.id)!=source.layerIds.end();
+ const timeline::Timeline selected(std::move(state));
+ const auto region=transformTweenPreviewBounds(selected,source,fixed);
+ timeline::Surface result;result.width=region.width;result.height=region.height;result.offsetX=region.x;result.offsetY=region.y;
+ result.pixels=compositeTransformTweenPreview(selected,source,fixed,fixed.frameCount,region);return result;
 }
 
 }

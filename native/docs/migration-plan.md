@@ -7490,3 +7490,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 补间原帧端点预览
 
 起点与终点按旧版直接显示对应原帧，补齐非目标内容和蒙版差异；定向测试通过。详见 [记录](original-tween-endpoints-20261117.md)。整体 INCOMPLETE。
+
+## 2026-11-17 多图层补间端点轮廓
+
+按旧版过滤目标可见层并复用完整预览，补齐蒙版变换与层／组样式范围；单层原始像素分支保留。定向 Release 构建与 animation-transform 测试通过（0.22 秒）。本批未重建正式 GUI、未做人工图像验收。整体 INCOMPLETE。来源与适配详见 legacy-provenance.json 的 endpointGhost20261117。
