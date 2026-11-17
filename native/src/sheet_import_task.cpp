@@ -7,17 +7,24 @@ SheetImportTask::SheetImportTask(const Document& d,SheetImportOptions options,Ex
  if(d.active())throw std::runtime_error("Commit or cancel active operation before importing");
  if(options_.selection&&!options_.selectionSnapshot){if(!d.selection())throw std::runtime_error("Pixel selection missing");options_.selectionSnapshot=std::make_shared<const SelectionMask>(*d.selection());}
  validateSpriteSheetImportAllocation(d,options_);const auto* selection=sheetImportSelection(d,options_);total_=planSpriteSheetImport(selection?selection->width:width_,selection?selection->height:height_,options_).tiles.size();
+ // Only rendering data is frozen: palette names and UI roles remain live.
+ colorMode_=d.colorMode_;pixelFormat_=d.pixelFormat_;palette_.entries.clear();palette_.slots.clear();
+ palette_.entries.reserve(d.palette_.entries.size());for(const auto& entry:d.palette_.entries)palette_.entries.push_back({entry.id,{},entry.color});
+ palette_.independentOrder=d.palette_.order();
  capture_=std::make_unique<RasterSnapshot>(d.timeline().state());
  if(!executor_)executor_=[](std::function<void()> fn){std::thread(std::move(fn)).detach();};
 }
 SheetImportTask::~SheetImportTask(){if(work_)work_->cancelled=true;}
-bool SheetImportTask::matches(const Document& d)const{return !d.active()&&d.identity()==identity_&&d.contentRevision()==content_&&d.frame().id==frame_&&d.width()==width_&&d.height()==height_;}
+bool SheetImportTask::matches(const Document& d)const{
+ if(d.colorMode()!=colorMode_||d.pixelFormat()!=pixelFormat_||d.palette().entries.size()!=palette_.entries.size()||d.palette().order()!=*palette_.independentOrder)return false;
+ for(std::size_t i=0;i<palette_.entries.size();++i)if(d.palette().entries[i].id!=palette_.entries[i].id||d.palette().entries[i].color!=palette_.entries[i].color)return false;
+ return !d.active()&&d.identity()==identity_&&d.contentRevision()==content_&&d.frame().id==frame_&&d.width()==width_&&d.height()==height_;}
 void SheetImportTask::cancel(){if(work_)work_->cancelled=true;capture_.reset();phase_=Phase::Cancelled;}
 void SheetImportTask::tick(const Document& d){
  if(!busy())return;
  if(!matches(d)){if(work_)work_->cancelled=true;capture_.reset();error_="Document changed during sprite sheet import";phase_=Phase::Failed;return;}
  try{
-  if(phase_==Phase::Capturing){if(!capture_->advance(d.timeline().state(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;auto state=capture_->take();capture_.reset();auto work=std::make_shared<Work>();work_=work;const auto options=options_;const auto layer=layer_,frame=frame_;const auto width=width_,height=height_;const auto revision=revision_;auto palette=d.palette_;const auto mode=d.colorMode_;const auto precision=d.pixelFormat_;phase_=Phase::Working;
+  if(phase_==Phase::Capturing){if(!capture_->advance(d.timeline().state(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2)))return;auto state=capture_->take();capture_.reset();auto work=std::make_shared<Work>();work_=work;const auto options=options_;const auto layer=layer_,frame=frame_;const auto width=width_,height=height_;const auto revision=revision_;auto palette=palette_;const auto mode=colorMode_;const auto precision=pixelFormat_;phase_=Phase::Working;
    executor_([work,state=std::move(state),options,layer,frame,width,height,revision,palette=std::move(palette),mode,precision]()mutable{
     try{if(work->cancelled)throw SheetImportCancelled{};Document source(1,1);source.width_=width;source.height_=height;source.timeline_=timeline::Timeline(std::move(state));source.activeLayerId_=layer;source.activeFrameId_=frame;source.revision_=revision;source.palette_=std::move(palette);source.colorMode_=mode;source.pixelFormat_=precision;
      work->after=buildSpriteSheetImport(source,options,[work]{return work->cancelled.load();},[work](std::size_t n){work->frames=n;});

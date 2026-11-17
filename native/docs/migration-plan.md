@@ -7682,3 +7682,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 正式程序集成：背景与图像缩放
 
 近期图层剪贴板、选区笔刷、索引色背景扩展/创建及混合格式倍率识别改动已编入唯一正式产物 native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志 migration-background-gui-build.log；产物本地时间2026-11-18 05:44:41，31,803,392 bytes。正式程序使用仓库主题和指针参数，Start-Process -Wait -PassThru确认 --background-layer-check、--image-resize-check 均退出0。首次PowerShell直接调用GUI子系统程序未等待且LASTEXITCODE为空，未将其作为成功证据，随后显式等待取得退出码。构建期间未改实现，用户已有editor_lifecycle.cpp/main.cpp状态保留且未暂存，未提交生成物。上述检查覆盖已有背景对话框创建/转换及图像缩放实际入口，不直接证明仍关闭的indexed生产入口，也未进行新增人工图像验收；整体INCOMPLETE。
+
+## 2026-11-18 精灵表后台导入颜色状态校验
+
+对照旧版 workspace-sprite-sheet-import.ts 的异步源状态校验及 sprite-sheet-import.ts 的色板感知合成，原生任务在创建时冻结渲染所需的颜色ID、颜色值、条目顺序、可见顺序、文档模式和像素精度，捕获、后台排队/完成及提交前拒绝过期结果。色板名称、UI角色和分配器不进入渲染校验，保留导入期间重命名及撤销后名称不丢失的既有行为；快照不复制名称，并在现有256MiB工作预算中计入并存色板/查找表。新增20组无revision变更夹具覆盖五类颜色状态和四个阶段。Release sheet-import-task-tests定向构建成功，sheet-import-task CTest通过（0.20秒）；来源覆盖1043文件及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色入口仍关闭，整体迁移INCOMPLETE。来源见sheetImportColorGuard20261118。

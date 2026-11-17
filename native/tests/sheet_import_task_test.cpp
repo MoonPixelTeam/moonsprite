@@ -4,6 +4,15 @@
 #include <iostream>
 #include <thread>
 using namespace moon;
+namespace moon {struct RasterHistoryFixture {
+ static void change(Document& d,int kind){
+  if(kind==0)d.palette_.entries.front().color^=0x00010101;
+  else if(kind==1)d.palette_.entries.front().id+=10;
+  else if(kind==2)d.palette_.setOrder({2,1});
+  else if(kind==3)d.colorMode_=color_mode::Mode::Grayscale;
+  else d.pixelFormat_=color_mode::PixelFormat::Rgb565;
+ }
+};}
 namespace {
 using Phase=SheetImportTask::Phase;
 void require(bool value,const char* why){if(!value)throw std::runtime_error(why);}
@@ -29,6 +38,15 @@ void guard(int point,int mutation){
 }
 int main(){try{
  for(int point=0;point<3;++point)for(int mutation=0;mutation<3;++mutation)guard(point,mutation);
+ // Color authority must stay consistent through capture, queued work and commit.
+ for(int point=0;point<4;++point)for(int kind=0;kind<5;++kind){
+  Document source(4,2);Queue q;SheetImportTask t(source,options(),q.executor());
+  if(point>0)capture(t,source);if(point>1)q.run();if(point==3)t.tick(source);
+  const auto content=source.contentRevision(),history=source.historySize();RasterHistoryFixture::change(source,kind);
+  require(source.contentRevision()==content&&!t.matches(source),"Color guard fixture");
+  if(point==3)require(!t.commit(source),"Stale color committed");else t.tick(source);
+  if(q.job)q.run();require(t.phase()==Phase::Failed&&source.historySize()==history,"Stale color state accepted");
+ }
  // Freeze slicing at task creation, preserve live selection/pivot at commit.
  auto d=Document::fromImage(6,2,{0xff000001,0xff000002,0xff000003,0xff000004,0xff000005,0xff000006,0xff000007,0xff000008,0xff000009,0xff00000a,0xff00000b,0xff00000c},U"Selection");
  d.previewSelection(SelectionMask{1,0,3,2,{1,0,1,0,1,1}});auto o=options();o.width=o.height=1;o.selection=true;Queue q;SheetImportTask task(d,o,q.executor());require(!task.commit(d),"Premature commit");

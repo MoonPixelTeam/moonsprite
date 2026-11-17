@@ -43,6 +43,9 @@ void validateSpriteSheetImportAllocation(const Document& d,const SheetImportOpti
  constexpr std::uint64_t limit=256ull*1024*1024;std::uint64_t used=0;auto reserve=[&](std::uint64_t bytes){if(bytes>limit-used)throw std::length_error("Sprite sheet preview/history exceeds working pixel budget");used+=bytes;};
  std::set<std::string> owners;for(const auto& cel:d.timeline().state().cels)if(cel.surface&&owners.insert(d.timeline().linkedStorageKey(cel.id)).second){const auto& surface=*cel.surface;raster::validate(surface);raster::coordinate(std::int64_t(surface.offsetX)+surface.width);raster::coordinate(std::int64_t(surface.offsetY)+surface.height);reserve(std::uint64_t(surface.pixels.size())*sizeof(Pixel)*2);}
  for(const auto& mask:d.timeline().state().masks){raster::validate(mask.mask.surface);reserve(std::uint64_t(mask.mask.surface.pixels.size())*sizeof(Pixel)*2);}
+ // Task guard, dispatched palette and worker color lookup coexist.
+ reserve(std::uint64_t(d.palette().entries.size())*(sizeof(PaletteEntry)+128)*3);
+ reserve(std::uint64_t(d.palette().independentOrder?d.palette().independentOrder->size():d.palette().slots.size())*sizeof(int)*3);
  reserve(sheetImportResourceBytes(d.timeline().state())*2);if(options.selectionSnapshot)reserve(options.selectionSnapshot->mask.size());if(d.selection())reserve(std::uint64_t(d.selection()->mask.size())*2);
  const auto area=std::uint64_t(options.width)*options.height;reserve(area*sizeof(Pixel)*(std::uint64_t(plan.tiles.size())*3+2));
 }

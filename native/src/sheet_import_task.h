@@ -13,6 +13,7 @@ public:
 private:
  struct Work {std::atomic<bool> cancelled{false},ready{false};std::atomic<std::size_t> frames{0};std::optional<timeline::State> before,after;std::string error;};
  SheetImportOptions options_;std::uint64_t identity_,content_,revision_;std::string layer_,frame_;int width_,height_;std::size_t total_=0;
+ PaletteState palette_;color_mode::Mode colorMode_;color_mode::PixelFormat pixelFormat_;
  std::unique_ptr<RasterSnapshot> capture_;std::shared_ptr<Work> work_;Executor executor_;Phase phase_=Phase::Capturing;std::string error_;
 public:
  SheetImportTask(const Document&,SheetImportOptions,Executor={});
