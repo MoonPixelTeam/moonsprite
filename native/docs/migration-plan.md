@@ -7748,3 +7748,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Paint混合选择剪切验收
 
 对照workspace-commands-clipboard.ts与workspace-selection-effects-support.ts，八组锁定/隐藏及显式图层/Cel选择组合确认：复制活动瓦片选区，批量删除跳过特殊层与锁定普通层，但允许隐藏普通层；只清除选区内普通像素，保留外部像素、瓦片引用/资源、焦点和时间轴选择。检查单条历史、Undo恢复普通像素及选区、Redo清除。既有生产路由通过，无需新增生产修改。Release tilemap-document构建和完整定向CTest通过（0.39秒）；未重建正式GUI或人工图像验收，整体迁移INCOMPLETE。来源见paintMixedCut20261118。
+
+## 2026-11-18 Paint剪切正式程序与作用域验证
+
+对照app-document-shortcuts.ts的selectionOverride优先级和workspace-commands-clipboard.ts剪切，扩展实际菜单检查：两个时间轴Cel共存时先用正式Select All声明像素作用域，再限定2x2选区，菜单/registry均允许Cut；实际剪贴板RGBA正确、选区结束、两个Cel引用和时间轴选择不变、无内容历史、没有竞争的帧/Cel载荷。普通时间轴剪贴板路由保持原行为。上一批Paint剪切多选门禁和提示改动已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release构建退出0（paint-cut-menu-build.log），Start-Process -Wait -PassThru正式主题/指针参数运行--tileset-management-check --grid-transform-entry-only退出0，同时包含既有变换与翻转入口检查。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE；瓦片居中行为差异仍待用户答复。来源见paintCutTimelineMenu20261118。

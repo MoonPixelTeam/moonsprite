@@ -25147,6 +25147,13 @@
           "legacy/src/renderer/src/store/workspace-selection-timeline-flip.ts"
         ],
         "nativeAdaptation": "Actual native menu integration check for explicit marquee and extra selected timeline Cel: both flip commands enabled through menu registry and item availability, invoke only active Cel, preserve unrelated frame and selected Cels, one history, Undo. Uses existing grid-transform-entry-only smoke and formal binary."
+      },
+      "paintCutTimelineMenu20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
+        ],
+        "nativeAdaptation": "Existing explicit pixel selection override takes priority over selected Cels for Cut, matching selectionOverride routing. Extend actual grid-transform-entry-only menu smoke with Select All pixel scope then clipped marquee: enabled Cut copies RGBA 2x2 payload, clears marquee, keeps both tilemap Cel references/timeline selection/history, and clears competing Cel/frame clipboard payloads. Normal timeline scope routing unchanged."
       }
     },
     {
