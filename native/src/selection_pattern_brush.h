@@ -2,6 +2,7 @@
 #include "pattern_fill.h"
 #include "selection_model.h"
 #include "raster_geometry.h"
+#include "raster_color_context.h"
 namespace moon {
 // workspace-session.ts remapSelectionBrushColors: original pixels remain immutable.
 inline void remapSelectionPatternBrush(std::optional<PatternBrush>& brush,std::uint32_t primary,std::uint32_t secondary){
@@ -26,12 +27,12 @@ inline std::optional<PatternBrush> createSelectionPatternBrush(const std::vector
  if(canvasWidth<1||canvasHeight<1||pixels.size()!=std::size_t(canvasWidth)*canvasHeight)throw std::invalid_argument("Invalid source raster");
  return createSelectionPatternBrushSampled([&](int x,int y){return pixels[std::size_t(y)*canvasWidth+x];},canvasWidth,canvasHeight,selection);
 }
-inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::Surface& surface,int canvasWidth,int canvasHeight,const SelectionMask& selection){
+inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::Surface& surface,int canvasWidth,int canvasHeight,const SelectionMask& selection,const RasterColorContext* colors=nullptr){
  raster::validate(surface);const bool dense=raster::fullCanvas(surface,canvasWidth,canvasHeight);
- return createSelectionPatternBrushSampled([&](int x,int y){return dense?surface.pixels[std::size_t(y)*canvasWidth+x]:raster::readWorld(surface,x,y);},canvasWidth,canvasHeight,selection);
+ return createSelectionPatternBrushSampled([&](int x,int y){const auto index=dense?std::optional<std::size_t>{std::size_t(y)*canvasWidth+x}:raster::worldIndex(surface,x,y);if(!index)return timeline::Pixel(0);const auto value=surface.pixels[*index];return colors?colors->toolColor(surface.format,value):value;},canvasWidth,canvasHeight,selection);
 }
-inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::Surface* surface,int canvasWidth,int canvasHeight,const SelectionMask& selection){
- if(surface)return createSelectionPatternBrush(*surface,canvasWidth,canvasHeight,selection);
+inline std::optional<PatternBrush> createSelectionPatternBrush(const timeline::Surface* surface,int canvasWidth,int canvasHeight,const SelectionMask& selection,const RasterColorContext* colors=nullptr){
+ if(surface)return createSelectionPatternBrush(*surface,canvasWidth,canvasHeight,selection,colors);
  return createSelectionPatternBrushSampled([](int,int){return timeline::Pixel(0);},canvasWidth,canvasHeight,selection);
 }
 }

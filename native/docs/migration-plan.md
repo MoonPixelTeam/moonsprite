@@ -7662,3 +7662,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 整层剪贴板颜色快照与目标转换
 
 对照旧版layerClipboardFromDocument与applyLayerClipboardAnimationCel，整层复制复用animationClipboardCel将索引色Cel按复制时色板冻结为RGBA，重复ID遵循旧版Map最后项规则；粘贴复用animationCelForTarget，转换为目标索引ID或灰度，RGBA沿用旧版不再次量化精度。保留独立Cel快照、几何、载荷及结构历史。新增链接帧/重复ID夹具，复制后改源色板，再粘贴到RGBA、灰度及不同ID的索引色目标，核对冻结像素、目标格式、单历史、撤销重做和源数据保留。Release indexed-runtime及document-layer-groups构建成功，三项关联CTest通过（0.71/0.03/0.03秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，索引色生产入口仍关闭，整体INCOMPLETE。来源见wholeLayerColorClipboard20261118。
+
+## 2026-11-18 选区笔刷的索引色取色
+
+对照旧版 brushes.ts::createSelectionBrush 和 document-model.ts::readLayerColorAt/readLayerColor，临时笔刷及铅笔/填充笔刷库入口使用文档色板解析存储ID，重复ID取第一项；仅解析实际存储位置，稀疏边界外保持透明，保留选区遮罩、透明RGB和覆盖alpha。Lua在操作规划时按当时色板将捕获副本冻结为RGBA，后续改色不追溯改变已有笔刷，继续沿用顺序选择状态和失败恢复。新增夹具验证重复ID、不透明零号、透明RGB、裁剪遮罩、缺失表面、源数据/历史保留及Lua连续捕获前后改色。Release selection-pattern-brush-tests与lua-script-invocation-tests定向构建成功，两项CTest通过（0.03/5.85秒）。Lua索引色运行入口仍关闭，测试仅以RGBA执行上下文携带原生索引色文档验证无像素写入的操作适配；首次直接执行被运行时入口拒绝，未改变生产门禁。来源覆盖1043文件及diff检查通过；未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见indexedSelectionBrush20261118。

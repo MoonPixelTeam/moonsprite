@@ -13451,7 +13451,14 @@
       "absentSelectionBrush20261105": "legacy core/brushes.ts createSelectionBrush clamps/validates dimensions, samples raw active layer, retains selected transparent RGB, returns null without opaque pixels; core/animation.ts clearLayerSurface represents missing active Cel as transparent display. Native nullable Surface overload reuses existing sampler and validations without canvas allocation; temporary capture, pencil-library and fill-library creation use activeSurfaceIfPresent. Regression covers absent current layer with opaque backdrop, masked/rectangular/outside selection, oversized brush and malformed mask rejection, immutable Cel/history/revision/content/dirty, plus offset nonzero-origin raw RGB/alpha. Editor entry routing source-reviewed; interactive UI acceptance and full sparse lifecycle remain incomplete.",
       "selectionColorMapping20261111": "Preserve legacy workspace-session.ts remapSelectionBrushColors guard requiring sourceX/sourceY presence. Native PatternBrush tracks selectionColorMapping because integer origin0 cannot distinguish absence; selection capture sets it, local/project metadata restores it, imported regular brushes remain false. Shared role change remaps only intrinsic selection brushes.",
       "sessionBrushSnapshot20261111": "Legacy DocumentSession brushImage owns loaded pixel state and workspace-session.ts remapSelectionBrushColors derives paintColors from immutable source, alpha and luminance128. Native stores ordinary image payload in session configuration instead of reload-on-tab-switch, remaps on restoration with current shared colors. Shared helper reused by color updates. Missing local-resource regression proves no disk reload; original/derived colors and non-selection brush unit assertions. lineDirectionStep confirmed global in legacy file-preferences.ts and deliberately unchanged. Validation pending.",
-      "sessionBrushSnapshotValidation20261111": "Official Release and selection-pattern-brush-tests build successful. Five checks pass 4.58s: selection-pattern-brush, extension-workspace-ui, multi-document, selection-interactions, canvas-resize. Actual missing-resource path session restoration retains loaded source pixels and identity; original/alpha/ordinary brush mapping assertions pass. Overall migration remains incomplete."
+      "sessionBrushSnapshotValidation20261111": "Official Release and selection-pattern-brush-tests build successful. Five checks pass 4.58s: selection-pattern-brush, extension-workspace-ui, multi-document, selection-interactions, canvas-resize. Actual missing-resource path session restoration retains loaded source pixels and identity; original/alpha/ordinary brush mapping assertions pass. Overall migration remains incomplete.",
+      "indexedSelectionBrush20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/brushes.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
+      }
     },
     {
       "file": "tests/selection_pattern_brush_test.cpp",
@@ -13468,7 +13475,14 @@
       "scope": "Actual selection capture creates local PNG brush, not customBrushes; active normal owned RGBA layer canonical pixels clipped to selection bounds, mask holes zero, original source alpha/colors and clamped source origin, <=64px, empty capture refused, no document history. Existing imported project brush contract gray/rgba path metadata retained by standalone resource decode/encode helper; native editable customBrushes nonempty admission STILL REJECTS, no pretend project ownership or recovery completion. Project resources require future Document storage/dirty/delete and manifest+save+recovery integration. Menu integration currently fill image sampler only, pencil/image brush profile not yet available.",
       "selectionColorMapping20261111": "Selection capture marks origin-aware color remapping; default imported PatternBrush does not, matching workspace-session.ts sourceX/sourceY guard.",
       "sessionBrushSnapshot20261111": "Legacy DocumentSession brushImage owns loaded pixel state and workspace-session.ts remapSelectionBrushColors derives paintColors from immutable source, alpha and luminance128. Native stores ordinary image payload in session configuration instead of reload-on-tab-switch, remaps on restoration with current shared colors. Shared helper reused by color updates. Missing local-resource regression proves no disk reload; original/derived colors and non-selection brush unit assertions. lineDirectionStep confirmed global in legacy file-preferences.ts and deliberately unchanged. Validation pending.",
-      "sessionBrushSnapshotValidation20261111": "Official Release and selection-pattern-brush-tests build successful. Five checks pass 4.58s: selection-pattern-brush, extension-workspace-ui, multi-document, selection-interactions, canvas-resize. Actual missing-resource path session restoration retains loaded source pixels and identity; original/alpha/ordinary brush mapping assertions pass. Overall migration remains incomplete."
+      "sessionBrushSnapshotValidation20261111": "Official Release and selection-pattern-brush-tests build successful. Five checks pass 4.58s: selection-pattern-brush, extension-workspace-ui, multi-document, selection-interactions, canvas-resize. Actual missing-resource path session restoration retains loaded source pixels and identity; original/alpha/ordinary brush mapping assertions pass. Overall migration remains incomplete.",
+      "indexedSelectionBrush20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/brushes.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
+      }
     },
     {
       "file": "src/gif_export.h",
@@ -26041,6 +26055,13 @@
           "legacy/src/renderer/src/components/floating-panel.tsx"
         ],
         "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "indexedSelectionBrush20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/brushes.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
       }
     },
     {
@@ -40233,7 +40254,14 @@
         "evidence": "palette-layout.ts normalizePaletteSlots/fitPaletteSlotsToGrid/repositionPaletteSlots/paletteRangeIdsBySlots; workspace-palette.ts selectPaletteColors, addPaletteColor, pastePaletteColors, deletePaletteColors, movePaletteColor, applyPalette and callback Undo/Redo; PalettePanel.tsx role markers, copy closure and empty-slot interactions. Actual unmodified legacy oracle extended with 108 zero/null state matrices; final verification recorded in docs/palette-zero-migration-20261114.md.",
         "adaptation": "Map legacy null to INT_MIN in existing four-byte native slots/role IDs; real ID zero remains numeric zero, negative preview IDs remain distinct. File and script JSON map sentinel to null. Existing native validation, history byte accounting, sole Release artifact and UI materials retained; no performance optimization."
       },
-      "indexedPaletteExtraction20261118": "Legacy palette.ts extractPaletteColors scans compositeDocument RGBA in scanline order, excluding transparent colors; indexed composition resolves palette IDs in document-composite-region.ts. Native extractTimelinePalette accepts RasterColorContext; editor extraction supplies document palette and Lua palette.extract supplies the current planned palette alongside its staged timeline/preview. Release palette-extraction-tests and official GUI builds passed; palette-extraction CTest passed (0.04s), covering indexed single/multiple layers, opacity, linked frame, limit 1/4096, RGBA reference and staged RGBA preview, source raw IDs/revision/history protection. Lua/editor wiring compiled, no actual indexed Lua/UI invocation or manual acceptance claimed; production indexed admission remains closed."
+      "indexedPaletteExtraction20261118": "Legacy palette.ts extractPaletteColors scans compositeDocument RGBA in scanline order, excluding transparent colors; indexed composition resolves palette IDs in document-composite-region.ts. Native extractTimelinePalette accepts RasterColorContext; editor extraction supplies document palette and Lua palette.extract supplies the current planned palette alongside its staged timeline/preview. Release palette-extraction-tests and official GUI builds passed; palette-extraction CTest passed (0.04s), covering indexed single/multiple layers, opacity, linked frame, limit 1/4096, RGBA reference and staged RGBA preview, source raw IDs/revision/history protection. Lua/editor wiring compiled, no actual indexed Lua/UI invocation or manual acceptance claimed; production indexed admission remains closed.",
+      "indexedSelectionBrush20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/brushes.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
+      }
     },
     {
       "file": "tests/lua_script_invocation_test.cpp",
@@ -40349,6 +40377,13 @@
         "scope": "Editable RGBA/grayscale palette ID zero distinct from null slots and no role selection. Selection, layout/movement, append/overwrite, add/delete/rename, gradients/sort/apply, palette UI and Lua adapters retain actual legacy behavior; import padding, project/recovery/history serialization preserve null vs numeric zero. Indexed drawing/storage/compositing remain gated and overall migration incomplete.",
         "evidence": "palette-layout.ts normalizePaletteSlots/fitPaletteSlotsToGrid/repositionPaletteSlots/paletteRangeIdsBySlots; workspace-palette.ts selectPaletteColors, addPaletteColor, pastePaletteColors, deletePaletteColors, movePaletteColor, applyPalette and callback Undo/Redo; PalettePanel.tsx role markers, copy closure and empty-slot interactions. Actual unmodified legacy oracle extended with 108 zero/null state matrices; final verification recorded in docs/palette-zero-migration-20261114.md.",
         "adaptation": "Map legacy null to INT_MIN in existing four-byte native slots/role IDs; real ID zero remains numeric zero, negative preview IDs remain distinct. File and script JSON map sentinel to null. Existing native validation, history byte accounting, sole Release artifact and UI materials retained; no performance optimization."
+      },
+      "indexedSelectionBrush20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/brushes.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
       }
     },
     {

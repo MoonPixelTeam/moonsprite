@@ -224,7 +224,7 @@ std::vector<OperationPlan> planOperations(const Document& d,const JsonArray& bat
    BrushRequest request;if(path==L"brushes.createFromSelection"){
     request.kind=BrushRequest::Kind::CreateFromSelection;
     const auto* c=synchronized->findCel(operationLayer,operationFrame);const auto resolved=c?synchronized->resolveSurface(c->id):timeline::Resolution{};
-    if(resolved.surface){const auto bytes=resolved.surface->pixels.size()*sizeof(Pixel);if(bytes>256ull*1024*1024-synchronizedBudget)throw std::length_error("Lua brush capture exceeds working budget");synchronizedBudget+=bytes;request.source=*resolved.surface;}
+    if(resolved.surface){const auto bytes=resolved.surface->pixels.size()*sizeof(Pixel);if(bytes>256ull*1024*1024-synchronizedBudget)throw std::length_error("Lua brush capture exceeds working budget");synchronizedBudget+=bytes;request.source=*resolved.surface;if(request.source->format==timeline::RasterFormat::Indexed){const RasterColorContext captureColors(palette.entries,palette.order());for(auto& value:request.source->pixels)value=captureColors.toolColor(request.source->format,value);request.source->format=timeline::RasterFormat::Rgba;}}
    }else if(path==L"brushes.remove"){request.kind=BrushRequest::Kind::Remove;auto id=spec.GetNamedValue(L"id",JsonValue::CreateNullValue());if(id.ValueType()==JsonValueType::Null)id=spec.GetNamedValue(L"value",JsonValue::CreateNullValue());if(id.ValueType()==JsonValueType::String)request.id=winrt::to_string(id.GetString());}
    hostOrder.emplace_back(2,brushes.size());brushes.push_back(std::move(request));continue;
   }
