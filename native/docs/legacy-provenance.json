@@ -25201,6 +25201,13 @@
           "legacy/src/renderer/src/store/workspace-session.ts"
         ],
         "nativeAdaptation": "Legacy activePaintLayer resolves the editing mask before single-target flipSelection. Native grid menu wrapper now permits flip actions in active-mask context and defers to existing previous availability and Document::transformMaskImmediate. Formal mixed-grid mask fixture checks enabled actual horizontal menu, mirrored two-pixel destination, mask-only history, owner pixels/grid refs/resources unchanged, Undo/Redo. Vertical shares wrapper but no new vertical runtime case in this stage."
+      },
+      "mixedFreeMaskClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+        ],
+        "nativeAdaptation": "Free-tile clipboard menu wrapper must defer to normal mask clipboard routing whenever a mask is active, rather than testing the underlying special layer as a free instance target. Reuse the formal mask clipboard/flip fixture with tilemap owner and an unrelated free-tile layer, exercising the newly unblocked wrapper: Copy owner pixels, mask Cut background fill, Paste preview/cancel/commit, UndoRedo and original grid resources unchanged. Existing core operations unchanged."
       }
     },
     {
@@ -33367,6 +33374,13 @@
           "legacy/src/renderer/src/store/workspace-session.ts"
         ],
         "nativeAdaptation": "Legacy activePaintLayer resolves the editing mask before single-target flipSelection. Native grid menu wrapper now permits flip actions in active-mask context and defers to existing previous availability and Document::transformMaskImmediate. Formal mixed-grid mask fixture checks enabled actual horizontal menu, mirrored two-pixel destination, mask-only history, owner pixels/grid refs/resources unchanged, Undo/Redo. Vertical shares wrapper but no new vertical runtime case in this stage."
+      },
+      "mixedFreeMaskClipboard20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
+        ],
+        "nativeAdaptation": "Free-tile clipboard menu wrapper must defer to normal mask clipboard routing whenever a mask is active, rather than testing the underlying special layer as a free instance target. Reuse the formal mask clipboard/flip fixture with tilemap owner and an unrelated free-tile layer, exercising the newly unblocked wrapper: Copy owner pixels, mask Cut background fill, Paste preview/cancel/commit, UndoRedo and original grid resources unchanged. Existing core operations unchanged."
       }
     },
     {

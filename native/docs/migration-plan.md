@@ -7768,3 +7768,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合网格工程蒙版选区翻转入口
 
 对照workspace-commands-selection-flip.ts及workspace-session.ts::activePaintLayer，活动蒙版应通过现有选区翻转事务处理。网格菜单包装对活动蒙版放行翻转，继续使用既有菜单前置条件与Document::transformMaskImmediate，不修改像素算法。实际菜单新增水平翻转检查，验证两个位置的镜像、只改蒙版、普通层像素/瓦片引用/资源不变、单次历史和Undo/Redo；垂直共享门禁但本阶段未新增垂直运行用例。唯一正式Release构建退出0（mixed-grid-mask-flip-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0，包含已有剪贴板检查。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedGridMaskFlip20261118。
+
+## 2026-11-18 自由瓦片工程活动蒙版剪贴板门禁
+
+对照workspace-commands-clipboard.ts及workspace-commands-selection-effects.ts，活动蒙版使用正常像素剪贴板与蒙版编辑路径，不应被自由实例菜单门禁拒绝。自由瓦片剪贴板包装检测到活动蒙版后回到既有可用条件。复用实际菜单检查，将蒙版拥有者设为网格图层并加入无关自由瓦片层，验证Copy拥有者像素、Cut背景色填充、Paste预览/取消/提交、翻转及Undo/Redo，原有网格引用和资源保持。唯一正式Release构建退出0（mixed-free-mask-clipboard-build.log），Start-Process -Wait -PassThru运行--tileset-management-check --grid-transform-entry-only及正式主题/指针退出0。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedFreeMaskClipboard20261118。
