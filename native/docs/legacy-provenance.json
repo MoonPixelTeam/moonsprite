@@ -17251,6 +17251,15 @@
         ],
         "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
         "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
+      },
+      "indexedBetweenPipeline20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTweenFrame,animationTweenCompositePreview",
+          "legacy/src/renderer/src/core/animation-morph.ts:prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Thread optional RasterColorContext and indexedColor callback through adjacent-frame source planning, morph fields, candidate surfaces, mask owner bounds and preview compositing. Preserve indexed format when adapting generated crops into native full-canvas surfaces; explicit indexed crossfade format supports empty endpoints. Existing RGBA callers keep defaults. Production indexed Document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s). Indexed pipeline checks palette-aware bounds, morph/crossfade candidates, empty-layer fallback, dense/cropped format and IDs, intermediate and original endpoint previews, and input purity. No GUI rebuild or production indexed claim."
       }
     },
     {
@@ -17316,6 +17325,15 @@
         ],
         "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
         "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
+      },
+      "indexedBetweenPipeline20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTweenFrame,animationTweenCompositePreview",
+          "legacy/src/renderer/src/core/animation-morph.ts:prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Thread optional RasterColorContext and indexedColor callback through adjacent-frame source planning, morph fields, candidate surfaces, mask owner bounds and preview compositing. Preserve indexed format when adapting generated crops into native full-canvas surfaces; explicit indexed crossfade format supports empty endpoints. Existing RGBA callers keep defaults. Production indexed Document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s). Indexed pipeline checks palette-aware bounds, morph/crossfade candidates, empty-layer fallback, dense/cropped format and IDs, intermediate and original endpoint previews, and input purity. No GUI rebuild or production indexed claim."
       }
     },
     {
@@ -17560,6 +17578,15 @@
         ],
         "adaptation": "Port indexed Bayer dissolve with world-coordinate phase, original uint32 color IDs, interpolated opacity and opacity-weighted endpoint selection. Optional explicit output format handles missing endpoints; existing callers infer format from the first available endpoint. This migrates the surface algorithm only; palette-aware source bounds, indexed morph/transform and production indexed document admission remain incomplete.",
         "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s), including 17 dissolve positions, negative world coordinates, exact endpoint IDs, zero and unequal opacity, missing endpoint/outside pixels and input purity. No GUI rebuild or indexed production admission claim."
+      },
+      "indexedBetweenPipeline20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:animationBetweenFrame,prepareAnimationTweenFrame,animationTweenCompositePreview",
+          "legacy/src/renderer/src/core/animation-morph.ts:prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Thread optional RasterColorContext and indexedColor callback through adjacent-frame source planning, morph fields, candidate surfaces, mask owner bounds and preview compositing. Preserve indexed format when adapting generated crops into native full-canvas surfaces; explicit indexed crossfade format supports empty endpoints. Existing RGBA callers keep defaults. Production indexed Document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-crossfade-tests build succeeded; animation-crossfade CTest passed (0.23s). Indexed pipeline checks palette-aware bounds, morph/crossfade candidates, empty-layer fallback, dense/cropped format and IDs, intermediate and original endpoint previews, and input purity. No GUI rebuild or production indexed claim."
       }
     },
     {

@@ -15,10 +15,10 @@ struct CrossfadeSurfaceResult{timeline::Surface surface;double opacity=1;};
 void validateCrossfadeTweenOptions(const CrossfadeTweenOptions&);
 double tweenProgress(double progress,TweenEasing easing,const std::array<double,4>& curve={.42,0,.58,1});
 CrossfadeSurfaceResult crossfadeTweenSurface(const timeline::Surface* start,const timeline::Surface* end,TweenRegion bounds,double progress,double startOpacity,double endOpacity,std::size_t maxPixels=16*1024*1024,std::optional<timeline::RasterFormat> format={});
-CrossfadeTweenSource prepareCrossfadeTweenSource(const timeline::Timeline&,const std::string& startFrame,const std::string& activeLayer,TweenLayerScope,const std::vector<std::string>& selectedLayers={},TweenBetweenMode mode=TweenBetweenMode::Morph);
+CrossfadeTweenSource prepareCrossfadeTweenSource(const timeline::Timeline&,const std::string& startFrame,const std::string& activeLayer,TweenLayerScope,const std::vector<std::string>& selectedLayers={},TweenBetweenMode mode=TweenBetweenMode::Morph,const RasterColorContext* colors=nullptr);
 std::size_t crossfadeTweenAllocationBytes(const timeline::Timeline&,int width,int height,const CrossfadeTweenOptions&);
-CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::size_t* remaining=nullptr,std::size_t maxPixels=16*1024*1024);
-std::vector<timeline::Pixel> compositeCrossfadeTweenPreview(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::optional<TweenRegion> region={});
+CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::size_t* remaining=nullptr,std::size_t maxPixels=16*1024*1024,const RasterColorContext* colors=nullptr,const std::function<timeline::Pixel(timeline::Pixel)>& indexedColor={});
+std::vector<timeline::Pixel> compositeCrossfadeTweenPreview(const timeline::Timeline&,int width,int height,const CrossfadeTweenSource&,const CrossfadeTweenOptions&,int step,std::optional<TweenRegion> region={},const RasterColorContext* colors=nullptr,const std::function<timeline::Pixel(timeline::Pixel)>& indexedColor={});
 TweenRegion styledTweenBounds(const timeline::Timeline&,const std::string& layerId,TweenRegion);
-TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline&,const CrossfadeTweenSource&);
+TweenRegion crossfadeTweenPreviewBounds(const timeline::Timeline&,const CrossfadeTweenSource&,const RasterColorContext* colors=nullptr);
 }

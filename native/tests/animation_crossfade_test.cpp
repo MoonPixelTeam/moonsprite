@@ -1,4 +1,5 @@
 #include "animation_transform.h"
+#include "raster_color_context.h"
 #include <algorithm>
 #include "animation_crossfade.h"
 #include "document.h"
@@ -13,6 +14,23 @@ using namespace moon;
 timeline::Surface fixtureRaster(std::vector<Pixel> p,int x=0,int y=0){timeline::Surface s;s.width=int(p.size());s.height=1;s.offsetX=x;s.offsetY=y;s.pixels=std::move(p);return s;}
 timeline::Cel owned(std::string id,std::string layer,std::string frame,std::vector<Pixel> p,double opacity=1,int z=0){timeline::Cel c;c.id=id;c.layerId=layer;c.frameId=frame;c.opacity=opacity;c.zIndex=z;c.surface=fixtureRaster(std::move(p));return c;}
 timeline::State fixture(){timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",125},{"f1",75,true}};s.cels={owned("A0","A","f0",{0xff0000ff,0}),owned("A1","A","f1",{0xff00ff00,0xffff0000},1,9),owned("B1","B","f1",{0xff884422,0xff884422},.4,7)};timeline::Cel link;link.id="B0";link.layerId="B";link.frameId="f0";link.linkedCelId="B1";link.zIndex=-3;s.cels.push_back(link);return s;}
+
+void verifyIndexedFramePipeline(){
+ struct Entry{int id;Pixel color;};std::vector<Entry> entries={{1,0xff0000ff},{2,0xffff0000},{3,0xff800080},{4,0x00010203}};RasterColorContext colors(entries,{1,2,3,4},color_mode::Mode::Indexed);
+ timeline::State state;state.layers={{"A",U"Indexed"},{"empty",U"Empty"}};state.frames={{"start",100},{"end",100}};
+ state.cels={owned("a","A","start",{4,1,4}),owned("b","A","end",{4,2,4}),owned("e","empty","start",{0,0,0}),owned("f","empty","end",{0,0,0})};for(auto& c:state.cels)c.surface->format=timeline::RasterFormat::Indexed;timeline::Timeline t(state);
+ auto mapping=[](Pixel value){CHECK(value==0xff800080);return Pixel(3);};
+ for(auto mode:{TweenBetweenMode::Crossfade,TweenBetweenMode::Morph}){
+  const auto source=prepareCrossfadeTweenSource(t,"start","A",TweenLayerScope::All,{},mode,&colors);CHECK(source.layers[0].bounds.x==1&&source.layers[0].bounds.width==1&&!source.layers[1].morph);
+  CrossfadeTweenOptions options;options.frameCount=1;options.betweenMode=mode;
+  auto output=prepareCrossfadeTweenFrame(t,3,1,source,options,1,nullptr,1024,&colors,mapping);CHECK(output.cels[0].surface->format==timeline::RasterFormat::Indexed&&output.cels[0].surface->pixels.size()==3&&output.cels[1].surface->format==timeline::RasterFormat::Indexed);
+  const Pixel expected=mode==TweenBetweenMode::Morph?3:1;CHECK(output.cels[0].surface->pixels==std::vector<Pixel>({0,expected,0}));
+  auto preview=compositeCrossfadeTweenPreview(t,3,1,source,options,1,{},&colors,mapping);CHECK(preview==std::vector<Pixel>({0,mode==TweenBetweenMode::Morph?0xff800080:0xff0000ff,0}));
+  CHECK(compositeCrossfadeTweenPreview(t,3,1,source,options,0,{},&colors,mapping)==std::vector<Pixel>({0,0xff0000ff,0}));
+  options.autoCropCanvas=true;output=prepareCrossfadeTweenFrame(t,3,1,source,options,1,nullptr,1024,&colors,mapping);CHECK(output.cels[0].surface->width==1&&output.cels[0].surface->offsetX==1&&output.cels[0].surface->pixels[0]==expected);
+ }
+ CHECK(t.resolveSurface("a").surface->pixels==std::vector<Pixel>({4,1,4}));
+}
 
 void verifyIndexedDissolve(){
  timeline::Surface a,b;a.width=b.width=4;a.height=b.height=4;a.offsetX=b.offsetX=-3;a.offsetY=b.offsetY=-2;
@@ -88,7 +106,7 @@ void verifyOriginalEndpointPreviews(){
  bool rejected=false;try{compositeCrossfadeTweenPreview(timeline,2,1,source,options,4);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
  }
 }
-int main(){try{verifyIndexedDissolve();verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
+int main(){try{verifyIndexedFramePipeline();verifyIndexedDissolve();verifyOriginalEndpointPreviews();verifyMixedResourcePreviews();verifySparseTweenTransactions();verifyBetweenAutoCrop();
  auto a=fixtureRaster({0xff0000ff},-2,3),b=fixtureRaster({0xffff0000},-2,3);auto blend=crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,.25,.75,1);CHECK(blend.opacity==.5&&blend.surface.pixels==std::vector<Pixel>{0xffbf0040});auto green=fixtureRaster({0xff00ff00},-2,3);CHECK(crossfadeTweenSurface(nullptr,&green,{-2,3,1,1},.5,1,1,1).surface.pixels==std::vector<Pixel>{0x8000ff00});CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},0,1,1,1).surface.pixels==a.pixels);CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},1,1,1,1).surface.pixels==b.pixels);bool rejected=false;try{crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,1,1,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  CHECK(tweenProgress(.25,TweenEasing::Linear)==.25);CHECK(tweenProgress(.25,TweenEasing::EaseIn)==.0625);CHECK(tweenProgress(.25,TweenEasing::EaseOut)==.4375);CHECK(tweenProgress(.25,TweenEasing::EaseInOut)==.15625);CHECK(std::abs(tweenProgress(.25,TweenEasing::Custom,{.42,0,1,1})-.09346465067959621)<1e-12);
  timeline::Timeline t(fixture());CrossfadeTweenOptions o;o.betweenMode=TweenBetweenMode::Crossfade;o.frameCount=1;o.duration=90;const auto source=prepareCrossfadeTweenSource(t,"f0","A",TweenLayerScope::All,{},TweenBetweenMode::Crossfade);CHECK(source.endFrameId=="f1"&&source.layerIds==std::vector<std::string>{"A"});auto frame=prepareCrossfadeTweenFrame(t,2,1,source,o,1);CHECK(frame.cels.size()==2);CHECK(frame.cels[0].surface->pixels==std::vector<Pixel>({0xff008080,0x80ff0000}));CHECK(frame.cels[0].opacity==1&&frame.cels[0].zIndex==0);CHECK(frame.cels[1].surface->pixels==t.resolveSurface("B0").surface->pixels&&frame.cels[1].zIndex==7&&frame.cels[1].opacity==.4);for(const auto& c:frame.cels)CHECK(c.id.empty()&&c.frameId.empty()&&!c.linkedCelId&&!c.runtimeSharedCelId);frame.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("B0").surface->pixels[0]==0xff884422);
