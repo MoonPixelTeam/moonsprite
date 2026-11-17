@@ -139,12 +139,12 @@ void Editor::createTilesetPanel(){
   if(currentDocument().active())return false;
   if(paste&&layerClipboardSnapshot_)return !previous||previous();
   if(!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&currentView().frameSelection&&!currentDocument().freeTileInstanceView()){
-   if(paste){if(!hasApplicationFrameClipboard())return false;if(frameClipboardSnapshot_.sourceIdentity!=currentDocument().identity()&&std::any_of(frameClipboardSnapshot_.layers.begin(),frameClipboardSnapshot_.layers.end(),[](const auto& l){return l.kind=="free-tile";}))return false;}
+   if(paste&&!hasApplicationFrameClipboard())return false;
    return !previous||previous();
   }
   if(!currentDocument().selection()&&currentDocument().activeMaskId().empty()&&celClipboardContext()&&!currentDocument().freeTileInstanceView()){
    if((paste||cut)&&currentDocument().layerEffectivelyLocked(currentDocument().layer()))return false;
-   if(paste){if(!hasApplicationCelClipboard()||applicationCelSelectionOnly())return false;if(celClipboardSnapshot_.sourceIdentity!=currentDocument().identity()&&std::any_of(celClipboardSnapshot_.items.begin(),celClipboardSnapshot_.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return false;}
+   if(paste&&(!hasApplicationCelClipboard()||applicationCelSelectionOnly()))return false;
    return !previous||previous();
   }
   if(paste){if(currentDocument().layer().kind!="free-tile"||!currentDocument().layer().freeTiles||!currentDocument().freeTileCel().freeTiles||!currentDocument().activeMaskId().empty()||currentDocument().layerEffectivelyLocked(currentDocument().layer()))return false;}

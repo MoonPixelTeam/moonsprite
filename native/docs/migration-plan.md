@@ -7389,3 +7389,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 直接迁移 legacy document-pane-layout、useAppDocumentPanes、DocumentTabs、EditorCanvasHost 与 FloatingDocumentWindow：分栏停靠／返回、独立 session 视图与绘制、跨窗格取色及中键平移、每窗格快捷栏／滚动条、浮窗移动／缩放／置顶／返回，以及标签关闭范围、按磁盘源重开的重复视图与打开所在目录。保留实际旧版活动文档播放规则、最小尺寸与视口位置裁切，复用原始图标及共享原生皮肤。
 
 沿用已通过的 394 组实际旧版布局对照及 7 项旧版测试；最终唯一正式 Release 构建和 document-panes-only 专项退出 0，来源覆盖 1042 文件及证据快照通过。覆盖身份与内容隔离、真实控件输入、拖动取消、批量关闭取消及重复视图保存重开。既有浮窗截图已核对；最后输入修正未新增图像验收。本轮不追加全仓回归，未做性能优化。详见[阶段记录](document-panes-migration-20261116.md)。参考图 SVG 浏览器完整兼容及其它台账缺口继续保留，整体 INCOMPLETE。
+
+
+## 2026-11-17 自由瓦片跨工程帧与 Cel 入口
+
+移除菜单残留的跨工程自由瓦片帧／Cel 禁用条件，接通已完成的资源迁移核心。依据实际 legacy 动画剪贴板入口和用户明确批准的完整实例／资源迁移修复，直接复用 portable snapshots、transferFreeCelSources 和原历史事务。保持锁定、作用域、部分选区门禁及新系统图片优先。
+
+唯一正式 Release 构建及 --free-tile-transform-check 退出 0：实际 Ctrl+V／菜单、源文档替换、缺失源迁移、标识重映射、资源复用、Undo／Redo 及实际文件保存重开通过。初轮资源计数断言遗漏目标自带空白源，已修正并复验。来源覆盖 1042 文件及证据快照、diff 通过；未重复核心矩阵、全仓回归或新增图像验收。详见[入口补齐记录](free-tile-cross-document-entries-20261117.md)。整体 INCOMPLETE，阶段保存推送 dev。
