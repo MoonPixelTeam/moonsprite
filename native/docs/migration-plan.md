@@ -7694,3 +7694,11 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 帧序列导出与工程缩略图合成
 
 对照旧版 document-export.worker.ts 的逐帧导出及 project-format-manifest.ts::encodeProjectPreview，帧序列共用栅格准备删除覆盖合成结果的表面直拷，PNG/JPEG/BMP/SVG/ICO继续共用该路径；工程缩略图的直接采样补齐蒙版、裁剪和特殊图层排除条件，其余沿用共享合成。新增五组精确像素夹具覆盖蒙版遮挡、颜色叠加、半透明Cel、禁用样式和透明RGB，检查PNG、裁剪与2倍缩放、空Cel帧、与独立预期图像一致的工程PNG及源像素/焦点/历史不变。首轮夹具以正式导入创建无Cel帧被结构准入拒绝，已改为测试专用状态安装，不改变生产准入。Release frame-png-export-tests定向构建成功，frame-png-export CTest通过（0.06秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见frameAndProjectComposite20261118。
+
+## 2026-11-18 静态图片空Cel导出
+
+对照旧版 png.ts 消费 compositeDocument 及 document-composite-region.ts 的空表面透明输出，静态导出移除重复直拷，复用共享合成器；避免活动帧无Cel时解引用空slot。测试专用无Cel时间轴覆盖整图、指定图层和选区目标的PNG/BMP/SVG/ICO/JPEG编码，检查PNG解码透明像素、原Cel数量、revision和历史不变，沿用已有索引色/灰度参考输出与裁剪缩放检查。Release image-export-tests构建及image-export CTest通过（0.04秒）；来源覆盖1043文件与diff检查通过。正式程序集成结果另记，整体迁移INCOMPLETE。来源见staticExportAbsentCel20261118。
+
+## 2026-11-18 导出合成修复正式程序集成
+
+精灵表颜色状态校验、选区背景预设、帧序列与工程缩略图合成及静态空Cel导出改动已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志export-composite-gui-build.log；产物本地时间2026-11-18 05:59:32，31,802,880 bytes。使用正式主题和指针参数，Start-Process -Wait -PassThru确认--frame-png-export-check、--sheet-import-check均退出0。实际入口检查不替代新增像素夹具或人工图像验收；未进行人工图像验收，不开放生产索引色准入，整体迁移INCOMPLETE。未提交生成物、缓存和用户数据。
