@@ -7594,3 +7594,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色图层合并
 
 依据旧版layer-merge.ts，先按文档色板合成每帧，再将合成RGBA映射为现有索引色ID；向下、所选、可见及图层组合并共用该路径。Release定向构建成功，layer-merge-tests --indexed-only通过四种操作、链接帧、不透明度、逐帧格式／ID及单历史撤销重做检查。完整CTest仍在既有duplicate empty selection断言失败，--existing-only跳过新增检查后可复现，未报告完整测试通过。首轮撤销夹具误比较切换后的活动层，已改为核对每个原Cel的解析像素。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedLayerMerge20261118。
+
+## 2026-11-18 隐式活动图层复制验收修正
+
+核对旧版normalizeAnimationSelection：所有显式选择为空时，selectedLayerIds恢复为活动图层，复制命令以此为目标。原生copyDirectRows已承接该行为；修正layer-merge旧测试中“空选择不能复制”的过时预期，核对新增副本身份、像素、单历史及撤销重做。未修改生产行为。Release定向构建及完整layer-merge CTest通过（0.03秒），包含上一批四种索引色合并检查，解除此前记录的duplicate empty selection失败。整体迁移仍INCOMPLETE。来源见implicitCopyCheck20261118。
