@@ -72,7 +72,8 @@ inline bool open(const std::vector<std::string>& paths,const std::filesystem::pa
    int width=0,height=0;timeline::State timeline;Document seed(1,1);timeline.layers=seed.timeline().state().layers;std::vector<std::vector<Pixel>> surfaces;
    for(std::size_t n=0;n<selected.size();++n){auto source=host.read(selected[n]);if(!width){width=source.width();height=source.height();if(selected.size()>10000||std::uint64_t(width)*height*(selected.size()+2)*sizeof(Pixel)>256ull*1024*1024)throw std::length_error("图片序列超出当前原生像素内存限制。");}
     if(source.width()!=width||source.height()!=height||source.timeline().state().frames.size()!=1)throw std::runtime_error("这些图片的尺寸不一致，或包含已有动画，未合并。请重新选择并分别打开。");
-    surfaces.push_back(compositeNormalRegion(source.timeline(),source.frame().id,{0,0,width,height}));
+    const RasterColorContext colors(source.palette().entries,source.palette().order(),source.colorMode(),source.pixelFormat());
+    surfaces.push_back(compositeNormalRegion(source.timeline(),source.frame().id,{0,0,width,height},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors));
    }
    std::unordered_set<Pixel> exact;for(const auto& pixels:surfaces){for(auto pixel:pixels){if(pixel>>24)exact.insert(pixel);if(exact.size()>4096)break;}if(exact.size()>4096)break;}
    const auto colors=extractImportedPalette(surfaces,256,exact.size()<=4096?std::numeric_limits<std::size_t>::max():262144);

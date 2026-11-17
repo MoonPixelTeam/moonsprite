@@ -7598,3 +7598,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 隐式活动图层复制验收修正
 
 核对旧版normalizeAnimationSelection：所有显式选择为空时，selectedLayerIds恢复为活动图层，复制命令以此为目标。原生copyDirectRows已承接该行为；修正layer-merge旧测试中“空选择不能复制”的过时预期，核对新增副本身份、像素、单历史及撤销重做。未修改生产行为。Release定向构建及完整layer-merge CTest通过（0.03秒），包含上一批四种索引色合并检查，解除此前记录的duplicate empty selection失败。整体迁移仍INCOMPLETE。来源见implicitCopyCheck20261118。
+
+## 2026-11-18 索引色图片序列导入
+
+依据旧版store/image-sequence-import.ts，序列组装对每张源图传入各自文档色板，合成后生成RGBA动画。Release定向构建与image-sequence-import检查通过（0.16秒），新增两张使用相同ID但不同色板颜色的索引色输入，核对顺序、RGBA结果、透明像素、提取色板和原生工程像素保存重开。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedImageSequence20261118。
