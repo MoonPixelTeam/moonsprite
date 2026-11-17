@@ -493,7 +493,7 @@ bool Document::pasteTilemapFrames(const FrameClipboardSnapshot& clip,bool duplic
 
 namespace moon {
 bool Document::cutTilemapFrames(){
- if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting frames");if(!copySelectedFrames())return false;const auto clipboard=exportFrameClipboard();(void)clipboard;const auto count=timeline_.state().frames.size();deleteSelectedFrames();return timeline_.state().frames.size()!=count;
+ if(active()||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting frames");if(!copySelectedFrames())return false;const auto clipboard=exportFrameClipboard();(void)clipboard;const auto count=timeline_.state().frames.size();deleteSelectedFrames(true);return timeline_.state().frames.size()!=count;
 }
 }
 

@@ -20897,6 +20897,15 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts"
         ],
         "nativeAdaptation": "In grid-containing documents, permit active-mask pixel Copy/Cut through mixedPixelCopyContext instead of rejecting on activeMaskId. Reuse legacy Copy source getActiveLayer (owner pixels), while Cut routes deleteSelection to mask secondary-color fill then clears selection. Extend formal actual menu mask fixture with exact owner RGBA clipboard, unchanged Copy history, mask-only Cut, owner/grid refs/resources preserved, single history and Undo/Redo. No core sampling behavior changed."
+      },
+      "mixedFrameClipboardSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-cut.test.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
+        ],
+        "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
       }
     },
     {
@@ -22667,6 +22676,15 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "mixedFrameClipboardSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-cut.test.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
+        ],
+        "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
       }
     },
     {
@@ -25230,6 +25248,15 @@
           "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
         ],
         "nativeAdaptation": "Apply free-instance clipboard menu guards only to a free-tile target. Legacy selection Copy reads active grid raster and Cut delegates to existing mode-specific delete regardless of unrelated free layers. Retain existing grid registry eligibility and transactions. Formal mixed grid/free fixture covers actual Copy/Cut menus in Paint/Create/Edit/Hybrid, exact clipboard pixels, Paint copy-only no history, other modes resource-backed deletion and Undo/Redo, unrelated grid resources and free instances unchanged; existing mask fixture remains."
+      },
+      "mixedFrameClipboardSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-cut.test.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
+        ],
+        "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
       }
     },
     {
@@ -27537,6 +27564,15 @@
           "legacy/src/renderer/src/store/workspace-commands-layer-structure.ts"
         ],
         "nativeAdaptation": "cloneAnimationCelsForLayer uses blankSurfaceFromLayer(targetLayer) for absent frames. Native duplicates missing-frame Cel as 1x1 zero storage with active displayed source layer format, falling back to document mode when absent; existing nonempty Cel cloning stays unchanged. Four document/layer format combinations validate missing-frame format, copied source raw pixels, undo-redo and first paint on missing frame followed by undo duplicate/replay paint. Mixed fixture states do not broaden production indexed admission."
+      },
+      "mixedFrameClipboardSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-cut.test.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
+        ],
+        "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
       }
     },
     {
@@ -33425,6 +33461,15 @@
           "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
         ],
         "nativeAdaptation": "Apply free-instance clipboard menu guards only to a free-tile target. Legacy selection Copy reads active grid raster and Cut delegates to existing mode-specific delete regardless of unrelated free layers. Retain existing grid registry eligibility and transactions. Formal mixed grid/free fixture covers actual Copy/Cut menus in Paint/Create/Edit/Hybrid, exact clipboard pixels, Paint copy-only no history, other modes resource-backed deletion and Undo/Redo, unrelated grid resources and free instances unchanged; existing mask fixture remains."
+      },
+      "mixedFrameClipboardSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts",
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-cut.test.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts"
+        ],
+        "nativeAdaptation": "Legacy frame-header Copy/Cut precedes pixel selection even after selection override. Route frame scope before grid pixel guards, defer free-instance routing in frame scope, and admit frame Copy/Cut in registry/free wrapper despite residual pixel selection. cutTilemapFrames delegates to existing deleteSelectedFrames(true), clearing selection only on successful frame removal; retain active edit/mask refusal and full frame payload/one-frame minimum. Formal actual menu cases cover grid-only and mixed grid/free, complete layer payload, no-history Copy, one-history Cut, cleared selection, resource preservation, Undo/Redo and valid links."
       }
     },
     {

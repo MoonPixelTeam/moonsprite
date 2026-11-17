@@ -7784,3 +7784,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合自由瓦片工程网格选区复制与剪切
 
 对照workspace-commands-clipboard.ts::copySelection/cutSelection及workspace-commands-selection-effects.ts，像素选区复制读取活动网格图层，剪切委托既有模式删除，不受无关自由图层影响。自由实例菜单包装仅对free-tile目标生效，其他类型回到原有registry准入；不新增网格像素粘贴能力。复用正式混合网格/自由层夹具，覆盖Paint/Create/Edit/Hybrid实际Copy与Cut菜单、确切剪贴板像素、Paint只复制/结束选区且无历史、其他模式删除一条历史与Undo/Redo、无关网格引用/资源及自由实例不变，同时保留蒙版检查。唯一正式Release构建退出0（mixed-free-grid-clipboard-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0；来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedFreeGridClipboard20261118。
+
+## 2026-11-18 混合瓦片工程帧头复制剪切与残留像素选区
+
+对照app-document-shortcuts.ts帧优先分支、workspace-cut.ts及workspace-commands-animation-cel-properties.ts，帧头选择存在时复制/剪切完整帧，不因画布残留像素选区或显式selectionOverride改为像素操作。原生在网格像素门禁前分流帧作用域，帧作用域不误入自由实例复制，registry与自由菜单包装允许该组合。cutTilemapFrames保留活动编辑/蒙版拒绝，改用已有deleteSelectedFrames(true)事务，成功删帧才清画布选区，最少一帧规则不变。实际菜单新增纯网格及网格/自由层两组夹具，验证完整多层帧载荷、Copy不改选区/历史、Cut删除完整帧一条历史并清选区、资源保持、Undo/Redo及链接有效。唯一正式Release构建退出0（mixed-frame-clipboard-selection-build.log），正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0；来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见mixedFrameClipboardSelection20261118。
