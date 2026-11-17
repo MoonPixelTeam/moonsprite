@@ -30255,7 +30255,15 @@
       ],
       "background20261020": "Background migration: exact legacy creation/conversion/root-bottom/active selection/frame-owner semantics, default solid228 or actual PNG decoded pixels, canvas repeat metadata, preset pattern geometry and phase preservation after tiny crop. Native PixelDialog and existing preset directory library, native surface/history/project codec adapters. Background resize uses native full Timeline history snapshots rather than legacy shared-surface delta optimization and applies native256MiB admission. PNG importer currently native1024 dimension cap (legacy library allows4096); tile/text/style generic raster conversion remains unavailable and is explicitly gated. Icons existing legacy import. Visual acceptance separately pending.",
       "adaptation": "Background migration: exact legacy creation/conversion/root-bottom/active selection/frame-owner semantics, default solid228 or actual PNG decoded pixels, canvas repeat metadata, preset pattern geometry and phase preservation after tiny crop. Native PixelDialog and existing preset directory library, native surface/history/project codec adapters. Background resize uses native full Timeline history snapshots rather than legacy shared-surface delta optimization and applies native256MiB admission. PNG importer currently native1024 dimension cap (legacy library allows4096); tile/text/style generic raster conversion remains unavailable and is explicitly gated. Icons existing legacy import. Visual acceptance separately pending.",
-      "tileCanvasResize20261108": "Actual legacy resizeDocumentAt + resizeAnimationCelsAt: tilemap floor/ceil coverage with optional clipping, free surface expansion/local instance translation and exact unrotated-source trim predicate; transform canonical linked/runtime storage once, retain resources/identities and mixed hidden/locked raster/background/masks. Reuse existing native structural canvas transaction, preflight native256MiB working budget including resource metadata, selection and actual background repeat coverage; 64-bit geometry rejects overflow without publishing. Preserve commit-before-command floating paste, single Undo/Redo, live selection/pivot and existing PixelDialog entry.128 canvas and16 current/all-frame trim unchanged actual legacy two-frame cases (including empty/no-op) compare complete stored RGBA hashes/cells/instances and source/output reopens; runtime-shared cases, mixed masks/background, empty-source free Cel and overflow/budget guards; actual window evidence in migration-plan. Local Aseprite canvas command/DocApi read-only comparison: transaction/canonical owner/sprite crop, EULA modules not copied. Special image resize, indexed/grayscale full editing and other global migration remain incomplete."
+      "tileCanvasResize20261108": "Actual legacy resizeDocumentAt + resizeAnimationCelsAt: tilemap floor/ceil coverage with optional clipping, free surface expansion/local instance translation and exact unrotated-source trim predicate; transform canonical linked/runtime storage once, retain resources/identities and mixed hidden/locked raster/background/masks. Reuse existing native structural canvas transaction, preflight native256MiB working budget including resource metadata, selection and actual background repeat coverage; 64-bit geometry rejects overflow without publishing. Preserve commit-before-command floating paste, single Undo/Redo, live selection/pivot and existing PixelDialog entry.128 canvas and16 current/all-frame trim unchanged actual legacy two-frame cases (including empty/no-op) compare complete stored RGBA hashes/cells/instances and source/output reopens; runtime-shared cases, mixed masks/background, empty-source free Cel and overflow/budget guards; actual window evidence in migration-plan. Local Aseprite canvas command/DocApi read-only comparison: transaction/canonical owner/sprite crop, EULA modules not copied. Special image resize, indexed/grayscale full editing and other global migration remain incomplete.",
+      "indexedBackgroundResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/background-patterns.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "tileBackgroundSurfaceToCanvas retains raster format and resets owned Cel storage origin. resizeDocumentAt/resizeAnimationDocumentAt provide paletteColorIdForCanvas for indexed procedural extension; map preset RGBA into existing visible IDs only, preserve original storage words inside old canvas and repeated raw tile IDs. Native resizeBackgroundCanvas supplies immutable document palette, retains existing linked-owner structural transaction. Regression covers preset/canvas modes, signed offsets, storage origins, linked frame resolution, exact IDs, unchanged palette and undo/redo."
+      }
     },
     {
       "remainingHistoryDomains20261113": "Four composable SnapshotHistory/TileResourceHistory/SliceHistory/ContentHistory payloads retain existing replay priority, cross-domain children and focus, existing validation and cost formulas. Shared cel storage stays single-owned inside the parent content payload; first three Edit aggregate fields remain compatible. Canonical native working-storage budget extracted once and reused. Exact inverse proof retained; runtime acceptance tracked in history-edit-contract.md.",
@@ -30327,6 +30335,14 @@
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "indexedBackgroundResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/background-patterns.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "tileBackgroundSurfaceToCanvas retains raster format and resets owned Cel storage origin. resizeDocumentAt/resizeAnimationDocumentAt provide paletteColorIdForCanvas for indexed procedural extension; map preset RGBA into existing visible IDs only, preserve original storage words inside old canvas and repeated raw tile IDs. Native resizeBackgroundCanvas supplies immutable document palette, retains existing linked-owner structural transaction. Regression covers preset/canvas modes, signed offsets, storage origins, linked frame resolution, exact IDs, unchanged palette and undo/redo."
       }
     },
     {
@@ -41753,6 +41769,14 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "layerClipboardFromDocument freezes animation Cel indexed pixels through a palette Map (last duplicate ID wins), while applyLayerClipboardAnimationCel converts RGBA snapshots into destination indexed IDs or grayscale without requantizing RGBA precision. Reuse animationClipboardCel at whole-layer copy and animationCelForTarget at paste. Preserve independent Cel snapshots, geometry, payloads and existing structure history. Directed regression copies indexed linked frames with duplicate IDs, changes source palette, pastes to RGBA/grayscale/indexed targets with different IDs, checks frozen pixels, format, no RGBA precision requantization, single history and undo/redo. Release builds passed; indexed-runtime oracle/runtime and complete document-layer-groups CTests passed (0.71/0.03/0.03s). No official GUI rebuild or manual acceptance; indexed production admission remains closed."
+      },
+      "indexedBackgroundResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/background-patterns.ts",
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "tileBackgroundSurfaceToCanvas retains raster format and resets owned Cel storage origin. resizeDocumentAt/resizeAnimationDocumentAt provide paletteColorIdForCanvas for indexed procedural extension; map preset RGBA into existing visible IDs only, preserve original storage words inside old canvas and repeated raw tile IDs. Native resizeBackgroundCanvas supplies immutable document palette, retains existing linked-owner structural transaction. Regression covers preset/canvas modes, signed offsets, storage origins, linked frame resolution, exact IDs, unchanged palette and undo/redo."
       }
     },
     {

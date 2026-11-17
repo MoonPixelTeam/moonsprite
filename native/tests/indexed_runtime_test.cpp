@@ -22,6 +22,23 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
 namespace moon {struct RasterHistoryFixture {
+ static void indexedBackgroundResize(){
+  for(bool preset:{false,true})for(int shift:{-1,1}){
+   Document d(3,2);auto state=d.timeline_.state();auto& layer=state.layers.front();layer.background=timeline::BackgroundSettings{preset?"preset":"canvas",preset?"solid":"",preset?0:3,preset?0:2};
+   auto& surface=*state.cels.front().surface;surface.format=RasterFormat::Indexed;surface.pixels={7,0,8,8,7,0};surface.storageOriginX=4;surface.storageOriginY=-3;
+   const auto owner=state.cels.front().id;const auto frame=state.frames.front().id;state.frames.push_back({"linked-frame",100});auto linked=state.cels.front();linked.id="linked-background";linked.frameId="linked-frame";linked.surface.reset();linked.linkedCelId=owner;state.cels.push_back(linked);
+   d.timeline_=Timeline(state);d.colorMode_=color_mode::Mode::Indexed;d.palette_.entries={{0,U"Empty",0},{7,U"Red",0xff1122cc},{8,U"Preset",0xffe4e4e4}};d.palette_.setOrder({0,7,8});d.palette_.nextId=9;d.projectActiveCelOpacities();
+   const auto palette=d.palette_;const std::vector<Pixel> before=state.cels.front().surface->pixels;
+   CHECK(d.resizeCanvas(6,4,CanvasAnchor::NorthWest,shift,1,true));CHECK(d.historySize()==1);
+   auto after=d.timeline_.resolveSurface(owner).surface;CHECK(after&&after->format==RasterFormat::Indexed&&after->storageOriginX==0&&after->storageOriginY==0);
+   const auto saved=*after;CHECK(d.timeline_.resolveSurface("linked-background").source->id==owner);
+   for(int y=0;y<after->height;++y)for(int x=0;x<after->width;++x){const auto sx=x+after->offsetX-shift,sy=y+after->offsetY-1;const bool inside=sx>=0&&sy>=0&&sx<3&&sy<2;const int lx=inside?sx:((sx%3)+3)%3,ly=inside?sy:((sy%2)+2)%2;const Pixel expected=!inside&&preset?8:before[std::size_t(ly)*3+lx];CHECK(after->pixels[std::size_t(y)*after->width+x]==expected);}
+   CHECK(d.palette_.entries.size()==palette.entries.size()&&d.palette_.nextId==palette.nextId&&d.palette_.order()==palette.order());
+   d.undo();CHECK(d.width()==3&&d.height()==2);after=d.timeline_.resolveSurface(owner).surface;CHECK(after->format==RasterFormat::Indexed&&after->pixels==before&&after->storageOriginX==4&&after->storageOriginY==-3);
+   d.redo();after=d.timeline_.resolveSurface(owner).surface;CHECK(d.width()==6&&d.height()==4&&after->format==saved.format&&after->pixels==saved.pixels&&after->offsetX==saved.offsetX&&after->offsetY==saved.offsetY);CHECK(d.timeline_.resolveSurface("linked-background").source->id==owner);
+  }
+ }
+
  static void wholeLayerColorClipboard(){
   Document source(3,1);auto state=source.timeline_.state();state.cels.front().surface->format=RasterFormat::Indexed;state.cels.front().surface->pixels={7,8,0};state.frames.push_back({"linked-copy",100});auto alias=state.cels.front();alias.id="linked-copy-cel";alias.frameId="linked-copy";alias.linkedCelId=state.cels.front().id;alias.surface.reset();state.cels.push_back(alias);source.timeline_=Timeline(state);source.colorMode_=color_mode::Mode::Indexed;source.palette_.entries={{0,U"empty",0},{7,U"first",0xff112233},{8,U"other",0xffaabbcc},{7,U"last",0xff223344}};source.palette_.setOrder({0,7,8});source.projectActiveCelOpacities();
   auto clip=source.copyLayerClipboard();CHECK(clip&&clip->cels.size()==2);const std::vector<Pixel> frozen{0xff223344,0xffaabbcc,0};for(const auto& c:clip->cels)CHECK(c.surface->format==RasterFormat::Rgba&&c.surface->pixels==frozen&&!c.linkedCelId);
@@ -135,7 +152,7 @@ namespace moon {struct RasterHistoryFixture {
   CHECK(isolated==std::vector<Pixel>({0xff000000}));
  }
 };}
-int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();RasterHistoryFixture::wholeLayerColorClipboard();
+int main(int argc,char** argv){try{RasterHistoryFixture::indexedBackgroundResize();RasterHistoryFixture::wandReference();RasterHistoryFixture::mixedAntiAlias();RasterHistoryFixture::indexedStyleSplit();RasterHistoryFixture::layerPasteFrameInheritance();RasterHistoryFixture::imagePasteColorModes();RasterHistoryFixture::wholeLayerColorClipboard();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);

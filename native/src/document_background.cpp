@@ -54,11 +54,11 @@ bool Document::resizeBackgroundCanvas(int width,int height,int dx,int dy,bool tr
   plans.push_back(std::move(p));
  }
  std::size_t maskBudget=std::size_t(limit-bytes);auto masks=resizedCanvasMasks(before,width,height,dx,dy,trim,maskBudget);
- auto state=before;for(auto& l:state.layers)if(l.background&&l.background->mode=="canvas"&&!l.background->repeatWidth){l.background->repeatWidth=width_;l.background->repeatHeight=height_;}
+ const RasterColorContext backgroundColors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);auto state=before;for(auto& l:state.layers)if(l.background&&l.background->mode=="canvas"&&!l.background->repeatWidth){l.background->repeatWidth=width_;l.background->repeatHeight=height_;}
  for(const auto& p:plans){auto& c=state.cels[p.index];auto& s=*c.surface;const auto& layer=state.layers[timeline_.layerIndex(c.layerId)];
   if(p.grid){c.tilemap=canvasResizedGrid(*c.tilemap,*p.grid);s={};s.width=p.grid->width;s.height=p.grid->height;s.offsetX=p.grid->x;s.offsetY=p.grid->y;s.pixels=tiles::render(*c.tilemap,state.tilesets,colorMode_==color_mode::Mode::Grayscale);}
   else if(p.free){c.freeTiles=canvasResizedInstances(*layer.freeTiles,*c.freeTiles,state.tilesets,*p.free,width,height,trim);s={};s.width=p.free->width;s.height=p.free->height;s.offsetX=p.free->x;s.offsetY=p.free->y;s.pixels=free_tiles::render(*layer.freeTiles,*c.freeTiles,state.tilesets,s.width,s.height,colorMode_==color_mode::Mode::Grayscale);}
-  else if(p.background)s=tileBackgroundSurface(s,width_,height_,width,height,dx,dy,*layer.background);
+  else if(p.background)s=tileBackgroundSurface(s,width_,height_,width,height,dx,dy,*layer.background,&backgroundColors);
   else if(p.raster.clipped){auto available=p.raster.bytes;s=canvasResizeCroppedSurface(s,p.raster,available);}else{s.offsetX=p.raster.offsetX;s.offsetY=p.raster.offsetY;}
  }
  state.masks=std::move(masks);Edit e{{},state_,nextState_};e.snapshotHistory.beforeDimensions={{width_,height_}};e.snapshotHistory.afterDimensions={{width,height}};e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=e.afterTimelineSelection=timelineSelection_;e.beforeSelection=e.afterSelection=selectedFrames_;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=selection_;
