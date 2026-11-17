@@ -1,4 +1,5 @@
 #include "animation_morph.h"
+#include "raster_color_context.h"
 #include "animation_crossfade.h"
 #include "document.h"
 #include "layer_compositor.h"
@@ -9,7 +10,19 @@
 using namespace moon;
 timeline::Surface shape(std::vector<std::string> rows,Pixel color=0xff0000ff,int x=0,int y=0){timeline::Surface s;s.width=int(rows[0].size());s.height=int(rows.size());s.offsetX=x;s.offsetY=y;for(const auto& row:rows)for(char c:row)s.pixels.push_back(c=='#'?color:0);return s;}
 int area(const timeline::Surface& s){return int(std::count_if(s.pixels.begin(),s.pixels.end(),[](Pixel p){return p>>24;}));}
-int main(){try{
+void indexedMorph(){
+ struct Entry{int id;Pixel color;};std::vector<Entry> palette={{1,0xff0000ff},{2,0xffff0000},{3,0x00010203}};
+ RasterColorContext colors(palette,{1,2,3},color_mode::Mode::Indexed);
+ auto a=shape({"....",".##.",".##.","...."},1,-3,2),b=shape({"####","####","####","####"},2,4,-2);a.format=b.format=timeline::RasterFormat::Indexed;a.pixels[0]=3;a.pixels[15]=0xffffffff;
+ const auto plan=prepareMorphTween(a,b,&colors);CHECK(plan.from.x==1&&plan.from.y==1&&plan.from.width==2&&plan.to.width==4);
+ int calls=0;auto map=[&](Pixel packed){++calls;CHECK(packed==0xff800080);return Pixel(0xf0000001);};
+ auto result=morphTweenSurface(plan,a,b,.5,1024,map);CHECK(result.format==a.format&&result.width==3&&result.height==3&&result.offsetX==1&&result.offsetY==1&&result.pixels==std::vector<Pixel>(9,0xf0000001)&&calls==1);
+ CHECK(morphTweenSurface(plan,a,b,0).pixels==std::vector<Pixel>(4,1)&&morphTweenSurface(plan,a,b,1).pixels==b.pixels);
+ auto rgbaA=shape({"##","##"}),rgbaB=shape({"####","####","####","####"},0xffff0000);auto rgbaPlan=prepareMorphTween(rgbaA,rgbaB);CHECK(plan.a.colors==rgbaPlan.a.colors&&plan.b.colors==rgbaPlan.b.colors&&plan.a.signedDistance==rgbaPlan.a.signedDistance);
+ auto transparent=a;transparent.pixels.assign(16,3);bool rejected=false;try{prepareMorphTween(transparent,b,&colors);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);
+ CHECK(a.pixels[0]==3&&a.pixels[15]==0xffffffff);
+}
+int main(){try{indexedMorph();
  auto a=shape({"##","##"},0xff0000ff,-6,2),b=shape({"####","####","####","####"},0xffff0000,10,10);auto p=prepareMorphTween(a,b);auto m=morphTweenSurface(p,a,b,.5);CHECK(m.width==3&&m.height==3&&m.offsetX==2&&m.offsetY==6&&m.pixels==std::vector<Pixel>(9,0xff800080));CHECK(morphTweenSurface(p,a,b,0).pixels==a.pixels&&morphTweenSurface(p,a,b,1).pixels==b.pixels);auto q=morphTweenSurface(p,a,b,.25);CHECK(q.offsetX==-2&&q.offsetY==4&&q.width==3&&q.height==3);
  a=shape({"..#..",".###.","#####",".###.","..#.."});b=shape({"#####","#####","#####","#####","#####"});p=prepareMorphTween(a,b);std::vector<int> areas;for(double t:{0.,.25,.5,.75,1.}){auto out=morphTweenSurface(p,a,b,t);areas.push_back(area(out));CHECK(std::all_of(out.pixels.begin(),out.pixels.end(),[](Pixel v){return (v>>24)==0||(v>>24)==255;}));}CHECK(areas==std::vector<int>({13,13,21,25,25}));a=shape({"#####","#...#","#...#","#...#","#####"});p=prepareMorphTween(a,b);CHECK(morphTweenSurface(p,a,b,.25).pixels[12]==0&&morphTweenSurface(p,a,b,.75).pixels[12]==0xff0000ff);bool rejected=false;try{prepareMorphTween(shape({"."}),b);}catch(const std::invalid_argument&){rejected=true;}CHECK(rejected);rejected=false;try{morphTweenSurface(p,a,b,.5,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);rejected=false;try{prepareMorphTween(shape({std::string(1100,'#')}),shape(std::vector<std::string>(1100,"#")));}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  timeline::State state;state.layers={{"L",U"L"},{"empty",U"empty"}};state.frames={{"f0",100},{"f1",100,true}};timeline::Surface first;first.width=12;first.height=12;first.pixels.resize(144);first.pixels[0]=0xff0000ff;auto last=first;last.pixels[0]=0;last.pixels[8]=0xffff0000;timeline::Cel c;c.id="c0";c.layerId="L";c.frameId="f0";c.surface=first;c.zIndex=-2;state.cels.push_back(c);c.id="c1";c.frameId="f1";c.surface=last;c.zIndex=9;state.cels.push_back(c);auto blank=first;std::fill(blank.pixels.begin(),blank.pixels.end(),0);c.layerId="empty";c.id="e0";c.frameId="f0";c.surface=blank;state.cels.push_back(c);c.id="e1";c.frameId="f1";state.cels.push_back(c);

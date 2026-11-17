@@ -7514,3 +7514,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色交叉淡化像素算法
 
 迁移 legacy animation-crossfade.ts 的 Bayer 溶解：按世界坐标固定相位，保留原始 uint32 颜色 ID，沿用不透明度加权及双零不透明度回退。输出格式从有效端点推断，也可显式指定以支持空端点。Release 定向构建成功，animation-crossfade CTest 通过（0.23 秒），覆盖17个进度、负坐标、原始端点、高位ID、零／不等不透明度、缺失端点和输入保留。仅完成像素算法，索引色内容边界、形变／变换、生产文档准入仍未完成；未重建 GUI，整体迁移 INCOMPLETE。来源见 indexedDissolve20261118。
+
+## 2026-11-18 索引色形变像素算法
+
+按 legacy animation-morph.ts 迁移色板感知内容边界及形状场；复用 RasterColorContext，端点保留原始颜色 ID，中间颜色按旧版打包后交给调用方映射，缓存上限4096。Release 定向构建成功，animation-morph CTest 通过（0.03 秒），覆盖透明／缺失 ID、裁切边界、与 RGBA 相同的形状距离场、原始端点、重复色只映射一次及高位输出 ID。未重建 GUI。当前仅完成算法，生产索引色准入、补间源规划及文档色板／历史事务仍待迁移，整体 INCOMPLETE。来源见 indexedMorph20261118。

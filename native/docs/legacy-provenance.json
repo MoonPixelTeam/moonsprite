@@ -17602,7 +17602,15 @@
         "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
       ],
       "scope": " 2026-10-17 quantization-morph batch: Adjacent RGBA morph uses original content bounds, padded Float32 two-pass signed distance/nearest strict tie, source-grid resampling, interpolated bounds/offset Math.round, signed-distance shape and straight RGBA interpolation. Current empty endpoint rejects; all/selected empty layer fallback crossfade. Morph and crossfade mode choice, original new-open default morph restored only after implementation, preview/generation share prepared plan and existing atomic single-delta history/save path.",
-      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged."
+      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged.",
+      "indexedMorph20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-morph.ts:input,shapeField,prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed visibility and ID-to-RGBA shape fields. Preserve start output format and raw endpoint IDs; intermediate packed interpolated colors use caller-supplied indexedColor with the legacy 4096-entry cache. Existing RGBA callers retain defaults. Production indexed admission, palette-aware tween source planning and document palette/history integration remain incomplete.",
+        "validation": "Release animation-morph-tests build succeeded; animation-morph CTest passed (0.03s). Indexed fixture checks transparent and missing IDs, cropped bounds, equality with RGBA shape/distance fields, exact endpoint IDs, intermediate mapped high ID and one mapping call for repeated colors. No GUI rebuild or production indexed claim."
+      }
     },
     {
       "file": "src/animation_morph.cpp",
@@ -17616,7 +17624,15 @@
         "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
       ],
       "scope": " 2026-10-17 quantization-morph batch: Adjacent RGBA morph uses original content bounds, padded Float32 two-pass signed distance/nearest strict tie, source-grid resampling, interpolated bounds/offset Math.round, signed-distance shape and straight RGBA interpolation. Current empty endpoint rejects; all/selected empty layer fallback crossfade. Morph and crossfade mode choice, original new-open default morph restored only after implementation, preview/generation share prepared plan and existing atomic single-delta history/save path.",
-      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged."
+      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged.",
+      "indexedMorph20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-morph.ts:input,shapeField,prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed visibility and ID-to-RGBA shape fields. Preserve start output format and raw endpoint IDs; intermediate packed interpolated colors use caller-supplied indexedColor with the legacy 4096-entry cache. Existing RGBA callers retain defaults. Production indexed admission, palette-aware tween source planning and document palette/history integration remain incomplete.",
+        "validation": "Release animation-morph-tests build succeeded; animation-morph CTest passed (0.03s). Indexed fixture checks transparent and missing IDs, cropped bounds, equality with RGBA shape/distance fields, exact endpoint IDs, intermediate mapped high ID and one mapping call for repeated colors. No GUI rebuild or production indexed claim."
+      }
     },
     {
       "file": "tests/animation_morph_test.cpp",
@@ -17630,7 +17646,15 @@
         "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts"
       ],
       "scope": " 2026-10-17 quantization-morph batch: Adjacent RGBA morph uses original content bounds, padded Float32 two-pass signed distance/nearest strict tie, source-grid resampling, interpolated bounds/offset Math.round, signed-distance shape and straight RGBA interpolation. Current empty endpoint rejects; all/selected empty layer fallback crossfade. Morph and crossfade mode choice, original new-open default morph restored only after implementation, preview/generation share prepared plan and existing atomic single-delta history/save path.",
-      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged."
+      "adaptation": " Single prepared source cached across slider/playback/count/easing changes; scope or mode change releases old shape fields before rebuilding, matching legacy useMemo lifetime. Existing admitted dense1024canvas/128MiB generated/256MiB document restrictions remain and out-of-canvas output rejects before live mutation; morph single padded field1Mi pixels and prepared source64MiB follow old limits. No new tween algorithm or crossfade approximation. Actual original TS oracle and native focused/opened results recorded separately. Frame/loop/path tween scopes remain incomplete; ordinary project save path unchanged.",
+      "indexedMorph20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-morph.ts:input,shapeField,prepareMorphTween,morphTweenSurface",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed visibility and ID-to-RGBA shape fields. Preserve start output format and raw endpoint IDs; intermediate packed interpolated colors use caller-supplied indexedColor with the legacy 4096-entry cache. Existing RGBA callers retain defaults. Production indexed admission, palette-aware tween source planning and document palette/history integration remain incomplete.",
+        "validation": "Release animation-morph-tests build succeeded; animation-morph CTest passed (0.03s). Indexed fixture checks transparent and missing IDs, cropped bounds, equality with RGBA shape/distance fields, exact endpoint IDs, intermediate mapped high ID and one mapping call for repeated colors. No GUI rebuild or production indexed claim."
+      }
     },
     {
       "file": "src/custom_grid.h",
