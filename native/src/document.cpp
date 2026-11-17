@@ -73,6 +73,16 @@ std::vector<Pixel> Document::canvasPixels()const{
  std::vector<Pixel> out(std::size_t(width_)*height_);const auto left=std::max<std::int64_t>(0,s.offsetX),top=std::max<std::int64_t>(0,s.offsetY),right=std::min<std::int64_t>(width_,std::int64_t(s.offsetX)+s.width),bottom=std::min<std::int64_t>(height_,std::int64_t(s.offsetY)+s.height);
  for(auto y=top;y<bottom;++y)if(right>left)std::copy_n(s.pixels.begin()+std::size_t(y-s.offsetY)*s.width+std::size_t(left-s.offsetX),std::size_t(right-left),out.begin()+std::size_t(y)*width_+std::size_t(left));return out;
 }
+std::vector<Pixel> Document::wandReferencePixels(bool visibleLayers)const{
+ const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
+ if(visibleLayers)return compositeNormalRegion(timeline_,frame().id,{0,0,width_,height_},{},nullptr,0,0,0,false,{},{},nullptr,nullptr,&colors);
+ auto pixels=canvasPixels();const auto* source=activeSurfaceIfPresent();
+ if(source&&source->format==timeline::RasterFormat::Indexed){
+  // Only actual storage resolves index zero; the sparse exterior stays transparent.
+  for(int y=0;y<height_;++y)for(int x=0;x<width_;++x){const auto i=raster::worldIndex(*source,x,y);pixels[std::size_t(y)*width_+x]=i?colors.toolColor(source->format,source->pixels[*i]):0;}
+ }
+ return pixels;
+}
 std::optional<SelectionMask> Document::selectionContentBounds(const SelectionMask& selection)const{
  const auto* present=activeSurfaceIfPresent();if(!present)return {};const auto& s=*present;raster::validate(s);const auto l=std::max<std::int64_t>(selection.x,s.offsetX),t=std::max<std::int64_t>(selection.y,s.offsetY),r=std::min<std::int64_t>(std::int64_t(selection.x)+selection.width,std::int64_t(s.offsetX)+s.width),b=std::min<std::int64_t>(std::int64_t(selection.y)+selection.height,std::int64_t(s.offsetY)+s.height);
  const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);std::int64_t left=r,top=b,right=l-1,bottom=t-1;for(auto y=t;y<b;++y)for(auto x=l;x<r;++x)if(selectionContains(selection,int(x),int(y))&&colors.visible(s.format,raster::readWorld(s,x,y))){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}if(right<left||bottom<top)return {};

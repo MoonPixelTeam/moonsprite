@@ -19,7 +19,19 @@ static std::optional<ColorOverlayStyle> style(const std::string& effect){
  return s;
 }
 static AttachedMask mask(std::string id){AttachedMask m;m.id=std::move(id);m.surface={2,2,1,1,{},{},{0xff000000,0xff808080,0xffffffff,0}};return m;}
-int main(int argc,char** argv){try{
+namespace moon {struct RasterHistoryFixture {
+ static void wandReference(){
+  Document d(5,1);auto state=d.timeline_.state();auto& source=*state.cels.front().surface;
+  source.width=3;source.height=1;source.offsetX=1;source.format=RasterFormat::Indexed;source.pixels={7,8,0};
+  d.timeline_=Timeline(std::move(state));d.palette_.entries={{0,U"zero",0xffabcdef},{7,U"a",0xff112233},{8,U"b",0xff112233}};
+  const auto before=d.timeline_.resolveSurface(d.cel().id).surface->pixels;const auto h=d.historyPosition();
+  const auto local=d.wandReferencePixels(false);CHECK(local==std::vector<Pixel>({0,0xff112233,0xff112233,0xffabcdef,0}));
+  auto selection=magicWandSelection(local,5,1,1,0);CHECK(selectionContains(selection,1,0)&&selectionContains(selection,2,0)&&!selectionContains(selection,0,0)&&!selectionContains(selection,3,0));
+  CHECK(d.wandReferencePixels(true)==local);
+  CHECK(d.canvasPixels()==std::vector<Pixel>({0,7,8,0,0})&&d.historyPosition()==h&&d.timeline_.resolveSurface(d.cel().id).surface->pixels==before);
+ }
+};}
+int main(int argc,char** argv){try{RasterHistoryFixture::wandReference();
  CHECK(argc==2);std::ifstream in(argv[1]);CHECK(in.good());int count=0;in>>count;CHECK(count>=53);
  for(int n=0;n<count;++n){std::string name,groupStyle;int layerCount,group,groupMask,onion,link,paletteCount;in>>name>>layerCount>>group>>groupMask>>groupStyle>>onion>>link>>paletteCount;
   std::vector<Entry> palette(paletteCount);for(auto& e:palette)in>>e.id>>e.color;int orderCount;in>>orderCount;std::vector<int> order(orderCount);for(auto& id:order)in>>id;RasterColorContext colors(palette,order,color_mode::Mode::Indexed);

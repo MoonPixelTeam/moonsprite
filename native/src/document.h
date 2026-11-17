@@ -242,6 +242,7 @@ public:
   const timeline::Surface* activeSurfaceIfPresent()const {if(absentStrokeSurface_)return &*absentStrokeSurface_;const auto* slot=timeline_.findCel(layer().id,frame().id);return slot?timeline_.resolveSurface(slot->id).surface:nullptr;}
   const timeline::Surface& activeSurface()const {return *activeSurfaceIfPresent();}
   std::vector<Pixel> canvasPixels()const;
+  std::vector<Pixel> wandReferencePixels(bool visibleLayers)const;
   std::optional<SelectionMask> selectionContentBounds(const SelectionMask&)const;
   const DocumentLayer& layer() const {return timeline_.state().layers.at(activeLayerIndex());}
   bool layerEffectivelyLocked(const DocumentLayer& value) const {return timeline::isLayerEffectivelyLocked(timeline_.state(),value);}

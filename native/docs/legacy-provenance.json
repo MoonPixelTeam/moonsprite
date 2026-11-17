@@ -4727,6 +4727,13 @@
         ],
         "adaptation": "Port fillForeground selected-instance resource edits through the existing native transformed source raster and atomic shared-resource history. Preserve source/instance visibility and locks, selection masks, source growth, source offsets and original selection. Command targeting bypasses pointer hit routing and uses legacy noncompact raster bounds. Ordinary pointer tools retain existing compact routing.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual Fill menu and F shortcut, all four rotations with mirror, sparse selection source growth, shared instance refresh, undo/redo, saved-file reopen and Paint rejection. No new visual acceptance claimed."
+      },
+      "indexedWandReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/selection.ts"
+        ],
+        "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
       }
     },
     {
@@ -5927,6 +5934,13 @@
           "legacy/src/renderer/src/store/workspace-animation-linked-cel.ts"
         ],
         "nativeAdaptation": "Use existing palette-aware Timeline content detection for explicit linked frames, automatic frame inheritance and selected-Cel connect availability/source selection, matching legacy animationCelHasContent. New empty frame surfaces retain animationTargetFormat. Preserve existing history, metadata and canonical link ownership. Added indexed fixtures cover low opaque ID, transparent ID, missing high-bit ID, opaque ID 0, blank format and undo/redo; existing 576 legacy animation oracle cases remain enabled. Production indexed admission remains closed."
+      },
+      "indexedWandReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/selection.ts"
+        ],
+        "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
       }
     },
     {
@@ -21760,6 +21774,13 @@
           "legacy/src/renderer/src/components/app/useAppDocumentPanes.ts"
         ],
         "adaptation": "Native pane host ports the actual legacy layout/workspace transitions with session-owned views and renderers, tab/header docking and return, captured previews, divider commit/cancel, inactive middle pan, raw-alpha cross-pane sampling, and document-owned controls. Layout oracle: 394 legacy cases; legacy tests: 7. Official document-panes-only runtime passed; final input follow-up recorded in document-panes-migration-20261116.md. Playback advances only the active session, matching the legacy mounted clock."
+      },
+      "indexedWandReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/selection.ts"
+        ],
+        "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
       }
     },
     {
@@ -41520,6 +41541,13 @@
       "indexedRuntime20261114": {
         "legacyEvidence": "Surface format and raw uint32 IDs: types-raster/types-animation/runtime-raster. Composite Map last-ID lookup, canvas-bound effects and static/dynamic style colors: document-composite-region/sampling, layer-styles, outline-settings. Content uses union of opaque IDs and no-palette nonzero fallback: animation-cel-content-cache. Mixed-format sharing is skipped: linked-layers::shareLinkedRasterContent. Snapshot metadata and storage ownership follow project-save-transfer.",
         "nativeAdaptation": "Append RasterFormat to the existing Surface. Pass an immutable palette/color-mode context into existing compositor and content-selection APIs, without adding palette authority to Timeline; RGBA previews remain resolved colors. Preserve format in expansion, linked storage and bounded snapshot; masks stay RGBA. Tests execute unchanged legacy modules through Node TypeScript hooks. Verification and remaining production tools/history/save gates recorded in docs/indexed-runtime-migration-20261114.md."
+      },
+      "indexedWandReference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/core/selection.ts"
+        ],
+        "nativeAdaptation": "Magic wand current-layer worker resolves palette colors; visible-layers uses createCompositePointSampler. Native Document wandReferencePixels creates the immutable resolved snapshot consumed by existing WandPreviewController; indexed stored zero resolves only inside actual surface bounds, sparse exterior stays transparent. Editor invokes the same preparation at gesture start; free-tile source selection keeps its existing path. Directed runtime checks compare equal colors with distinct IDs, opaque palette zero, sparse exterior, visible composition and unchanged raw words/history. Release indexed-runtime build and CTest passed, including actual legacy oracle regeneration (0.84 s) and runtime checks (0.02 s). Editor call site inspected but GUI not rebuilt or manually accepted in this stage; production indexed admission remains closed."
       }
     },
     {
