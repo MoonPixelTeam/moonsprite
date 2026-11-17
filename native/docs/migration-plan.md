@@ -7590,3 +7590,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色画面色板提取
 
 依据旧版palette.ts对合成RGBA逐行提取颜色的规则，为extractTimelinePalette接入可选色彩上下文；编辑器使用文档色板，Lua palette.extract使用当前规划中的色板及既有预览。正式Release构建成功，palette-extraction定向检查通过（0.04秒），覆盖单层／多层、不透明度、链接帧、1／4096颜色上限、RGBA参考及预览像素，并检查源ID、修订、历史不变。编辑器与Lua接线已编译，未执行实际indexed UI／Lua调用或人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedPaletteExtraction20261118。
+
+## 2026-11-18 索引色图层合并
+
+依据旧版layer-merge.ts，先按文档色板合成每帧，再将合成RGBA映射为现有索引色ID；向下、所选、可见及图层组合并共用该路径。Release定向构建成功，layer-merge-tests --indexed-only通过四种操作、链接帧、不透明度、逐帧格式／ID及单历史撤销重做检查。完整CTest仍在既有duplicate empty selection断言失败，--existing-only跳过新增检查后可复现，未报告完整测试通过。首轮撤销夹具误比较切换后的活动层，已改为核对每个原Cel的解析像素。未重建正式GUI、未做人工图像验收；生产索引色入口仍关闭，整体INCOMPLETE。来源见indexedLayerMerge20261118。
