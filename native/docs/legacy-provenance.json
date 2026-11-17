@@ -17404,6 +17404,13 @@
           "legacy/src/renderer/src/core/animation.ts:497-585"
         ],
         "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
+      },
+      "backgroundTweenResize20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-600"
+        ],
+        "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
       }
     },
     {
@@ -17848,6 +17855,13 @@
           "legacy/src/renderer/src/core/animation-tween.ts:128-138"
         ],
         "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
+      },
+      "backgroundTweenResize20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-600"
+        ],
+        "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
       }
     },
     {
@@ -26048,6 +26062,13 @@
           "legacy/src/renderer/src/core/animation.ts:497-585"
         ],
         "nativeAdaptation": "Allow raster tween targets in mixed grid/free projects; special layers remain independently copied non-targets. Resource canvas expansion reuses resizeBackgroundCanvas on a detached Document, then stores the original and complete generated timelines in one structural transaction. Preserve selection/pivot, original links, generated independent resource payload and Undo/Redo. Remove obsolete tween menu resource gate. Official Release build and --moon-crossfade-check exit0 with group raster targets and outside tile layer. Both focused CTests pass0.52s; mixed grid/free x transform/crossfade/morph x crop covers dimensions, payload, history and encoded reopen composite equality."
+      },
+      "backgroundTweenResize20261118": {
+        "legacyEvidence": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-tween.ts",
+          "legacy/src/renderer/src/core/animation.ts:497-600"
+        ],
+        "nativeAdaptation": "Auto-expanded tween canvases with background layers reuse the existing detached resizeBackgroundCanvas transaction, as tile resources already do, instead of offset-only raster shifts. Restores repeated background pixels across all original and generated frames and retains repeat geometry in one history transaction. Focused Release animation-transform build and CTest passed (0.24s), covering transform, morph, crossfade, repeat pixels, Undo/Redo and encoded project reopen. Official GUI not rebuilt for this batch."
       }
     },
     {

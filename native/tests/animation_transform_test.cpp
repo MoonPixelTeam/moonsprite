@@ -43,6 +43,22 @@ void verifyPathArtwork(){
  auto& surface=*state.cels[0].surface;surface.width=1025;surface.height=1024;surface.pixels.assign(std::size_t(surface.width)*surface.height,0xffffffff);timeline::Timeline large(state);const auto largeSource=prepareTransformTweenSource(large,"f","A",options);const auto largeArtwork=transformTweenPathArtwork(large,largeSource,"A");CHECK(largeArtwork&&largeArtwork->width==1025&&largeArtwork->height==1024);
  surface.pixels.assign(surface.pixels.size(),0);CHECK(!transformTweenPathArtwork(timeline::Timeline(state),largeSource,"A"));
 }
+void verifyBackgroundTweenResize(){
+ for(int mode=0;mode<3;++mode){
+  timeline::State state;state.layers={{"A",U"Raster"},{"BG",U"Background"}};state.layers[1].background=timeline::BackgroundSettings{};state.frames={{"f0",100},{"f1",100}};
+  state.cels={cel("a0","A","f0",0,{0xffffffff}),cel("a1","A","f1",4,{0xff0000ff}),cel("bg0","BG","f0",0,{0xff112233,0xff445566}),cel("bg1","BG","f1",0,{0xff112233,0xff445566})};
+  for(auto& c:state.cels)c.surface->offsetY=0;
+  Document seed(2,1);auto document=Document::fromImported(2,1,state,seed.palette(),"background-tween",U"Background tween",std::make_shared<const std::vector<std::uint8_t>>());document.clearSourceArchiveForNewSnapshot();document.markSaved();const auto history=document.historySize();
+  TransformTweenOptions options;options.frameCount=1;options.offsetX=4;options.autoCropCanvas=true;options.betweenMode=mode==1?TweenBetweenMode::Morph:TweenBetweenMode::Crossfade;
+  if(mode==0)CHECK(document.generateTransformTween("f0","A",options));else CHECK(document.generateCrossfadeTween("f0","A",options));
+  CHECK(document.width()==5&&document.height()==1&&document.historySize()==history+1);
+  const auto generated=document.selectedFrames();CHECK(generated.size()==1);
+  for(const auto& f:document.timeline().state().frames){const auto* bg=document.timeline().findCel("BG",f.id);CHECK(bg&&bg->surface&&bg->surface->width>=5);for(int x=0;x<5;++x)CHECK(bg->surface->pixels[x]==(x%2?0xff445566:0xff112233));}
+  CHECK(document.timeline().state().layers[1].background->repeatWidth==2);
+  const auto imported=project::prepareEditableImport(project::readProjectManifest(project::encodeEditableProject(document).bytes));timeline::Timeline reopened(imported.timeline);CHECK(imported.width==5&&reopened.findCel("BG",generated.front())->surface->pixels==document.timeline().findCel("BG",generated.front())->surface->pixels);
+  document.undo();CHECK(document.width()==2&&document.timeline().state().frames.size()==2&&!document.timeline().state().layers[1].background->repeatWidth&&document.timeline().findCel("BG","f0")->surface->width==2);document.redo();CHECK(document.width()==5&&document.selectedFrames()==generated&&document.timeline().findCel("BG",generated.front())->surface->pixels[4]==0xff112233);
+ }
+}
 void verifyTransformDocumentTransactions(){
  auto make=[](){timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",100},{"disabled",175,true},{"f2",250}};auto a0=cel("a0","A","f0",-1,{0xff112233,0x00030201,0xff445566},.8);a0.surface->storageOriginX=71;a0.surface->storageOriginY=-37;auto alias=a0;alias.id="a1";alias.frameId="disabled";alias.linkedCelId="a0";auto a2=cel("a2","A","f2",2,{0xff00ff00},.6);auto b0=cel("b0","B","f0",-2,{0x000a0b0c,0xff778899},.4);b0.surface->storageOriginX=-17;auto b1=b0;b1.id="b1";b1.frameId="disabled";b1.linkedCelId="b0";auto b2=b0;b2.id="b2";b2.frameId="f2";s.cels={a0,alias,a2,b0,b1,b2};s.loopSections={{"walk",U"Walk","f0","f2","reverse",2}};Document palette(8,4);return Document::fromImported(8,4,std::move(s),palette.palette(),"transform-fixture",U"Transform",std::make_shared<const std::vector<std::uint8_t>>(std::vector<std::uint8_t>{1}));};
  {
@@ -125,7 +141,7 @@ void verifyStyledTweenCanvasBounds(){
 
  state.layers[0].layerStyles->enabled=false;state.groups[0].layerStyles->enabled=false;state.groups[1].layerStyles->enabled=false;const auto plain=transformTweenCanvasBounds(timeline::Timeline(state),{},2,2);CHECK(plain.x==0&&plain.y==0&&plain.width==2&&plain.height==2);
 }
-int main(int argc,char** argv){try{verifyPathArtwork();verifyStyledMaskedEndpointPreview();verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();
+int main(int argc,char** argv){try{verifyBackgroundTweenResize();verifyPathArtwork();verifyStyledMaskedEndpointPreview();verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();
  timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",100},{"pose-two",250},{"disabled",100,true},{"later",100}};s.cels={cel("a0","A","f0",1,{0xff0000ff,0xffff0000}),cel("a1","A","pose-two",5,{0xff00ff00,0xff00ff00},.8),cel("b0","B","f0",0,{0xff112233},.4)};timeline::Cel link;link.id="b1";link.layerId="B";link.frameId="pose-two";link.linkedCelId="b0";s.cels.push_back(link);s.loopSections={{"walk",U"Walk","f0","disabled","forward",2}};timeline::Timeline t(s);
  TransformTweenOptions o;o.scope=TransformTweenScope::Loop;o.loopSectionId="walk";o.frameCount=4;o.offsetX=8;o.opacity=50;auto source=prepareTransformTweenSource(t,"f0","A",o);CHECK(source.pivot.x==1&&source.pivot.width==6&&source.insertionFrameId=="disabled");CHECK(source.layerIds==std::vector<std::string>{"A"});CHECK(source.frameIds==std::vector<std::string>({"f0","pose-two"}));const int xs[]={3,9,7,13};const double op[]={.875,.6,.625,.4};std::size_t remaining=128*1024*1024;std::vector<timeline::Cel> all;
  for(int step=1;step<=4;++step){auto f=prepareTransformTweenFrame(t,source,o,step,remaining);CHECK(f.cels.size()==2&&f.cels[0].surface->offsetX==xs[step-1]&&std::abs(*f.cels[0].opacity-op[step-1])<1e-12);CHECK(f.cels[1].surface->pixels==s.cels[2].surface->pixels&&!f.cels[1].linkedCelId&&!f.cels[1].runtimeSharedCelId&&f.cels[1].opacity==.4);f.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("b0").surface->pixels[0]==0xff112233);all.insert(all.end(),f.cels.begin(),f.cels.end());}

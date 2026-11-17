@@ -9,7 +9,7 @@ std::vector<Pixel> Document::crossfadeTweenPreview(const std::string& start,cons
  const auto source=prepareCrossfadeTweenSource(timeline_,start,layerId,options.layerScope,selected,options.betweenMode);return compositeCrossfadeTweenPreview(timeline_,width_,height_,source,options,step);
 }
 
-bool Document::generateCrossfadeTween(const std::string& start,const std::string& layerId,const CrossfadeTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent();
+bool Document::generateCrossfadeTween(const std::string& start,const std::string& layerId,const CrossfadeTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& layer){return layer.background.has_value();});
  // legacy generateAnimationTween resolves pending pixels before preparing its batch.
  commitFloatingPaste();if(active())throw std::runtime_error("Finish the active edit before generating tween frames");
  validateCrossfadeTweenOptions(options);const auto& original=timeline_.state();

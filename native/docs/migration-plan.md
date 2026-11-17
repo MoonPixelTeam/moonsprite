@@ -7498,3 +7498,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 路径编辑器原图迁移
 
 按旧版直接裁取首个源姿态的活动图层作为路径底图，解除误用终点变换预览造成的 100 万像素限制，沿用旧版 1600 万像素裁剪边界。定向 animation-transform 测试通过（0.27 秒），正式 Release 构建成功；--quantization-morph-check 实际路径编辑器取消／应用、生成与撤销重做检查退出码 0。未新增人工截图验收。来源详见 legacy-provenance.json 的 pathArtwork20261118。整体迁移 INCOMPLETE。
+
+## 2026-11-18 补间扩展画布的背景平铺
+
+按旧版 resizeDocumentAt／resizeAnimationCelsAt 语义，含背景层的补间扩展画布复用既有离线背景调整事务，覆盖变换、形变和交叉淡化，原帧和生成帧均平铺到新画布并保存重复尺寸。单步撤销重做、保存重开及像素检查通过；定向 Release 构建和 animation-transform CTest 通过（0.24 秒）。本批未重建正式 GUI，未做人工图像验收。来源详见 legacy-provenance.json 的 backgroundTweenResize20261118。整体迁移 INCOMPLETE。

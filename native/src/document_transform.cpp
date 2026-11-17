@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <unordered_set>
 namespace moon {
-bool Document::generateTransformTween(const std::string& start,const std::string& layerId,const TransformTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent();
+bool Document::generateTransformTween(const std::string& start,const std::string& layerId,const TransformTweenOptions& options,const std::vector<std::string>& selected,std::optional<TransformPoint> pivot){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);const bool resources=hasTilemapContent()||hasFreeTileContent()||std::any_of(timeline_.state().layers.begin(),timeline_.state().layers.end(),[](const auto& layer){return layer.background.has_value();});
  // legacy generateAnimationTween resolves pending pixels before preparing its batch.
  commitFloatingPaste();if(active())throw std::runtime_error("Finish the active edit before generating tween frames");
  validateTransformTweenOptions(options);const auto source=prepareTransformTweenSource(timeline_,start,layerId,options,selected);const auto& original=timeline_.state();
