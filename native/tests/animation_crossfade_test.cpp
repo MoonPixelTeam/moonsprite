@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "animation_crossfade.h"
 #include "document.h"
 #include "layer_compositor.h"
@@ -24,7 +25,22 @@ void verifyBetweenAutoCrop(){
   auto failed=make(true);failed.markSaved();const auto fh=failed.historySize(),fr=failed.revision();bool rejected=false;try{failed.generateCrossfadeTween("f0","A",o);}catch(const std::length_error&){rejected=true;}CHECK(rejected&&failed.historySize()==fh&&failed.revision()==fr&&!failed.dirty()&&failed.width()==5&&failed.timeline().state().frames.size()==2);
  }
 }
-int main(){try{verifyBetweenAutoCrop();
+
+namespace moon {struct RasterHistoryFixture {static Document sparse(timeline::State state){Document doc(2,1);doc.timeline_=timeline::Timeline(std::move(state));doc.activeLayerId_="A";doc.activeFrameId_="start";doc.setImportedLayerGeometry({{"A",{1,1,0,0}},{"empty",{1,1,0,0}}});return doc;}};}
+void verifySparseTweenTransactions(){
+ for(bool selectEmpty:{false,true}){
+  timeline::State state;state.layers={{"A",U"Raster"},{"empty",U"Empty"}};state.frames={{"start",100},{"end",100}};
+  timeline::Cel a;a.id="a";a.layerId="A";a.frameId="start";timeline::Surface surface;surface.width=surface.height=1;surface.pixels={0xff123456};a.surface=surface;state.cels.push_back(a);a.id="b";a.frameId="end";a.surface->pixels={0xffabcdef};state.cels.push_back(a);
+  auto doc=RasterHistoryFixture::sparse(std::move(state));
+  CrossfadeTweenOptions options;options.frameCount=1;options.layerScope=selectEmpty?TweenLayerScope::All:TweenLayerScope::Current;
+  const auto history=doc.historySize();CHECK(doc.generateCrossfadeTween("start","A",options));const auto frame=doc.frame().id;
+  CHECK(doc.historySize()==history+1&&doc.timeline().findCel("A",frame));
+  CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==selectEmpty);
+  doc.undo();CHECK(doc.timeline().state().frames.size()==2&&!doc.timeline().findCel("empty","start"));doc.redo();CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==selectEmpty);
+  auto saved=project::readProjectManifest(project::encodeEditableProject(doc).bytes);CHECK((std::any_of(saved.cels.begin(),saved.cels.end(),[&](const auto& c){return c.layerId=="empty"&&c.frameId==frame;}))==selectEmpty);
+ }
+}
+int main(){try{verifySparseTweenTransactions();verifyBetweenAutoCrop();
  auto a=fixtureRaster({0xff0000ff},-2,3),b=fixtureRaster({0xffff0000},-2,3);auto blend=crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,.25,.75,1);CHECK(blend.opacity==.5&&blend.surface.pixels==std::vector<Pixel>{0xffbf0040});auto green=fixtureRaster({0xff00ff00},-2,3);CHECK(crossfadeTweenSurface(nullptr,&green,{-2,3,1,1},.5,1,1,1).surface.pixels==std::vector<Pixel>{0x8000ff00});CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},0,1,1,1).surface.pixels==a.pixels);CHECK(crossfadeTweenSurface(&a,&b,{-2,3,1,1},1,1,1,1).surface.pixels==b.pixels);bool rejected=false;try{crossfadeTweenSurface(&a,&b,{-2,3,1,1},.5,1,1,0);}catch(const std::length_error&){rejected=true;}CHECK(rejected);
  CHECK(tweenProgress(.25,TweenEasing::Linear)==.25);CHECK(tweenProgress(.25,TweenEasing::EaseIn)==.0625);CHECK(tweenProgress(.25,TweenEasing::EaseOut)==.4375);CHECK(tweenProgress(.25,TweenEasing::EaseInOut)==.15625);CHECK(std::abs(tweenProgress(.25,TweenEasing::Custom,{.42,0,1,1})-.09346465067959621)<1e-12);
  timeline::Timeline t(fixture());CrossfadeTweenOptions o;o.betweenMode=TweenBetweenMode::Crossfade;o.frameCount=1;o.duration=90;const auto source=prepareCrossfadeTweenSource(t,"f0","A",TweenLayerScope::All,{},TweenBetweenMode::Crossfade);CHECK(source.endFrameId=="f1"&&source.layerIds==std::vector<std::string>{"A"});auto frame=prepareCrossfadeTweenFrame(t,2,1,source,o,1);CHECK(frame.cels.size()==2);CHECK(frame.cels[0].surface->pixels==std::vector<Pixel>({0xff008080,0x80ff0000}));CHECK(frame.cels[0].opacity==1&&frame.cels[0].zIndex==0);CHECK(frame.cels[1].surface->pixels==t.resolveSurface("B0").surface->pixels&&frame.cels[1].zIndex==7&&frame.cels[1].opacity==.4);for(const auto& c:frame.cels)CHECK(c.id.empty()&&c.frameId.empty()&&!c.linkedCelId&&!c.runtimeSharedCelId);frame.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("B0").surface->pixels[0]==0xff884422);

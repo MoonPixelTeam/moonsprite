@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "animation_transform.h"
 #include "tween_easing_model.h"
 #include "tween_path_presets.h"
@@ -76,7 +77,22 @@ void verifyTweenPathPresetStore(){
  const auto directory=std::filesystem::path("build/tween-path-presets-test-owned")/(std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));TweenPathPresetStore store(directory);CHECK(store.load().empty());std::vector<TweenPathPoint> path{{0,0},{12,-4},{24,8}};auto saved=store.save(U"  Jump  ",path);path[1].x=900;saved[0].path[2].y=900;auto restored=store.load();CHECK(restored.size()==1&&restored[0].name==U"Jump"&&restored[0].path[1].x==12&&restored[0].path[2].y==8);store.save(U"Walk",restored[0].path);auto content=[&]{std::ifstream input(store.path(),std::ios::binary);return std::string(std::istreambuf_iterator<char>(input),{});};const auto old=content();bool failed=false;try{store.save(U" jump ",restored[0].path);}catch(...){failed=true;}CHECK(failed&&content()==old&&content().find("anchor")==std::string::npos);for(const auto& raw:{"{bad json","{\"version\":2,\"paths\":[]}","{\"version\":1,\"paths\":[{\"id\":\"x\",\"name\":\"bad\",\"path\":[{\"x\":1,\"y\":1}]}]}"}){std::ofstream(store.path(),std::ios::trunc)<<raw;failed=false;try{store.save(U"New",{{0,0},{1,0}});}catch(...){failed=true;}CHECK(failed&&content()==raw);}const auto blocked=directory/"blocked";std::ofstream(blocked)<<"file";failed=false;try{TweenPathPresetStore(blocked).save(U"Fail",{{0,0},{1,0}});}catch(...){failed=true;}CHECK(failed);
  for(auto invalid:std::vector<std::vector<TweenPathPoint>>{{},{{0,0}},{{1,0},{2,0}},{{0,0},{.5,0}},{{0,0},{20000,0}}}){failed=false;try{TweenPathPresetStore(directory/"invalid").save(U"Invalid",invalid);}catch(...){failed=true;}CHECK(failed);}CHECK(!std::filesystem::exists(directory/"invalid"));
 }
-int main(int argc,char** argv){try{
+
+namespace moon {struct RasterHistoryFixture {static Document sparse(timeline::State state){Document doc(2,1);doc.timeline_=timeline::Timeline(std::move(state));doc.activeLayerId_="A";doc.activeFrameId_="start";doc.setImportedLayerGeometry({{"A",{1,1,0,0}},{"empty",{1,1,0,0}}});return doc;}};}
+void verifySparseTweenTransactions(){
+ for(bool selectEmpty:{false,true}){
+  timeline::State state;state.layers={{"A",U"Raster"},{"empty",U"Empty"}};state.frames={{"start",100},{"end",100}};
+  timeline::Cel a;a.id="a";a.layerId="A";a.frameId="start";timeline::Surface surface;surface.width=surface.height=1;surface.pixels={0xff123456};a.surface=surface;state.cels.push_back(a);a.id="b";a.frameId="end";a.surface->pixels={0xffabcdef};state.cels.push_back(a);
+  auto doc=RasterHistoryFixture::sparse(std::move(state));
+  TransformTweenOptions options;options.frameCount=1;options.layerScope=selectEmpty?TweenLayerScope::All:TweenLayerScope::Current;
+  const auto history=doc.historySize();CHECK(doc.generateTransformTween("start","A",options));const auto frame=doc.frame().id;
+  CHECK(doc.historySize()==history+1&&doc.timeline().findCel("A",frame));
+  CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==false);
+  doc.undo();CHECK(doc.timeline().state().frames.size()==2&&!doc.timeline().findCel("empty","start"));doc.redo();CHECK((doc.timeline().findCel("empty",frame)!=nullptr)==false);
+  auto saved=project::readProjectManifest(project::encodeEditableProject(doc).bytes);CHECK((std::any_of(saved.cels.begin(),saved.cels.end(),[&](const auto& c){return c.layerId=="empty"&&c.frameId==frame;}))==false);
+ }
+}
+int main(int argc,char** argv){try{verifySparseTweenTransactions();
  timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",100},{"pose-two",250},{"disabled",100,true},{"later",100}};s.cels={cel("a0","A","f0",1,{0xff0000ff,0xffff0000}),cel("a1","A","pose-two",5,{0xff00ff00,0xff00ff00},.8),cel("b0","B","f0",0,{0xff112233},.4)};timeline::Cel link;link.id="b1";link.layerId="B";link.frameId="pose-two";link.linkedCelId="b0";s.cels.push_back(link);s.loopSections={{"walk",U"Walk","f0","disabled","forward",2}};timeline::Timeline t(s);
  TransformTweenOptions o;o.scope=TransformTweenScope::Loop;o.loopSectionId="walk";o.frameCount=4;o.offsetX=8;o.opacity=50;auto source=prepareTransformTweenSource(t,"f0","A",o);CHECK(source.pivot.x==1&&source.pivot.width==6&&source.insertionFrameId=="disabled");CHECK(source.layerIds==std::vector<std::string>{"A"});CHECK(source.frameIds==std::vector<std::string>({"f0","pose-two"}));const int xs[]={3,9,7,13};const double op[]={.875,.6,.625,.4};std::size_t remaining=128*1024*1024;std::vector<timeline::Cel> all;
  for(int step=1;step<=4;++step){auto f=prepareTransformTweenFrame(t,source,o,step,remaining);CHECK(f.cels.size()==2&&f.cels[0].surface->offsetX==xs[step-1]&&std::abs(*f.cels[0].opacity-op[step-1])<1e-12);CHECK(f.cels[1].surface->pixels==s.cels[2].surface->pixels&&!f.cels[1].linkedCelId&&!f.cels[1].runtimeSharedCelId&&f.cels[1].opacity==.4);f.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("b0").surface->pixels[0]==0xff112233);all.insert(all.end(),f.cels.begin(),f.cels.end());}

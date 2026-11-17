@@ -7462,3 +7462,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-17 正式补间对话框组选择
 
 接通选中组的递归后代目标，正式 Release 构建与实际对话框生成／组外保留／撤销重做检查通过。详见 [记录](group-tween-ui-20261117.md)。混合特殊工程准入仍待迁移，整体 INCOMPLETE。
+
+## 2026-11-17 补间空槽迁移
+
+按旧版保留不存在的非目标 Cel，生成事务及不透明度投影支持稀疏帧。两项定向测试通过，详见 [记录](sparse-tween-20261117.md)。混合瓦片工程准入仍未完成，整体 INCOMPLETE。

@@ -47,7 +47,7 @@ CrossfadeTweenFrame prepareCrossfadeTweenFrame(const timeline::Timeline& t,int w
    else c.surface=std::move(generated.surface);
    c.opacity=generated.opacity;c.zIndex=original?original->zIndex:0;
   }else if(a.surface){raster::validate(*a.surface);consume(a.surface->pixels.size()*sizeof(timeline::Pixel));c.surface=*a.surface;}
-  else{consume(pixels*sizeof(timeline::Pixel));timeline::Surface empty;empty.width=width;empty.height=height;empty.pixels.resize(pixels);c.surface=std::move(empty);}
+  else if(!a.source)continue;
   out.cels.push_back(std::move(c));
  }
  // Legacy animation-tween.ts maskOutput and animation-tween-masks.ts:
