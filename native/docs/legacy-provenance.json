@@ -5897,6 +5897,13 @@
         ],
         "adaptation": "Remove document-wide free-tile gates from ordinary raster rotation, centering, inversion and five color adjustments. Preserve existing legacy special-target skip/refusal rules. Default color adjustment targets follow selected layer IDs, while a pixel selection restricts edits to the active layer. No new special-layer resource adjustment behavior.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0, including actual mixed-document menu clicks, selected raster inversion, selection priority, five adjustment dialogs and cancellation, six geometry entries, special target refusal and undo/redo. Provenance coverage 1042 files verified; no new visual acceptance claimed."
+      },
+      "mixedTextCenter20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-move.ts:422-475"
+        ],
+        "adaptation": "Allow the already migrated whole-text box/glyph centering transaction when unrelated grid/free-tile layers exist. Preserve existing special-layer selection restrictions and text metadata/owner offset history.",
+        "acceptance": "Official Release build and --free-tile-transform-check exit 0: actual center menu updates boxed text origin and surface offsets, preserves glyph pixels/free resources, undo/redo and centered no-op. No new visual acceptance."
       }
     },
     {
@@ -24487,6 +24494,13 @@
         ],
         "adaptation": "Remove whole-document free-tile exclusion from Replace Color menu, enabling existing ordinary-layer and palette replacement in mixed projects. Keep native special-layer rejection pending a product decision on legacy cache-only edits. Do not claim special-layer replacement migration complete.",
         "acceptance": "Official Release build passed; --free-tile-transform-check exit 0 with actual mixed-document replacement menu, detached preview, cancellation, commit, undo/redo and unchanged free resources."
+      },
+      "mixedTextCenter20261117": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-commands-selection-move.ts:422-475"
+        ],
+        "adaptation": "Allow the already migrated whole-text box/glyph centering transaction when unrelated grid/free-tile layers exist. Preserve existing special-layer selection restrictions and text metadata/owner offset history.",
+        "acceptance": "Official Release build and --free-tile-transform-check exit 0: actual center menu updates boxed text origin and surface offsets, preserves glyph pixels/free resources, undo/redo and centered no-op. No new visual acceptance."
       }
     },
     {
