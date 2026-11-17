@@ -7518,3 +7518,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色形变像素算法
 
 按 legacy animation-morph.ts 迁移色板感知内容边界及形状场；复用 RasterColorContext，端点保留原始颜色 ID，中间颜色按旧版打包后交给调用方映射，缓存上限4096。Release 定向构建成功，animation-morph CTest 通过（0.03 秒），覆盖透明／缺失 ID、裁切边界、与 RGBA 相同的形状距离场、原始端点、重复色只映射一次及高位输出 ID。未重建 GUI。当前仅完成算法，生产索引色准入、补间源规划及文档色板／历史事务仍待迁移，整体 INCOMPLETE。来源见 indexedMorph20261118。
+
+## 2026-11-18 索引色变换补间算法与预览
+
+按 legacy animation-tween.ts 迁移色板感知裁切、轴心及内容边界，裁切和最近邻变换保留格式与原始颜色 ID；色彩上下文贯穿源规划、候选帧、画布／预览边界、路径底图和终点预览。Release 定向构建成功，animation-transform CTest 通过（0.26 秒），覆盖透明／缺失 ID、色板裁切与轴心、格式及ID、透明度、分配预算、预览合成及五种旋转的200%缩放对照。未重建 GUI。生产索引色文档准入和色板／历史集成仍未完成，整体 INCOMPLETE。来源见 indexedTransform20261118。

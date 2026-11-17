@@ -17739,6 +17739,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:128-138"
         ],
         "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
+      },
+      "indexedTransform20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:tweenSurface,cropTweenSource,animationTweenSource,prepareAnimationTweenFrame",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed content bounds and preview compositing; preserve source format and raw IDs through crop and nearest-neighbor transform. Optional palette context threads through source planning, frame generation, preview/canvas bounds, path artwork and endpoint preview. Existing RGBA callers retain defaults. Production indexed document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-transform-tests build succeeded; animation-transform CTest passed (0.26s). Indexed fixture covers transparent/missing IDs, palette crop/pivot, raw format and IDs, opacity, allocation budget, preview RGBA, endpoint artwork and five rotations at 200% scale against RGBA geometry. No GUI rebuild or production indexed claim."
       }
     },
     {
@@ -17821,6 +17829,14 @@
           "legacy/src/renderer/src/core/animation-tween.ts:128-138"
         ],
         "nativeAdaptation": "Path editor artwork directly alpha-crops the active layer from the first source pose, retaining crop pixels and world offsets with the legacy 16M pixel crop budget. Removes accidental endpoint transform and 1M endpoint preview budget from this path. Focused animation-transform CTest passed in 0.27s, covering transparent borders, hidden RGB, source purity, empty artwork and artwork above 1M pixels. Official Release GUI build succeeded; --quantization-morph-check exited 0, invoking actual path editor cancel/apply, generation and Undo/Redo. No manual screenshot acceptance in this batch."
+      },
+      "indexedTransform20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:tweenSurface,cropTweenSource,animationTweenSource,prepareAnimationTweenFrame",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed content bounds and preview compositing; preserve source format and raw IDs through crop and nearest-neighbor transform. Optional palette context threads through source planning, frame generation, preview/canvas bounds, path artwork and endpoint preview. Existing RGBA callers retain defaults. Production indexed document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-transform-tests build succeeded; animation-transform CTest passed (0.26s). Indexed fixture covers transparent/missing IDs, palette crop/pivot, raw format and IDs, opacity, allocation budget, preview RGBA, endpoint artwork and five rotations at 200% scale against RGBA geometry. No GUI rebuild or production indexed claim."
       }
     },
     {
@@ -17921,6 +17937,14 @@
           "legacy/src/renderer/src/core/animation.ts:497-600"
         ],
         "nativeAdaptation": "Expanded existing background tween regression to 12 combinations: transform/morph/crossfade, positive/negative canvas expansion, canvas/preset background. Checks phase-aligned expected world pixels, original linked background ownership, independently generated background, selection/pivot shifts, Undo/Redo and encoded reopen. Focused Release build and animation-transform CTest passed (0.30s). No production source change or GUI rebuild in this batch. Surfaceless Cel experiment was discarded because Document::fromImported explicitly rejects it; no unsupported-state behavior change retained."
+      },
+      "indexedTransform20261118": {
+        "sources": [
+          "legacy/src/renderer/src/core/animation-tween.ts:tweenSurface,cropTweenSource,animationTweenSource,prepareAnimationTweenFrame",
+          "legacy/src/renderer/src/core/document-model.ts:rasterContentBounds"
+        ],
+        "adaptation": "Reuse RasterColorContext for indexed content bounds and preview compositing; preserve source format and raw IDs through crop and nearest-neighbor transform. Optional palette context threads through source planning, frame generation, preview/canvas bounds, path artwork and endpoint preview. Existing RGBA callers retain defaults. Production indexed document admission and palette/history integration remain incomplete.",
+        "validation": "Release animation-transform-tests build succeeded; animation-transform CTest passed (0.26s). Indexed fixture covers transparent/missing IDs, palette crop/pivot, raw format and IDs, opacity, allocation budget, preview RGBA, endpoint artwork and five rotations at 200% scale against RGBA geometry. No GUI rebuild or production indexed claim."
       }
     },
     {

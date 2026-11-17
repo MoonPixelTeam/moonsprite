@@ -5,6 +5,7 @@
 #include "tween_path_draft.h"
 #include <limits>
 #include "raster_geometry.h"
+#include "raster_color_context.h"
 #include "layer_compositor.h"
 #include "document.h"
 #include "project_encode.h"
@@ -18,6 +19,18 @@
 #define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
 using namespace moon;
 timeline::Cel cel(std::string id,std::string layer,std::string frame,int x,std::vector<timeline::Pixel> p,double opacity=1){timeline::Cel c;c.id=id;c.layerId=layer;c.frameId=frame;c.opacity=opacity;timeline::Surface s;s.width=int(p.size());s.height=1;s.offsetX=x;s.offsetY=1;s.pixels=std::move(p);c.surface=std::move(s);return c;}
+void verifyIndexedTransform(){
+ struct Entry{int id;Pixel color;};std::vector<Entry> palette={{1,0xff112233},{2,0x00010203}};RasterColorContext colors(palette,{1,2},color_mode::Mode::Indexed);
+ timeline::State state;state.layers={{"A",U"Indexed"}};state.frames={{"f",100}};state.cels={cel("a","A","f",-3,{2,1,2,0xffffffff},.8)};state.cels[0].surface->format=timeline::RasterFormat::Indexed;timeline::Timeline t(state);
+ TransformTweenOptions o;o.frameCount=1;o.offsetX=4;o.offsetY=-2;o.opacity=50;
+ const auto source=prepareTransformTweenSource(t,"f","A",o,{},&colors);CHECK(source.pivot.x==-2&&source.pivot.y==1&&source.pivot.width==1);
+ const auto artwork=transformTweenPathArtwork(t,source,"A",&colors);CHECK(artwork&&artwork->format==timeline::RasterFormat::Indexed&&artwork->pixels==std::vector<Pixel>{1});
+ std::size_t remaining=1024;auto frame=prepareTransformTweenFrame(t,source,o,1,remaining,1024,&colors);const auto& out=*frame.cels[0].surface;CHECK(out.format==timeline::RasterFormat::Indexed&&out.offsetX==2&&out.offsetY==-1&&out.pixels==std::vector<Pixel>{1}&&frame.cels[0].opacity==.4&&remaining==1020);
+ auto preview=compositeTransformTweenPreview(t,source,o,1,{2,-1,1,1},&colors);CHECK(preview.size()==1&&(preview[0]&0xffffff)==0x112233&&(preview[0]>>24)==102);
+ auto endpoint=transformTweenEndpointPreview(t,source,o,&colors);CHECK(endpoint&&endpoint->format==timeline::RasterFormat::Indexed&&endpoint->offsetX==-2&&endpoint->pixels==std::vector<Pixel>{1});
+ for(double rotation:{0.,90.,180.,270.,37.}){auto opts=o;opts.rotation=rotation;opts.scale=200;auto indexed=*artwork;auto rgba=indexed;rgba.format=timeline::RasterFormat::Rgba;rgba.pixels[0]=0xff112233;std::size_t a=4096,b=4096;auto x=transformTweenSurface(indexed,source.pivot,opts,1,a);auto y=transformTweenSurface(rgba,source.pivot,opts,1,b);CHECK(x.format==indexed.format&&x.width==y.width&&x.height==y.height&&x.offsetX==y.offsetX&&x.offsetY==y.offsetY&&a==b);for(std::size_t n=0;n<x.pixels.size();++n)CHECK(colors.rgba(x.format,x.pixels[n])==y.pixels[n]);}
+ CHECK(t.resolveSurface("a").surface->pixels==state.cels[0].surface->pixels);
+}
 void verifyEasingDraft(){TweenEasingDraft d;const auto original=d.custom;d.easing=TweenEasing::EaseIn;CHECK(d.displayed()==std::array<double,4>{1./3,0,2./3,1./3});d.set(0,.25);CHECK(d.easing==TweenEasing::Custom&&d.custom==std::array<double,4>{.25,0,2./3,1./3});d.begin(2);d.move(2,-1);CHECK(d.custom[2]==1&&d.custom[3]==0);d.cancel();CHECK(d.custom==std::array<double,4>{.25,0,2./3,1./3});d.reset();CHECK(d.custom==original);const auto p=tweenCurvePlotPoint(37,35,0,0,124,124);CHECK(p.first==.25&&p.second==.75);}
 void verifyEndpointPreview(){timeline::State s;s.layers={{"A",U"A"},{"B",U"B"},{"C",U"unrelated"}};s.layers[2].locked=true;s.frames={{"f",100}};s.cels={cel("a","A","f",0,{0xff0000ff}),cel("b","B","f",2,{0xff00ff00}),cel("c","C","f",1000000,{0xffff0000})};timeline::Timeline t(s);TransformTweenOptions o;o.offsetX=100;o.offsetY=-20;o.opacity=50;o.layerScope=TweenLayerScope::All;auto plan=prepareTransformTweenSource(t,"f","A",o);auto multiple=transformTweenEndpointPreview(t,plan,o);CHECK(multiple&&multiple->offsetX==0&&multiple->offsetY==1&&multiple->width==3&&multiple->height==1);CHECK((multiple->pixels[0]>>24)>=127&&(multiple->pixels[0]>>24)<=128&&(multiple->pixels[2]>>24)>=127&&(multiple->pixels[2]>>24)<=128);CHECK(t.resolveSurface("c").surface->offsetX==1000000&&t.resolveSurface("a").surface->pixels==s.cels[0].surface->pixels);o.layerScope=TweenLayerScope::Current;auto single=prepareTransformTweenSource(t,"f","A",o);auto endpoint=transformTweenEndpointPreview(t,single,o);CHECK(endpoint&&endpoint->offsetX==0&&endpoint->offsetY==1&&endpoint->width==1&&endpoint->pixels==std::vector<timeline::Pixel>{0xff0000ff});o.offsetX=-16384;o.offsetY=16384;auto moved=transformTweenEndpointPreview(t,single,o);CHECK(moved&&moved->offsetX==endpoint->offsetX&&moved->offsetY==endpoint->offsetY&&moved->pixels==endpoint->pixels);}
 void verifyStyledMaskedEndpointPreview(){
@@ -143,7 +156,7 @@ void verifyStyledTweenCanvasBounds(){
 
  state.layers[0].layerStyles->enabled=false;state.groups[0].layerStyles->enabled=false;state.groups[1].layerStyles->enabled=false;const auto plain=transformTweenCanvasBounds(timeline::Timeline(state),{},2,2);CHECK(plain.x==0&&plain.y==0&&plain.width==2&&plain.height==2);
 }
-int main(int argc,char** argv){try{verifyBackgroundTweenResize();verifyPathArtwork();verifyStyledMaskedEndpointPreview();verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();
+int main(int argc,char** argv){try{verifyIndexedTransform();verifyBackgroundTweenResize();verifyPathArtwork();verifyStyledMaskedEndpointPreview();verifyStyledTweenCanvasBounds();verifySparseTweenTransactions();
  timeline::State s;s.layers={{"A",U"A"},{"B",U"B"}};s.layers[1].locked=true;s.frames={{"f0",100},{"pose-two",250},{"disabled",100,true},{"later",100}};s.cels={cel("a0","A","f0",1,{0xff0000ff,0xffff0000}),cel("a1","A","pose-two",5,{0xff00ff00,0xff00ff00},.8),cel("b0","B","f0",0,{0xff112233},.4)};timeline::Cel link;link.id="b1";link.layerId="B";link.frameId="pose-two";link.linkedCelId="b0";s.cels.push_back(link);s.loopSections={{"walk",U"Walk","f0","disabled","forward",2}};timeline::Timeline t(s);
  TransformTweenOptions o;o.scope=TransformTweenScope::Loop;o.loopSectionId="walk";o.frameCount=4;o.offsetX=8;o.opacity=50;auto source=prepareTransformTweenSource(t,"f0","A",o);CHECK(source.pivot.x==1&&source.pivot.width==6&&source.insertionFrameId=="disabled");CHECK(source.layerIds==std::vector<std::string>{"A"});CHECK(source.frameIds==std::vector<std::string>({"f0","pose-two"}));const int xs[]={3,9,7,13};const double op[]={.875,.6,.625,.4};std::size_t remaining=128*1024*1024;std::vector<timeline::Cel> all;
  for(int step=1;step<=4;++step){auto f=prepareTransformTweenFrame(t,source,o,step,remaining);CHECK(f.cels.size()==2&&f.cels[0].surface->offsetX==xs[step-1]&&std::abs(*f.cels[0].opacity-op[step-1])<1e-12);CHECK(f.cels[1].surface->pixels==s.cels[2].surface->pixels&&!f.cels[1].linkedCelId&&!f.cels[1].runtimeSharedCelId&&f.cels[1].opacity==.4);f.cels[1].surface->pixels[0]=0;CHECK(t.resolveSurface("b0").surface->pixels[0]==0xff112233);all.insert(all.end(),f.cels.begin(),f.cels.end());}
