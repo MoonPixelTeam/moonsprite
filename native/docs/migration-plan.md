@@ -7983,3 +7983,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合格式工程像素精度转换
 
 对照workspace-commands-color.ts::setPixelFormat，仅量化RGBA表面，在共享存储去重前排除Indexed表面，避免将颜色ID当作RGBA值改写。新增七种非默认精度夹具，验证普通RGBA量化、Indexed原始ID/存储身份/原点及链接保持，历史不增加、revision更新一次。Release document-pixel-format-tests构建及document-pixel-format CTest通过（1.09秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；索引色生产准入仍关闭，整体迁移INCOMPLETE。来源见mixedPixelPrecision20261118。
+
+
+## 2026-11-18 混合格式颜色模式转换核对
+
+对照document-model.ts::convertDocumentColorMode及workspace-commands-document-io.ts的独立历史契约，新增混合RGBA/Indexed Cel转灰度与转索引色夹具，覆盖隐藏/缺失颜色ID、透明RGB、稀疏偏移/存储原点、链接帧、色板保持、单次历史及Undo/Redo。预期根据实际旧版源码提取，本轮未执行旧版oracle。现有生产实现通过，无需修改。Release document-pixel-format-tests构建及document-pixel-format CTest通过（1.09秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见mixedColorMode20261118。

@@ -42821,6 +42821,13 @@
           "legacy/src/renderer/src/store/workspace-commands-color.ts"
         ],
         "nativeAdaptation": "Match setPixelFormat format checks before storage deduplication: quantize only RGBA surfaces in mixed documents, preserving indexed IDs, storage origins and linked ownership. Seven non-default precision fixtures assert RGBA quantization, unchanged indexed raw storage and links, unchanged history and one revision update."
+      },
+      "mixedColorMode20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/document-model.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "nativeAdaptation": "Verify existing color mode conversion against source-derived expectations for mixed RGBA/indexed Cel surfaces: grayscale and indexed targets, hidden and missing IDs, transparent RGB, sparse offsets/storage origins, linked Cel ownership, palette preservation and one conversion history with undo/redo. No production change required; this is source-contract validation, not an executed legacy oracle."
       }
     },
     {
