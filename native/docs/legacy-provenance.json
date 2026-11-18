@@ -17295,6 +17295,12 @@
           "legacy/src/renderer/src/store/workspace-commands-color.ts::previewColorReplacement"
         ],
         "nativeAdaptation": "Timeline indexed thumbnail variant keys and render callbacks use displayPalette; hidden timeline layer thumbnail composition uses the same displayed palette. Existing queue, owner tokens and cache budgets retained. Pipeline regression exercises indexed palette preview, exact output, unchanged raw IDs/history/dirty, cancel cache reuse, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor connection inspected in source only; no formal GUI rebuild or manual image acceptance this batch. Production Indexed admission remains closed."
+      },
+      "thumbnailPreviewStorage20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/panels/layer-timeline-thumbnails.tsx::CelThumbnail/registerAnimationCelThumbnailPreviewListener"
+        ],
+        "nativeAdaptation": "Timeline thumbnail initial binding and queued callback resolve displayed Timeline storage rather than baseline storage. Active edit variant keys include existing preview generation, so successive adjustment previews reschedule rendering even when baseline pixel revision is stable. Existing queue generation and baseline owner checks remain. Pipeline regression checks separate displayed adjustment storage, preview generation, baseline raw pixels/history/dirty preservation, cancel, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor wiring inspected only; no formal GUI rebuild or manual image acceptance this batch."
       }
     },
     {
@@ -26327,6 +26333,12 @@
           "legacy/src/renderer/src/store/workspace-commands-color.ts::previewColorReplacement"
         ],
         "nativeAdaptation": "Timeline indexed thumbnail variant keys and render callbacks use displayPalette; hidden timeline layer thumbnail composition uses the same displayed palette. Existing queue, owner tokens and cache budgets retained. Pipeline regression exercises indexed palette preview, exact output, unchanged raw IDs/history/dirty, cancel cache reuse, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor connection inspected in source only; no formal GUI rebuild or manual image acceptance this batch. Production Indexed admission remains closed."
+      },
+      "thumbnailPreviewStorage20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/panels/layer-timeline-thumbnails.tsx::CelThumbnail/registerAnimationCelThumbnailPreviewListener"
+        ],
+        "nativeAdaptation": "Timeline thumbnail initial binding and queued callback resolve displayed Timeline storage rather than baseline storage. Active edit variant keys include existing preview generation, so successive adjustment previews reschedule rendering even when baseline pixel revision is stable. Existing queue generation and baseline owner checks remain. Pipeline regression checks separate displayed adjustment storage, preview generation, baseline raw pixels/history/dirty preservation, cancel, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor wiring inspected only; no formal GUI rebuild or manual image acceptance this batch."
       }
     },
     {

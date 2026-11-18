@@ -8105,3 +8105,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 缩略图预览色板迁移
 
 对照layer-timeline-thumbnails.tsx::CelThumbnail/paletteRenderKey及LayerRowThumbnail.tsx，时间轴索引色缩略图的缓存键、渲染回调和隐藏时间轴图层缩略图使用displayPalette，承接旧版直接预览修改色板后的显示。保留既有队列、owner和缓存预算。新增管线回归覆盖精确预览颜色、原始ID/历史/dirty不变、取消复用原缓存、提交及Undo/Redo。Release cel-thumbnail-pipeline-tests构建成功，CTest通过（0.07秒），来源覆盖及diff检查通过。Editor连接仅源码核对，本轮未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见thumbnailPreviewPalette20261119。
+
+
+## 2026-11-19 时间轴缩略图预览像素迁移
+
+对照layer-timeline-thumbnails.tsx::CelThumbnail及其实时预览监听，时间轴缩略图绑定与队列回调改为解析displayTimeline，活动编辑的缓存键纳入既有预览代次，避免只更新正式像素修订时遗漏连续调整预览。保留原owner校验、队列取消和代次检查。新增独立调整预览存储、预览代次、基线像素/历史/dirty不变、取消、提交及Undo/Redo回归。Release cel-thumbnail-pipeline-tests构建成功，CTest通过（0.07秒）。来源覆盖及diff检查通过；Editor连接仅源码核对，本轮未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见thumbnailPreviewStorage20261119。

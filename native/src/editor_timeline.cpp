@@ -872,7 +872,7 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
     if(!cel || !timelineThumbnailSize() || !thumbnailQueue_){if(binding.cancel)binding.cancel();binding={};return;}
 
-    const auto stamp=currentDocument().timeline().thumbnailStorage(cel->id);const auto resolved=currentDocument().timeline().resolveSurface(cel->id);
+    const auto stamp=currentDocument().timeline().thumbnailStorage(cel->id);const auto resolved=currentDocument().displayTimeline().resolveSurface(cel->id);
 
     if(!resolved.surface || !stamp.owner){if(binding.cancel)binding.cancel();binding={};return;}
 
@@ -880,6 +880,8 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
     std::ostringstream key;key<<currentDocument().width()<<':'<<currentDocument().height()<<':'<<size<<':'<<resolved.surface->width<<':'<<resolved.surface->height<<':'<<resolved.surface->offsetX<<':'<<resolved.surface->offsetY<<':'<<std::setprecision(17)<<cel->opacity.value_or(1)<<":checker:content:"<<int(resolved.surface->format);
     if(resolved.surface->format==timeline::RasterFormat::Indexed)for(const auto& entry:currentDocument().displayPalette().entries)key<<':'<<entry.id<<','<<entry.color;
+
+    if(currentDocument().active())key<<":preview:"<<currentDocument().gradientRevision();
 
     const auto revision=live?currentDocument().contentRevision():stamp.revision;
 
@@ -897,7 +899,7 @@ void Editor::bindTimelineThumbnail(std::size_t slot,const timeline::Cel* cel){
 
       auto& current=thumbnailBindings_[slot];if(current.generation!=generation || current.cel!=id)return;
 
-      const auto* cel=currentDocument().timeline().findCelById(id);if(!cel)return;const auto resolved=currentDocument().timeline().resolveSurface(id);if(!resolved.surface)return;
+      const auto* cel=currentDocument().timeline().findCelById(id);if(!cel)return;const auto resolved=currentDocument().displayTimeline().resolveSurface(id);if(!resolved.surface)return;
 
       const auto stamp=currentDocument().timeline().thumbnailStorage(id);if(stamp.owner!=current.owner)return;
 
