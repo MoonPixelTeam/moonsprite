@@ -21001,6 +21001,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
+      },
+      "frameCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
       }
     },
     {
@@ -22826,6 +22834,14 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
+      },
+      "frameCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
       }
     },
     {
@@ -25436,6 +25452,14 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
+      },
+      "frameCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
       }
     },
     {
@@ -27821,6 +27845,14 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
+      },
+      "frameCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
       }
     },
     {
@@ -35976,6 +36008,14 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
+      },
+      "frameCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-frame.ts",
+          "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
+        ],
+        "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
       }
     },
     {
