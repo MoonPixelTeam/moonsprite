@@ -8008,3 +8008,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色色板同步排除规则
 
 对照workspace-commands-color.ts的updatePaletteColorWithSynchronization及lua-script-operations.ts的palette.update，索引色工程修改色板时跳过普通像素/瓦片资源替色；普通Document入口与Lua规划、执行路径统一保留旧版规则，避免颜色ID被误当RGBA改写。直接入口及真实复用旧版Lua引擎的回归使用数值等于ID7的旧颜色，覆盖同步开关开启、连续更新、关联帧、存储身份、单历史与Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（9.17秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见indexedPaletteSyncExclusion20261118。
+
+
+## 2026-11-18 Lua索引色事务正式程序集成
+
+最近已提交的Lua表面格式捕获、索引色栅格事务、空帧格式及索引色色板同步排除规则，连同混合格式像素精度修复，已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0（lua-indexed-formal-build.log），使用正式主题与指针的Start-Process -Wait -PassThru运行--script-entry-check退出0。未重复已通过的定向核心检查，未人工图像验收；入口检查不替代索引色精确事务测试，生产索引色准入保持关闭，整体迁移INCOMPLETE。本次仅提交集成记录，不提交生成物或既有main.cpp状态。
