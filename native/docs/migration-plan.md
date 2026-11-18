@@ -8100,3 +8100,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板预览显示与缓存迁移
 
 对照workspace-commands-color.ts的替色预览/恢复和canvas-composite-cache.ts，活动画布、其他帧、选区/笔刷反馈及预览面板取色采用displayPalette与displayTimeline配对。色板替换更新、取消、提交推进既有预览代次；画布缓存同时识别仅文档revision变化，修复色板撤销后残留新颜色。新增离屏--palette-preview检查，覆盖精确像素、关联其他帧、选区反馈、预览不改原始ID/历史/dirty、取消、提交、Undo/Redo。首轮检查实际发现撤销缓存失效，修正后同项退出0；未执行性能基准。Release canvas-performance-tests及唯一正式moonsprite-native构建成功（palette-preview-build.log、palette-preview-formal-build.log），正式程序带主题和指针运行--script-entry-check退出0。来源覆盖及diff检查通过。无布局变更，未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见displayPalettePreview20261119。
+
+
+## 2026-11-19 缩略图预览色板迁移
+
+对照layer-timeline-thumbnails.tsx::CelThumbnail/paletteRenderKey及LayerRowThumbnail.tsx，时间轴索引色缩略图的缓存键、渲染回调和隐藏时间轴图层缩略图使用displayPalette，承接旧版直接预览修改色板后的显示。保留既有队列、owner和缓存预算。新增管线回归覆盖精确预览颜色、原始ID/历史/dirty不变、取消复用原缓存、提交及Undo/Redo。Release cel-thumbnail-pipeline-tests构建成功，CTest通过（0.07秒），来源覆盖及diff检查通过。Editor连接仅源码核对，本轮未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见thumbnailPreviewPalette20261119。

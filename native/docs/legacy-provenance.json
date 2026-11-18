@@ -17287,7 +17287,15 @@
       ],
       "scope": " Owner-weak cache:8 variants/soft128KiB FIFO, revision/storage revision, live bypass; deferred queue64 jobs/8ms, cancellation/exception/destruction safety.",
       "adaptation": " C++ weak control blocks replace WeakMap identity; supported no-rAF native deferred timer fallback. No Surface address identity or global settled revision. Release require checks.",
-      "performanceOptimization20261112": "Preserve legacy per-owner FIFO, revision wildcard and weak ownership; add native global FIFO admission at 16 MiB of vector capacity and 4096 owners. Oversized results are returned without caching. Validate eviction/accounting, external result lifetime and oversized backing allocations."
+      "performanceOptimization20261112": "Preserve legacy per-owner FIFO, revision wildcard and weak ownership; add native global FIFO admission at 16 MiB of vector capacity and 4096 owners. Oversized results are returned without caching. Validate eviction/accounting, external result lifetime and oversized backing allocations.",
+      "thumbnailPreviewPalette20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/panels/layer-timeline-thumbnails.tsx::CelThumbnail/paletteRenderKey",
+          "legacy/src/renderer/src/components/panels/LayerRowThumbnail.tsx",
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::previewColorReplacement"
+        ],
+        "nativeAdaptation": "Timeline indexed thumbnail variant keys and render callbacks use displayPalette; hidden timeline layer thumbnail composition uses the same displayed palette. Existing queue, owner tokens and cache budgets retained. Pipeline regression exercises indexed palette preview, exact output, unchanged raw IDs/history/dirty, cancel cache reuse, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor connection inspected in source only; no formal GUI rebuild or manual image acceptance this batch. Production Indexed admission remains closed."
+      }
     },
     {
       "file": "src/palette_image_import.h",
@@ -26311,6 +26319,14 @@
           "legacy/src/renderer/src/components/panels/layer-timeline-cell-cache.ts"
         ],
         "nativeAdaptation": "Pass authoritative RasterColorContext into normal and hidden timeline thumbnails. Content framing uses palette-aware visibility; sampled indexed words resolve through last-duplicate-ID Map semantics before RGBA output, with missing IDs transparent. Normal thumbnail binding/cache keys include raster format and ordered palette ID/color pairs so palette edits refresh unchanged pixel storage; hidden bindings retain their existing document revision key. Reuse existing layout, checkerboard, opacity, queue and cache. Tests compare indexed and resolved RGBA rendering across both framing/background modes and three opacities, plus opaque ID0, low IDs, missing high IDs, transparent RGB, palette change, duplicate ID and raw source preservation. Formal Release build and cel-thumbnail test passed; no actual indexed GUI or image acceptance; indexed production admission remains closed."
+      },
+      "thumbnailPreviewPalette20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/panels/layer-timeline-thumbnails.tsx::CelThumbnail/paletteRenderKey",
+          "legacy/src/renderer/src/components/panels/LayerRowThumbnail.tsx",
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::previewColorReplacement"
+        ],
+        "nativeAdaptation": "Timeline indexed thumbnail variant keys and render callbacks use displayPalette; hidden timeline layer thumbnail composition uses the same displayed palette. Existing queue, owner tokens and cache budgets retained. Pipeline regression exercises indexed palette preview, exact output, unchanged raw IDs/history/dirty, cancel cache reuse, commit and undo/redo. Release cel-thumbnail-pipeline-tests build and CTest passed (0.07s). Editor connection inspected in source only; no formal GUI rebuild or manual image acceptance this batch. Production Indexed admission remains closed."
       }
     },
     {
