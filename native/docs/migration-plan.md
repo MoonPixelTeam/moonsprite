@@ -8308,3 +8308,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 数字输入 Enter 焦点与回调迁移
 
 实际对照 NumberInput.tsx onKeyDown：提交前记录算式标记；无表单时普通数值 Enter 失焦，触发 onBlur；算式 Enter 只计算并保留焦点。ScriptNumberEntry 在 commitExpression 前记录标记，普通 Enter 调用继承的 releaseFocus，沿用原生焦点离开消息发送一次提交；算式保留原焦点。既有实际弹窗 verify 附加数字控件验证2+3得到5且焦点/回调不变，随后7失焦且仅一次提交。首轮检查受到原入口失焦回调干扰，已在夹具中屏蔽该窗口业务派发，未改变生产逻辑。最终唯一正式Release构建成功（lua-number-enter-focus-build.log），正式程序--script-report-check实际退出0。来源覆盖1043及证据快照、diff通过；无人工键盘/图像验收，完整NumberInput步进按钮等仍有缺口，整体INCOMPLETE。保留main.cpp及用户文件。
+
+## 2026-11-19 Lua 单选键盘与重复选项匹配迁移
+
+实际对照 LuaScriptDialog.tsx 的 button role=radio：Enter/Space激活；原生此前复用PixelCheckbox时Enter被公共复选框规则屏蔽。Lua局部Radio仅将Enter/小键盘Enter交给已有MIT ui::Button，保留Space和DialogState连续单选组、重复选择与busy事务。未替换素材，单选外观仍是已登记缺口。对照ThemedSelect.tsx options.find，组合框重复字符串匹配第一项，修正此前最后一项覆盖；未知值及空选项回退不变。实际弹窗verify用已挂载/聚焦Radio检查三种按键共三次激活；重复选项为源码分支核对，未另加GUI样本。唯一正式Release构建成功（lua-control-selection-build.log），正式程序--script-report-check实际退出0，来源覆盖1043及证据快照、diff通过。未人工键盘/图像验收，整体INCOMPLETE，保留已有main.cpp及用户文件。
