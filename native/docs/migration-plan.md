@@ -8225,3 +8225,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字创建编辑文案与单位迁移
 
 对照 TextToolDialog.tsx 的 editing 标题、提交按钮和三个 NumberInput 的 px 后缀，原生从实际 Cel 编辑状态传入模式：创建显示“创建文本／插入”，编辑显示“编辑文本／保存”；字号、行距和字距复用 PixelEntry 显示 px。未改变布局和事务。正式 Release 构建成功（text-dialog-mode-build.log），源码映射、来源覆盖与 diff 检查；显示改动不重复整套文字检查，未人工图像验收。来源见 textDialogModeLabels20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字字体和间距说明迁移
+
+对照 TextToolDialog.tsx::builtInFontDescription/spacingModeGroups 与 zh-CN 文案，四种内置字体说明和两种间距说明接入 PixelDropdown 的既有 optionTooltips；导入与本地字体不套用内置说明。恢复旧版“字体间距”标签，未改变布局和操作。正式 Release 构建成功（text-descriptions-build.log），文案及选项顺序源码核对，来源覆盖和 diff 检查通过；纯说明改动未重复整套文字检查，未人工悬浮或图像验收。来源见 textFontDescriptions20261119；整体迁移 INCOMPLETE。保留既有 main.cpp 差异，不提交生成物或用户数据。

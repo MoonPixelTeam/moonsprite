@@ -30300,6 +30300,14 @@
         "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
         "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
       },
+      "textFontDescriptions20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::builtInFontDescription and spacingModeGroups",
+          "legacy/src/renderer/src/locales/zh-CN.ts::textTool.fontDescription/fontSpacingDescription/actualSpacingDescription"
+        ],
+        "adaptation": "Reuse PixelDropdown optionTooltips for the four built-in font descriptions and both spacing descriptions. Imported/local font identities do not inherit built-in descriptions. Restore the legacy 字体间距 label. Existing native dropdown replaces the React font-list hover surface; no layout or command changes.",
+        "verification": "Formal Release build text-descriptions-build.log succeeded. Legacy text and option ordering source-reviewed; provenance coverage and diff checks required. No repeated text-tool smoke for descriptive text only; no manual hover/image acceptance."
+      },
       "textDialogModeLabels20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::editing DialogHeader/submit label and NumberInput suffix",
