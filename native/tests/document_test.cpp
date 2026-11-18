@@ -120,7 +120,14 @@ int main() {
 
     {
       Document d(1,1);const auto layer=d.layer().id;const auto first=d.cel().id;d.addFrame();const auto center=d.cel().id;const auto centerFrame=d.frame().id;d.addFrame();const auto last=d.cel().id;
-      d.selectTimelineCel(last);CHECK(!d.canReverseSelectedCels() && !d.reverseSelectedCels());d.selectTimelineCel(center,1);d.selectTimelineCel(first,1);const auto frames=d.timeline().state().frames;CHECK(d.reverseSelectedCels());CHECK(d.timeline().findCelById(center)->frameId==centerFrame);CHECK(d.timelineSelection().celAnchor==last);for(std::size_t i=0;i<frames.size();++i)CHECK(d.timeline().state().frames[i].id==frames[i].id && d.timeline().state().frames[i].duration==frames[i].duration);
+      // legacy reverse refreshes the active frame, including projected Cel opacity.
+      CHECK(d.beginCelProperties(first));CHECK(d.previewCelProperties(.25,0));d.commitCelProperties();
+      CHECK(d.beginCelProperties(last));CHECK(d.previewCelProperties(.75,0));d.commitCelProperties();
+      CHECK(d.layer().opacity==.75);
+      d.selectTimelineCel(last);CHECK(!d.canReverseSelectedCels() && !d.reverseSelectedCels());d.selectTimelineCel(center,1);d.selectTimelineCel(first,1);const auto frames=d.timeline().state().frames;CHECK(d.reverseSelectedCels());CHECK(d.timeline().findCelById(center)->frameId==centerFrame);
+      CHECK(d.layer().opacity==.75);
+      d.undo();CHECK(d.layer().opacity==.25);
+      d.redo();CHECK(d.layer().opacity==.75);CHECK(d.timelineSelection().celAnchor==last);for(std::size_t i=0;i<frames.size();++i)CHECK(d.timeline().state().frames[i].id==frames[i].id && d.timeline().state().frames[i].duration==frames[i].duration);
     }
 
 

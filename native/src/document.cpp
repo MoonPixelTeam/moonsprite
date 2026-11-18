@@ -663,7 +663,7 @@ bool Document::reverseSelectedCels(){auto selectionHistory=trackAnimationSelecti
  for(auto& id:e.afterTimelineSelection->cels){const auto found=remap.find(id);if(found!=remap.end())id=found->second;}
  const auto anchor=remap.find(e.afterTimelineSelection->celAnchor);if(anchor!=remap.end())e.afterTimelineSelection->celAnchor=anchor->second;
  }
- if(e.contentHistory.afterCels.empty())return false;applyCelEdit(e,true);timelineSelection_=*e.afterTimelineSelection;publishChange();pushEdit(std::move(e),U"反转单元格顺序");return true;
+ if(e.contentHistory.afterCels.empty())return false;applyCelEdit(e,true);projectActiveCelOpacities();timelineSelection_=*e.afterTimelineSelection;publishChange();pushEdit(std::move(e),U"反转单元格顺序");return true;
 }
 // legacy animationSlotsCanLink + animationLinkSlotKeys / connectAnimationCels.
 bool Document::canConnectSelectedCels()const{

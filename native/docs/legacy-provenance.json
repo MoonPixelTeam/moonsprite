@@ -6063,6 +6063,14 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
         ],
         "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
+      },
+      "reverseCelActiveProjection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-reverse.ts",
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/store/workspace-animation-reverse.test.ts"
+        ],
+        "nativeAdaptation": "Legacy reverseSelectedAnimationCels calls refreshActiveAnimationFrame/applyFrameSurfaces after moving Cel identities. Native now projects active Cel opacity and layer geometry after applyCelEdit before publication. Existing three-Cel reversal test uses distinct endpoint opacities and checks immediate projection and Undo/Redo, retaining slot selection, center Cel and frame metadata assertions."
       }
     },
     {
@@ -6243,6 +6251,14 @@
         "scope": "Editable RGBA/grayscale palette ID zero distinct from null slots and no role selection. Selection, layout/movement, append/overwrite, add/delete/rename, gradients/sort/apply, palette UI and Lua adapters retain actual legacy behavior; import padding, project/recovery/history serialization preserve null vs numeric zero. Indexed drawing/storage/compositing remain gated and overall migration incomplete.",
         "evidence": "palette-layout.ts normalizePaletteSlots/fitPaletteSlotsToGrid/repositionPaletteSlots/paletteRangeIdsBySlots; workspace-palette.ts selectPaletteColors, addPaletteColor, pastePaletteColors, deletePaletteColors, movePaletteColor, applyPalette and callback Undo/Redo; PalettePanel.tsx role markers, copy closure and empty-slot interactions. Actual unmodified legacy oracle extended with 108 zero/null state matrices; final verification recorded in docs/palette-zero-migration-20261114.md.",
         "adaptation": "Map legacy null to INT_MIN in existing four-byte native slots/role IDs; real ID zero remains numeric zero, negative preview IDs remain distinct. File and script JSON map sentinel to null. Existing native validation, history byte accounting, sole Release artifact and UI materials retained; no performance optimization."
+      },
+      "reverseCelActiveProjection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-reverse.ts",
+          "legacy/src/renderer/src/core/animation.ts",
+          "legacy/src/renderer/src/store/workspace-animation-reverse.test.ts"
+        ],
+        "nativeAdaptation": "Legacy reverseSelectedAnimationCels calls refreshActiveAnimationFrame/applyFrameSurfaces after moving Cel identities. Native now projects active Cel opacity and layer geometry after applyCelEdit before publication. Existing three-Cel reversal test uses distinct endpoint opacities and checks immediate projection and Undo/Redo, retaining slot selection, center Cel and frame metadata assertions."
       }
     },
     {

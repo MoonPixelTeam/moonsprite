@@ -7858,3 +7858,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 蒙版状态Cel浮动拖动与变换交互
 
 对照canvas-input-selection-begin.ts复用pendingPaste的交互分支，已有Cel选区浮动应优先继续原事务，而不是重新捕获活动蒙版。beginSelectionContentMove优先承接beforeCelTimeline浮动（载荷始终copy=true），修复有显式Cel选择时被beginMaskSelectionMove拒绝的拖动和手柄入口。24组既有用例扩为双颜色源，覆盖普通/Alt拖动捕获、平移和水平翻转及取消/提交/UndoRedo/重开。正式smokeTilemapSelectionDelete新增普通隔离蒙版下实际Paste、Flip菜单，按独立预期验证平移和2倍缩放后的四个颜色位置、蒙版与隔离保持、取消、一次历史及UndoRedo。首轮测试误用不存在方法名导致编译失败，已改为既有flipContent。最终Release正式及核心测试构建成功，cel-selection-mask、完整free-tile-project通过；正式--tileset-management-check --grid-transform-entry-only退出0，包含新增菜单/变换断言。来源1043文件及证据快照、diff检查通过，未人工图像验收或真实鼠标拖拽自动化，本阶段仅验证生产捕获方法。来源见celFloatingMaskInteraction20261118。整体迁移INCOMPLETE。
+
+
+## 2026-11-18 Cel反转后的活动帧投影
+
+对照workspace-commands-animation-reverse.ts的refreshActiveAnimationFrame及animation.ts的applyFrameSurfaces，反转Cel后必须立即投影当前帧的图层不透明度和几何。原生在applyCelEdit之后补projectActiveCelOpacities，承接已有历史回放投影。扩展既有三Cel反转用例，端点采用不同不透明度，检查立即结果、Undo/Redo、中心Cel不动、选区锚点和帧元数据。修复前该投影断言失败，修复后moon-core-tests通过；正式Release构建、1043文件来源及证据快照检查、diff检查通过。未运行GUI或人工图像验收。来源见reverseCelActiveProjection20261118，整体迁移INCOMPLETE。
