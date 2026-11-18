@@ -8235,3 +8235,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字字体来源标识及操作提示迁移
 
 对照 TextToolDialog.tsx 字体来源 small 标签、本地导入 title 和动态删除 title，既有原生下拉行显示“已导入／本地”，内置字体保留名称；底层字体身份不变。TooltipManager 显示“选择本地字体”及随目录／选择更新的“删除字体：名称”。旧版双行来源标签适配为现有原生单行后缀。正式 Release 构建成功（text-font-origin-build.log），标签、选择身份和提示更新源码核对，来源覆盖与 diff 检查通过；显示改动未重复整套文字检查，未人工悬浮或图像验收。来源见 textFontOriginLabels20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。
+
+
+## 2026-11-19 字体操作旧版图标迁移
+
+对照 TextToolDialog.tsx、DeleteIconButton.tsx 与 PixelUtilityIcon.tsx，本地字体导入和删除复用现有 folderOpen/delete 及禁用态素材，接入公共 15px icon_button；系统字体入口使用操作行剩余宽度。保留回调、忙碌状态和提示，不新增或重画图标。正式 Release 构建成功（text-font-icons-build.log），素材来源、布局源码核对及来源覆盖和 diff 检查通过；未人工图像／悬浮验收，图标改动未重复整套文字检查。来源见 textFontActionIcons20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物或用户数据。

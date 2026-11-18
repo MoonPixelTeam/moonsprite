@@ -30300,6 +30300,16 @@
         "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
         "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
       },
+      "textFontActionIcons20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::local font action and DeleteIconButton",
+          "legacy/src/renderer/src/components/PixelUtilityIcon.tsx::folderOpen/delete",
+          "legacy/src/renderer/src/components/DeleteIconButton.tsx",
+          "native/assets/themes/moonsprite-dark/sheet-regions.json::icon.folderOpen/icon.delete legacySource"
+        ],
+        "adaptation": "Reuse existing legacy-converted folderOpen/delete skin assets and disabled variants for local import/delete, with shared 15px icon_button controls. Existing system-font entry occupies the remaining action-row width; retain callbacks, busy state and tooltips. No new assets or icon redraw.",
+        "verification": "Formal Release build text-font-icons-build.log succeeded. Asset provenance and layout source-reviewed; provenance coverage and diff checks passed. No manual image/hover acceptance or repeated whole text-tool smoke for this icon-only change."
+      },
       "textFontOriginLabels20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::font source small labels/local import title/delete title",
