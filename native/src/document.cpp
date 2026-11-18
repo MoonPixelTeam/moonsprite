@@ -207,7 +207,7 @@ void Document::groupEdits(std::size_t start,const std::vector<std::string>& sele
 }
 namespace {void indexedSelectionSource(const SelectionClipboard&,timeline::RasterFormat,const PaletteState&,bool captureTranslation=false);}
 // Whole Cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
-bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||selection_||!activeMaskId_.empty()))throw std::runtime_error("Only complete inactive tilemap Cel copy is migrated");
+bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before copying Cels");
 
  // legacy copySelectedAnimationCels filters with a Set before row/frame ordering.
  const std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());
@@ -220,6 +220,7 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  for(auto& item:items){const auto resolved=timeline_.resolveSurface(item.cel.id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve copied Cel");if(resolved.surface)raster::validate(*resolved.surface);const auto source=resolved.source->id;auto root=roots.find(source);if(root==roots.end())root=roots.emplace(source,selected.count(source)?source:item.cel.id).first;
  item.cel.tilemap=resolved.source->tilemap;item.cel.freeTiles=resolved.source->freeTiles;item.cel.text=resolved.source->text;const auto* mask=timeline::directMask(state,item.cel.layerId,item.cel.frameId);if(mask){item.mask=*mask;const auto* resolvedMask=timeline::resolvedMask(state,item.cel.layerId,item.cel.frameId);if(!resolvedMask)throw std::invalid_argument("Invalid copied Cel mask");item.mask->mask.surface=resolvedMask->surface;}item.cel.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;item.cel.linkedCelId=item.cel.id==root->second?std::nullopt:std::optional<std::string>{root->second};item.cel.runtimeSharedCelId.reset();item.row-=row;item.column-=col;}
  if(selection_){
+  if(hasTilemapContent()||hasFreeTileContent())for(const auto& item:items)if(!state.layers[timeline_.layerIndex(item.cel.layerId)].kind.empty())throw std::runtime_error("Special-layer Cel selection copy is not migrated");
   if(selection_->width<1||selection_->height<1||(!selection_->mask.empty()&&selection_->mask.size()!=std::uint64_t(selection_->width)*selection_->height))throw std::runtime_error("Invalid Cel copy selection");
   std::int64_t left=std::numeric_limits<int>::max(),top=left,right=std::numeric_limits<int>::min(),bottom=right;std::uint64_t storedBytes=0;
   // legacy clipAnimationCelToSelection crops each resolved source in world space.
@@ -240,7 +241,7 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  for(auto& item:items){const auto portable=animationClipboardCel(item.cel,colors);item.rgbaSnapshot=portable.surface;}
  celClipboard_=std::move(items);frameClipboard_.clear();frameClipboardMetadata_.reset();return true;
 }
-bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(hasTilemapContent()||hasFreeTileContent())return cutTilemapCels();if(!activeMaskId_.empty())return false;
+bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if((hasTilemapContent()||hasFreeTileContent())&&!selection_)return cutTilemapCels();if(!activeMaskId_.empty())return false;
  if(active())throw std::runtime_error("Cannot cut Cels during an active preview");
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end() && layerEffectivelyLocked(*l))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;
@@ -266,7 +267,7 @@ bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_
 bool Document::pasteCelClipboard(const CelClipboardSnapshot& portable){
  if(portable.sourceIdentity==identity_&&!portable.items.empty()&&!portable.items.front().selectionPixels&&celClipboard_.empty())return false;
  auto local=portable;if(portable.sourceIdentity==identity_&&!portable.items.empty()&&!portable.items.front().selectionPixels)local.items=celClipboard_;
- const auto& snapshot=local;auto selectionHistory=trackAnimationSelectionHistory(false);if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);if(!activeMaskId_.empty())return false;
+ const auto& snapshot=local;auto selectionHistory=trackAnimationSelectionHistory(false);if(!snapshot.items.empty()&&snapshot.items.front().selectionPixels){if(!activeMaskId_.empty())return false;if(snapshot.width<1||snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");return beginCelSelectionPaste(snapshot.items);}if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);if(!activeMaskId_.empty())return false;
  if(snapshot.items.empty())return false;
  if(snapshot.width<1 || snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");
  // legacy animationCelForTarget clones RGBA owners in world coordinates.
@@ -277,17 +278,24 @@ bool Document::pasteCelClipboard(const CelClipboardSnapshot& portable){
  try{const bool pasted=pasteCopiedCels(snapshot.sourceIdentity!=identity_);celClipboard_=previous;return pasted;}catch(...){celClipboard_=previous;throw;}
 }
 // legacy workspace-paste-cel-selection.ts: coordinate-preserving multi-cel floating paste.
-bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);
  if(items.empty()||!items.front().selectionPixels)return false;commitFloatingPaste();cancelStroke();cancelLayerOpacity();
  const auto* target=timelineSelection_.cels.empty()?timeline_.findCel(activeLayerId_,activeFrameId_):timeline_.findCelById(timelineSelection_.cels.back());if(!target)return false;
  const auto& state=timeline_.state();auto index=[](const auto& entries,const std::string& id){for(int i=0;i<int(entries.size());++i)if(entries[i].id==id)return i;return -1;};const int row=index(state.layers,target->layerId),column=index(state.frames,target->frameId);
  const auto& bounds=*items.front().selectionPixels;if(bounds.width<1||bounds.height<1||std::uint64_t(bounds.width)*bounds.height>16*1024*1024)throw std::runtime_error("Invalid Cel selection clipboard geometry");std::set<std::pair<int,int>> sourceSlots;int last=int(state.frames.size())-1;
  for(const auto& item:items){if(!sourceSlots.emplace(item.row,item.column).second)throw std::runtime_error("Duplicate Cel selection slot");const auto r=std::int64_t(row)+item.row,c=std::int64_t(column)+item.column;if(r<0||r>=int(state.layers.size())||c<0||!state.layers[r].kind.empty()||layerEffectivelyLocked(state.layers[r]))return false;if(!item.selectionPixels||item.selectionPixels->width!=bounds.width||item.selectionPixels->height!=bounds.height||item.selectionPixels->originX!=bounds.originX||item.selectionPixels->originY!=bounds.originY||item.selectionPixels->pixels.size()!=std::size_t(bounds.width)*bounds.height||item.selectionPixels->mask.size()!=item.selectionPixels->pixels.size())throw std::runtime_error("Invalid Cel selection clipboard");if(c>=10000)throw std::runtime_error("Cel selection paste exceeds frame limit");last=std::max(last,int(c));}
  // Sparse frame slots consume their stored pixels, not a full canvas per frame.
- std::uint64_t storedBytes=std::uint64_t(last+1-state.frames.size())*state.layers.size()*sizeof(Pixel);
+ std::unordered_map<std::string,DocumentCel> blankSlots;
+ std::uint64_t blankBytes=0;
+ if(last>=int(state.frames.size()))for(const auto& l:state.layers){DocumentCel blank;timeline::Surface surface;surface.format=animationTargetFormat(colorMode_,l.kind);surface.width=surface.height=1;
+  if(l.kind=="tilemap"){const auto source=std::find_if(state.cels.begin(),state.cels.end(),[&](const auto& c){return c.layerId==l.id&&c.tilemap.has_value();});if(source==state.cels.end())throw std::runtime_error("Missing Cel selection tilemap template");blank.tilemap=source->tilemap;std::fill(blank.tilemap->cells.begin(),blank.tilemap->cells.end(),std::nullopt);surface.width=blank.tilemap->columns*blank.tilemap->tileWidth;surface.height=blank.tilemap->rows*blank.tilemap->tileHeight;
+  }else if(l.kind=="free-tile"){blank.freeTiles=free_tiles::CelData{};if(l.freeTiles&&(!l.freeTiles->sources.empty()||!l.freeTiles->legacyTilesetId.empty())){surface.width=width_;surface.height=height_;}}
+  const auto area=std::uint64_t(surface.width)*surface.height;blankBytes+=area*sizeof(Pixel);if(blankBytes>256*1024*1024)throw std::runtime_error("Cel selection paste exceeds pixel budget");surface.pixels.resize(std::size_t(area));blank.surface=std::move(surface);blankSlots.emplace(l.id,std::move(blank));
+ }
+ std::uint64_t storedBytes=std::uint64_t(last+1-state.frames.size())*blankBytes;
  for(const auto& stored:state.cels)if(stored.surface){raster::validate(*stored.surface);storedBytes+=std::uint64_t(stored.surface->pixels.size())*sizeof(Pixel);if(storedBytes>256*1024*1024)throw std::runtime_error("Cel selection paste exceeds pixel budget");}
  if(last>=10000||storedBytes>256*1024*1024)throw std::runtime_error("Cel selection paste exceeds pixel budget");
- auto nextFrameId=nextFrameId_;auto candidate=state;while(int(candidate.frames.size())<=last){DocumentFrame f;f.id="frame-native-"+std::to_string(identity_)+"-"+std::to_string(++nextFrameId);candidate.frames.push_back(f);for(const auto& l:candidate.layers){DocumentCel c;c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;timeline::Surface surface;surface.format=animationTargetFormat(colorMode_,l.kind);surface.width=surface.height=1;surface.pixels.resize(1);c.surface=std::move(surface);candidate.cels.push_back(std::move(c));}}
+ auto nextFrameId=nextFrameId_;auto candidate=state;while(int(candidate.frames.size())<=last){DocumentFrame f;f.id="frame-native-"+std::to_string(identity_)+"-"+std::to_string(++nextFrameId);candidate.frames.push_back(f);for(const auto& l:candidate.layers){auto c=blankSlots.at(l.id);c.id="cel-"+l.id+"-"+f.id;c.layerId=l.id;c.frameId=f.id;c.opacity=l.opacity;candidate.cels.push_back(std::move(c));}}
  timeline::Timeline staged(candidate);std::vector<std::string> destinations;for(const auto& item:items){const auto* destination=staged.findCel(candidate.layers[row+item.row].id,candidate.frames[column+item.column].id);destinations.push_back(destination?destination->id:std::string{});}
  const RasterColorContext colors(palette_.entries,palette_.order(),colorMode_,pixelFormat_);
  auto converted=items;
@@ -318,7 +326,7 @@ bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items
  }catch(...){timeline_=std::move(previousTimeline);floating_.reset();setSelectionValue(std::move(previousSelection));change_=previousChange;throw;}
  nextFrameId_=nextFrameId;return true;
 }
-bool Document::pasteCopiedCels(bool crossDocument){auto selectionHistory=trackAnimationSelectionHistory(false);if(hasTilemapContent()||hasFreeTileContent())return false;if(!activeMaskId_.empty())return false;
+bool Document::pasteCopiedCels(bool crossDocument){auto selectionHistory=trackAnimationSelectionHistory(false);if(!activeMaskId_.empty())return false;if(!celClipboard_.empty()&&celClipboard_.front().selectionPixels)return beginCelSelectionPaste(exportCelClipboard().items);if(hasTilemapContent()||hasFreeTileContent())return false;
  if(celClipboard_.empty())return false;if(celClipboard_.front().selectionPixels)return beginCelSelectionPaste(exportCelClipboard().items);if(active() || selection_)throw std::runtime_error("Finish or cancel the current selection before Cel paste");
  const auto* target=timelineSelection_.cels.empty()?timeline_.findCel(activeLayerId_,activeFrameId_):timeline_.findCelById(timelineSelection_.cels.back());if(!target)return false;
  const auto& state=timeline_.state();auto index=[](const auto& items,const std::string& id){for(int i=0;i<int(items.size());++i)if(items[i].id==id)return i;return -1;};const int row=index(state.layers,target->layerId),column=index(state.frames,target->frameId);

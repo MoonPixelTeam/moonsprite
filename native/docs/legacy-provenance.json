@@ -5988,6 +5988,14 @@
           "legacy/src/renderer/src/core/tilemap-document.ts"
         ],
         "nativeAdaptation": "With an explicit marquee, legacy bypasses whole-Cel timeline flip and invokes flipTilemapSelection for the active layer/frame before ordinary multi-target transform handling. Remove native Paint flip admission restrictions for extra selected groups/layers/Cels/frames; reuse existing canonical cell history and legacy locked/hidden discrete-flip behavior. Extend three timeline contexts and move/copy fixture variants with horizontal/vertical exact cell orientation, unrelated-frame preservation, timeline focus/selection, one history and undo/redo checks."
+      },
+      "mixedRasterCelSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
       }
     },
     {
@@ -20935,6 +20943,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
         ],
         "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
+      },
+      "mixedRasterCelSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
       }
     },
     {
@@ -22736,6 +22752,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
         ],
         "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
+      },
+      "mixedRasterCelSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
       }
     },
     {
@@ -27674,6 +27698,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
         ],
         "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
+      },
+      "mixedRasterCelSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
       }
     },
     {
@@ -35780,6 +35812,14 @@
           "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
         ],
         "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
+      },
+      "mixedRasterCelSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
       }
     },
     {

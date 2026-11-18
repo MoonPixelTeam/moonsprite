@@ -7808,3 +7808,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 特殊图层完整Cel粘贴与活动蒙版历史
 
 对照workspace-commands-animation-cel-clipboard.ts及workspace-animation-selection-history.ts，完整Cel粘贴退出蒙版编辑，Undo恢复粘贴前蒙版及隔离状态，Redo恢复文档编辑。特殊图层完整Cel事务允许静态活动蒙版，验证和预留历史成功后清除蒙版编辑，记录明确前后maskContext；既有完整Cel菜单/编辑器分流允许特殊工程活动蒙版，普通工程准入保持。扩展网格/自由层、同/跨工程、普通/隔离蒙版八组核心检查，验证原蒙版像素及Undo恢复、Redo退出、原静态选区、完整内容和保存重开。正式Release及测试构建退出0，cel-static-selection八组通过，完整free-tile-project回归通过（36.77秒），正式程序既有--tileset-management-check --grid-transform-entry-only入口回归带正式主题/指针退出0；未新增该差异的GUI专用断言。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见wholeCelActiveMask20261118。
+
+
+## 2026-11-18 混合工程普通图层Cel选区剪贴板
+
+对照workspace-paste-cel-selection.ts、workspace-commands-animation-cel-clipboard.ts与animation.ts::ensureAnimationDocument，普通未锁目标不应因工程含无关网格/自由瓦片层而拒绝选区Cel载荷。选区载荷在完整特殊Cel事务之前分流，普通Cel选区复制、导出、剪切及菜单粘贴接入既有浮动事务；扩帧给无关网格层创建模板尺寸的空单元格、给自由层创建空实例及相应缓存，保留资源。新增四组网格/自由、同/跨工程检查覆盖扩帧、取消、单条历史、Undo/Redo、保存重开与剪切撤销。回归发现并修正新增限制误拦原有文字Cel复制的问题。正式Release与核心测试构建成功；完整free-tile-project通过39.55秒；正式程序既有--tileset-management-check --grid-transform-entry-only入口退出0，未新增该路径专用GUI断言、未人工图像验收。来源1043文件快照及diff检查通过。特殊图层自身选区Cel复制仍明确未迁移，整体INCOMPLETE。来源见mixedRasterCelSelection20261118。
