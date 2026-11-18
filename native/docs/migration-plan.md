@@ -8140,3 +8140,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体导入弹窗目录迁移
 
 对照 TextToolDialog.tsx::addFont，文件和系统字体导入统一将返回项置于当前弹窗目录首位，按用户语言小写规则替换同名字体，保留返回资源 ID、删除资格、字号默认及实时预览。重新加载目录与删除回退继续采用持久使用次数排序。正式弹窗夹具覆盖置顶、大小写同名替换、重复导入身份、选中/删除状态及重新加载，夹具不写入字体库。唯一正式 Release 构建成功（text-import-catalog-build.log），正式主题/指针下 --text-tool-check 等待实际退出0。未人工图像验收，跨语言环境 Unicode 大小写等价未声明；整体迁移仍 INCOMPLETE。来源见 importedFontDialogOrder20261119，保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 字体删除失败迁移
+
+对照 platform_fonts.rs::delete_font 和 TextToolDialog.tsx::removeSelectedFont，字体文件不存在或无法删除时明确失败，保留目录身份和字形缓存，成功后才进入既有目录刷新/字体回退。修复 remove 返回 false 被当作成功的问题。隔离测试实际持有 Windows 禁止删除共享句柄、移除测试字体，再恢复文件并在同一服务重试，验证失败保留目录、成功移除。唯一正式 Release 及 text-font-tests 构建成功（text-font-delete-build.log），text-font CTest 通过（0.20秒）。未 GUI 或人工图像验收，整体迁移仍 INCOMPLETE。来源见 fontDeleteFailure20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。

@@ -29590,7 +29590,15 @@
         "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
       ],
       "scope": "Native editable text tool integration and text metadata preservation",
-      "adaptation": "Port legacy UTF16 style ranges, draft cancel/confirm and one history edit, existing-owner content snapshot, native PixelDialog and multiline input, text free/box canvas creation, direct edit, selected-box move/resize reflow, font file identity/catalog usage/import/delete, text project/recovery metadata. Native Skia/DirectWrite replaces browser glyph provider; browser pixel equivalence remains unproven. Native dialog uses existing pixel widgets; full rich text selection property synchronization and local textarea undo remain incomplete. Coverage is not behavioral equivalence."
+      "adaptation": "Port legacy UTF16 style ranges, draft cancel/confirm and one history edit, existing-owner content snapshot, native PixelDialog and multiline input, text free/box canvas creation, direct edit, selected-box move/resize reflow, font file identity/catalog usage/import/delete, text project/recovery metadata. Native Skia/DirectWrite replaces browser glyph provider; browser pixel equivalence remains unproven. Native dialog uses existing pixel widgets; full rich text selection property synchronization and local textarea undo remain incomplete. Coverage is not behavioral equivalence.",
+      "fontDeleteFailure20261119": {
+        "evidence": [
+          "legacy/src-tauri/src/platform_fonts.rs",
+          "legacy/src/renderer/src/platform/font-service.ts",
+          "legacy/src/renderer/src/components/TextToolDialog.tsx"
+        ],
+        "adaptation": "Legacy delete_font rejects missing file and propagates filesystem removal errors; frontend only reloads catalog and chooses fallback on success. Native erase now rejects remove=false before mutating catalog or face cache. Isolated font test checks real Windows sharing violation, externally missing file, retained catalog identity and successful same-service retry after restoration. Sole formal Release and text-font-tests built; text-font CTest passed 0.20s. No manual GUI acceptance."
+      }
     },
     {
       "file": "tests/text_font_test.cpp",
@@ -29608,7 +29616,15 @@
         "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
       ],
       "scope": "Native editable text tool integration and text metadata preservation",
-      "adaptation": "Port legacy UTF16 style ranges, draft cancel/confirm and one history edit, existing-owner content snapshot, native PixelDialog and multiline input, text free/box canvas creation, direct edit, selected-box move/resize reflow, font file identity/catalog usage/import/delete, text project/recovery metadata. Native Skia/DirectWrite replaces browser glyph provider; browser pixel equivalence remains unproven. Native dialog uses existing pixel widgets; full rich text selection property synchronization and local textarea undo remain incomplete. Coverage is not behavioral equivalence."
+      "adaptation": "Port legacy UTF16 style ranges, draft cancel/confirm and one history edit, existing-owner content snapshot, native PixelDialog and multiline input, text free/box canvas creation, direct edit, selected-box move/resize reflow, font file identity/catalog usage/import/delete, text project/recovery metadata. Native Skia/DirectWrite replaces browser glyph provider; browser pixel equivalence remains unproven. Native dialog uses existing pixel widgets; full rich text selection property synchronization and local textarea undo remain incomplete. Coverage is not behavioral equivalence.",
+      "fontDeleteFailure20261119": {
+        "evidence": [
+          "legacy/src-tauri/src/platform_fonts.rs",
+          "legacy/src/renderer/src/platform/font-service.ts",
+          "legacy/src/renderer/src/components/TextToolDialog.tsx"
+        ],
+        "adaptation": "Legacy delete_font rejects missing file and propagates filesystem removal errors; frontend only reloads catalog and chooses fallback on success. Native erase now rejects remove=false before mutating catalog or face cache. Isolated font test checks real Windows sharing violation, externally missing file, retained catalog identity and successful same-service retry after restoration. Sole formal Release and text-font-tests built; text-font CTest passed 0.20s. No manual GUI acceptance."
+      }
     },
     {
       "file": "src/layer_move.h",
