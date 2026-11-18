@@ -7843,3 +7843,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 活动蒙版下帧头复制与剪切
 
 对照app-document-shortcuts.ts，帧头Copy/Cut优先于像素选区，即使活动蒙版存在也走整帧；原生实际入口和registry去除该额外静态蒙版条件。完整帧快照复用既有蒙版数据；特殊图层cutTilemapFrames/deleteSelectedFrames允许静态活动蒙版，成功删帧后清除编辑上下文，maskContext双向为空，匹配workspace-commands-animation-frame.ts删帧及Undo/Redo。活动预览与至少保留一帧规则保持。新增八组网格/自由、隔离/普通、有/无像素选区检查完整帧蒙版、单事务、链接、Undo/Redo前重入及保存重开；正式隔离网格菜单夹具验证帧头Copy/Cut优先于残留像素选区。正式Release及测试构建成功，frame-cut-mask八组通过，完整free-tile-project通过35.52秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际帧头Copy/Cut菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见frameCutActiveMask20261118，整体INCOMPLETE。
+
+
+## 2026-11-18 普通图层完整Cel粘贴承接静态选区与活动蒙版
+
+对照workspace-commands-animation-cel-clipboard.ts的pasteAnimationCels及跨工程分支，普通图层完整Cel粘贴解除额外静态像素选区和活动蒙版拒绝，与已迁移特殊图层一致。完整内容替换不受目标像素选区裁切，选区保留；提交退出蒙版及隔离，Undo恢复原蒙版上下文，Redo退出。选区载荷继续保持独立门禁，活动编辑仍拒绝。registry和实际Editor分流去掉普通工程专属蒙版限制。复用已有夹具扩至普通/网格/自由、同/跨工程、普通/隔离共12组，验证内容、单次历史、原蒙版、Undo/Redo和重开。Release正式程序及free-tile-project-tests构建成功；cel-static-selection定向与完整free-tile-project均通过；正式--tileset-management-check --grid-transform-entry-only退出0，属于既有入口回归，未新增普通蒙版专用GUI断言、未人工图像验收。来源1043文件及证据快照检查、diff检查通过，来源见ordinaryCelMaskPaste20261118。整体迁移INCOMPLETE。
