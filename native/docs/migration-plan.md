@@ -8050,3 +8050,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板导入身份复用迁移
 
 对照 workspace-palette.ts::applyPalette 的 usedPaletteIds，原生 applyStoredPalette 改为同一次导入中每个颜色身份仅复用一次，避免旧工程重复 ID 条目带不同颜色时，将两个输入颜色合并到同一可见身份。保留既有按颜色索引和顺序复用，重复导入继续复用新身份，不累积分配或增加无变化历史。Release lua-script-invocation-tests 构建成功，CTest通过（5.76秒），覆盖独立身份、重复导入、Undo/Redo顺序；来源覆盖和diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见 paletteIdentityReuse20261119。
+
+
+## 2026-11-19 色板导入名称快照迁移
+
+对照 workspace-palette.ts::applyPalette 的 beforeNames/afterNames Map，导入名称按ID汇总，重复ID以末项名称为准；无变化时保留原条目，不创建历史，实际布局或名称改变时才统一发布名称。沿用kind11的按ID撤销重做，承接旧版重复ID名称恢复规则。Release lua-script-invocation-tests构建成功，CTest通过（5.71秒），覆盖无变化导入、显式布局、名称发布和Undo/Redo。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteNameSnapshot20261119。

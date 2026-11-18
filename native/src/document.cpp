@@ -2135,7 +2135,11 @@ void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,c
  if(columns){next.slots.clear();for(auto cell:slots)next.slots.push_back(cell&&*cell<ids.size()?ids[*cell]:EmptyPaletteSlot);}else{next.slots=ids;while(next.slots.size()%next.columns)next.slots.push_back(EmptyPaletteSlot);}
  if(colorMode_==color_mode::Mode::Indexed){ids.erase(std::remove(ids.begin(),ids.end(),0),ids.end());ids.insert(ids.begin(),0);}
  next.slots=normalizePaletteSlots(next.entries,ids,columns?next.slots:std::vector<int>{},next.columns);
- bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(std::size_t i=0;same&&i<palette_.entries.size();++i)same=next.entries[i].name==palette_.entries[i].name;if(same)return;
+ // Legacy snapshots names with Map(id,name): the last duplicate wins,
+ // and apply() publishes that name to every entry sharing the identity.
+ std::unordered_map<int,std::u32string> beforeNames,afterNames;for(const auto& e:palette_.entries)beforeNames[e.id]=e.name;for(const auto& e:next.entries)afterNames[e.id]=e.name;
+ bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(const auto& [id,name]:beforeNames)if(afterNames.at(id)!=name)same=false;if(same)return;
+ for(auto& e:next.entries)e.name=afterNames.at(e.id);
  next.independentOrder.reset();next.selected.clear();next.primaryId=EmptyPaletteSlot;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=11;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,true);edit.paletteHistory.afterPalette=next;prepareVisiblePaletteRemap(edit,next);auto replay=prepareSurfaceEdit(edit,true);reserveHistoryEntries();applySurfaceEdit(edit,true,replay.get());palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");
 }
