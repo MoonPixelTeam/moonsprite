@@ -321,7 +321,7 @@ private:
 
   PixelPresetControls exportPresets_;
 
-  struct ExportPreset {std::string name;int kind=0,format=0;bool explicitRange=false;StaticImageExportOptions image;GifExportOptions animation;bool allLayers=false,slices=false;std::string sliceId;};
+  struct ExportPreset {std::string name,filename,directory;int kind=0,format=0;bool explicitRange=false;StaticImageExportOptions image;GifExportOptions animation;bool allLayers=false,slices=false;std::string sliceId;};
 
   std::vector<ExportPreset> savedExportPresets_;
 
