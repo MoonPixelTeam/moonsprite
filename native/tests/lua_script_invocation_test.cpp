@@ -193,6 +193,15 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(scripted){std::ofstream(root/"scripts/mixed-palette.lua")<<"mse.palette.update(7,{r=6,g=5,b=4})";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;applyWorkspaceResult(*model,target,runtime.startInvocation("mixed-palette.lua",std::move(invocation)).get(),{});}else model->updatePaletteColor(7,0xff040506);
   auto verify=[&]{for(const auto* id:{"mixed-0","mixed-1"}){auto r=model->timeline().resolveSurface(id);check(r.surface->format==timeline::RasterFormat::Indexed&&std::all_of(r.surface->pixels.begin(),r.surface->pixels.end(),[](Pixel p){return p==7;}),"Mixed palette sync did not map indexed IDs");}};verify();check(model->historyPosition()==history+1,"Mixed palette sync history grouping wrong");model->undo();check(model->timeline().resolveSurface("mixed-0").surface->pixels==original&&model->palette().entries[0].color==0xff010203,"Mixed palette sync undo wrong");model->redo();verify();
  }
+ // Palette entries retain requested colors, raster replacement uses the
+ // legacy recordPixel normalization for grayscale and reduced precision.
+ for(bool gray:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,true));
+  if(gray)model->convertColorMode(color_mode::Mode::Grayscale);else model->setPixelFormat(color_mode::PixelFormat::Rgb565);
+  const auto source=model->activeSurface().pixels.back();model->updatePaletteColor(2,source);model->setPaletteColorSynchronization(true);const auto before=model->activeSurface().pixels;
+  std::ofstream(root/"scripts/normalized-palette.lua")<<"mse.palette.update(2,{r=17,g=83,b=201})";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;applyWorkspaceResult(*model,target,runtime.startInvocation("normalized-palette.lua",std::move(invocation)).get(),{});
+  const auto expected=color_mode::normalizePackedValue(model->colorMode(),model->pixelFormat(),0xffc95311);check(model->activeSurface().pixels.back()==expected&&model->palette().entries[1].color==0xffc95311,"Lua palette sync skipped raster normalization");check(model->timeline().resolveSurface("cel-1").surface->pixels.back()==expected,"Normalized palette sync lost linked owner");model->undo();check(model->activeSurface().pixels==before&&model->palette().entries[1].color==source,"Normalized palette sync undo wrong");model->redo();check(model->activeSurface().pixels.back()==expected,"Normalized palette sync redo wrong");
+ }
  // Absent indexed frame stays absent through capture, then materializes IDs.
  {auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::indexedBrush(*model);RasterHistoryFixture::removeFrameCels(*model,model->frame().id);
   auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;check(target.expected.format==timeline::RasterFormat::Indexed&&target.matches(*model)&&!model->activeSurfaceIfPresent(),"Absent indexed Lua capture format wrong");

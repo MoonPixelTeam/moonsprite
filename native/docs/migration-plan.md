@@ -8018,3 +8018,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合格式色板同步迁移
 
 对照workspace-commands-color.ts的updatePaletteColorWithSynchronization和tools-fill.ts的replaceLayerColor，混合RGBA/Indexed工程的色板同步先更新色板，再按剩余旧色条目的ID匹配索引像素，并映射到新色的可见ID。普通入口和Lua入口均保留格式、关联帧及单历史；索引色历史run按行边界和原始ID变化分隔。定向直接入口与真实复用旧版Lua引擎回归覆盖同色ID7/8、先改ID7再迁移ID8、关联帧与Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（7.81秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见mixedPaletteSynchronization20261118。
+
+
+## 2026-11-18 Lua色板同步灰度与像素精度
+
+对照workspace-commands-color.ts的同步替色、tools-fill.ts的replaceLayerColor及history.ts的recordPixelKnownCurrent，Lua同步生成RGBA表面时应用工程灰度/像素精度规范化，色板条目保留请求颜色。真实复用旧版Lua引擎回归覆盖灰度、RGB565、关联Cel、色板与像素精确值以及Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（8.02秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见luaPaletteNormalization20261118。
