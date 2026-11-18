@@ -30250,6 +30250,14 @@
         "source": "NumberInput.tsx::commit/adjust and TextToolDialog.tsx::selectionValues",
         "adaptation": "Opt-in numericMixed callback preserves empty controlled values when restoring invalid, blank or unmounted deferred numeric drafts. Existing numericValue retains zero for mixed stepping, matching legacy adjust. Ordinary numeric callers retain previous behavior. Text fields derive mixed state from UTF16 selected styles.",
         "verification": "Formal Release build text-mixed-number-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0. Actual field fixture asserts mixed empty/invalid/blank restoration preserves remembered font size and stepping resolves selected UTF16 range from zero. Existing numeric and text confirmation/cancellation checks pass. No manual image acceptance."
+      },
+      "textSpacingState20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::updateSpacingMode",
+          "legacy/src/renderer/src/components/TextToolDialog.tsx footer disabled={!value.text.length}"
+        ],
+        "adaptation": "Only a transition from font spacing to actual spacing replaces zero base/range spacing with one; reselecting actual spacing preserves intentional zero values. Empty text disables confirmation and local Undo restores availability. Reuse existing shared pixel controls without geometry changes.",
+        "verification": "Formal Release build text-spacing-state-build.log succeeded. Actual callback fixtures cover transition, repeated selection and return to font spacing. Existing empty draft fixture checks disabled confirmation and restoration after Undo. Formal theme/cursors --text-tool-check waited for actual exit 0; provenance coverage and diff checks pass. No manual image acceptance."
       }
     },
     {

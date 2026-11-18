@@ -8175,3 +8175,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字混合数字值恢复迁移
 
 对照 NumberInput.tsx::commit/adjust 与 TextToolDialog.tsx::selectionValues，公共 PixelEntry 增加可选混合值状态，空白或无效表达式恢复为空白，不再显示零；未挂载字段失焦也复用相同恢复。文字字段按 UTF16 选区样式提供混合状态，步进继续从零计算并遵守边界。已有普通数字调用不设置混合状态，保留原行为。唯一正式 Release 构建成功（text-mixed-number-build.log），正式主题/指针下 --text-tool-check 等待实际退出0。新增实际字段断言覆盖混合字号、无效表达式、空白草稿、字号偏好不变与从零步进修改选区；既有数字与文字确认/取消检查通过。来源覆盖和 diff 检查通过，未人工图像验收，整体迁移 INCOMPLETE。来源见 mixedNumberDraft20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字间距切换与空内容确认迁移
+
+对照 TextToolDialog.tsx::updateSpacingMode，仅从传统间距进入实际间距时把基础及样式段的零间距改为1；重复选择实际间距保留用户设置的零值，返回传统间距保留当前参数。空文字禁用确认，局部 Undo 恢复文字时恢复确认资格。复用原有控件，无布局调整。唯一正式 Release 构建成功（text-spacing-state-build.log），正式主题/指针下 --text-tool-check 等待实际退出0，覆盖实际切换回调及已有清空/恢复流程。来源覆盖与diff检查通过，未人工图像验收；整体迁移 INCOMPLETE。来源见 textSpacingState20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
