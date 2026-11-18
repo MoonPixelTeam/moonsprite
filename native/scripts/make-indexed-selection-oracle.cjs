@@ -72,24 +72,25 @@ registerHooks({
    return t;
   };
   target=source?transformed():null;
+  const quad=transform==='quad'?{nw:{x:-1,y:0},ne:{x:7,y:1},se:{x:6,y:6},sw:{x:1,y:5}}:transform==='quad-flipped'?{nw:{x:7,y:1},ne:{x:0,y:0},se:{x:1,y:5},sw:{x:6,y:6}}:undefined;
   const updatedEntries=spec.paletteUpdate?pe.map(e=>({...e,color:e.id===7?0x00123456:e.id===99?0xffffffff:e.color})):null;
-  if(updatedEntries){raster.selectionTransformCells(d,source,target,angle,undefined,l,undefined,false,opt);pe.splice(0,pe.length,...updatedEntries);d.palette=pe.map(e=>({id:e.id,name:'',color:unpackColor(e.color)}));}
+  if(updatedEntries){raster.selectionTransformCells(d,source,target,angle,undefined,l,quad,false,opt);pe.splice(0,pe.length,...updatedEntries);d.palette=pe.map(e=>({id:e.id,name:'',color:unpackColor(e.color)}));}
   let live=null,floatingCopy=null;
   if(kind==='delete'||kind==='cut')edit=fill.clearSelection(d,selection,l);
   else if(kind==='flip')edit=apply.flipSelection(d,selection,'horizontal',l);
   else if(kind==='rotate')edit=apply.applySelectionTransform(d,source,{...selection},90,false,undefined,undefined,undefined,l);
   else {
    const isTranslation=transform==='translation'||transform==='rotsprite0';
-   if(deferred){edit=isTranslation?translation.applySelectionTranslationCommit(d,source,target,kind==='paste'||copy,l,repeat):apply.applySelectionTransform(d,source,target,angle,kind==='paste'||copy,undefined,undefined,undefined,l,undefined,undefined,false,opt);}
+   if(deferred){edit=isTranslation?translation.applySelectionTranslationCommit(d,source,target,kind==='paste'||copy,l,repeat):apply.applySelectionTransform(d,source,target,angle,kind==='paste'||copy,undefined,undefined,undefined,l,undefined,quad,false,opt);}
    else if(isTranslation){preview=translation.applySelectionTranslationPreview(d,source,target,kind==='paste'||copy,null,l,undefined,repeat);edit=translation.selectionTranslationPreviewEdit(d,preview);}
-   else edit=apply.applySelectionTransform(d,source,target,angle,kind==='paste'||copy,undefined,undefined,undefined,l,undefined,undefined,false,opt);
+   else edit=apply.applySelectionTransform(d,source,target,angle,kind==='paste'||copy,undefined,undefined,undefined,l,undefined,quad,false,opt);
    live=snapshot();
-   const bounds=awaitlessSelection.transformedSelectionBounds(target,angle);
-   const actual=floatingSelectionClipboard({document:d,pendingPaste:{source,layerId:l.id,target:bounds,transformTarget:target,transformAngle:angle},selectionRotationAlgorithm:opt?'rotsprite':'fast'});
+   const bounds=quad?awaitlessSelection.selectionQuadBounds(quad):awaitlessSelection.transformedSelectionBounds(target,angle);
+   const actual=floatingSelectionClipboard({document:d,pendingPaste:{source,layerId:l.id,target:bounds,transformTarget:target,transformAngle:angle,transformQuad:quad},selectionRotationAlgorithm:opt?'rotsprite':'fast'});
    floatingCopy=actual?{...actual,pixels:Array.from(actual.pixels),mask:Array.from(actual.mask)}:null;
   }
   const after=snapshot(),entry=edit?history.commitPixelEdit(d,edit,'selection'):null;entry?.undo();const undo=snapshot();entry?.redo();const redo=snapshot();
-  cases.push({blank:!!spec.blank,updatedEntries,merged,name:`selection-${cases.length}`,kind,layout,palette,masked,copy,deferred,transform,repeat,special,w,h,sw,sh,ox,oy,entries:initialEntries,order:orders[palette],initial,selection:{...selection,mask:selection.mask?Array.from(selection.mask):null},clip,target,angle,opt,before,copied,live,floatingCopy,after,undo,redo,changed:!!entry});
+  cases.push({blank:!!spec.blank,updatedEntries,merged,name:`selection-${cases.length}`,kind,layout,palette,masked,copy,deferred,transform,repeat,special,w,h,sw,sh,ox,oy,entries:initialEntries,order:orders[palette],initial,selection:{...selection,mask:selection.mask?Array.from(selection.mask):null},clip,target,quad,angle,opt,before,copied,live,floatingCopy,after,undo,redo,changed:!!entry});
  }
  const awaitlessSelection=await imp('selection.ts');
  for(const layout of ['dense','sparse','negative','empty','one'])for(const palette of [0,1,2,3])for(const masked of [false,true])for(const kind of ['move','paste','delete','cut','flip','rotate']){
@@ -102,5 +103,7 @@ registerHooks({
  for(const layout of ['dense','sparse'])for(const deferred of [false,true])for(const copy of [false,true])for(const transform of ['translation','rotation','rotsprite'])run({layout,deferred,copy,transform,paletteUpdate:true});
  for(const kind of ['move','paste','flip','rotate'])for(const deferred of [false,true])for(const transform of ['translation','rotation'])run({kind,deferred,transform,w:40,h:32,selection:{x:1,y:1,width:25,height:20}});
  for(const transform of ['translation','scale','rotsprite'])run({kind:'paste',blank:true,transform});
+ for(const transform of ['quad','quad-flipped'])for(const layout of ['dense','sparse','negative'])for(const kind of ['move','paste'])for(const copy of [false,true])for(const deferred of [false,true])run({transform,layout,kind,copy,deferred,masked:true});
+ for(const transform of ['quad','quad-flipped'])for(const special of ['opaque-zero','transparent-first','transparent-last'])run({transform,special,kind:'move',copy:true,paletteUpdate:true});
  fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,JSON.stringify({cases}));console.log(`${cases.length} actual legacy indexed selection transactions generated`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

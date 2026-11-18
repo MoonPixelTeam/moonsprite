@@ -12812,6 +12812,14 @@
       "indexedSelection20261115": {
         "legacyEvidence": "Actual selection-transform source/raster/RotSprite/translation/apply modules: raw ID capture, generic duplicate-ID first entry versus current opaque-ID union for RotSprite, capture-time translation offsets and repeat fallback, inverse transparent cells, packed writes and overlap mixing. history commitPixelEdit retains expanded storage and uses point/dense thresholds. workspace-floating-clipboard resolves source IDs to RGBA and retains mask; static clipboard uses readLayerColorAt and compositeRegion. Existing production project encoders retain raw IDs and reject duplicate palette IDs.",
         "nativeAdaptation": "Reuse SelectionClipboard, RasterColorContext, existing Document transactions and samplers. Store current first-entry/current union/capture union opacity metadata; invalidate RotSprite on union changes. External clipboards are RGBA; indexed paste maps current palette. Preserve absent-Cel format and storage origins, raw deferred commit, owner-local point history and legacy dense thresholds. Node oracle runs actual TypeScript with type-only import adaptation; 931 transactions, 26 linked and 3 absent-Cel checks passed, plus 61 actual legacy tests. Three production encoders and raw raster decoding are checked on linked/absent/large cases; editable indexed import remains rejected. Validation and remaining scope are recorded in docs/indexed-selection-migration-20261115.md. No UI redesign or performance optimization. Final unique formal Release build succeeded (17:30:32, 30694912 bytes). After linking the existing moon-system-clipboard library into clipboard-document-tests, all 13 focused CTests passed in 7.39 seconds, including formal selection-interactions. The initial regression-target link failure and its fix are recorded in the stage document; production clipboard behavior is unchanged."
+      },
+      "indexedQuadBounds20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/tools-selection-transform-apply.ts",
+          "legacy/src/renderer/src/store/workspace-floating-clipboard.ts"
+        ],
+        "nativeAdaptation": "Compute quad bounds directly from its four corners as selectionQuadBounds rather than round-tripping through a homography, avoiding floating point expansion. Extend actual legacy indexed selection oracle with 54 quad cases across move/copy/paste, dense/sparse/negative layouts, deferred previews, mirrored quads and palette changes; validate preview, clipboard, cancel, commit and undo/redo using existing production transactions."
       }
     },
     {
@@ -43584,6 +43592,14 @@
       "indexedSelection20261115": {
         "legacyEvidence": "Actual selection-transform source/raster/RotSprite/translation/apply modules: raw ID capture, generic duplicate-ID first entry versus current opaque-ID union for RotSprite, capture-time translation offsets and repeat fallback, inverse transparent cells, packed writes and overlap mixing. history commitPixelEdit retains expanded storage and uses point/dense thresholds. workspace-floating-clipboard resolves source IDs to RGBA and retains mask; static clipboard uses readLayerColorAt and compositeRegion. Existing production project encoders retain raw IDs and reject duplicate palette IDs.",
         "nativeAdaptation": "Reuse SelectionClipboard, RasterColorContext, existing Document transactions and samplers. Store current first-entry/current union/capture union opacity metadata; invalidate RotSprite on union changes. External clipboards are RGBA; indexed paste maps current palette. Preserve absent-Cel format and storage origins, raw deferred commit, owner-local point history and legacy dense thresholds. Node oracle runs actual TypeScript with type-only import adaptation; 931 transactions, 26 linked and 3 absent-Cel checks passed, plus 61 actual legacy tests. Three production encoders and raw raster decoding are checked on linked/absent/large cases; editable indexed import remains rejected. Validation and remaining scope are recorded in docs/indexed-selection-migration-20261115.md. No UI redesign or performance optimization. Final unique formal Release build succeeded (17:30:32, 30694912 bytes). After linking the existing moon-system-clipboard library into clipboard-document-tests, all 13 focused CTests passed in 7.39 seconds, including formal selection-interactions. The initial regression-target link failure and its fix are recorded in the stage document; production clipboard behavior is unchanged."
+      },
+      "indexedQuadBounds20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/tools-selection-transform-apply.ts",
+          "legacy/src/renderer/src/store/workspace-floating-clipboard.ts"
+        ],
+        "nativeAdaptation": "Compute quad bounds directly from its four corners as selectionQuadBounds rather than round-tripping through a homography, avoiding floating point expansion. Extend actual legacy indexed selection oracle with 54 quad cases across move/copy/paste, dense/sparse/negative layouts, deferred previews, mirrored quads and palette changes; validate preview, clipboard, cancel, commit and undo/redo using existing production transactions."
       }
     },
     {
@@ -43614,6 +43630,14 @@
       "indexedSelection20261115": {
         "legacyEvidence": "Actual selection-transform source/raster/RotSprite/translation/apply modules: raw ID capture, generic duplicate-ID first entry versus current opaque-ID union for RotSprite, capture-time translation offsets and repeat fallback, inverse transparent cells, packed writes and overlap mixing. history commitPixelEdit retains expanded storage and uses point/dense thresholds. workspace-floating-clipboard resolves source IDs to RGBA and retains mask; static clipboard uses readLayerColorAt and compositeRegion. Existing production project encoders retain raw IDs and reject duplicate palette IDs.",
         "nativeAdaptation": "Reuse SelectionClipboard, RasterColorContext, existing Document transactions and samplers. Store current first-entry/current union/capture union opacity metadata; invalidate RotSprite on union changes. External clipboards are RGBA; indexed paste maps current palette. Preserve absent-Cel format and storage origins, raw deferred commit, owner-local point history and legacy dense thresholds. Node oracle runs actual TypeScript with type-only import adaptation; 931 transactions, 26 linked and 3 absent-Cel checks passed, plus 61 actual legacy tests. Three production encoders and raw raster decoding are checked on linked/absent/large cases; editable indexed import remains rejected. Validation and remaining scope are recorded in docs/indexed-selection-migration-20261115.md. No UI redesign or performance optimization. Final unique formal Release build succeeded (17:30:32, 30694912 bytes). After linking the existing moon-system-clipboard library into clipboard-document-tests, all 13 focused CTests passed in 7.39 seconds, including formal selection-interactions. The initial regression-target link failure and its fix are recorded in the stage document; production clipboard behavior is unchanged."
+      },
+      "indexedQuadBounds20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/selection.ts",
+          "legacy/src/renderer/src/core/tools-selection-transform-apply.ts",
+          "legacy/src/renderer/src/store/workspace-floating-clipboard.ts"
+        ],
+        "nativeAdaptation": "Compute quad bounds directly from its four corners as selectionQuadBounds rather than round-tripping through a homography, avoiding floating point expansion. Extend actual legacy indexed selection oracle with 54 quad cases across move/copy/paste, dense/sparse/negative layouts, deferred previews, mirrored quads and palette changes; validate preview, clipboard, cancel, commit and undo/redo using existing production transactions."
       }
     },
     {
