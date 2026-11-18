@@ -8013,3 +8013,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua索引色事务正式程序集成
 
 最近已提交的Lua表面格式捕获、索引色栅格事务、空帧格式及索引色色板同步排除规则，连同混合格式像素精度修复，已编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0（lua-indexed-formal-build.log），使用正式主题与指针的Start-Process -Wait -PassThru运行--script-entry-check退出0。未重复已通过的定向核心检查，未人工图像验收；入口检查不替代索引色精确事务测试，生产索引色准入保持关闭，整体迁移INCOMPLETE。本次仅提交集成记录，不提交生成物或既有main.cpp状态。
+
+
+## 2026-11-18 混合格式色板同步迁移
+
+对照workspace-commands-color.ts的updatePaletteColorWithSynchronization和tools-fill.ts的replaceLayerColor，混合RGBA/Indexed工程的色板同步先更新色板，再按剩余旧色条目的ID匹配索引像素，并映射到新色的可见ID。普通入口和Lua入口均保留格式、关联帧及单历史；索引色历史run按行边界和原始ID变化分隔。定向直接入口与真实复用旧版Lua引擎回归覆盖同色ID7/8、先改ID7再迁移ID8、关联帧与Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（7.81秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见mixedPaletteSynchronization20261118。
