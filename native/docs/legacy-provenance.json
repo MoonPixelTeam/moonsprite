@@ -6045,6 +6045,15 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Ordinary whole-Cel paste now follows the same legacy pasteAnimationCels and cross-document behavior as the previously migrated special-layer transaction: permit a static active mask and pixel selection, paste the entire Cel, retain pixel selection, exit mask editing on commit, restore the original mask/isolation on Undo and exit on Redo. Keep selection-only payload mask restrictions and active-edit guards. Remove the extra ordinary-document mask restriction from actual editor and registry dispatch. Extend the existing whole-Cel fixture to ordinary/grid/free x local/portable x isolated/normal with full content, one history entry, Undo/Redo and project reopening."
+      },
+      "celSelectionPasteMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-floating.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/core/selection-transform-targets.ts"
+        ],
+        "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
       }
     },
     {
@@ -21025,6 +21034,15 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Ordinary whole-Cel paste now follows the same legacy pasteAnimationCels and cross-document behavior as the previously migrated special-layer transaction: permit a static active mask and pixel selection, paste the entire Cel, retain pixel selection, exit mask editing on commit, restore the original mask/isolation on Undo and exit on Redo. Keep selection-only payload mask restrictions and active-edit guards. Remove the extra ordinary-document mask restriction from actual editor and registry dispatch. Extend the existing whole-Cel fixture to ordinary/grid/free x local/portable x isolated/normal with full content, one history entry, Undo/Redo and project reopening."
+      },
+      "celSelectionPasteMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-floating.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/core/selection-transform-targets.ts"
+        ],
+        "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
       }
     },
     {
@@ -22866,6 +22884,15 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Ordinary whole-Cel paste now follows the same legacy pasteAnimationCels and cross-document behavior as the previously migrated special-layer transaction: permit a static active mask and pixel selection, paste the entire Cel, retain pixel selection, exit mask editing on commit, restore the original mask/isolation on Undo and exit on Redo. Keep selection-only payload mask restrictions and active-edit guards. Remove the extra ordinary-document mask restriction from actual editor and registry dispatch. Extend the existing whole-Cel fixture to ordinary/grid/free x local/portable x isolated/normal with full content, one history entry, Undo/Redo and project reopening."
+      },
+      "celSelectionPasteMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-floating.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/core/selection-transform-targets.ts"
+        ],
+        "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
       }
     },
     {
@@ -36048,6 +36075,15 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Ordinary whole-Cel paste now follows the same legacy pasteAnimationCels and cross-document behavior as the previously migrated special-layer transaction: permit a static active mask and pixel selection, paste the entire Cel, retain pixel selection, exit mask editing on commit, restore the original mask/isolation on Undo and exit on Redo. Keep selection-only payload mask restrictions and active-edit guards. Remove the extra ordinary-document mask restriction from actual editor and registry dispatch. Extend the existing whole-Cel fixture to ordinary/grid/free x local/portable x isolated/normal with full content, one history entry, Undo/Redo and project reopening."
+      },
+      "celSelectionPasteMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-floating.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts",
+          "legacy/src/renderer/src/core/selection-transform-targets.ts"
+        ],
+        "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
       }
     },
     {

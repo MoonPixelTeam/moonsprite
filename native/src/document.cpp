@@ -271,7 +271,7 @@ bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_
 bool Document::pasteCelClipboard(const CelClipboardSnapshot& portable){
  if(portable.sourceIdentity==identity_&&!portable.items.empty()&&!portable.items.front().selectionPixels&&celClipboard_.empty())return false;
  auto local=portable;if(portable.sourceIdentity==identity_&&!portable.items.empty()&&!portable.items.front().selectionPixels)local.items=celClipboard_;
- const auto& snapshot=local;auto selectionHistory=trackAnimationSelectionHistory(false);if(!snapshot.items.empty()&&snapshot.items.front().selectionPixels){if(!activeMaskId_.empty())return false;if(snapshot.width<1||snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");return beginCelSelectionPaste(snapshot.items);}if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);
+ const auto& snapshot=local;auto selectionHistory=trackAnimationSelectionHistory(false);if(!snapshot.items.empty()&&snapshot.items.front().selectionPixels){if(snapshot.width<1||snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");return beginCelSelectionPaste(snapshot.items);}if(hasFreeTileContent()||hasTilemapContent()||snapshot.tilemapContext||!snapshot.tilesets.empty()||std::any_of(snapshot.items.begin(),snapshot.items.end(),[](const auto& item){return item.cel.freeTiles.has_value();}))return pasteTilemapCels(snapshot);
  if(snapshot.items.empty())return false;
  if(snapshot.width<1 || snapshot.height<1)throw std::invalid_argument("Invalid Cel clipboard canvas geometry");
  // legacy animationCelForTarget clones RGBA owners in world coordinates.
@@ -330,7 +330,7 @@ bool Document::beginCelSelectionPaste(const std::vector<CelClipboardItem>& items
  }catch(...){timeline_=std::move(previousTimeline);floating_.reset();setSelectionValue(std::move(previousSelection));change_=previousChange;throw;}
  nextFrameId_=nextFrameId;return true;
 }
-bool Document::pasteCopiedCels(bool crossDocument){auto selectionHistory=trackAnimationSelectionHistory(false);if(!celClipboard_.empty()&&celClipboard_.front().selectionPixels){if(!activeMaskId_.empty())return false;return beginCelSelectionPaste(exportCelClipboard().items);}if(hasTilemapContent()||hasFreeTileContent())return false;
+bool Document::pasteCopiedCels(bool crossDocument){auto selectionHistory=trackAnimationSelectionHistory(false);if(!celClipboard_.empty()&&celClipboard_.front().selectionPixels)return beginCelSelectionPaste(exportCelClipboard().items);if(hasTilemapContent()||hasFreeTileContent())return false;
  if(celClipboard_.empty())return false;if(celClipboard_.front().selectionPixels)return beginCelSelectionPaste(exportCelClipboard().items);if(active())throw std::runtime_error("Finish or cancel the current edit before Cel paste");
  const auto* target=timelineSelection_.cels.empty()?timeline_.findCel(activeLayerId_,activeFrameId_):timeline_.findCelById(timelineSelection_.cels.back());if(!target)return false;
  const auto& state=timeline_.state();auto index=[](const auto& items,const std::string& id){for(int i=0;i<int(items.size());++i)if(items[i].id==id)return i;return -1;};const int row=index(state.layers,target->layerId),column=index(state.frames,target->frameId);
@@ -3201,8 +3201,8 @@ bool Document::commitFloatingPasteImpl(){
  std::size_t extra=0;if(f.beforeSelection)floatingAddBytes(extra,f.beforeSelection->mask.size());if(selection_)floatingAddBytes(extra,selection_->mask.size());
  if(f.beforeCelTimeline)floatingAddBytes(extra,adjustmentStorageBudget(timeline_,1));else for(const auto& target:f.targets)floatingAddBytes(extra,std::uint64_t(target.preview.size())*sizeof(Delta));checkFloatingBudget(f,extra);
  Edit e{{},state_,nextState_};e.beforeActive=e.afterActive=f.layerId;e.beforeFrame=e.afterFrame=f.frameId;e.pixelSelectionHistory.pixelSelectionEdit=true;e.pixelSelectionHistory.beforePixelsSelection=f.beforeSelection;e.pixelSelectionHistory.afterPixelsSelection=selection_;
- // Legacy historyEntryWithAnimationSelection restores document editing on both sides.
- if(f.beforeCelTimeline)e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{{},{},false,false});
+ // Legacy floating commit captures the active mask context on both sides.
+ if(f.beforeCelTimeline)e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,activeMaskId_,maskIsolated_,maskIsolated_});
  if(f.beforeCelTimeline&&f.beforeCelTimeline->frames.size()==timeline_.state().frames.size()){
   const bool pixelsChanged=std::any_of(f.targets.begin(),f.targets.end(),[](const auto& target){return std::any_of(target.preview.begin(),target.preview.end(),[](const auto& entry){return entry.second.before!=entry.second.after;});});
   if(!pixelsChanged){const bool selectionChanged=!selectionEqual(f.beforeSelection,selection_);e.documentChanged=false;e.afterState=state_;floating_.reset();if(selectionChanged)pushEdit(std::move(e),U"变换选区内容");return false;}

@@ -7848,3 +7848,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 普通图层完整Cel粘贴承接静态选区与活动蒙版
 
 对照workspace-commands-animation-cel-clipboard.ts的pasteAnimationCels及跨工程分支，普通图层完整Cel粘贴解除额外静态像素选区和活动蒙版拒绝，与已迁移特殊图层一致。完整内容替换不受目标像素选区裁切，选区保留；提交退出蒙版及隔离，Undo恢复原蒙版上下文，Redo退出。选区载荷继续保持独立门禁，活动编辑仍拒绝。registry和实际Editor分流去掉普通工程专属蒙版限制。复用已有夹具扩至普通/网格/自由、同/跨工程、普通/隔离共12组，验证内容、单次历史、原蒙版、Undo/Redo和重开。Release正式程序及free-tile-project-tests构建成功；cel-static-selection定向与完整free-tile-project均通过；正式--tileset-management-check --grid-transform-entry-only退出0，属于既有入口回归，未新增普通蒙版专用GUI断言、未人工图像验收。来源1043文件及证据快照检查、diff检查通过，来源见ordinaryCelMaskPaste20261118。整体迁移INCOMPLETE。
+
+
+## 2026-11-18 活动蒙版下仅选区Cel粘贴
+
+对照workspace-paste-cel-selection.ts，目标普通Cel由图层/帧定位，活动蒙版不改变粘贴目标；selection-transform-targets.ts按Cel图层ID解析普通层。原生移除selection-only载荷的活动蒙版入口限制，复用多Cel浮动事务，预览、取消和提交均保留蒙版编辑及隔离，且不写蒙版像素。workspace-commands-selection-floating.ts在提交时捕获前后动画选择，因此原生历史不再强制退出蒙版，Undo/Redo记录当前蒙版及隔离。实际Editor和registry允许普通目标的此类载荷。新增普通/混合网格/混合自由、同/跨工程、普通/隔离、已有/追加帧共24组，检查浮动平移、取消恢复帧及像素和选区、单条历史、蒙版保持、Undo/Redo及工程重开。首轮夹具因跨工程空白目标无法按既有规则创建蒙版而失败，已为夹具补目标像素并显式选择目标帧，未修改产品创建规则。最终Release正式程序与测试构建成功，cel-selection-mask及完整free-tile-project通过；正式--tileset-management-check --grid-transform-entry-only既有入口回归退出0，未新增该路径专用GUI断言、未人工图像验收。来源1043文件及快照、diff检查通过，来源见celSelectionPasteMask20261118。整体迁移INCOMPLETE。
