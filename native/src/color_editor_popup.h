@@ -176,7 +176,7 @@ class ColorEditorPopup final : public PixelDialog {
   void sync(bool derive){
     if(derive)values_=colorToValues(current_,mode_);
     updating_=true;const auto fields=colorValueFields(mode_);
-    for(int i=0;i<5;++i){const bool show=i<int(fields.size());entries_[i]->setVisible(show);sliders_[i]->setVisible(show);if(show){sliders_[i]->minimum=fields[i].minimum;sliders_[i]->maximum=fields[i].maximum;sliders_[i]->percentage=fields[i].percentage;sliders_[i]->value=int(std::floor(values_[i]+.5));if(!entries_[i]->hasFocus())entries_[i]->setText(std::to_string(int(std::floor(values_[i]+.5))));sliders_[i]->invalidate();}}
+    for(int i=0;i<5;++i){const bool show=i<int(fields.size());entries_[i]->setVisible(show);sliders_[i]->setVisible(show);if(show){entries_[i]->numericMinimum=fields[i].minimum;entries_[i]->numericMaximum=fields[i].maximum;sliders_[i]->minimum=fields[i].minimum;sliders_[i]->maximum=fields[i].maximum;sliders_[i]->percentage=fields[i].percentage;sliders_[i]->value=int(std::floor(values_[i]+.5));if(!entries_[i]->hasFocus())entries_[i]->setText(std::to_string(int(std::floor(values_[i]+.5))));sliders_[i]->invalidate();}}
     for(int i=0;i<7;++i){tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));tabs_[i]->active=mode_==modes_[i];tabs_[i]->invalidate();}
     for(auto b:paletteButtons_){b->active=b->swatch==current_;b->invalidate();}
     if(!hex_->hasFocus())hex_->setText(colorValueHex(current_));
@@ -249,7 +249,7 @@ public:
     copyFeedback_.Tick.connect([this]{copyFeedback_.stop();copiedSwatch_=0;refreshCopyFeedback();});
     for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};slider->interactionCommit=[this]{commitColor();};
       slider->colorGradient=[this,i](double t){auto next=values_;const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return current_;next[i]=fields[i].minimum+t*(fields[i].maximum-fields[i].minimum);return colorFromValues(mode_,next,current_);};
-      auto entry=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->Change.connect([this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size())updateField(i,v);}catch(...){}});entry->blur=[this]{sync(false);};entry->accept=[this]{sync(false);};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
+      auto entry=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->deferredNumeric=true;entry->numericValue=[this,i]{return std::floor(values_[i]+.5);};entry->deferredCommit=[this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size()&&std::isfinite(v)&&v!=std::floor(values_[i]+.5)){updateField(i,v);commitColor();}}catch(...){}};entry->wheel=[this,i,entry](int delta){const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return;const auto next=std::clamp(std::floor(values_[i]+.5)+delta,double(fields[i].minimum),double(fields[i].maximum));if(next!=std::floor(values_[i]+.5)){updateField(i,next);commitColor();}entry->restoreNumericDraft();};entry->blur=[this]{sync(false);};entry->accept=[entry]{entry->releaseFocus();};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
     Close.connect([this](ui::CloseEvent&){static_cast<HexEntry*>(hex_)->cancelContextGesture();commitHex();if(sampling_)setSampling(false);paletteFilters(false);changed_={};committed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
     mode_=modes_[availableModes().front()];instances_.push_back(this);
     for(int i=0;i<7;++i)tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));
@@ -285,7 +285,7 @@ public:
     setBounds({x,y,w,h});sync(true);openWindow();paletteFilters(true);
   }
   bool sampling()const{return sampling_;}
-  void sampled(std::uint32_t color){apply(color);}
+  void sampled(std::uint32_t color){apply(color);commitColor();}
   void finishSampling(){if(sampling_)setSampling(false);}
   void onResize(ui::ResizeEvent& ev)override{setBoundsQuietly(ev.bounds());if(hex_)layout();}
   gfx::Size minimumDialogSize(int)const override {
@@ -381,6 +381,7 @@ public:
   }
   void smoke(){
     {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedColor=current_,savedAccepted=committedColor_;int drafts=0,commits=0;changed_=[&](auto){++drafts;};committed_=[&](auto){++commits;};committedColor_=current_;apply(current_^1u);if(drafts!=1||commits)throw std::runtime_error("Color draft committed early");commitColor();commitColor();if(commits!=1)throw std::runtime_error("Color duplicate commit");hex_->setText(colorValueHex(current_^2u));commitHex();if(commits!=2||drafts!=2)throw std::runtime_error("Color HEX commit missing");current_=savedColor;committedColor_=savedAccepted;changed_=savedChanged;committed_=savedCommitted;sync(true);}
+    {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedColor=current_,savedAccepted=committedColor_;const auto savedMode=mode_;mode_=ColorValueMode::Rgb;sync(true);int commits=0;changed_=[](auto){};committed_=[&](auto){++commits;};committedColor_=current_;const auto next=((current_&255)+1)%256;entries_[0]->setText(std::to_string(next));entries_[0]->Change();if(current_!=savedColor||commits)throw std::runtime_error("Channel draft published early");entries_[0]->commitExpression();if((current_&255)!=next||commits!=1)throw std::runtime_error("Channel accept missing");entries_[0]->setText("2+3");entries_[0]->commitExpression();if((current_&255)!=5)throw std::runtime_error("Channel expression missing");const auto beforeSample=commits;sampled(current_^256u);sampled(current_);if(commits!=beforeSample+1)throw std::runtime_error("Sample commit deduplication missing");mode_=savedMode;current_=savedColor;committedColor_=savedAccepted;changed_=savedChanged;committed_=savedCommitted;sync(true);}
     auto check=[](bool v,const char* why){if(!v)throw std::runtime_error(why);};
     check(icons_.assets.patches.count(sample_->icon)!=0,"Missing legacy eyedropper icon");
     check(skin_.assets.patches.count("icon.marker-light") && skin_.assets.patches.count("icon.marker-dark"),"Missing shared picker markers");
@@ -398,7 +399,7 @@ public:
     tabs_[3]->Click();tabs_[0]->Click();
     check(bounds().w>=minimumDialogSize(bounds().w).w && bounds().h>=minimumDialogSize(bounds().w).h,"Editor must preserve content floor across mode switches");
     setBounds({original.x,original.y,original.w,preferredHeight()*uiScale});
-    tabs_[1]->Click();entries_[0]->setText("17");entries_[0]->Change();check((current_&255)==17,"RGB editor channel binding");
+    tabs_[1]->Click();entries_[0]->setText("17");entries_[0]->Change();entries_[0]->commitExpression();check((current_&255)==17,"RGB editor channel binding");
     const auto alpha=current_>>24;hex_->setText("#AABBCC");commitHex();check(current_==((alpha<<24)|0xccbbaa),"HEX retains fallback alpha");hex_->setText("invalid");commitHex();check(hex_->text()==colorValueHex(current_),"Invalid HEX resets");
     for(int i=0;i<5;++i){tabs_[i]->Click();check(tabs_[i]->active,"Editor mode tab selection");for(auto s:sliders_)if(s->isVisible())check(s->bounds().h==textControlHeight*uiScale,"Color slider shared height");}
     if(!paletteButtons_.empty()){auto expected=paletteButtons_[0]->swatch;paletteButtons_[0]->Click();check(current_==expected,"Palette editor selection");}
@@ -411,8 +412,8 @@ public:
       if(!fields.empty())check(bounds().y2()-entries_[fields.size()-1]->bounds().y2()==6*uiScale,"Mode minimum bottom padding");
       for(auto child:children())if(child->isVisible())check(bounds().contains(child->bounds()),"Seven-mode minimum content overflow");
     }
-    tabs_[6]->Click();entries_[4]->setText("91");entries_[4]->Change();check(current_>>24==91&&notifications==1,"CMYK alpha field binding");
-    tabs_[5]->Click();entries_[0]->setText("240");entries_[0]->Change();check(notifications==2,"HSL channel edit binding");
+    tabs_[6]->Click();entries_[4]->setText("91");entries_[4]->Change();entries_[4]->commitExpression();check(current_>>24==91&&notifications==1,"CMYK alpha field binding");
+    tabs_[5]->Click();entries_[0]->setText("240");entries_[0]->Change();entries_[0]->commitExpression();check(notifications==2,"HSL channel edit binding");
     changed_=savedChanged;setModePreferences(savedModes);apply(neutral);
     tabs_[0]->Click();setBounds({original.x,original.y,original.w,preferredHeight()*uiScale});for(auto child:children())if(child->isVisible())check(bounds().contains(child->bounds()),"Color editor control outside window");
     for(int width:{120,240,300})for(bool hover:{false,true}){

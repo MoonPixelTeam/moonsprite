@@ -8316,3 +8316,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 颜色控件确认回调迁移
 
 实际对照 ColorValueControl.tsx::commitEditorColor/applyEditorColor 与通道范围控件，颜色预览和确认回调分离，确认按最近已提交RGBA去重。ColorEditorPopup新增可选committed回调，滑块交互结束（含离散滚轮）、HEX确认/粘贴及色板选择触发确认；既有changed预览调用保留。Lua弹窗消费确认回调，去除关闭窗口时无条件发送change，避免未改色或重复确认的脚本通知。既有颜色smoke补充预览不提前提交、重复确认去重和HEX确认检查。唯一正式Release构建成功（lua-color-commit-build.log），正式程序带主题/指针的--color-editor-check和--script-report-check均等待实际退出0。来源覆盖1043及证据快照、diff检查通过。未人工颜色交互或图像验收；通道数字输入完整NumberInput时机、采样提交及busy期间保留编辑器等仍有缺口，不声明完整ColorValueControl迁移。整体INCOMPLETE，保留已有main.cpp及用户文件。
+
+## 2026-11-19 颜色通道草稿与采样确认迁移
+
+对照ColorValueControl.tsx通道NumberInput默认live=false及onValueChange确认、sampledColorHandlerRef=applyEditorColor，通道键入不再即时改色，Enter/失焦经已有PixelEntry表达式和边界处理提交；滚轮/拖调从已接受的四舍五入通道值调整并确认。模式切换更新通道边界；采样在apply后确认并复用RGBA去重。既有颜色smoke覆盖草稿隔离、确认、表达式和重复采样；既有真实失焦夹具将等于原红值51的输入改为52，保留真实焦点与回调断言。首轮颜色检查因此同值样本失败，修正夹具后唯一正式Release重建成功（color-channel-commit-recheck-build.log），--color-editor-check与--script-report-check实际退出均为0。来源覆盖与证据快照、diff检查见本轮结果，无人工交互/图像验收。完整数字步进按钮/过滤及busy颜色窗口生命周期仍partial，整体INCOMPLETE；保留既有main.cpp及用户数据。

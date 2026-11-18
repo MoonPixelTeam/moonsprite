@@ -117,7 +117,7 @@ void moon::ColorEditorPopup::smokePaletteAndPaste(const std::function<void(Color
     check(!second->hasCapture()&&second->parent()==nullptr&&current_==after&&changes==1,"Removed palette target retained capture or applied stale color");
     tabs_[1]->Click();manager()->setFocus(entries_[0],ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();entries_[0]->setText("-");
     entries.push_back({8,U"新增",0x00abcdef});updatePalette(entries);check(entries_[0]->hasFocus()&&entries_[0]->text()=="-"&&changes==1,"Live palette replaced channel draft");
-    entries_[0]->setText("51");manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
+    entries_[0]->setText("52");manager()->setFocus(hex_,ui::FocusMessage::Source::Keyboard);manager()->dispatchMessages();
     check(changes==2,"Channel blur did not commit through existing numeric input");const int pasteChanges=changes;
     current_=0x80332211;sync(true);hex_->setText("#draft");
     auto hex=static_cast<HexEntry*>(hex_);int reads=0;std::optional<std::string> text=" \t#A1b2C3\r\n";readClipboard_=[&]{++reads;return text;};
