@@ -238,6 +238,14 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   model->undo();check(model->paletteEntry(0)->color==0&&model->paletteEntry(7)->color==0xff0000ff,"Palette paste undo wrong");model->redo();check(model->paletteEntry(0)->color==(indexed?0:0xff112233)&&model->paletteEntry(7)->color==0xff445566,"Palette paste redo wrong");
   if(indexed){const auto h=model->historyPosition();model->pastePaletteColors({0xffabcdef},{0});check(model->historyPosition()==h&&model->paletteEntry(0)->color==0&&model->palette().selected.empty(),"Zero-only indexed paste created history or selected reserved slot");}
  }
+ // Indexed sorting reserves zero; fallback reverse excludes it, while
+ // explicit multi-selection preserves the legacy permission to include zero.
+ for(bool indexed:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::remapPalette(*model,indexed);const auto pixels=model->activeSurface().pixels;
+  model->sortPaletteColors(Document::PaletteSortMode::Red,true);check(model->palette().order()==(indexed?std::vector<int>{0,7,9}:std::vector<int>{7,9,0}),"Palette sort reserved zero/order wrong");model->undo();check(model->palette().order()==std::vector<int>({0,7,9}),"Palette sort undo wrong");model->redo();check(model->palette().order().front()==(indexed?0:7),"Palette sort redo wrong");model->undo();
+  model->clearPaletteSelection();model->reversePaletteColors();check(model->paletteEntry(0)->color==(indexed?0:0xff0000ee)&&model->paletteEntry(7)->color==(indexed?0xff0000ee:0xff0000ff),"Palette fallback reverse included reserved zero");model->undo();check(model->paletteEntry(0)->color==0&&model->paletteEntry(7)->color==0xff0000ff,"Palette reverse undo wrong");model->redo();model->undo();
+  model->selectPalette(0);model->selectPalette(7,true);model->reversePaletteColors();check(model->paletteEntry(0)->color==0xff0000ff&&model->paletteEntry(7)->color==0,"Explicit reverse selection did not include zero");model->undo();check(model->activeSurface().pixels==pixels&&model->paletteEntry(0)->color==0,"Palette ordering changed raw IDs");
+ }
  // Legacy applyPalette consumes identities once, including malformed duplicate
  // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();
