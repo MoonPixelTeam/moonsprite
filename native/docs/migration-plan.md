@@ -8220,3 +8220,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体后台导入删除真实流程验收
 
 按 TextToolDialog.tsx::addFont/removeSelectedFont 的当前值更新和 fontBusy 语义，既有文字工具检查新增独立临时字体库，复制内置 Fusion WOFF2 为独立导入身份，运行真实后台导入与删除。验证忙碌按钮、磁盘资源、导入选中与成功反馈、操作期间编辑文字保留、删除资源及目录回退。只读用户字体，不向用户字体库写入；临时证据保留。唯一正式 Release 构建成功（text-font-roundtrip-build.log），正式主题/指针下 --text-tool-check 实际退出0。关闭竞争、真实系统字体弹窗导入及人工图像验收仍未验证；整体迁移 INCOMPLETE。来源见 textFontAsyncRoundtrip20261119；保留既有 main.cpp 差异，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字创建编辑文案与单位迁移
+
+对照 TextToolDialog.tsx 的 editing 标题、提交按钮和三个 NumberInput 的 px 后缀，原生从实际 Cel 编辑状态传入模式：创建显示“创建文本／插入”，编辑显示“编辑文本／保存”；字号、行距和字距复用 PixelEntry 显示 px。未改变布局和事务。正式 Release 构建成功（text-dialog-mode-build.log），源码映射、来源覆盖与 diff 检查；显示改动不重复整套文字检查，未人工图像验收。来源见 textDialogModeLabels20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。

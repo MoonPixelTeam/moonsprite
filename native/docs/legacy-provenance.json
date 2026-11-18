@@ -30300,6 +30300,14 @@
         "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
         "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
       },
+      "textDialogModeLabels20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::editing DialogHeader/submit label and NumberInput suffix",
+          "legacy/src/renderer/src/locales/zh-CN.ts::textTool.createTitle/editTitle/insert and common.save"
+        ],
+        "adaptation": "Editor passes existing-Cel state to the native dialog. Create uses 创建文本/插入 and edit uses 编辑文本/保存. The three legacy numeric style fields show px through the existing PixelEntry suffix; native-only box dimensions retain their current display. No command, layout or transaction changes.",
+        "verification": "Formal Release build text-dialog-mode-build.log succeeded. Source mapping and diff/provenance checks only; no repeated whole text-tool smoke for this display-only change and no manual image acceptance."
+      },
       "textFontAsyncRoundtrip20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::addFont/removeSelectedFont current-value updates and fontBusy",
