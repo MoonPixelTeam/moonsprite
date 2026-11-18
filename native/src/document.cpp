@@ -240,7 +240,7 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  for(auto& item:items){const auto portable=animationClipboardCel(item.cel,colors);item.rgbaSnapshot=portable.surface;}
  celClipboard_=std::move(items);frameClipboard_.clear();frameClipboardMetadata_.reset();return true;
 }
-bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if((hasTilemapContent()||hasFreeTileContent())&&!selection_)return cutTilemapCels();if(!activeMaskId_.empty()&&!selection_)return false;
+bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if((hasTilemapContent()||hasFreeTileContent())&&!selection_)return cutTilemapCels();
  if(active())throw std::runtime_error("Cannot cut Cels during an active preview");
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end() && layerEffectivelyLocked(*l))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;

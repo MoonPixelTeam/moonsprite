@@ -562,7 +562,7 @@ bool Document::pasteTilemapCels(const CelClipboardSnapshot& clip){
 
 namespace moon {
 bool Document::cutTilemapCels(){
- if(active()||selection_||!activeMaskId_.empty())throw std::runtime_error("Finish the active edit before cutting Cels");
+ if(active()||selection_)throw std::runtime_error("Finish the active edit before cutting Cels");
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)throw std::invalid_argument("Missing Cel cut target");if(layerEffectivelyLocked(timeline_.state().layers[timeline_.layerIndex(c->layerId)]))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;const auto clipboard=exportCelClipboard();(void)clipboard;return deleteSelectedCels();
 }
@@ -571,17 +571,16 @@ bool Document::cutTilemapCels(){
 namespace moon {
 bool Document::deleteSelectedCels(bool ignorePixelSelection){
  if(hasTilemapContent()||hasFreeTileContent()){
- if(active()||(selection_&&!ignorePixelSelection)||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel deletion is migrated");const auto& before=timeline_.state();std::vector<std::string> selected=timelineSelection_.cels;if(selected.empty())return false;
+ if(active()||(selection_&&!ignorePixelSelection))throw std::runtime_error("Only complete inactive Cel deletion is migrated");const auto& before=timeline_.state();std::vector<std::string> selected=timelineSelection_.cels;if(selected.empty())return false;
  for(const auto& id:selected){const auto* c=timeline_.findCelById(id);if(!c)throw std::invalid_argument("Missing Cel deletion target");const auto& l=before.layers[timeline_.layerIndex(c->layerId)];if(layerEffectivelyLocked(l))throw std::runtime_error("Cel deletion layer is locked");}
  auto candidate=before;detachTilemapCelTargets(candidate,selected);
  for(auto& c:candidate.cels)if(std::find(selected.begin(),selected.end(),c.id)!=selected.end()){if(c.surface)std::fill(c.surface->pixels.begin(),c.surface->pixels.end(),0);if(c.freeTiles)c.freeTiles=free_tiles::CelData{};if(c.tilemap)std::fill(c.tilemap->cells.begin(),c.tilemap->cells.end(),std::nullopt);c.text.reset();c.zIndex=0;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
  timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Cel deletion leaves invalid links");
  TimelineSelection cleared=timelineSelection_;cleared.cels.clear();cleared.celAnchor.clear();Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=before;e.snapshotHistory.afterTimeline=validated.state();e.snapshotHistory.beforeTimeline->tilesets.clear();e.snapshotHistory.afterTimeline->tilesets.clear();e.layerHistory.layerTilesets=std::make_shared<const LayerTilesetHistory>();e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;e.beforeFrameAnchor=e.afterFrameAnchor=frameAnchor_;
- e.beforeTimelineSelection=e.afterTimelineSelection=cleared;reserveHistoryEntries();timeline_=std::move(validated);timelineSelection_=std::move(cleared);projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
+ e.beforeTimelineSelection=e.afterTimelineSelection=cleared;reserveHistoryEntries();activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);timelineSelection_=std::move(cleared);projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
 
  }
-if(!activeMaskId_.empty())return false;
- if(active() || (selection_ && !ignorePixelSelection))throw std::runtime_error("Only complete RGBA Cel deletion is migrated");
+if(active() || (selection_ && !ignorePixelSelection))throw std::runtime_error("Only complete RGBA Cel deletion is migrated");
  const auto& state=timeline_.state();std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());if(selected.empty())return false;
  auto candidate=state;
  // Hand off a selected canonical source before clearing its slot.
@@ -590,7 +589,7 @@ if(!activeMaskId_.empty())return false;
  for(auto& c:candidate.cels)if(selected.count(c.id)){auto resolved=timeline_.resolveSurface(c.id);c.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;c.opacity=resolved.source->opacity;if(c.surface)std::fill(c.surface->pixels.begin(),c.surface->pixels.end(),0);c.linkedCelId.reset();c.runtimeSharedCelId.reset();c.zIndex=0;c.text.reset();c.tilemap.reset();c.freeTiles.reset();}
  timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::runtime_error("Cel deletion creates invalid links");
  Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=state;e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeSelection=e.afterSelection=selectedFrames_;
- e.snapshotHistory.afterTimeline=validated.state();reserveHistoryEntries();capturePixelAddresses(e);timeline_=std::move(validated);timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
+ e.snapshotHistory.afterTimeline=validated.state();reserveHistoryEntries();capturePixelAddresses(e);activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);timelineSelection_.cels.clear();timelineSelection_.celAnchor.clear();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"删除动画单元格");return true;
 
 }
 }

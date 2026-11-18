@@ -6029,6 +6029,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
+      },
+      "wholeCelCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
       }
     },
     {
@@ -22810,6 +22818,14 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "copySelectedAnimationCels snapshots selected Cel owners and attached masks independently of activeLayerMask; session.selection alone controls pixel cropping. Remove project-wide static active-mask copy/export refusals, preserve active-preview refusal and context. Copy registry permits selected Cel scope with static active mask; existing editor routing still prioritizes explicit mask slots and pixel selection override. Eight grid/free x isolated/normal x whole/selection checks preserve mask/authority/history; actual grid isolated-mask menu Copy verifies Cel payload and retained context."
+      },
+      "wholeCelCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
       }
     },
     {
@@ -25412,6 +25428,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
+      },
+      "wholeCelCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
       }
     },
     {
@@ -27789,6 +27813,14 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "copySelectedAnimationCels snapshots selected Cel owners and attached masks independently of activeLayerMask; session.selection alone controls pixel cropping. Remove project-wide static active-mask copy/export refusals, preserve active-preview refusal and context. Copy registry permits selected Cel scope with static active mask; existing editor routing still prioritizes explicit mask slots and pixel selection override. Eight grid/free x isolated/normal x whole/selection checks preserve mask/authority/history; actual grid isolated-mask menu Copy verifies Cel payload and retained context."
+      },
+      "wholeCelCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
       }
     },
     {
@@ -35936,6 +35968,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
+      },
+      "wholeCelCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-properties.ts",
+          "legacy/src/renderer/src/core/animation.ts"
+        ],
+        "nativeAdaptation": "Without pixel selection cutWorkspaceItems copies Cels then deleteSelectedAnimationItems clears selected Cel content, hands shared authority to surviving members, preserves attached masks and exits activeLayerMask. Undo/Redo restoreAnimationCels only restore content and retain subsequently selected mask context. Allow static mask whole Cut/Delete in existing ordinary and special transactions; clear mask after preparation before publish, without inventing mask restoration history. Whole Cut registry honors static mask Cel scope. Six ordinary/grid/free x normal/isolated cases cover pre-cut clipboard, survivor authority, masks, Undo/Redo, later mask reentry and reopening; actual isolated-grid menu verifies whole Cut/Undo/Redo."
       }
     },
     {

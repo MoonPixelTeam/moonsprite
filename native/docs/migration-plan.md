@@ -7833,3 +7833,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 活动蒙版中的选区Cel剪切
 
 对照workspace-cut.ts与workspace-commands-selection-effects.ts，Cel作用域有像素选区时先复制Cel裁切像素，再调用deleteSelection的活动蒙版背景色填充分支。Document::cutSelectedCels允许该静态上下文，保留活动预览与所有所选层锁定校验；删除复用deleteMaskSelection而非源像素修改，蒙版编辑、隔离、时间轴选择保留。新增八组网格/自由、隔离/普通、单/多Cel检查，验证剪贴板源像素、蒙版单事务、瓦片资源/像素保持、Undo/Redo与保存重开；正式隔离网格蒙版菜单夹具增加Cut启用及调用验证。本批未迁移无像素选区的活动蒙版整Cel Cut。正式Release及测试构建成功，cel-copy-mask通过，完整free-tile-project通过42.60秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际Cut菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见celSelectionCutActiveMask20261118，整体INCOMPLETE。
+
+
+## 2026-11-18 活动蒙版中的完整Cel剪切与删除
+
+对照workspace-cut.ts、workspace-commands-animation-cel-properties.ts::deleteSelectedAnimationItems与animation.ts::restoreAnimationCels，无像素选区时复制后清空所选Cel，保留附加蒙版和存活链接成员，退出蒙版；撤销重做只恢复Cel内容，不强制恢复/退出之后的蒙版上下文。普通及特殊图层现有整Cel删除事务允许静态活动蒙版，在验证/历史预留成功后清除编辑上下文；Cut沿用复制及目标锁定校验，registry接入活动蒙版整Cel作用域。新增六组普通/网格/自由×普通/隔离检查，覆盖完整剪贴板、存活链接权威、附加蒙版、单事务、Undo/Redo、之后重入蒙版与保存重开；正式网格隔离蒙版菜单夹具新增整Cel Cut及Undo/Redo。正式Release及测试构建成功，whole-cel-cut-mask六组通过，完整free-tile-project通过35.49秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际整Cel Cut菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见wholeCelCutActiveMask20261118，整体INCOMPLETE。
