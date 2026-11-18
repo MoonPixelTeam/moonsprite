@@ -7893,3 +7893,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出切片目标失效恢复
 
 对照ExportDialogHost.tsx的openExport、exportTarget、selectedExportSliceId和预设应用逻辑，预设及导出记忆恢复时，没有切片回退整幅画布；指定切片已失效但仍有其他切片则回退全部切片。保持有效切片选择与持久化内容。扩展正式--export-memory-check，同时检查两条恢复路径的有效、替换及空切片状态。正式Release构建及该检查（正式主题和指针）退出0，1043文件来源覆盖及证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见exportSliceFallback20261118。
+
+
+## 2026-11-18 静态格式切换保留导出草稿
+
+对照ExportDialogHost.tsx格式onChange保留current表单，静态格式切换复用完整图像选项，修复画布目标切换BMP、ICO、JPEG、PNG时比例、修剪和选区被重置。保留SVG固定100%及MoonSprite工程归一规则。正式偏好检查扩展覆盖连续格式切换、两种修剪标志、选区和SVG往返，正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过。未人工图像验收。多帧静态导出的帧范围入口仍存在迁移缺口，未在本阶段声称完成；整体迁移INCOMPLETE。来源见staticExportDraftRetention20261118。

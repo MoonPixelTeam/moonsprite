@@ -21631,6 +21631,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Match openExport, exportTarget and selectedExportSliceId normalization when applying presets or remembered settings: no slices falls back document, missing selected slice with surviving slices falls back all slices. Extend existing production export-memory smoke with valid, replaced and empty slices for both restoration paths, preserving persisted IDs and project target normalization."
+      },
+      "staticExportDraftRetention20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve complete shared image options when switching static formats, matching format onChange spread of current form. SVG still sets 100 percent and MoonSprite still clears trim and forces document. Existing formal preference smoke covers canvas selection, scale, individual/common trim across BMP ICO JPEG PNG and SVG transitions."
       }
     },
     {
@@ -25647,6 +25653,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Match openExport, exportTarget and selectedExportSliceId normalization when applying presets or remembered settings: no slices falls back document, missing selected slice with surviving slices falls back all slices. Extend existing production export-memory smoke with valid, replaced and empty slices for both restoration paths, preserving persisted IDs and project target normalization."
+      },
+      "staticExportDraftRetention20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve complete shared image options when switching static formats, matching format onChange spread of current form. SVG still sets 100 percent and MoonSprite still clears trim and forces document. Existing formal preference smoke covers canvas selection, scale, individual/common trim across BMP ICO JPEG PNG and SVG transitions."
       }
     },
     {

@@ -6049,6 +6049,9 @@ void Editor::smokeExportFormatPreference(){
 
     currentDocument().addFrame();for(int pref:{1,2,3,4,5,6,7,8}){runtimePreferences_.set("files.exportFormat.Select",std::to_string(pref));openDocumentExport();require(pending_==Pending::GifExport&&!framePngMode_,"Export animated default override");resolve(false);}replaceDocumentForSmoke(Document(2,1));refresh();
 
+    currentDocument().previewSelection(SelectionMask{0,0,1,1,{}});openStaticExport();exportOptions_.scalePercent=250;exportOptions_.trim=true;exportOptions_.trimCommon=true;exportOptions_.selection=true;
+    for(int next:{1,2,5,4,0}){switchStaticExportFormat(next);require(exportOptions_.scalePercent==250&&exportOptions_.trim&&exportOptions_.trimCommon&&exportOptions_.selection,"Static format switch retains canvas scale trim and selection");}
+    switchStaticExportFormat(3);require(exportOptions_.scalePercent==100&&exportOptions_.trim&&exportOptions_.trimCommon&&exportOptions_.selection,"SVG resets only scale");switchStaticExportFormat(0);require(exportOptions_.scalePercent==100&&exportOptions_.trim&&exportOptions_.selection,"SVG to PNG retains shared settings");resolve(false);currentDocument().previewSelection({});
     runtimePreferences_.set("files.exportFormat.Select","0");
     for(bool animated:{false,true}){
       if(animated)currentDocument().addFrame();
