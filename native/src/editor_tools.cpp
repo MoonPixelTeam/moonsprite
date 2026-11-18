@@ -235,7 +235,7 @@ void Editor::rememberSuccessfulExport(const std::filesystem::path& path){
 
       p.name=exportPresets_.name->text();p.kind=pending_==Pending::StaticExport?0:framePngMode_?2:1;
 
-      p.format=p.kind==0?(exportProjectFormat_?exportProjectFormat_:staticJpeg_?5:staticSvg_?3:staticIco_?2:staticBmp_?1:exportOptions_.automatic?4:0):(p.kind==1&&gifWebp_?6:frameJpeg_?5:frameSvg_?3:frameIco_?2:frameBmp_?1:framePngAutomatic_?4:0);
+      p.format=p.kind==0?(exportProjectFormat_?exportProjectFormat_:staticJpeg_?5:staticSvg_?3:staticIco_?2:staticBmp_?1:exportOptions_.automatic?4:0):(p.kind==1?(gifWebp_?6:0):frameJpeg_?5:frameSvg_?3:frameIco_?2:frameBmp_?1:framePngAutomatic_?4:0);
 
       p.explicitRange=gifExplicitRange_;p.image=exportOptions_;p.animation=gifOptions_;p.allLayers=p.kind!=2&&exportAllLayers_;p.slices=exportSlices_;p.sliceId=exportSliceId_;
 

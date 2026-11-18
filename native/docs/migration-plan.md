@@ -7938,3 +7938,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 静态预设恢复隐藏动画设置
 
 对照ExportDialogHost.tsx完整options恢复，静态预设及共用导出记忆应用路径读回隐藏动画范围、循环段和播放方向；按当前帧数约束端点并清除失效循环段。扩展正式偏好检查覆盖静态预设恢复后切GIF/WebP的指定范围、循环段、端点越界和失效循环段回退。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见staticPresetAnimationDraft20261118。
+
+
+## 2026-11-18 动画格式持久化隔离帧序列标志
+
+对照ExportDialogHost.tsx与export-settings.ts按当前format记录设置，GIF/WebP预设及成功导出记忆只按活动动画格式确定编号，不读取残留帧序列BMP、ICO等标志。扩展已有实际导出检查，读取两种动画格式及循环段/范围四种路径的记忆记录，验证GIF为0、WebP为6。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见animationFormatPersistence20261118。

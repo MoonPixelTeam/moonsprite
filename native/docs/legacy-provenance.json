@@ -21693,6 +21693,13 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Restore persisted hidden animation range and direction for static presets and document export memory, matching full legacy form option restoration. Clamp endpoints to current frame count and clear missing loop identity as for animated presets. Existing production preference smoke checks explicit/loop settings after static-to-animation transitions and missing-loop fallback."
+      },
+      "animationFormatPersistence20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "Derive animated preset and remembered format solely from current GIF/WebP selection, excluding inactive frame sequence flags. Keep existing GIF format zero and WebP six representation. Extend actual switched animation export check to inspect persisted memory format for GIF/WebP and loop/range variants."
       }
     },
     {
@@ -25764,6 +25771,13 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Restore persisted hidden animation range and direction for static presets and document export memory, matching full legacy form option restoration. Clamp endpoints to current frame count and clear missing loop identity as for animated presets. Existing production preference smoke checks explicit/loop settings after static-to-animation transitions and missing-loop fallback."
+      },
+      "animationFormatPersistence20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "Derive animated preset and remembered format solely from current GIF/WebP selection, excluding inactive frame sequence flags. Keep existing GIF format zero and WebP six representation. Extend actual switched animation export check to inspect persisted memory format for GIF/WebP and loop/range variants."
       }
     },
     {
@@ -26797,6 +26811,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
+      },
+      "animationFormatPersistence20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "Derive animated preset and remembered format solely from current GIF/WebP selection, excluding inactive frame sequence flags. Keep existing GIF format zero and WebP six representation. Extend actual switched animation export check to inspect persisted memory format for GIF/WebP and loop/range variants."
       }
     },
     {
