@@ -8245,3 +8245,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字编辑当前位置读取迁移
 
 对照 TextToolHost.tsx::textToolValueAtCurrentPlacement，已有 Cel 每次预览和最终渲染前重新解析当前 surface 位置，缺失时依次使用已解析文字 origin、草稿 origin；同步文字 origin 后复用既有变换渲染校正。新建文字保留草稿位置。正式 Release 构建成功（text-current-placement-build.log），正式主题/指针下既有 --text-tool-check 实际退出0；来源覆盖和 diff 检查通过。未专门验证弹窗期间移动文字，原生模态/草稿仍限制并发移动，不据此声明该交互全面等价；未人工验收。来源见 editor_text.cpp/currentPlacement20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字空内容提示迁移
+
+对照 TextToolDialog.tsx 的 TextAreaInput placeholder 和 zh-CN 文案，文字编辑框为空时显示“输入文本，可使用换行”，沿用 PixelTextArea 编辑、内容内边距和裁剪。提示仅绘制，不进入作品内容、选区或撤销记录，其余多行字段不变。正式 Release 构建成功（text-placeholder-build.log），来源覆盖和 diff 检查通过；纯显示改动未重复整套文字检查，未人工图像验收。来源见 textContentPlaceholder20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物或用户数据。
