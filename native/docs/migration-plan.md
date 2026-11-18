@@ -8125,3 +8125,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展工程摘要颜色模式迁移
 
 对照 ExtensionRuntimeHost.tsx::projectSnapshot，修复原生工程摘要硬编码 rgba，统一从实际 Document 模式生成工程列表、当前工程、document.getSummary 及 project 事件载荷。正式 Editor 检查覆盖双工程隔离、RGBA/灰度、转换及 Undo/Redo、事件 JSON 和只读查询不改历史/revision；不开放 Indexed 生产入口。首次测试编译误将 void undo/redo 当作布尔值，已修正。唯一正式 Release 构建成功（extension-summary-mode-build.log），extension-workspace-ui CTest 通过（0.73秒）。未人工图像验收，JavaScript 执行器与整体功能迁移仍 INCOMPLETE。来源见 workspaceSummaryMode20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 Cel 选区剪切内容边界迁移
+
+对照 workspace-cut.ts → deleteSelection → tools-fill.ts::clearSelection 及 document-model.ts::layerContentBounds，普通 Cel 选区剪切按可见内容边界、画布与选区交集清除；保留边界外透明 RGB，内容全透明时保留选区、dirty 和历史。沿用 RasterColorContext、链接存储去重及原快照历史。新增八组矩形/掩码、关联/独立、可见/全透明夹具，检查精确像素字、剪贴板、选择、单次历史和 Undo/Redo。唯一正式 Release 与 free-tile-project-tests 构建成功（cel-cut-content-bounds-build.log），完整 free-tile-project-tests 退出0。来源覆盖与 diff 检查另记本轮命令；未 GUI 或人工图像验收，整体迁移仍 INCOMPLETE，生产 Indexed 准入保持关闭。保留既有 main.cpp 状态及用户数据，不提交生成物。

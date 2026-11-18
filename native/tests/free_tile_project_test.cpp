@@ -1207,6 +1207,20 @@ void selectedCelCutPreservesOffCanvasPixels(){
  }
 }
 void selectedCelCutSkipsSpecialTargets(){
+ // clearSelection uses alpha bounds, including hidden RGB only inside them.
+ for(bool masked:{false,true})for(bool linked:{false,true})for(bool visible:{false,true}){
+  Document seed(5,1);auto state=seed.timeline().state();auto& cel=state.cels.front();
+  cel.surface->pixels={0x00112233,visible?0xff112233u:0x00123456u,0x00445566,visible?0xff778899u:0x00778899u,0x00aabbcc};
+  const auto original=cel.surface->pixels;const auto root=cel.id;
+  if(linked){auto alias=cel;alias.id="alpha-cut-alias";alias.frameId="alpha-cut-frame";alias.linkedCelId=root;alias.surface.reset();state.frames.push_back({alias.frameId,100});state.cels.push_back(alias);}
+  auto d=Document::fromImported(5,1,std::move(state),seed.palette(),"alpha-cut",U"Cut",std::make_shared<const std::vector<std::uint8_t>>());d.clearSourceArchiveForNewSnapshot();d.selectTimelineCel(root);if(linked)d.selectTimelineCel("alpha-cut-alias",1);
+  SelectionMask selected{0,0,5,1,{}};if(masked)selected.mask={1,1,0,1,1};d.previewSelection(selected);d.markSaved();const auto h=d.historyPosition();
+  check(d.cutSelectedCels(),"Alpha-bound Cel Cut publishes clipboard");auto expected=original;if(visible){expected[1]=expected[3]=0;if(!masked)expected[2]=0;}
+  auto verify=[&]{check(d.timeline().resolveSurface(root).surface->pixels==expected,"Cel Cut retains hidden RGB outside content bounds");if(linked)check(d.timeline().resolveSurface("alpha-cut-alias").surface->pixels==expected&&d.timeline().findCelById("alpha-cut-alias")->linkedCelId==root,"Alpha-bound Cut keeps linked owner");};verify();
+  check(d.historyPosition()==h+(visible?1:0)&&d.dirty()==visible&&bool(d.selection())==!visible,"Empty alpha Cut preserves selection history and dirty state");
+  check(d.exportCelClipboard().items.front().selectionPixels.has_value(),"Alpha-bound Cut retains selection payload");
+  if(visible){d.undo();check(d.timeline().resolveSurface(root).surface->pixels==original&&selectionEqual(d.selection(),selected),"Alpha-bound Cut Undo restores exact words and selection");d.redo();verify();}
+ }
  for(bool activeText:{false,true})for(bool rasterContent:{false,true}){
   Document seed(2,1);auto state=seed.timeline().state();const auto raster=state.layers.front().id,frame=state.frames.front().id;state.cels.front().surface->pixels={rasterContent?0xff112233u:0u,0xff445566};auto layer=state.layers.front();layer.id="mixed-cut-text-layer";layer.kind="text";state.layers.push_back(layer);auto textCel=state.cels.front();textCel.id="mixed-cut-text-cel";textCel.layerId=layer.id;textCel.surface->pixels={0xff778899,0xffaabbcc};TextCelData data;data.text=u"Protected text";textCel.text=data;state.cels.push_back(textCel);
   auto d=Document::fromImported(2,1,std::move(state),seed.palette(),"mixed-cut-targets",U"Cut",std::make_shared<const std::vector<std::uint8_t>>());d.clearSourceArchiveForNewSnapshot();const auto rasterCel=d.timeline().findCel(raster,frame)->id;d.selectTimelineCel(activeText?rasterCel:textCel.id);d.selectTimelineCel(activeText?textCel.id:rasterCel,1);const auto selection=d.timelineSelection().cels;d.previewSelection(SelectionMask{0,0,1,1,{}});d.markSaved();const auto h=d.historyPosition();check(d.cutSelectedCels(),"Mixed selected-Cel cut copies before delete");

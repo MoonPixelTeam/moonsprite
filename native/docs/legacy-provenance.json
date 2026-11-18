@@ -6120,6 +6120,15 @@
           "legacy/src/renderer/src/components/canvas-composite-cache.ts"
         ],
         "nativeAdaptation": "Canvas active/other frame composition, selection/brush feedback and preview sampling use the displayed palette alongside displayed Timeline. Palette replacement update/cancel/commit advances the existing preview generation; renderer also observes document-only revision changes so palette history invalidates cached colors. Offscreen --palette-preview regression passes after exposing and fixing stale undo display: exact opaque pixel, linked other frame, selection feedback, unchanged raw IDs/history/dirty during preview, cancel, commit, undo and redo. Production Indexed admission remains closed. Formal build result recorded separately in migration-plan."
+      },
+      "celCutContentBounds20261119": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "adaptation": "Selection-only Cel cut follows clearSelection alpha content bounds intersected with canvas and selection, preserving hidden RGB outside that rectangle and retaining no-op selection/history. Existing RasterColorContext supplies indexed-aware visibility; source identity dedup, sparse geometry and history unchanged. Eight RGBA fixtures cover mask holes, linked/independent owners, visible/fully transparent content, exact words and undo/redo. Formal Release and complete free-tile-project-tests passed. No Indexed production admission change."
       }
     },
     {
@@ -36568,6 +36577,15 @@
         ],
         "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
         "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
+      },
+      "celCutContentBounds20261119": {
+        "evidence": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/core/tools-fill.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "adaptation": "Selection-only Cel cut follows clearSelection alpha content bounds intersected with canvas and selection, preserving hidden RGB outside that rectangle and retaining no-op selection/history. Existing RasterColorContext supplies indexed-aware visibility; source identity dedup, sparse geometry and history unchanged. Eight RGBA fixtures cover mask holes, linked/independent owners, visible/fully transparent content, exact words and undo/redo. Formal Release and complete free-tile-project-tests passed. No Indexed production admission change."
       }
     },
     {
