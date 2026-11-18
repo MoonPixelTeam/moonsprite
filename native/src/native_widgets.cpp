@@ -439,6 +439,10 @@ bool PixelScrollBar::onProcessMessage(ui::Message* msg) {
     if(steps){const int next=int(std::clamp<long long>(value_+1LL*steps*wheelStep,0,std::max(0,total_-page_)));setViewScroll({next,next});}return true;}
   return ui::ScrollBar::onProcessMessage(msg);
 }
+void PixelEntry::restoreNumericDraft() {
+  if(numericMixed&&numericMixed()){setText("");return;}
+  if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}
+}
 bool PixelEntry::commitExpression() {
   if(!(numeric || wheel) || !isEnabled() || isReadOnly())return false;
   const auto source=text();std::size_t at=0;int depth=0;
@@ -455,7 +459,7 @@ bool PixelEntry::commitExpression() {
   };
   product=[&]{double value=primary();space();while(at<source.size() && (source[at]=='*' || source[at]=='/')){const char op=source[at++];const double rhs=primary();if(op=='/' && rhs==0)throw std::runtime_error("Division zero");value=op=='*'?value*rhs:value/rhs;space();}return value;};
   sum=[&]{double value=product();space();while(at<source.size() && (source[at]=='+' || source[at]=='-')){const char op=source[at++];const double rhs=product();value=op=='+'?value+rhs:value-rhs;space();}return value;};
-  try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue){std::ostringstream normalized;normalized.precision(12);normalized<<numericValue();setText(normalized.str());}return true;}catch(...){if(deferredNumeric&&numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}return false;}
+  try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue)restoreNumericDraft();return true;}catch(...){if(deferredNumeric&&numericValue)restoreNumericDraft();return false;}
 }
 void PixelEntry::adjustNumber(int delta) {
   if(!isEnabled() || isReadOnly() || !delta)return;
@@ -810,7 +814,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
   // A field that can show its entire value must not retain an end-only scroll
   // left over from the smaller geometry used before the toolbar relayout.
   refreshEntryViewport(*this);
-  if(msg->type()==ui::kFocusLeaveMessage && blur) {if(deferredNumeric&&numericMounted&&!numericMounted()){if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}}else{commitExpression();blur();}}return handled;
+  if(msg->type()==ui::kFocusLeaveMessage && blur) {if(deferredNumeric&&numericMounted&&!numericMounted()){if(numericValue)restoreNumericDraft();}else{commitExpression();blur();}}return handled;
 }
 void PixelEntry::onResize(ui::ResizeEvent& ev) {
   auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);

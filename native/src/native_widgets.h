@@ -264,6 +264,9 @@ public:
   bool deferredNumeric=false;
   double numericMinimum=0,numericMaximum=100;
   std::function<double()> numericValue;
+  // Legacy NumberInput permits an empty controlled value for mixed selections.
+  std::function<bool()> numericMixed;
+  void restoreNumericDraft();
   std::function<void()> deferredCommit;
   std::function<bool()> numericMounted;
   void onChange() override {if(!deferredNumeric)ui::Entry::onChange();}
