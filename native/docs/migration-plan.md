@@ -7928,3 +7928,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出切换保留预设名称
 
 对照ExportDialogHost.tsx独立presetName状态及changeFrameRange，静态、动画和静态到帧序列切换保留预设名称；返回当前帧清除指定范围和循环段身份。扩展正式偏好检查覆盖静态到序列、返回当前帧、切动画的连续交互，验证名称与范围状态。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportPresetDraftTransitions20261118。
+
+
+## 2026-11-18 导出范围格式往返保持
+
+对照ExportDialogHost.tsx格式及范围变更对current表单的保留，动画切静态再切回动画保留帧起止、范围模式、循环段及播放方向；静态转帧序列保留隐藏动画草稿。全新静态导出才初始化动画草稿，避免继承其他导出会话状态。扩展正式偏好检查验证指定范围及循环段经过GIF、PNG、BMP、WebP往返后保持，以及新打开隔离。正式Release构建及--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportRangeRoundtrip20261118。

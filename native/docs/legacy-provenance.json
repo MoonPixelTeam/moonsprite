@@ -21681,6 +21681,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Preserve presetName state across format and static-to-sequence transitions, matching separate legacy presetName state. Current-frame range action clears explicit range and loop identity per changeFrameRange. Extend existing formal preference smoke with complete static/sequence/current/animation preset name chain and range clearing."
+      },
+      "exportRangeRoundtrip20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve animation range, loop and direction draft across static format roundtrips and static-to-sequence conversion, matching form spread updates. Initialize fresh hidden animation settings only when opening a new static export. Formal preference smoke checks explicit and loop ranges through GIF PNG BMP WebP and fresh opening isolation."
       }
     },
     {
@@ -25740,6 +25746,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Preserve presetName state across format and static-to-sequence transitions, matching separate legacy presetName state. Current-frame range action clears explicit range and loop identity per changeFrameRange. Extend existing formal preference smoke with complete static/sequence/current/animation preset name chain and range clearing."
+      },
+      "exportRangeRoundtrip20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve animation range, loop and direction draft across static format roundtrips and static-to-sequence conversion, matching form spread updates. Initialize fresh hidden animation settings only when opening a new static export. Formal preference smoke checks explicit and loop ranges through GIF PNG BMP WebP and fresh opening isolation."
       }
     },
     {
