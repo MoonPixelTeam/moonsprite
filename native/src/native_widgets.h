@@ -356,6 +356,7 @@ public:
   std::map<int,std::u32string> optionGroups;
   std::vector<std::string> optionTooltips;
   bool markSelectedOption=false;
+  bool notifyOnReselect=false;
   std::function<void(bool)> popupStateChanged;
   std::function<void()> prepareOptions;
   std::function<bool(int)> optionEnabled;

@@ -8300,3 +8300,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 数字输入提交时机迁移
 
 对照 LuaScriptDialog.tsx number 的 NumberInput 默认live=false，以及 NumberInput.tsx::updateDraft/commit/adjust，Lua数字字段键入只保留草稿，Enter/失焦提交数值；脚本回调仍仅失焦发送。滚轮、方向键及拖调继续即时按最近已接受值调整，不使用未提交文字。ScriptNumberEntry增加默认开启的live参数，仅Lua数字字段关闭，保留扩展表单和设置既有实时输入。既有实际弹窗verify覆盖延迟草稿、接受与步进忽略未提交草稿，原实时/表达式检查保留。唯一正式Release构建成功（lua-number-commit-build.log），正式程序--script-report-check带正式主题/指针等待实际退出0。未人工交互/图像验收；来源与diff检查见本轮命令，整体迁移INCOMPLETE，保留已有main.cpp及用户文件。
+
+## 2026-11-19 Lua 组合框重复选择回调迁移
+
+对照 LuaScriptDialog.tsx 与 ThemedSelect.tsx::select，重新选择当前选项仍更新值并发送 change，包括只有一个选项的组合框。PixelDropdown 增加默认关闭的 notifyOnReselect，仅 Lua 组合框启用；其他调用方保持原行为。既有弹窗 verify 检查默认重复选择不通知及显式启用后通知一次。唯一正式 Release 构建成功（lua-combobox-reselect-build.log），正式程序 --script-report-check 带正式主题/指针等待实际进程退出0。来源覆盖1043文件及证据快照、diff检查通过；未人工点击下拉选项或图像验收，整体迁移INCOMPLETE。保留既有main.cpp和未跟踪文件，不提交生成物或用户数据。

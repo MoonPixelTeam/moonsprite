@@ -1381,7 +1381,7 @@ void PixelDropdown::setSelectedIndex(int index,bool notify) {
   const int next=options_.empty()?-1:std::clamp(index,0,int(options_.size())-1);
   const bool different=next!=selectedIndex_;selectedIndex_=next;
   const auto text=next<0?U"":options_[next];const bool textChanged=caption!=text;caption=text;if(different || textChanged)invalidate();
-  if(different && notify && changed)changed(next);
+  if((different || notifyOnReselect) && notify && changed)changed(next);
 }
 void PixelDropdown::showOptions() {
   if(!isEnabled() || open_)return;
