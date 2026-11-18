@@ -7988,3 +7988,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合格式颜色模式转换核对
 
 对照document-model.ts::convertDocumentColorMode及workspace-commands-document-io.ts的独立历史契约，新增混合RGBA/Indexed Cel转灰度与转索引色夹具，覆盖隐藏/缺失颜色ID、透明RGB、稀疏偏移/存储原点、链接帧、色板保持、单次历史及Undo/Redo。预期根据实际旧版源码提取，本轮未执行旧版oracle。现有生产实现通过，无需修改。Release document-pixel-format-tests构建及document-pixel-format CTest通过（1.09秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收，生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见mixedColorMode20261118。
+
+
+## 2026-11-18 Lua Cel格式捕获与过期结果校验
+
+对照lua-script-service.ts的snapshotFromLayer、buildInvocation和snapshotsEqual，Lua捕获保留活动表面及各帧Cel实际格式与原始像素字，目标快速校验、完整比较、分步捕获及操作后刷新均纳入格式变化。新增混合Indexed/RGBA Cel上下文及无Document revision变化的格式变更检查；已有索引色笔刷操作夹具显式隔离其RGBA线协议伪装与真实目标。Release lua-script-invocation-tests构建及定向CTest通过（9.34秒），来源覆盖1043文件、证据快照及diff检查通过。未重建正式GUI、未人工图像验收；索引色Lua执行和生产编辑准入仍未开放，整体迁移INCOMPLETE。来源见luaSurfaceFormat20261118。

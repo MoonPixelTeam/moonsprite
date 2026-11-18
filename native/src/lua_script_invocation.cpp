@@ -10,7 +10,7 @@
 #include <stdexcept>
 namespace moon::script {
 bool SurfaceSnapshot::matches(const timeline::Surface& s)const{
- return width==s.width&&height==s.height&&x==s.offsetX&&y==s.offsetY&&pixels&&s.pixels==*pixels;
+ return format==s.format&&width==s.width&&height==s.height&&x==s.offsetX&&y==s.offsetY&&pixels&&s.pixels==*pixels;
 }
 void Target::capturePreview(const Document& d){previewGuard=true;expectedFloating=d.floating();overlayRevision=d.floatingOverlayRevision();contentMutationRevision=d.contentMutationRevision();expectedSelection=d.selection();}
 bool Target::matches(const Document& d,bool requireExpected,bool rasterOnly)const{
@@ -22,7 +22,7 @@ bool Target::matches(const Document& d,bool requireExpected,bool rasterOnly)cons
  if(s){
   // Captured/refreshed immutable pixels are already verified against this
   // storage generation. Geometry remains independent of pixel revisions.
-  if(expected.pixels&&expectedStoragePixels.lock()==expected.pixels&&expectedStorage==s->pixels.identity()&&expectedStorageRevision==s->pixels.revision()&&expected.width==s->width&&expected.height==s->height&&expected.x==s->offsetX&&expected.y==s->offsetY&&expected.pixels->size()==s->pixels.size())return true;
+  if(expected.pixels&&expectedStoragePixels.lock()==expected.pixels&&expectedStorage==s->pixels.identity()&&expectedStorageRevision==s->pixels.revision()&&expected.format==s->format&&expected.width==s->width&&expected.height==s->height&&expected.x==s->offsetX&&expected.y==s->offsetY&&expected.pixels->size()==s->pixels.size())return true;
   return expected.matches(*s);
  }
  // Reading an absent Cel is transparent, without materializing it or history.
@@ -50,8 +50,8 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
  out.foreground=d.palette().primary;out.background=d.palette().secondary;out.selection=d.selection();out.mseSnapshotJson=std::move(mse);
  for(std::size_t i=0;i<state.frames.size();++i){const auto& f=state.frames[i];if(f.id==d.frame().id)out.frameNumber=i+1;
   const auto* c=d.timeline().findCel(d.layer().id,f.id);if(!c)continue;const auto r=d.timeline().resolveSurface(c->id);const auto& s=*r.surface;
-  auto pixels=std::make_shared<std::vector<Pixel>>();SurfaceSnapshot snapshot{s.width,s.height,s.offsetX,s.offsetY,pixels};
-  sources_.push_back({r.source->id,s.width,s.height,s.offsetX,s.offsetY,s.pixels.identity(),s.pixels.revision(),pixels});out.cels.push_back({c->id,f.id,i+1,snapshot});
+  auto pixels=std::make_shared<std::vector<Pixel>>();SurfaceSnapshot snapshot{s.width,s.height,s.offsetX,s.offsetY,pixels,s.format};
+  sources_.push_back({r.source->id,s.width,s.height,s.offsetX,s.offsetY,s.pixels.identity(),s.pixels.revision(),pixels,s.format});out.cels.push_back({c->id,f.id,i+1,snapshot});
   if(f.id==d.frame().id){out.target.expected=snapshot;out.target.expectedStorage=s.pixels.identity();out.target.expectedStorageRevision=s.pixels.revision();}
  }
  if(!out.target.expected.pixels){auto pixels=std::make_shared<std::vector<Pixel>>();out.target.expected={g[0],g[1],g[2],g[3],pixels};sources_.push_back({{},g[0],g[1],g[2],g[3],nullptr,0,pixels});}
@@ -59,7 +59,7 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
 bool InvocationCapture::unchanged(const Document& d)const{
  if(d.contentMutationRevision()!=invocation_.target.contentMutationRevision||d.active(false)||!invocation_.target.matches(d,false)||d.revision()!=invocation_.target.revision||d.floating()!=invocation_.target.expectedFloating||d.floatingOverlayRevision()!=invocation_.target.overlayRevision||!selectionEqual(d.selection(),invocation_.target.expectedSelection))return false;
  for(const auto& p:sources_){if(p.owner.empty()){if(d.activeSurfaceIfPresent()||d.displayedLayerGeometry(d.layer().id)!=std::array<int,4>{p.width,p.height,p.x,p.y})return false;continue;}
-  const auto r=d.timeline().resolveSurface(p.owner);const auto* s=r.surface;if(r.issue!=timeline::LinkIssue::None||!s||s->width!=p.width||s->height!=p.height||s->offsetX!=p.x||s->offsetY!=p.y||s->pixels.size()!=std::uint64_t(p.width)*p.height||s->pixels.identity()!=p.storage||s->pixels.revision()!=p.revision)return false;
+  const auto r=d.timeline().resolveSurface(p.owner);const auto* s=r.surface;if(r.issue!=timeline::LinkIssue::None||!s||s->format!=p.format||s->width!=p.width||s->height!=p.height||s->offsetX!=p.x||s->offsetY!=p.y||s->pixels.size()!=std::uint64_t(p.width)*p.height||s->pixels.identity()!=p.storage||s->pixels.revision()!=p.revision)return false;
  }
  return true;
 }
@@ -83,7 +83,7 @@ namespace {
 std::string utf8(const std::u32string& text){std::wstring wide;for(auto c:text){if(c>0x10ffff||(c>=0xd800&&c<=0xdfff))c=0xfffd;if(c<=0xffff)wide.push_back(wchar_t(c));else{c-=0x10000;wide.push_back(wchar_t(0xd800+(c>>10)));wide.push_back(wchar_t(0xdc00+(c&1023)));}}return winrt::to_string(wide);}
 std::string quote(const std::string& s){return winrt::to_string(winrt::Windows::Data::Json::JsonValue::CreateStringValue(winrt::to_hstring(s)).Stringify());}
 template<class Values>void array(std::string& out,const Values& pixels){out+='[';bool comma=false;for(auto p:pixels){if(comma)out+=',';comma=true;out+=std::to_string(p);}out+=']';}
-void surface(std::string& out,const SurfaceSnapshot& s){out+="{\"format\":\"rgba\",\"width\":"+std::to_string(s.width)+",\"height\":"+std::to_string(s.height)+",\"offsetX\":"+std::to_string(s.x)+",\"offsetY\":"+std::to_string(s.y)+",\"pixels\":";array(out,*s.pixels);out+='}';}
+void surface(std::string& out,const SurfaceSnapshot& s){out+=std::string("{\"format\":\"")+(s.format==timeline::RasterFormat::Indexed?"indexed":"rgba")+"\",\"width\":"+std::to_string(s.width)+",\"height\":"+std::to_string(s.height)+",\"offsetX\":"+std::to_string(s.x)+",\"offsetY\":"+std::to_string(s.y)+",\"pixels\":";array(out,*s.pixels);out+='}';}
 }
 std::string Invocation::contextJson()const{
  // Validate the caller's real workspace JSON before crossing into LuaSession.
@@ -92,7 +92,7 @@ std::string Invocation::contextJson()const{
  auto text=[&](const char* key,const std::string& value){field(key,quote(value));};auto number=[&](const char* key,auto value){field(key,std::to_string(value));};
  text("documentId",target.documentId);text("documentName",utf8(documentName));number("documentWidth",width);number("documentHeight",height);text("documentFilePath",winrt::to_string(filePath.wstring()));text("colorMode",std::string(color_mode::name(colorMode)));
  text("layerId",target.layerId);text("layerName",utf8(layerName));number("layerWidth",target.expected.width);number("layerHeight",target.expected.height);number("layerOffsetX",target.expected.x);number("layerOffsetY",target.expected.y);number("layerOpacity",opacity);
- field("layerVisible",visible?"true":"false");field("layerLocked",locked?"true":"false");text("layerFormat","rgba");field("layerGroupId",groupId?quote(*groupId):"null");number("layerStackIndex",stackIndex);number("frameNumber",frameNumber);
+ field("layerVisible",visible?"true":"false");field("layerLocked",locked?"true":"false");text("layerFormat",target.expected.format==timeline::RasterFormat::Indexed?"indexed":"rgba");field("layerGroupId",groupId?quote(*groupId):"null");number("layerStackIndex",stackIndex);number("frameNumber",frameNumber);
  field("pixels","");array(out,*target.expected.pixels);field("activeLayerCels","");out+='[';bool comma=false;for(const auto& c:cels){if(comma)out+=',';comma=true;out+="{\"id\":"+quote(c.id)+",\"frameId\":"+quote(c.frameId)+",\"frameNumber\":"+std::to_string(c.frameNumber)+",\"surface\":";surface(out,c.surface);out+='}';}out+=']';
  field("selection","");if(selection){const auto& s=*selection;out+="{\"x\":"+std::to_string(s.x)+",\"y\":"+std::to_string(s.y)+",\"width\":"+std::to_string(s.width)+",\"height\":"+std::to_string(s.height)+",\"mask\":";if(s.mask.empty())out+="null";else array(out,s.mask);out+='}';}else out+="null";
  number("transparentColor",0);number("foreground",foreground);number("background",background);field("mseSnapshot",mseSnapshotJson);out+='}';return out;

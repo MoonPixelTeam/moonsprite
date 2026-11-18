@@ -5,10 +5,11 @@
 #include <memory>
 namespace moon::script {
 // lua-script-service.ts buildInvocation/findActiveTargetSession. Native surfaces
-// are packed RGBA; indexed context and MSE workspace capture remain separate.
+// retain their actual storage format; editable indexed admission remains separate.
 struct SurfaceSnapshot {
  int width=0,height=0,x=0,y=0;
  std::shared_ptr<const std::vector<Pixel>> pixels;
+ timeline::RasterFormat format=timeline::RasterFormat::Rgba;
  bool matches(const timeline::Surface&)const;
 };
 struct Target {
@@ -49,6 +50,7 @@ class InvocationCapture {
   std::string owner;int width=0,height=0,x=0,y=0;
   const void* storage=nullptr;std::uint64_t revision=0;
   std::shared_ptr<std::vector<Pixel>> pixels;
+  timeline::RasterFormat format=timeline::RasterFormat::Rgba;
  };
  Invocation invocation_;
  std::vector<Source> sources_;
