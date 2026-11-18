@@ -105,6 +105,24 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
  check(RuntimeDirectory::resolveLua(cpRoot,"test").entryName=="\xc3\xa9.lua","CP437 Lua entry installs and resolves");
  zip({{"manifest.json",cpManifest},{"\xc3\xa9.lua","utf8"}},false,0x800);
  check(inspectPackage(packagePath).archive->read("\xc3\xa9.lua",64)==moon::project::Bytes({'u','t','f','8'}),"UTF8 flag bypasses CP437 decoding");
+ // Rust from_utf8_lossy uses one replacement per invalid maximal subsequence.
+ const std::string replacement="\xef\xbf\xbd";
+ for(const auto& sample:std::vector<std::pair<std::string,std::string>>{
+  {"\xff",replacement},{"\xe2\x82",replacement},{"\xe2\x82X",replacement+"X"},
+  {"\xe0\x80",replacement+replacement},{"\xed\xa0\x80",replacement+replacement+replacement},
+  {"\xf4\x90\x80\x80",replacement+replacement+replacement+replacement},
+  {"\xc3\xa9", "\xc3\xa9"}}){
+  auto m=packageManifest;m.replace(m.find("main.lua"),8,sample.second+".lua");
+  zip({{"manifest.json",m},{sample.first+".lua","lossy"}},false,0x800);
+  auto inspected=inspectPackage(packagePath);
+  check(inspected.archive->read(sample.second+".lua",64).size()==5,"Lossy UTF8 filename and raw local header lookup");
+ }
+ auto lossyManifest=packageManifest;lossyManifest.replace(lossyManifest.find("main.lua"),8,replacement+".lua");
+ zip({{"manifest.json",lossyManifest},{std::string(1,char(0xff))+".lua","lossy"}},false,0x800);
+ auto lossyRoot=dir/"lossy-path-owned";std::filesystem::create_directory(lossyRoot);installPackage(packagePath,lossyRoot);
+ check(RuntimeDirectory::resolveLua(lossyRoot,"test").entryName==replacement+".lua","Lossy UTF8 entry installs and resolves");
+ zip({{"manifest.json",lossyManifest},{std::string(1,char(0xff))+".lua","a"},{std::string(1,char(0xfe))+".lua","b"}},false,0x800);
+ rejects([&]{inspectPackage(packagePath);});
  // Info-ZIP Unicode Path extra field chooses logical name after CRC validation.
  auto pathField=[](const std::string& name,bool badCrc=false){
   unsigned crc=0xffffffff;for(unsigned char c:std::string("alias.lua")){crc^=c;for(int j=0;j<8;++j)crc=(crc>>1)^((crc&1)?0xedb88320:0);}crc^=0xffffffff;if(badCrc)crc^=1;

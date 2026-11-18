@@ -8285,3 +8285,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展包 Unicode 路径字段迁移
 
 对照 platform_extensions.rs 使用的 zip4.6.1，核对该依赖 read.rs 的0x7075分支及zipinfo_utf8.rs的CRC校验，扩展包Unicode路径字段校验原始文件名CRC后以严格UTF8替换逻辑路径；连续字段按上一字段结果校验。原始中央文件名保留用于本地头一致性检查，普通工程默认解析不变。真实ZIP夹具覆盖检查、读取、安装和Lua入口解析，错误CRC、非法UTF8及目录越界拒绝。Release定向构建成功（extension-unicode-path-build.log），extension-runtime-directory通过0.78秒；未重建正式GUI、未人工验收。其他ZIP扩展字段、非法UTF8标记名称有损转换及ZIP64仍有缺口，整体迁移INCOMPLETE。来源和diff检查见本轮结果，保留已有main.cpp及用户文件。
+
+
+## 2026-11-19 扩展包非法 UTF8 文件名迁移
+
+对照 platform_extensions.rs::inspect_archive 使用的 zip4.6.1 read.rs::String::from_utf8_lossy，UTF8标记名称按最大非法子序列替换为U+FFFD，保留原始本地头比较；Unicode路径字段仍严格验证UTF8。集中夹具覆盖游离字节、截断、非连续字节、过长编码、代理项、超范围、合法名称、转换后重复路径以及安装/Lua解析。Release定向构建成功（extension-lossy-name-build.log），最终extension-runtime-directory通过0.80秒，来源覆盖1043文件及证据快照、diff检查通过。期间一次invalid map key未复现，一次既有安装事务目录rename Access denied复现；检查现场保留，后续同范围复核通过，不声明这些间歇性失败已解决。未重建正式GUI、未人工验收，ZIP64及其他扩展字段仍有缺口，整体迁移INCOMPLETE；保留既有main.cpp和用户文件。
