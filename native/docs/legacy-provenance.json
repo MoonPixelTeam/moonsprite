@@ -5996,6 +5996,15 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
+      },
+      "specialCelSelectionCopy20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-animation-cel-conversion.ts",
+          "legacy/src/renderer/src/store/workspace-animation-cel-links.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
       }
     },
     {
@@ -20951,6 +20960,15 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
+      },
+      "specialCelSelectionCopy20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-animation-cel-conversion.ts",
+          "legacy/src/renderer/src/store/workspace-animation-cel-links.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
       }
     },
     {
@@ -27706,6 +27724,15 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
+      },
+      "specialCelSelectionCopy20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-animation-cel-conversion.ts",
+          "legacy/src/renderer/src/store/workspace-animation-cel-links.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
       }
     },
     {
@@ -35820,6 +35847,15 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "Legacy selection-only Cel paste targets ordinary unlocked layers regardless of unrelated special layers. Route selection payload before whole-special dispatch; retain ordinary-target validation, shared owner previews, cancellation and history. Appended unrelated grid slots clone blank template authority at origin; free slots use empty instances and source-dependent canvas cache. Permit ordinary Cel selection copy/export/cut in mixed projects and route native menu paste to existing floating transaction. Regression covers grid/free, local/cross-document, extension, cancellation, Undo/Redo and reopening."
+      },
+      "specialCelSelectionCopy20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-animation-cel-conversion.ts",
+          "legacy/src/renderer/src/store/workspace-animation-cel-links.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
       }
     },
     {

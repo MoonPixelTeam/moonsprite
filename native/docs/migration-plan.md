@@ -7813,3 +7813,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 混合工程普通图层Cel选区剪贴板
 
 对照workspace-paste-cel-selection.ts、workspace-commands-animation-cel-clipboard.ts与animation.ts::ensureAnimationDocument，普通未锁目标不应因工程含无关网格/自由瓦片层而拒绝选区Cel载荷。选区载荷在完整特殊Cel事务之前分流，普通Cel选区复制、导出、剪切及菜单粘贴接入既有浮动事务；扩帧给无关网格层创建模板尺寸的空单元格、给自由层创建空实例及相应缓存，保留资源。新增四组网格/自由、同/跨工程检查覆盖扩帧、取消、单条历史、Undo/Redo、保存重开与剪切撤销。回归发现并修正新增限制误拦原有文字Cel复制的问题。正式Release与核心测试构建成功；完整free-tile-project通过39.55秒；正式程序既有--tileset-management-check --grid-transform-entry-only入口退出0，未新增该路径专用GUI断言、未人工图像验收。来源1043文件快照及diff检查通过。特殊图层自身选区Cel复制仍明确未迁移，整体INCOMPLETE。来源见mixedRasterCelSelection20261118。
+
+
+## 2026-11-18 特殊Cel选区复制为普通像素载荷
+
+对照workspace-animation-cel-links.ts::snapshotLinkedAnimationCels与workspace-animation-cel-conversion.ts::clipAnimationCelToSelection，特殊源Cel按已解析像素及世界坐标选区裁切，删除text/tilemap/freeTiles编辑权威，保留复制链接分组；复用现有裁切算法，移除特殊源拒绝。选区导出不携带无用图层/瓦片资源，网格工程Copy菜单遵循Cel作用域。目标仍按workspace-paste-cel-selection.ts只接受普通未锁层；单特殊Cel选区Cut仍明确拒绝，防止仅修改像素缓存，未宣称完成。新增网格/自由、链接/独立、蒙版/矩形八组合，分别验证本地混合及跨工程普通目标、取消、Undo/Redo、重开与源像素不变；更新旧的“选区Copy必须拒绝”准入断言。正式Release构建成功，定向检查通过，既有正式程序--tileset-management-check --grid-transform-entry-only入口退出0。未新增专用GUI断言、未人工图像验收。完整free-tile-project回归通过33.27秒，来源1043文件快照及diff检查通过。来源见specialCelSelectionCopy20261118，整体INCOMPLETE。

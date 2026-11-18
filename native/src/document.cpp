@@ -220,7 +220,6 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
  for(auto& item:items){const auto resolved=timeline_.resolveSurface(item.cel.id);if(resolved.issue!=timeline::LinkIssue::None)throw std::runtime_error("Cannot resolve copied Cel");if(resolved.surface)raster::validate(*resolved.surface);const auto source=resolved.source->id;auto root=roots.find(source);if(root==roots.end())root=roots.emplace(source,selected.count(source)?source:item.cel.id).first;
  item.cel.tilemap=resolved.source->tilemap;item.cel.freeTiles=resolved.source->freeTiles;item.cel.text=resolved.source->text;const auto* mask=timeline::directMask(state,item.cel.layerId,item.cel.frameId);if(mask){item.mask=*mask;const auto* resolvedMask=timeline::resolvedMask(state,item.cel.layerId,item.cel.frameId);if(!resolvedMask)throw std::invalid_argument("Invalid copied Cel mask");item.mask->mask.surface=resolvedMask->surface;}item.cel.surface=resolved.surface?std::optional<timeline::Surface>{*resolved.surface}:std::nullopt;item.cel.linkedCelId=item.cel.id==root->second?std::nullopt:std::optional<std::string>{root->second};item.cel.runtimeSharedCelId.reset();item.row-=row;item.column-=col;}
  if(selection_){
-  if(hasTilemapContent()||hasFreeTileContent())for(const auto& item:items)if(!state.layers[timeline_.layerIndex(item.cel.layerId)].kind.empty())throw std::runtime_error("Special-layer Cel selection copy is not migrated");
   if(selection_->width<1||selection_->height<1||(!selection_->mask.empty()&&selection_->mask.size()!=std::uint64_t(selection_->width)*selection_->height))throw std::runtime_error("Invalid Cel copy selection");
   std::int64_t left=std::numeric_limits<int>::max(),top=left,right=std::numeric_limits<int>::min(),bottom=right;std::uint64_t storedBytes=0;
   // legacy clipAnimationCelToSelection crops each resolved source in world space.
@@ -243,6 +242,7 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
 }
 bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if((hasTilemapContent()||hasFreeTileContent())&&!selection_)return cutTilemapCels();if(!activeMaskId_.empty())return false;
  if(active())throw std::runtime_error("Cannot cut Cels during an active preview");
+ if(selection_&&(hasTilemapContent()||hasFreeTileContent())&&timelineSelection_.cels.size()==1){const auto* slot=timeline_.findCelById(timelineSelection_.cels.front());if(slot&&!timeline_.state().layers[timeline_.layerIndex(slot->layerId)].kind.empty())throw std::runtime_error("Special-layer selection Cel cut is not migrated");}
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end() && layerEffectivelyLocked(*l))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;
  if(!selection_)return deleteSelectedCels();
