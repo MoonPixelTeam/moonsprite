@@ -8075,3 +8075,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板直接改色与改名首项迁移
 
 对照workspace-palette.ts::updatePaletteColor/renamePaletteColor的find及闭包恢复，直接改色、改名和kind3/kind4历史仅修改同ID首项；普通与Lua同步改色的候选色板同样只更新首项，再匹配剩余旧色。Release lua-script-invocation-tests构建成功，CTest通过（5.99秒），新增直接索引色改色/改名、同步开关和重复条目Undo/Redo检查，既有Lua与混合格式同步回归保持通过。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteFirstEntry20261119。
+
+
+## 2026-11-19 透明色导入身份迁移
+
+对照 workspace-palette.ts::applyPalette 和 document-model.ts::findOrAddPaletteColor，导入先复用未使用的精确颜色身份，未匹配的透明颜色回退到 ID0，不消耗普通颜色分配器；显式新增透明色仍创建独立身份。普通与 Lua 提取入口采用相同回退。调整色板增长测试的独立透明色构造，并覆盖透明输入重复、原身份优先、无变化历史及 Undo/Redo。Release 两个测试目标构建成功，CTest lua-script-invocation、palette-growth 均通过（5.84秒）。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移 INCOMPLETE。来源见 paletteTransparentImport20261119。

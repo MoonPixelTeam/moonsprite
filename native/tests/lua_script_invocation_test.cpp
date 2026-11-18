@@ -262,6 +262,13 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(rename)model->renamePaletteColor(7,U" renamed ");else model->updatePaletteColor(7,0xff112233);
   auto verify=[&]{check(model->palette().entries[2].color==original[2].color&&model->palette().entries[2].name==original[2].name,"Direct palette edit modified duplicate sibling");};verify();check(rename?model->palette().entries[1].name==U"renamed":model->palette().entries[1].color==0xff112233,"Direct palette edit missed first entry");model->undo();verify();check(model->palette().entries[1].color==original[1].color&&model->palette().entries[1].name==original[1].name,"First-entry palette undo wrong");model->redo();verify();
  }
+ // Unmatched transparent imports reserve ID0; explicit new swatches remain
+ // independent. Duplicate input transparency does not consume the allocator.
+ {auto model=std::make_unique<Document>(fixture(3,1,false));const auto cursor=model->palette().nextId;
+  model->applyStoredPalette({0x00010203,0x00040506});check(model->palette().order()==std::vector<int>{0}&&model->paletteEntry(0)->color==0&&model->palette().nextId==cursor,"Transparent import allocated ordinary IDs");
+  model->undo();model->redo();check(model->palette().order()==std::vector<int>{0}&&model->palette().nextId==cursor,"Transparent import replay wrong");const auto h=model->historyPosition();model->applyStoredPalette({0x00010203,0x00040506});check(model->historyPosition()==h,"Repeated transparent import created history");
+  const int independent=model->addPaletteColor(0x00010203);model->applyStoredPalette({0x00010203,0x00010203});check(model->palette().order()==std::vector<int>({independent,0}),"Transparent import did not reuse exact independent swatch first");
+ }
  // Legacy applyPalette consumes identities once, including malformed duplicate
  // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();
