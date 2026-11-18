@@ -21613,6 +21613,12 @@
           "legacy/src/renderer/src/core/file-preferences.test.ts"
         ],
         "nativeAdaptation": "Enable MoonSprite export preference and actual format dropdown using existing native project export transaction. Preserve export memory precedence and explicit frame PNG fallback; project format forces document target and 100 percent, clears trim, hides scale/trim controls. Extend formal export-format-preference smoke to single/multiple frames, cancellation, actual export and editable reopen, source revision/history/path preservation and memory restoration. No new encoder or layout system."
+      },
+      "nativeExportPresetNormalization20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "After restoring preset image options, normalize MoonSprite project scale to 100, clear trim/common trim and force document target, matching normalizeExportPreset and normalizeDocumentExportSettings. Extend existing formal export preference smoke with stale native preset and GIF/PNG transitions to verify settings do not leak."
       }
     },
     {
@@ -25611,6 +25617,12 @@
           "legacy/src/renderer/src/core/file-preferences.test.ts"
         ],
         "nativeAdaptation": "Enable MoonSprite export preference and actual format dropdown using existing native project export transaction. Preserve export memory precedence and explicit frame PNG fallback; project format forces document target and 100 percent, clears trim, hides scale/trim controls. Extend formal export-format-preference smoke to single/multiple frames, cancellation, actual export and editable reopen, source revision/history/path preservation and memory restoration. No new encoder or layout system."
+      },
+      "nativeExportPresetNormalization20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "After restoring preset image options, normalize MoonSprite project scale to 100, clear trim/common trim and force document target, matching normalizeExportPreset and normalizeDocumentExportSettings. Extend existing formal export preference smoke with stale native preset and GIF/PNG transitions to verify settings do not leak."
       }
     },
     {

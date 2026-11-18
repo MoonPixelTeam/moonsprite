@@ -7878,3 +7878,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 MoonSprite工程默认导出与格式入口
 
 对照ExportDialogHost.tsx及其whole-project和remembered-native用例，默认导出偏好开放MoonSprite工程，单/多帧均使用完整工程及100%比例；显式帧导出仍使用PNG，导出记忆优先。实际格式下拉新增MoonSprite，复用已有工程编码与导出事务；切换强制整幅工程、清除trim与其他目标，隐藏比例/修剪控件，保留公共弹窗组件。扩展正式--export-format-preference-check覆盖偏好入口、格式切换、取消、实际写出后可编辑重开、多帧保持、源路径/历史/revision不变和记忆恢复。正式Release构建及该入口带正式主题/指针运行退出0，来源和diff检查通过；未人工图像验收。来源见nativeExportPreference20261118，整体迁移INCOMPLETE。
+
+
+## 2026-11-18 MoonSprite导出预设参数归一
+
+对照export-settings.ts的normalizeExportPreset及normalizeDocumentExportSettings，恢复MoonSprite预设后清除trim与trimCommon，避免覆盖图像选项时恢复无效修剪参数。扩展既有正式导出偏好检查，输入带比例、修剪和失效目标的预设，验证完整工程100%以及切换GIF/PNG后无修剪残留。正式Release构建、--export-format-preference-check（正式主题及指针）退出0，1043文件来源覆盖及证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见nativeExportPresetNormalization20261118。
