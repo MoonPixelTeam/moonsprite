@@ -8110,3 +8110,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 时间轴缩略图预览像素迁移
 
 对照layer-timeline-thumbnails.tsx::CelThumbnail及其实时预览监听，时间轴缩略图绑定与队列回调改为解析displayTimeline，活动编辑的缓存键纳入既有预览代次，避免只更新正式像素修订时遗漏连续调整预览。保留原owner校验、队列取消和代次检查。新增独立调整预览存储、预览代次、基线像素/历史/dirty不变、取消、提交及Undo/Redo回归。Release cel-thumbnail-pipeline-tests构建成功，CTest通过（0.07秒）。来源覆盖及diff检查通过；Editor连接仅源码核对，本轮未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见thumbnailPreviewStorage20261119。
+
+
+## 2026-11-19 缩略图预览正式程序集成
+
+已将fda739a2及0cd618d3的缩略图预览色板、displayTimeline像素来源及预览代次连接编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0（thumbnail-preview-formal-build.log）；使用正式主题与指针，Start-Process -WindowStyle Hidden -Wait -PassThru运行--script-entry-check退出0。未重复已通过的缩略图管线检查；入口检查不等于实际缩略图交互或人工图像验收。生产索引色准入保持关闭，整体迁移INCOMPLETE。仅提交集成记录，不提交生成物、用户数据或既有main.cpp状态。
