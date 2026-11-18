@@ -8045,3 +8045,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua色板提取跨帧与连续操作核对
 
 对照 lua-script-operations.ts 的 palette.extract、workspace-palette.ts 的 applyPalette 与 document-model.ts 的全工程重映射，补齐真实旧版 Lua 引擎回归：活动合成只提取ID9，但其他帧和锁定层中隐藏/无效ID同步重映射；同一事务中提取后再删除ID9，所有引用清零，撤销精确恢复原始像素ID与色板顺序，重做恢复最终结果。Release lua-script-invocation-tests 构建成功，CTest通过（5.72秒）。无需修改实现，未重建正式GUI或人工图像验收。来源覆盖与diff检查通过；整体迁移 INCOMPLETE。
+
+
+## 2026-11-19 色板导入身份复用迁移
+
+对照 workspace-palette.ts::applyPalette 的 usedPaletteIds，原生 applyStoredPalette 改为同一次导入中每个颜色身份仅复用一次，避免旧工程重复 ID 条目带不同颜色时，将两个输入颜色合并到同一可见身份。保留既有按颜色索引和顺序复用，重复导入继续复用新身份，不累积分配或增加无变化历史。Release lua-script-invocation-tests 构建成功，CTest通过（5.76秒），覆盖独立身份、重复导入、Undo/Redo顺序；来源覆盖和diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见 paletteIdentityReuse20261119。

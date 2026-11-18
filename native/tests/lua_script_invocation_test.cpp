@@ -228,6 +228,14 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(extract)model->applyExtractedPalette({0xff0000ee});else model->applyStoredPalette({0xff0000ee});
   check(model->palette().order()==std::vector<int>({0,9})&&model->activeSurface().pixels==std::vector<Pixel>({9,0,9,9,9,9,9,9,9}),"Stored/extracted indexed palette did not remap or retain ID0");model->undo();check(model->activeSurface().pixels==before,"Stored palette undo lost hidden IDs");model->redo();check(model->activeSurface().pixels.front()==9,"Stored palette redo wrong");
  }
+ // Legacy applyPalette consumes identities once, including malformed duplicate
+ // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
+ {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();
+  const std::vector<Pixel> colors{0x80332211,0xffabcdef};model->applyStoredPalette(colors);
+  const auto order=model->palette().order();check(order.size()==3&&order[0]==0&&order[1]==7&&order[2]!=7&&model->paletteEntry(order[2])->color==colors[1],"Palette import reused duplicate identity twice");
+  const auto history=model->historyPosition();model->applyStoredPalette(colors);check(model->palette().order()==order&&model->historyPosition()==history,"Repeated duplicate-ID import allocated another identity");
+  model->undo();check(model->palette().order()==original,"Duplicate-ID import undo order wrong");model->redo();check(model->palette().order()==order,"Duplicate-ID import redo order wrong");
+ }
  // Extraction uses only the active composite, but remaps every indexed owner.
  // A second palette operation in the same batch keeps the original undo baseline.
  for(bool removeAgain:{false,true}){
