@@ -6054,6 +6054,15 @@
           "legacy/src/renderer/src/core/selection-transform-targets.ts"
         ],
         "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
+      },
+      "celFloatingMaskInteraction20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-move.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
+        ],
+        "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
       }
     },
     {
@@ -25511,6 +25520,15 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "Frame header Copy/Cut precedes pixel selection even with active mask. Existing complete frame snapshots retain masks. Permit special frame Cut/Delete with static active mask; successful deletion clears mask and isolation and records existing empty maskContext for both Undo and Redo, matching deleteAnimationFrame. Keep minimum-one-frame behavior and preview gates. Eight grid/free x normal/isolated x selection/no-selection cases verify complete frame mask payload, links, one transaction, selection completion, Undo/Redo and saved reopening; actual isolated-grid frame-header menu Copy/Cut verifies routing."
+      },
+      "celFloatingMaskInteraction20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-move.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
+        ],
+        "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
       }
     },
     {
@@ -36084,6 +36102,15 @@
           "legacy/src/renderer/src/core/selection-transform-targets.ts"
         ],
         "nativeAdaptation": "pasteCelSelection resolves ordinary Cel targets independently of activeLayerMaskId; it retains mask editing while previewing, cancelling and committing, and floating commit captures that mask/isolation on both history sides. Remove extra native clipboard/editor/registry active-mask restrictions for selection-only Cel payloads. Continue using the multi-Cel floating transaction and ordinary target/lock validation, retain mask pixels, and record the current mask context on Undo/Redo instead of forcing document editing. Twenty-four ordinary/mixed-grid/mixed-free x local/portable x isolated/normal x appended/existing-frame cases cover nudge, cancel, one history entry, mask/content isolation, Undo/Redo and reopening."
+      },
+      "celFloatingMaskInteraction20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/canvas-input-selection-begin.ts",
+          "legacy/src/renderer/src/store/workspace-paste-cel-selection.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-move.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
+        ],
+        "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
       }
     },
     {
