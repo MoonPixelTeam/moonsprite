@@ -7898,3 +7898,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 静态格式切换保留导出草稿
 
 对照ExportDialogHost.tsx格式onChange保留current表单，静态格式切换复用完整图像选项，修复画布目标切换BMP、ICO、JPEG、PNG时比例、修剪和选区被重置。保留SVG固定100%及MoonSprite工程归一规则。正式偏好检查扩展覆盖连续格式切换、两种修剪标志、选区和SVG往返，正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过。未人工图像验收。多帧静态导出的帧范围入口仍存在迁移缺口，未在本阶段声称完成；整体迁移INCOMPLETE。来源见staticExportDraftRetention20261118。
+
+
+## 2026-11-18 多帧静态导出范围入口
+
+对照ExportDialogHost.tsx的stillFrameRange、changeFrameRange及对应GIF切PNG后选择循环段用例，为多帧静态画布目标显示公共帧范围下拉，默认当前帧；选择全部帧、指定范围或循环段时转入既有帧序列事务，保留格式、比例、修剪、文件名和目录。复用DialogLayout分组计算，选区、图层、切片及工程目标不显示该入口。扩展正式偏好检查覆盖可见/可用/模态路由、三种范围映射及实际两帧BMP循环段导出。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收。此阶段补齐静态入口，帧序列返回当前帧的交互仍需继续对照，整体迁移INCOMPLETE。来源见staticFrameRangeEntry20261118。

@@ -475,9 +475,9 @@ void Editor::createExportComponents() {
 
     auto trim=exportDropdown(exportTrimButton_);trim->setOptions({U"不修剪",U"独立修剪",U"统一修剪"});trim->changed=[this](int i){exportOptions_.trim=i!=0;exportOptions_.trimCommon=i==2;refresh();};
 
-    auto range=exportDropdown(gifRange_);range->prepareOptions=[this,range]{std::vector<std::u32string> names{U"全部帧",U"指定帧范围"};int index=2,selected=gifExplicitRange_?1:0;for(const auto& loop:currentDocument().timeline().state().loopSections){names.push_back(U"循环段："+loop.name);if(loop.id==gifOptions_.loopSectionId)selected=index;++index;}range->setOptions(std::move(names));range->setSelectedIndex(selected);};
+    auto range=exportDropdown(gifRange_);range->prepareOptions=[this,range]{const bool still=staticExportFrameRange();std::vector<std::u32string> names;if(still)names.push_back(U"当前帧");names.push_back(U"全部帧");names.push_back(U"指定帧范围");int index=still?3:2,selected=still?0:gifExplicitRange_?1:0;for(const auto& loop:currentDocument().timeline().state().loopSections){names.push_back(U"循环段："+loop.name);if(!still&&loop.id==gifOptions_.loopSectionId)selected=index;++index;}range->setOptions(std::move(names));range->setSelectedIndex(selected);};
 
-    range->changed=[this](int i){gifExplicitRange_=i==1;gifOptions_.loopSectionId=i>=2&&i<int(currentDocument().timeline().state().loopSections.size())+2?currentDocument().timeline().state().loopSections[i-2].id:std::string{};refresh();};
+    range->changed=[this](int i){if(staticExportFrameRange()){if(i==0)return;--i;const auto image=exportOptions_;const auto name=exportFilename_->text();const auto directory=exportDirectory_;const auto format=staticJpeg_?FrameSequenceFormat::Jpeg:staticSvg_?FrameSequenceFormat::Svg:staticIco_?FrameSequenceFormat::Ico:staticBmp_?FrameSequenceFormat::Bmp:FrameSequenceFormat::Png;resolve(false);openFramePngExport(false);setFrameSequenceFormat(format,image.automatic);gifOptions_.scalePercent=image.scalePercent;gifOptions_.trim=image.trim;gifOptions_.trimCommon=image.trimCommon;exportFilename_->setText(name);exportDirectory_=directory;gifInputs_[0]->setText(frameSvg_?std::to_string(image.scalePercent/100.0):std::to_string(image.scalePercent));}gifExplicitRange_=i==1;gifOptions_.loopSectionId=i>=2&&i<int(currentDocument().timeline().state().loopSections.size())+2?currentDocument().timeline().state().loopSections[i-2].id:std::string{};refresh();};
 
     auto animationTrim=exportDropdown(gifTrim_);animationTrim->setOptions({U"不修剪",U"独立修剪",U"统一修剪"});animationTrim->changed=[this](int i){gifOptions_.trim=i!=0;gifOptions_.trimCommon=i==2;refresh();};
 
@@ -511,7 +511,9 @@ void Editor::deleteExportPreset(){auto next=savedExportPresets_;auto name=export
 
 void Editor::applyExportPreset(ExportPreset p){resolve(false);if(p.kind==0){openStaticExport();switchStaticExportFormat(p.format);exportOptions_=p.image;exportAllLayers_=p.allLayers;if(!currentDocument().selection())exportOptions_.selection=false;if(!exportOptions_.layerId.empty()&&!currentDocument().timeline().hasLayer(exportOptions_.layerId)){exportAllLayers_=true;exportOptions_.layerId.clear();}if(exportAllLayers_){exportOptions_.layerId.clear();exportOptions_.selection=false;}exportScaleInput_->suffix=staticSvg_?U"x":U"%";exportScaleInput_->setText(staticSvg_?std::to_string(exportOptions_.scalePercent/100.0):std::to_string(exportOptions_.scalePercent));}else{if(p.kind==2){openFramePngExport(false);setFrameSequenceFormat(p.format==5?FrameSequenceFormat::Jpeg:p.format==3?FrameSequenceFormat::Svg:p.format==2?FrameSequenceFormat::Ico:p.format==1?FrameSequenceFormat::Bmp:FrameSequenceFormat::Png,p.format==4);}else {openGifExport();gifWebp_=p.format==6;discard_->caption=gifWebp_?U"导出 WebP":U"导出 GIF";}gifOptions_=p.animation;exportAllLayers_=p.kind==1&&p.allLayers;if(!currentDocument().selection())gifOptions_.selection=false;if(gifOptions_.selection)gifOptions_.layerId.clear();if(framePngMode_){gifOptions_.layerId.clear();gifOptions_.selection=false;}else if(!gifOptions_.layerId.empty()&&!currentDocument().timeline().hasLayer(gifOptions_.layerId)){exportAllLayers_=true;gifOptions_.layerId.clear();}if(exportAllLayers_){gifOptions_.layerId.clear();gifOptions_.selection=false;}const int count=int(currentDocument().timeline().state().frames.size());gifOptions_.frameStart=std::clamp(gifOptions_.frameStart,1,count);gifOptions_.frameEnd=std::clamp(gifOptions_.frameEnd,1,count);if(!gifOptions_.loopSectionId.empty()&&std::none_of(currentDocument().timeline().state().loopSections.begin(),currentDocument().timeline().state().loopSections.end(),[&](const auto& loop){return loop.id==gifOptions_.loopSectionId;}))gifOptions_.loopSectionId.clear();gifExplicitRange_=p.explicitRange;gifInputs_[0]->setText(framePngMode_&&frameSvg_?std::to_string(gifOptions_.scalePercent/100.0):std::to_string(gifOptions_.scalePercent));gifInputs_[1]->setText(std::to_string(gifOptions_.frameStart));gifInputs_[2]->setText(std::to_string(gifOptions_.frameEnd));}exportSlices_=p.slices&&!currentDocument().slices().empty();exportSliceId_=exportSlices_&&std::any_of(currentDocument().slices().begin(),currentDocument().slices().end(),[&](const auto& slice){return slice.id==p.sliceId;})?p.sliceId:std::string{};if(exportProjectFormat_){exportSlices_=false;exportSliceId_.clear();exportAllLayers_=false;exportOptions_.selection=false;exportOptions_.layerId.clear();discard_->caption=exportProjectFormat_==7?U"导出 PSD":exportProjectFormat_==8?U"导出 ASE":exportProjectFormat_==9?U"导出 ASEPRITE":U"导出 MoonSprite";if(exportProjectFormat_==10){exportOptions_.scalePercent=100;exportOptions_.trim=exportOptions_.trimCommon=false;exportScaleInput_->setText("100");}}exportPresets_.name->setText(p.name);exportPresetFeedback_.clear();updateExportPresetOptions();refresh();}
 
-int Editor::exportScaleY() const {return DialogLayout::label(pending_==Pending::GifExport?(gifExplicitRange_?5:4):2);}
+bool Editor::staticExportFrameRange() const {return pending_==Pending::StaticExport&&!exportProjectFormat_&&!exportSlices_&&!exportAllLayers_&&!exportOptions_.selection&&exportOptions_.layerId.empty()&&currentDocument().timeline().state().frames.size()>1;}
+
+int Editor::exportScaleY() const {return DialogLayout::label(pending_==Pending::GifExport?(gifExplicitRange_?5:4):staticExportFrameRange()?3:2);}
 
 void Editor::layoutExportForm(const gfx::Rect& modal) {
 
@@ -580,6 +582,8 @@ void Editor::layoutExportForm(const gfx::Rect& modal) {
       place(gifTrim_,x,exportScaleY()+50,w);static_cast<PixelDropdown*>(gifTrim_)->setSelectedIndex(gifOptions_.trimCommon?2:gifOptions_.trim?1:0);
 
     }else{
+
+      if(staticExportFrameRange()){gifRange_->setVisible(true);gifRange_->setEnabled(!busy);static_cast<PixelDropdown*>(gifRange_)->prepareOptions();place(gifRange_,x,DialogLayout::field(2),w);}
 
       static_cast<PixelDropdown*>(exportTrimButton_)->setSelectedIndex(exportOptions_.trimCommon?2:exportOptions_.trim?1:0);
 
@@ -2071,6 +2075,8 @@ void Editor::paintDialog(ui::Graphics& g) {
         label(U"导出设置",modal.x+6,modal.y+(FloatingColumnChrome::headerHeight-PixelFont::cell)/2);
 
         label(U"导出文件",modal.x+6,modal.y+DialogLayout::label());label(U"格式",modal.x+6,modal.y+DialogLayout::label(1));label(U"导出区域",modal.x+6+(modal.w-18)/2+6,modal.y+DialogLayout::label(1));
+
+        if(staticExportFrameRange())label(U"帧范围",modal.x+6,modal.y+DialogLayout::label(2));
 
         if(exportProjectFormat_!=10)label(staticSvg_?U"比例":U"比例（百分比）",modal.x+6,modal.y+exportScaleY());
 

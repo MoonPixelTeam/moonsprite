@@ -2526,6 +2526,7 @@ private:
 
   void applyExportPreset(ExportPreset p);
 
+  bool staticExportFrameRange() const;
   int exportScaleY() const;
 
   void layoutExportForm(const gfx::Rect& modal);

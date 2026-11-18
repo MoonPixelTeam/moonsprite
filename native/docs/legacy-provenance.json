@@ -20304,6 +20304,13 @@
           "legacy/src/renderer/src/components/floating-panel.tsx"
         ],
         "adaptation": "Native floating host preserves the original session, legacy 280x200 minimum, viewport position clamp with unchanged size, pin/move/return/close and release-confirmed title actions. Shared native chrome and original legacy icons replace CSS. Official document-panes-only runtime passed movement, resize, tab-return preview/cancel, identity and native surface checks. Final input follow-up recorded in document-panes-migration-20261116.md."
+      },
+      "staticFrameRangeEntry20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx"
+        ],
+        "nativeAdaptation": "Reuse shared range dropdown for multiframe static document target, default current frame; all/range/loop selections enter existing frame sequence transaction preserving format, scale, trim, filename and directory. Reuse DialogLayout rows; existing formal preference smoke checks actual range control, transitions and loop sequence write. Selection/layer/slices/project targets remain excluded per legacy stillFrameRange condition."
       }
     },
     {
@@ -21637,6 +21644,13 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Preserve complete shared image options when switching static formats, matching format onChange spread of current form. SVG still sets 100 percent and MoonSprite still clears trim and forces document. Existing formal preference smoke covers canvas selection, scale, individual/common trim across BMP ICO JPEG PNG and SVG transitions."
+      },
+      "staticFrameRangeEntry20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx"
+        ],
+        "nativeAdaptation": "Reuse shared range dropdown for multiframe static document target, default current frame; all/range/loop selections enter existing frame sequence transaction preserving format, scale, trim, filename and directory. Reuse DialogLayout rows; existing formal preference smoke checks actual range control, transitions and loop sequence write. Selection/layer/slices/project targets remain excluded per legacy stillFrameRange condition."
       }
     },
     {
@@ -25659,6 +25673,13 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Preserve complete shared image options when switching static formats, matching format onChange spread of current form. SVG still sets 100 percent and MoonSprite still clears trim and forces document. Existing formal preference smoke covers canvas selection, scale, individual/common trim across BMP ICO JPEG PNG and SVG transitions."
+      },
+      "staticFrameRangeEntry20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx"
+        ],
+        "nativeAdaptation": "Reuse shared range dropdown for multiframe static document target, default current frame; all/range/loop selections enter existing frame sequence transaction preserving format, scale, trim, filename and directory. Reuse DialogLayout rows; existing formal preference smoke checks actual range control, transitions and loop sequence write. Selection/layer/slices/project targets remain excluded per legacy stillFrameRange condition."
       }
     },
     {
