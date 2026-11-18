@@ -13,6 +13,20 @@ int main(int argc,char** argv){RoInitialize(RO_INIT_MULTITHREADED);try{
  auto dir=std::filesystem::path(argv[1])/("directory-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));std::filesystem::create_directories(dir/"com.example");auto write=[&](const std::filesystem::path& path,const std::string& value){std::ofstream out(path,std::ios::binary);out<<value;check(bool(out),"Fixture write");};
  auto manifest=JsonObject::Parse(L"{\"schemaVersion\":2,\"apiVersion\":\"1.0.0\",\"id\":\"com.example\",\"name\":\"Example\",\"version\":\"1\",\"runtime\":{\"entry\":\"runtime.HTML\",\"permissions\":[\"runtime\",\"resources\"],\"resources\":{\"data\":\"data.bin\"}}}");auto save=[&](const JsonObject& m){write(dir/"com.example"/"manifest.json",winrt::to_string(m.Stringify()));};save(manifest);write(dir/"com.example"/"data.bin","abc");
  auto candidate=RuntimeDirectory::inspect(dir,"com.example");check(candidate.enabled&&candidate.extension.id=="com.example"&&candidate.entry=="runtime.HTML"&&candidate.permissions==std::vector<std::string>{"runtime","resources"}&&candidate.resources->read("data")==FileDropRouter::Bytes{'a','b','c'}&&candidate.metadata.name=="Example"&&candidate.metadata.version=="1","Directory candidate lossless/runtime");
+
+ // Legacy checks the entire installed tree, even undeclared nested content.
+ std::filesystem::create_directories(dir/"com.example"/"nested");
+ write(dir/"com.example"/"nested"/"ordinary.bin","retained");
+ check(RuntimeDirectory::inspect(dir,"com.example").enabled,"ordinary nested package");
+ const auto link=dir/"com.example"/"nested"/"linked.bin";
+ const auto target=std::filesystem::absolute(dir/"com.example"/"data.bin");
+ if(CreateSymbolicLinkW(link.c_str(),target.c_str(),SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)){
+  rejects([&]{RuntimeDirectory::inspect(dir,"com.example");});
+  rejects([&]{RuntimeDirectory::setEnabled(dir,"com.example",false);});
+  check(!std::filesystem::exists(dir/".state.json"),"unsafe tree changed enable state");
+  std::filesystem::remove(link);check(RuntimeDirectory::inspect(dir,"com.example").enabled,"link removal restores inspect");
+  std::cout<<"Nested symbolic link rejected before inspect/state mutation\n";
+ }else std::cout<<"Symbolic link fixture unavailable: "<<GetLastError()<<"\n";
  write(dir/".state.json","{\"enabled\":{\"com.example\":false}}");check(!RuntimeDirectory::inspect(dir,"com.example").enabled,"Disabled state");write(dir/".state.json","{}");check(RuntimeDirectory::inspect(dir,"com.example").enabled,"Default enabled");write(dir/".state.json","{\"enabled\":{\"other\":4}}");rejects([&]{RuntimeDirectory::inspect(dir,"com.example");});write(dir/".state.json","{}");
  for(const auto& invalid:std::vector<std::string>{"../com.example",".hidden","a..b","a/b",std::string(81,'a')})rejects([&]{RuntimeDirectory::inspect(dir,invalid);});
  for(int scenario=0;scenario<7;++scenario){auto m=JsonObject::Parse(manifest.Stringify());auto runtime=m.GetNamedObject(L"runtime");if(scenario==0)m.Insert(L"id",JsonValue::CreateStringValue(L"other"));if(scenario==1)m.Insert(L"schemaVersion",JsonValue::CreateNumberValue(1));if(scenario==2)m.Insert(L"apiVersion",JsonValue::CreateStringValue(L"2.0.0"));if(scenario==3)runtime.Insert(L"entry",JsonValue::CreateStringValue(L"../runtime.html"));if(scenario==4)runtime.Insert(L"entry",JsonValue::CreateStringValue(L"runtime.lua"));if(scenario==5)runtime.Insert(L"permissions",JsonArray::Parse(L"[\"runtime\",\"runtime\"]"));if(scenario==6)runtime.Insert(L"permissions",JsonArray::Parse(L"[\"unknown\"]"));save(m);rejects([&]{RuntimeDirectory::inspect(dir,"com.example");});}save(manifest);

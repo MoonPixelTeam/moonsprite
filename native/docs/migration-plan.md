@@ -8258,3 +8258,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展数字字段边界转换迁移
 
 对照 ExtensionDialogForm.tsx number 分支的 Number.isFinite(Number(value))，补齐原生十进制字符串转换边界：先验证符号、小数和指数语法，拒绝此前会误接受的 +-2；from_chars 范围失败时用独立 C locale 的 Windows 转换区分有限下溢和无穷溢出，保留极小数及负零，溢出仍按旧版回退1。不修改原始默认值、visibleWhen严格比较和编辑事务。新增集中样本覆盖非法符号/指数、合法小数、Unicode空白、最小次正规数、正负零及溢出。Release状态测试与唯一正式程序构建成功（form-number-boundary-build.log），extension-form-state CTest通过（1.09秒），来源覆盖及证据快照、diff检查通过。未运行GUI或人工图像验收，整体迁移INCOMPLETE；保留既有main.cpp差异，不提交生成物和用户数据。
+
+## 2026-11-19 已安装扩展目录检查迁移
+
+实际对照 legacy/src-tauri/src/platform_extensions.rs 的 ensure_safe_directory / manifest_from_directory，RuntimeDirectory::inspect 在读取清单前检查整个安装目录：迭代遍历嵌套条目，拒绝符号链接及 canonical 路径越出扩展根目录。沿用 inspect 的列表、启停、Lua入口和资源访问共同继承检查；不修改用户文件。新增普通嵌套内容和条件符号链接夹具，检查拒绝发生在启停状态写入前。Release定向测试构建及唯一正式程序构建成功（extension-safe-tree-build.log、extension-safe-tree-release-build.log），extension-runtime-directory CTest通过（0.73秒）；当前账户创建符号链接失败1314，因此新增及既有链接分支均跳过，不声称实测通过。来源覆盖1043文件及证据快照、diff检查通过；未运行GUI或人工图像验收，整体迁移INCOMPLETE。保留既有main.cpp差异，不提交生成物和用户数据。

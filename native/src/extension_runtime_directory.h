@@ -41,6 +41,25 @@ class RuntimeDirectory {
   const auto status=std::filesystem::symlink_status(path);if(!std::filesystem::is_regular_file(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展清单或状态文件必须是普通文件。");
   HANDLE handle=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);if(handle==INVALID_HANDLE_VALUE)throw std::system_error(int(GetLastError()),std::system_category(),"Cannot read extension metadata");struct Close{HANDLE handle;~Close(){CloseHandle(handle);}}close{handle};std::string bytes;char chunk[65536];for(;;){DWORD count=0;if(!ReadFile(handle,chunk,sizeof(chunk),&count,nullptr))throw std::system_error(int(GetLastError()),std::system_category(),"Cannot finish extension metadata read");if(!count)break;if(count>limit-bytes.size())throw std::length_error("Extension metadata exceeds size limit");bytes.append(chunk,count);}return bytes;
  }
+ // platform_extensions.rs::ensure_safe_directory runs before manifest reads,
+ // including files not declared in the manifest. Do not follow directory links.
+ static void ensureSafeDirectory(const std::filesystem::path& root){
+  const auto status=std::filesystem::symlink_status(root);
+  if(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展目录必须是普通目录。");
+  const auto canonicalRoot=std::filesystem::canonical(root);
+  std::vector<std::filesystem::path> pending{root};
+  while(!pending.empty()){
+   const auto current=std::move(pending.back());pending.pop_back();
+   for(const auto& entry:std::filesystem::directory_iterator(current)){
+    const auto metadata=entry.symlink_status();
+    if(std::filesystem::is_symlink(metadata))throw std::runtime_error("扩展目录不能包含符号链接。");
+    const auto canonicalEntry=std::filesystem::canonical(entry.path());
+    auto parent=canonicalRoot.begin(),child=canonicalEntry.begin();
+    for(;parent!=canonicalRoot.end();++parent,++child)if(child==canonicalEntry.end()||*parent!=*child)throw std::runtime_error("扩展目录不能包含指向外部的重解析点。");
+    if(std::filesystem::is_directory(metadata))pending.push_back(entry.path());
+   }
+  }
+ }
  static ExtensionState readFullState(const std::filesystem::path& directory){auto path=directory/".state.json";std::error_code error;auto status=std::filesystem::symlink_status(path,error);if(error&&error!=std::errc::no_such_file_or_directory)throw std::system_error(error);return std::filesystem::exists(status)?ExtensionState::parse(read(path,std::numeric_limits<std::size_t>::max())):ExtensionState{};}
  static std::map<std::string,bool> readState(const std::filesystem::path& directory){return readFullState(directory).enabled;}
  static std::string sortName(const std::string& name){auto wide=winrt::to_hstring(name);int n=LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),nullptr,0,nullptr,nullptr,0);if(!n)throw std::runtime_error("Cannot lowercase extension name");std::wstring lowered(n,L' ');if(!LCMapStringEx(LOCALE_NAME_INVARIANT,LCMAP_LOWERCASE,wide.c_str(),int(wide.size()),lowered.data(),n,nullptr,nullptr,0))throw std::runtime_error("Cannot lowercase extension name");return winrt::to_string(lowered);}
@@ -131,7 +150,7 @@ public:
  static RuntimeCandidate inspect(const std::filesystem::path& directory,const std::string& id,bool requireRuntime=true){
   using namespace winrt::Windows::Data::Json;
   if(!validId(id))throw std::invalid_argument("无效的扩展 ID。");
-  const auto root=directory/std::filesystem::path(winrt::to_hstring(id).c_str());const auto status=std::filesystem::symlink_status(root);if(!std::filesystem::is_directory(status)||std::filesystem::is_symlink(status))throw std::runtime_error("扩展目录必须是普通目录。");
+  const auto root=directory/std::filesystem::path(winrt::to_hstring(id).c_str());ensureSafeDirectory(root);
   RuntimeCandidate candidate;candidate.manifest=JsonObject::Parse(winrt::to_hstring(read(root/"manifest.json",256u*1024u)));const auto& manifest=candidate.manifest;
   candidate=parseManifest(candidate.manifest,root,id,requireRuntime);
   const auto state=readState(directory);if(auto found=state.find(id);found!=state.end())candidate.enabled=found->second;candidate.extension.enabled=candidate.enabled;return candidate;
