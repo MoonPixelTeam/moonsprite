@@ -30159,6 +30159,13 @@
           "legacy/src/renderer/src/components/TextToolDialog.tsx"
         ],
         "adaptation": "Legacy loadTextFontCatalog effect retains initialFontFamily as local when absent. Native catalog retains current document font as a non-imported local option, with no font import, size mutation or delete permission. Formal dialog checks placeholder identity, repeated catalog deduplication and original selection restoration. Sole formal Release built; --text-tool-check with formal theme/cursors exited 0. No manual image acceptance or full text module completion claimed."
+      },
+      "importedFontDialogOrder20261119": {
+        "evidence": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx",
+          "legacy/src/renderer/src/platform/font-service.ts"
+        ],
+        "adaptation": "TextToolDialog addFont promotes returned option and removes case-insensitive same-family prior options within current dialog. Native file/system import share acceptImportedFont, retaining returned resource identity/delete eligibility, existing default size and preview update. Fresh catalog and delete fallback still reload usage order. Windows user-locale lowercase adapts browser toLocaleLowerCase; cross-locale Unicode parity not claimed. Formal dialog fixtures cover promotion, identity replacement, case folding, selection/delete state and persistent catalog reload without modifying library files. Sole formal Release and --text-tool-check with formal theme/cursors exited 0. No manual image acceptance."
       }
     },
     {

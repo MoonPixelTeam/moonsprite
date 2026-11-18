@@ -8135,3 +8135,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字工程缺失字体选择迁移
 
 对照 TextToolDialog.tsx 的字体目录加载 effect，原生目录为不在本机目录中的当前工程字体保留本地选项，正确选中原名称，不再错误显示第一项。占位不导入字体、不改变字号且不可删除；重复刷新不累积占位。正式弹窗检查覆盖名称、选择、字号、删除门禁及恢复原字体。唯一正式 Release 构建成功（text-missing-font-build.log），正式主题/指针参数下 --text-tool-check 显式等待进程退出0，覆盖新增断言和既有输入/确认/取消检查。未人工图像验收，整体迁移仍 INCOMPLETE。来源见 missingDocumentFont20261119；保留既有 main.cpp 状态，不提交生成物或用户数据。
+
+
+## 2026-11-19 字体导入弹窗目录迁移
+
+对照 TextToolDialog.tsx::addFont，文件和系统字体导入统一将返回项置于当前弹窗目录首位，按用户语言小写规则替换同名字体，保留返回资源 ID、删除资格、字号默认及实时预览。重新加载目录与删除回退继续采用持久使用次数排序。正式弹窗夹具覆盖置顶、大小写同名替换、重复导入身份、选中/删除状态及重新加载，夹具不写入字体库。唯一正式 Release 构建成功（text-import-catalog-build.log），正式主题/指针下 --text-tool-check 等待实际退出0。未人工图像验收，跨语言环境 Unicode 大小写等价未声明；整体迁移仍 INCOMPLETE。来源见 importedFontDialogOrder20261119，保留既有 main.cpp 状态，不提交生成物和用户数据。
