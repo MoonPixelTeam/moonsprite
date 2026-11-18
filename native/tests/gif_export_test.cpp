@@ -18,7 +18,17 @@ int main(){try{
  {Document layers(5,2);layers.beginStroke({0,0},0xff112233);layers.commitStroke();const auto bottom=layers.layer().id;layers.addFrame();layers.beginStroke({4,1},0xff445566);layers.commitStroke();layers.addLayer();const auto target=layers.layer().id;layers.beginStroke({2,0},0xff778899);layers.commitStroke();layers.addLinkedFrame();layers.markSaved();const auto active=layers.layer().id,frame=layers.frame().id;const auto revision=layers.revision(),history=layers.historySize(),content=layers.contentRevision();
    GifExportOptions o;o.layerId=target;o.trim=true;o.frameStart=2;o.frameEnd=2;auto individual=encodeAnimationGif(layers,o);require(individual.width==1&&individual.height==1&&individual.frameIds.size()==1);o.trimCommon=true;auto common=encodeAnimationGif(layers,o);require(common.width==5&&common.height==2);o.trim=false;o.trimCommon=false;auto whole=encodeAnimationGif(layers,o);require(whole.width==5&&whole.height==2&&layers.revision()==revision&&layers.historySize()==history&&layers.contentRevision()==content&&!layers.dirty());
    Document isolated(5,2);isolated.beginStroke({2,0},0xff778899);isolated.commitStroke();GifExportOptions expected;require(whole.bytes==encodeAnimationGif(isolated,expected).bytes);layers.setLayerOpacity(.5);o.scalePercent=200;auto half=encodeAnimationGif(layers,o);Document halfSource(5,2);halfSource.beginStroke({2,0},0x80778899);halfSource.commitStroke();expected.scalePercent=200;require(half.bytes==encodeAnimationGif(halfSource,expected).bytes);layers.setLayerVisible(false);auto hidden=encodeAnimationGif(layers,o);Document empty(5,2);require(hidden.bytes==encodeAnimationGif(empty,expected).bytes);layers.setLayerVisible(true);layers.setLayerOpacity(0);require(encodeAnimationGif(layers,o).bytes==hidden.bytes);layers.undo();layers.undo();layers.undo();layers.undo();
-   o.layerId="missing";bool rejected=false;try{encodeAnimationGif(layers,o);}catch(const std::invalid_argument&){rejected=true;}require(rejected&&layers.layer().id==active&&layers.frame().id==frame&&layers.historySize()>=history);
+   // Legacy compositeAnimationFrame uses the whole document for a stale layer ID.
+   const auto beforeRevision=layers.revision(),beforeHistory=layers.historySize(),beforeContent=layers.contentRevision();
+   const auto beforePixels=layers.canvasPixels();const auto beforeDirty=layers.dirty();
+   for(int trimMode:{0,1,2}){
+     o.layerId="missing";o.trim=trimMode==1;o.trimCommon=trimMode==2;o.direction=GifDirection::ReversePingPong;
+     auto canvas=o;canvas.layerId.clear();
+     const auto fallback=prepareAnimationExport(layers,o),reference=prepareAnimationExport(layers,canvas);
+     require(fallback.frames==reference.frames&&fallback.width==reference.width&&fallback.height==reference.height&&fallback.frameIds==reference.frameIds&&fallback.durations==reference.durations&&fallback.loop==reference.loop);
+     require(encodeAnimationGif(layers,o).bytes==encodeAnimationGif(layers,canvas).bytes);
+   }
+   require(layers.layer().id==active&&layers.frame().id==frame&&layers.revision()==beforeRevision&&layers.historySize()==beforeHistory&&layers.contentRevision()==beforeContent&&layers.canvasPixels()==beforePixels&&layers.dirty()==beforeDirty);
  }
  return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}

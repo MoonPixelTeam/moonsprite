@@ -13737,6 +13737,15 @@
           "legacy/src/renderer/src/core/document-composite.ts"
         ],
         "nativeAdaptation": "Supply authoritative document palette/order/mode/precision to animation frame composition and all-frame trim bounds. Shared PreparedAnimationExport supplies GIF and animated image consumers. Frame-sequence raster preparation also resolves indexed words through the palette in its existing single-layer direct-pixel path, retaining transparent RGB. Reuse existing crop, scale, protection and encoders. Tests compare indexed exports to converted RGBA, linked animation frames, trim/200 percent scale and unchanged raw source; PNG test decodes encoded bytes. Formal Release build and gif-export/frame-png-export tests passed. Does not establish PSD or every other export path or production indexed admission."
+      },
+      "animationStaleLayerFallback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/onion-skin.ts",
+          "legacy/src/renderer/src/core/gif.ts",
+          "legacy/src/renderer/src/core/layer-export.ts",
+          "legacy/src/renderer/src/workers/document-export.worker.ts"
+        ],
+        "nativeAdaptation": "Legacy documentForAnimationLayerComposite and documentForLayerExport use the full visible document for a missing layer ID. Normalize only the rendering target in shared GIF/WebP preparation, including both trim passes; retain target exclusivity validation. GIF tests compare prepared pixels, metadata and encoded bytes for three trim modes, frame range, scale and direction; WebP compares bytes and source identity/revision/history across trim modes."
       }
     },
     {
@@ -13776,6 +13785,15 @@
           "legacy/src/renderer/src/core/document-composite.ts"
         ],
         "nativeAdaptation": "Supply authoritative document palette/order/mode/precision to animation frame composition and all-frame trim bounds. Shared PreparedAnimationExport supplies GIF and animated image consumers. Frame-sequence raster preparation also resolves indexed words through the palette in its existing single-layer direct-pixel path, retaining transparent RGB. Reuse existing crop, scale, protection and encoders. Tests compare indexed exports to converted RGBA, linked animation frames, trim/200 percent scale and unchanged raw source; PNG test decodes encoded bytes. Formal Release build and gif-export/frame-png-export tests passed. Does not establish PSD or every other export path or production indexed admission."
+      },
+      "animationStaleLayerFallback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/onion-skin.ts",
+          "legacy/src/renderer/src/core/gif.ts",
+          "legacy/src/renderer/src/core/layer-export.ts",
+          "legacy/src/renderer/src/workers/document-export.worker.ts"
+        ],
+        "nativeAdaptation": "Legacy documentForAnimationLayerComposite and documentForLayerExport use the full visible document for a missing layer ID. Normalize only the rendering target in shared GIF/WebP preparation, including both trim passes; retain target exclusivity validation. GIF tests compare prepared pixels, metadata and encoded bytes for three trim modes, frame range, scale and direction; WebP compares bytes and source identity/revision/history across trim modes."
       }
     },
     {
@@ -16722,7 +16740,16 @@
         "legacy/src/renderer/src/core/file-preferences.ts"
       ],
       "scope": "Admitted WebP canvas/valid single-layer flow; other export targets remain incomplete.",
-      "adaptation": " 2026-10-17 WebP admitted canvas/single-layer export: actual webp-animation.ts exportAnimatedImage always prepares animation including one-frame ANIM/ANMF, canvas WebP quality0.92, exact millisecond duration, full frame replacement flags2, VP8X0x12, loop0/infinite or1/once; strips per-image VP8X/metadata and retains image/alpha chunks. Extract native existing GIF preparation without algorithm change and reuse exact frame order/trim/scale/protection/layer/pixel budget/loop; GIF baseline output bytes unchanged after extraction. Existing distributed Skia BSD/libwebp (licenses already bundled) adapts canvas per-frame lossy92 codec; not Skia animated mux. Actual original JS container function matches native outputs using same compressed frame payloads; no Chromium/Skia compressed bytes or all-image fidelity equivalence claim. WebP format6 only kind1 native preset/memory; preference3 single-frame WebP, unremembered multiframe remains GIF per old dialog, requested explicit frames maps preferred/remembered GIF/WebP to PNG-auto and WebP sequence choice disabled. Shared native GIF modal/write/metadata/sound path, cancelled/failed exports keep modal and do not record success. Existing selection/slices/groups/all-layer batch and deleted-layer fallback gaps remain, not silently approximated; only already admitted canvas/valid single-layer targets. Native codec/pixel budgets are existing necessary memory limits. Original app source reuse under legacy/LICENSE Source-Available internal development permission; no public distribution performed."
+      "adaptation": " 2026-10-17 WebP admitted canvas/single-layer export: actual webp-animation.ts exportAnimatedImage always prepares animation including one-frame ANIM/ANMF, canvas WebP quality0.92, exact millisecond duration, full frame replacement flags2, VP8X0x12, loop0/infinite or1/once; strips per-image VP8X/metadata and retains image/alpha chunks. Extract native existing GIF preparation without algorithm change and reuse exact frame order/trim/scale/protection/layer/pixel budget/loop; GIF baseline output bytes unchanged after extraction. Existing distributed Skia BSD/libwebp (licenses already bundled) adapts canvas per-frame lossy92 codec; not Skia animated mux. Actual original JS container function matches native outputs using same compressed frame payloads; no Chromium/Skia compressed bytes or all-image fidelity equivalence claim. WebP format6 only kind1 native preset/memory; preference3 single-frame WebP, unremembered multiframe remains GIF per old dialog, requested explicit frames maps preferred/remembered GIF/WebP to PNG-auto and WebP sequence choice disabled. Shared native GIF modal/write/metadata/sound path, cancelled/failed exports keep modal and do not record success. Existing selection/slices/groups/all-layer batch and deleted-layer fallback gaps remain, not silently approximated; only already admitted canvas/valid single-layer targets. Native codec/pixel budgets are existing necessary memory limits. Original app source reuse under legacy/LICENSE Source-Available internal development permission; no public distribution performed.",
+      "animationStaleLayerFallback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/onion-skin.ts",
+          "legacy/src/renderer/src/core/gif.ts",
+          "legacy/src/renderer/src/core/layer-export.ts",
+          "legacy/src/renderer/src/workers/document-export.worker.ts"
+        ],
+        "nativeAdaptation": "Legacy documentForAnimationLayerComposite and documentForLayerExport use the full visible document for a missing layer ID. Normalize only the rendering target in shared GIF/WebP preparation, including both trim passes; retain target exclusivity validation. GIF tests compare prepared pixels, metadata and encoded bytes for three trim modes, frame range, scale and direction; WebP compares bytes and source identity/revision/history across trim modes."
+      }
     },
     {
       "file": "tests/animation_selection_export_test.cpp",

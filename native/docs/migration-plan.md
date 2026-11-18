@@ -7863,3 +7863,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Cel反转后的活动帧投影
 
 对照workspace-commands-animation-reverse.ts的refreshActiveAnimationFrame及animation.ts的applyFrameSurfaces，反转Cel后必须立即投影当前帧的图层不透明度和几何。原生在applyCelEdit之后补projectActiveCelOpacities，承接已有历史回放投影。扩展既有三Cel反转用例，端点采用不同不透明度，检查立即结果、Undo/Redo、中心Cel不动、选区锚点和帧元数据。修复前该投影断言失败，修复后moon-core-tests通过；正式Release构建、1043文件来源及证据快照检查、diff检查通过。未运行GUI或人工图像验收。来源见reverseCelActiveProjection20261118，整体迁移INCOMPLETE。
+
+
+## 2026-11-18 GIF/WebP失效图层目标回退
+
+对照onion-skin.ts::documentForAnimationLayerComposite、layer-export.ts及document-export.worker.ts，缺失图层ID应使用完整可见画布。移除动画导出专有拒绝，在共享prepareAnimationExport统一解析有效绘制目标，用于全部帧裁切和最终合成；保持目标类型互斥校验。GIF检查三种裁切模式的原始帧、尺寸、时长、帧顺序、loop及编码结果，WebP检查相同回退、范围/缩放和编码结果，两者验证源作品状态不变。正式Release及两测试构建成功，gif-export/webp-export两项CTest通过（0.23秒），来源与diff检查通过；未运行GUI或人工图像验收。来源见animationStaleLayerFallback20261118，整体迁移INCOMPLETE。
