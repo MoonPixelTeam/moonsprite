@@ -8290,3 +8290,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展包非法 UTF8 文件名迁移
 
 对照 platform_extensions.rs::inspect_archive 使用的 zip4.6.1 read.rs::String::from_utf8_lossy，UTF8标记名称按最大非法子序列替换为U+FFFD，保留原始本地头比较；Unicode路径字段仍严格验证UTF8。集中夹具覆盖游离字节、截断、非连续字节、过长编码、代理项、超范围、合法名称、转换后重复路径以及安装/Lua解析。Release定向构建成功（extension-lossy-name-build.log），最终extension-runtime-directory通过0.80秒，来源覆盖1043文件及证据快照、diff检查通过。期间一次invalid map key未复现，一次既有安装事务目录rename Access denied复现；检查现场保留，后续同范围复核通过，不声明这些间歇性失败已解决。未重建正式GUI、未人工验收，ZIP64及其他扩展字段仍有缺口，整体迁移INCOMPLETE；保留既有main.cpp和用户文件。
+
+
+## 2026-11-19 Lua 脚本弹窗控件显示迁移
+
+对照 LuaScriptDialog.tsx::ScriptControl 与 ThemedSelect.tsx，字段标签按label/text/id回退；分隔符按旧版在可选文字两侧绘制横线，无文字时连续横线；组合框空选项保留字符串原值，选项提供完整名称提示。未知值且非空选项仍按旧版回退第一项。复用现有PixelDialog、PixelDropdown和10px字体，沿用原生间距和裁剪。既有verify补充标签优先级检查。唯一正式Release构建成功（script-control-presentation-build.log）；正式程序--script-report-check带正式主题和指针，等待实际进程退出0。检查覆盖原有控件布局、草稿提交和报告窗口；分隔线及提示未人工图像/悬浮验收，空选项分支仅源码核对。来源覆盖和diff检查见本轮结果，整体迁移INCOMPLETE；保留既有main.cpp及用户文件，不提交生成物。
