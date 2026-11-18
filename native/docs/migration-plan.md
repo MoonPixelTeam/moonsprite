@@ -8250,3 +8250,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字空内容提示迁移
 
 对照 TextToolDialog.tsx 的 TextAreaInput placeholder 和 zh-CN 文案，文字编辑框为空时显示“输入文本，可使用换行”，沿用 PixelTextArea 编辑、内容内边距和裁剪。提示仅绘制，不进入作品内容、选区或撤销记录，其余多行字段不变。正式 Release 构建成功（text-placeholder-build.log），来源覆盖和 diff 检查通过；纯显示改动未重复整套文字检查，未人工图像验收。来源见 textContentPlaceholder20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物或用户数据。
+
+## 2026-11-19 扩展表单选项标题与说明同行迁移
+
+实际对照 ExtensionDialogForm.tsx 的 choice 与 styles.css 的 extension-form-choice-content、small 和末尾45%约束，修正原生此前上下两行的近似布局：标题和说明在同一20px按钮内并排，间距2px，说明最多占内容45%，分别省略并沿用完整提示。保留原按钮素材、动作、选中与禁用状态；原生字体继续10px，未套用旧版较小说明字号。同步更正规范中此前误记的双行说明。唯一正式 Release 构建成功（form-choice-inline-build.log），extension-form-ui CTest通过（1.69秒），来源覆盖1043文件及证据快照检查通过，diff检查通过。既有检查覆盖表单布局及交互；未新增专门像素断言，未人工图像验收。整体迁移 INCOMPLETE；保留既有 main.cpp 差异，不提交生成物或用户数据。
