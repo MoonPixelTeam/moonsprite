@@ -228,6 +228,19 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(extract)model->applyExtractedPalette({0xff0000ee});else model->applyStoredPalette({0xff0000ee});
   check(model->palette().order()==std::vector<int>({0,9})&&model->activeSurface().pixels==std::vector<Pixel>({9,0,9,9,9,9,9,9,9}),"Stored/extracted indexed palette did not remap or retain ID0");model->undo();check(model->activeSurface().pixels==before,"Stored palette undo lost hidden IDs");model->redo();check(model->activeSurface().pixels.front()==9,"Stored palette redo wrong");
  }
+ // Extraction uses only the active composite, but remaps every indexed owner.
+ // A second palette operation in the same batch keeps the original undo baseline.
+ for(bool removeAgain:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::remapPalette(*model,true);
+  auto& active=const_cast<timeline::Surface&>(model->activeSurface());active.offsetX=active.offsetY=0;active.pixels.assign(9,9);
+  const auto before=active.pixels;const auto other=model->timeline().resolveSurface("cel-1").surface->pixels;const auto order=model->palette().order();const auto history=model->historyPosition();
+  std::ofstream(root/"scripts/extract-remap.lua")<<(removeAgain?"app.transaction(function() mse.palette.extract(); mse.palette.remove(9) end)":"mse.palette.extract()");
+  auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;applyWorkspaceResult(*model,target,runtime.startInvocation("extract-remap.lua",std::move(invocation)).get(),{});
+  const auto expected=removeAgain?std::vector<Pixel>(9,0):std::vector<Pixel>{9,0,9,9,9,9,9,9,9};
+  check(model->historyPosition()==history+1&&model->palette().order()==(removeAgain?std::vector<int>{0}:std::vector<int>{0,9}),"Lua extraction/removal order or history boundary wrong");
+  check(model->timeline().resolveSurface("cel-1").surface->pixels==expected&&model->timeline().resolveSurface("locked-remap-cel").surface->pixels==expected,"Lua extraction missed other-frame/locked owner");
+  model->undo();check(model->activeSurface().pixels==before&&model->timeline().resolveSurface("cel-1").surface->pixels==other&&model->palette().order()==order,"Lua extraction compound undo lost original IDs");model->redo();check(model->timeline().resolveSurface("cel-1").surface->pixels==expected,"Lua extraction compound redo wrong");
+ }
  // Absent indexed frame stays absent through capture, then materializes IDs.
  {auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::indexedBrush(*model);RasterHistoryFixture::removeFrameCels(*model,model->frame().id);
   auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;check(target.expected.format==timeline::RasterFormat::Indexed&&target.matches(*model)&&!model->activeSurfaceIfPresent(),"Absent indexed Lua capture format wrong");

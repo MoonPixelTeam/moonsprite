@@ -8040,3 +8040,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua与色板事务正式程序集成
 
 已将混合格式色板同步、Lua灰度/像素精度规范化、索引色色板提取和可见ID重映射编入唯一正式产物 native/build/Release/moonsprite-native.exe（源码至73118fac）。Release moonsprite-native构建退出0，日志 indexed-visible-palette-formal-build.log；使用正式主题与指针，Start-Process -WindowStyle Hidden -Wait -PassThru 运行 --script-entry-check，实际进程退出0。未重复已通过的核心定向测试，未人工图像验收；脚本入口检查不替代精确索引像素事务验证。生产索引色准入保持关闭，整体迁移 INCOMPLETE。仅提交集成记录，不提交生成物、用户数据或既有 main.cpp 状态。
+
+
+## 2026-11-19 Lua色板提取跨帧与连续操作核对
+
+对照 lua-script-operations.ts 的 palette.extract、workspace-palette.ts 的 applyPalette 与 document-model.ts 的全工程重映射，补齐真实旧版 Lua 引擎回归：活动合成只提取ID9，但其他帧和锁定层中隐藏/无效ID同步重映射；同一事务中提取后再删除ID9，所有引用清零，撤销精确恢复原始像素ID与色板顺序，重做恢复最终结果。Release lua-script-invocation-tests 构建成功，CTest通过（5.72秒）。无需修改实现，未重建正式GUI或人工图像验收。来源覆盖与diff检查通过；整体迁移 INCOMPLETE。
