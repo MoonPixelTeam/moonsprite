@@ -10405,6 +10405,16 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
       }
     },
     {
@@ -11003,6 +11013,16 @@
         ],
         "nativeAdaptation": "Document owns immutable encoded reference sources and committed placements; transient gesture is excluded from saves. Native WIC/Skia decoders replace browser Image, native timers replace animation and async completion, PixelDialog replaces modeless HTML controls. Existing legacy utility icons and shared selection material are reused. Source SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified; complete migration is not claimed. See canvas-references-migration-20261116.md.",
         "validation": "Actual legacy 38 tests passed; native transactions, persistence, snapshot/rollback, raw animated decode and 24064 actual legacy geometry cases passed. Official Release built; canvas-references-ui passed including per-pixel rendered-alpha/hit checks at four angles, properties, history, sampling and asynchronous original/closed owner and failed replacement checks. SVG browser CSS/SMIL/foreignObject/external-resource parity remains unverified."
+      },
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
       }
     },
     {
@@ -30997,6 +31017,16 @@
           "legacy/src/renderer/src/core/animation.ts"
         ],
         "nativeAdaptation": "tileBackgroundSurfaceToCanvas retains raster format and resets owned Cel storage origin. resizeDocumentAt/resizeAnimationDocumentAt provide paletteColorIdForCanvas for indexed procedural extension; map preset RGBA into existing visible IDs only, preserve original storage words inside old canvas and repeated raw tile IDs. Native resizeBackgroundCanvas supplies immutable document palette, retains existing linked-owner structural transaction. Regression covers preset/canvas modes, signed offsets, storage origins, linked frame resolution, exact IDs, unchanged palette and undo/redo."
+      },
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
       }
     },
     {
@@ -36154,6 +36184,16 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
         ],
         "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
+      },
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
       }
     },
     {
@@ -38055,7 +38095,17 @@
       "scope": "Shared free source/texture transfer for portable frame/Cel clipboard and independent-collection Cel dragging.",
       "adaptation": "User approved missing-source copy/remapping on 2026-11-07; extracted existing helper without behavior change. Shared owner synchronization and equivalent-source reuse.",
       "historicalFreeTransfer20261107": "Historical freeTiles legacyTilesetId/tileId authority supported by free_tile_data validate/render and legacy project-format-decode. Clipboard capture includes historical atlas. Approved transfer converts referenced atlas tiles into single-tile modern sources, retaining transforms; same historical target atlas retains references, other historical targets explicitly reject pending whole-authority conversion. Two in-memory historical frame/Cel cases verify atlas capture, canonical converted instances, transforms, exact cache, modern editable/recovery reopen and Undo/Redo. Initial raw historical reopen exposed encoder/modern schema mismatch; original historical persistence remains incomplete and is not covered as passing.",
-      "historicalUpgrade20261107": "legacy free-tile-document.ts::migrateLegacyFreeTileLayer/ensureFreeTileTilesetOwnership invoked by legacy decode/encode. Normalize complete historical free atlas at Document::fromImported boundary into one source/sheet per tile, remap all Cel instances, retain shared collection authority and remove only unused old atlas. Modern save/recovery then has required modern source metadata. Test historical import now asserts normalization and actual save/reopen before clipboard; preserves transforms and history. Not a schema downgrade."
+      "historicalUpgrade20261107": "legacy free-tile-document.ts::migrateLegacyFreeTileLayer/ensureFreeTileTilesetOwnership invoked by legacy decode/encode. Normalize complete historical free atlas at Document::fromImported boundary into one source/sheet per tile, remap all Cel instances, retain shared collection authority and remove only unused old atlas. Modern save/recovery then has required modern source metadata. Test historical import now asserts normalization and actual save/reopen before clipboard; preserves transforms and history. Not a schema downgrade.",
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
+      }
     },
     {
       "file": "tests/fixtures/palette_panel_copy_legacy.h",
@@ -39484,7 +39534,17 @@
         "legacy/LICENSE"
       ],
       "scope": "Production free/grid image resize transactions, legacy comparison, user-approved grid resource synchronization, source/output file reopens, Undo/Redo, runtime links, hidden locked raster/linked masks and allocation guards.",
-      "tileImageResize20261108": "Actual legacy image resize surface floor/ceil bounds, JS Math.round source/instance world positions and per-tile nearest/premultiplied bilinear free source resampling. Native staged full Timeline history preserves source IDs, cell/instance payloads, links/runtime sharing, masks and live selection with 256MiB preflight. User explicitly approved synchronized grid source/tile-dimension resize on2026-11-08 instead of legacy bitmap-only stale-grid behavior; cell counts/IDs/layout remain intact, grid interpolation follows legacy straight RGBA raster sampling. Canonical storage is rendered once; direct target row copies avoid per-tile ID-map rebuild. Existing native256px tile-edge cap retained and rejected before mutation; larger-source compatibility and asynchronous image computation remain incomplete. Aseprite EULA cmd_sprite_size read-only comparison: source tiles once, uniqueCels, grid origin-only update, transactional worker cancellation; no code copied and no claim native command is asynchronous.48 generated unchanged legacy free resize cases plus native grid/mixed/runtime/history/reopen checks; execution results recorded in migration-plan."
+      "tileImageResize20261108": "Actual legacy image resize surface floor/ceil bounds, JS Math.round source/instance world positions and per-tile nearest/premultiplied bilinear free source resampling. Native staged full Timeline history preserves source IDs, cell/instance payloads, links/runtime sharing, masks and live selection with 256MiB preflight. User explicitly approved synchronized grid source/tile-dimension resize on2026-11-08 instead of legacy bitmap-only stale-grid behavior; cell counts/IDs/layout remain intact, grid interpolation follows legacy straight RGBA raster sampling. Canonical storage is rendered once; direct target row copies avoid per-tile ID-map rebuild. Existing native256px tile-edge cap retained and rejected before mutation; larger-source compatibility and asynchronous image computation remain incomplete. Aseprite EULA cmd_sprite_size read-only comparison: source tiles once, uniqueCels, grid origin-only update, transactional worker cancellation; no code copied and no claim native command is asynchronous.48 generated unchanged legacy free resize cases plus native grid/mixed/runtime/history/reopen checks; execution results recorded in migration-plan.",
+      "sharedGridFreeResize20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/free-tile.ts",
+          "legacy/src/renderer/src/core/free-tile-document.ts",
+          "legacy/src/renderer/src/core/project-format-decode.ts",
+          "legacy/src/renderer/src/store/workspace-commands-document-io.ts"
+        ],
+        "userDecision": "2026-11-18: 采用预乘透明度，保留共享资源。Shared grid/free resources scale once using free-tile premultiplied-alpha interpolation, preserving resource IDs and all references.",
+        "nativeAdaptation": "Reuse existing free-tile resize sampler, canonical owner planning, snapshot history and rerendering; scale each resource once by ID. Remove mixed ownership rejection in resize/import while retaining modern single-source geometry and free-set ownership validation. Preserve grid-referenced historical atlases instead of splitting them. Schema21 reader admits historical atlas metadata only when an actual grid layer/cell claims that ID; ordinary modern metadata checks remain. Tests add grid references to 48 actual legacy free-tile pixel/placement samples, regular/recovery reopens, links, Undo/Redo, async commit/cancel, cell-only sharing and a historical multi-tile atlas. Existing malformed source geometry rejection remains."
+      }
     },
     {
       "file": "tests/fixtures/image_resize_reference.h",

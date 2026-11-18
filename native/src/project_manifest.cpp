@@ -221,6 +221,14 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       try{auto resource=decodeProjectBrushResource(metadata,resources);const auto storageBytes=resource.brush.coverage.size()+resource.brush.colors.size()*4;if(storageBytes>limits.expandedBytes-decodedBytes)throw Error(ErrorKind::Limit,"Project brush decoded bytes exceed budget");decodedBytes+=storageBytes;out.customBrushes.push_back(std::move(resource));}catch(const std::invalid_argument& e){bad(e.what());}
       // Original metadata object is retained in sourceArchive/manifestUtf8, including unknown fields.
     }
+    // The approved shared-atlas extension retains historical resource IDs in
+    // schema21. Accept its old free-tile fields only with an actual grid claim.
+    std::set<std::string> sharedAtlasClaims;bool hasSharedAtlasCandidate=false;
+    if(sourceVersion>=21){
+      for(const auto& item:array(doc,"layers")){const auto layer=itemObject(item,"layer");if(textjson::str(layer,L"kind")=="tilemap")sharedAtlasClaims.insert(textjson::str(layer,L"tilemapTilesetId"));if(textjson::str(layer,L"kind")=="free-tile"&&!textjson::str(layer,L"freeTileTilesetId").empty())hasSharedAtlasCandidate=true;}
+      if(hasSharedAtlasCandidate)for(const auto& item:array(object(doc,"animation"),"cels")){const auto cel=itemObject(item,"cel");const auto grid=value(cel,"tilemap");if(!grid||grid.ValueType()!=JsonValueType::Object)continue;for(const auto& entry:array(grid.GetObject(),"cells")){const auto cell=itemObject(entry,"tile cell");sharedAtlasClaims.insert(textjson::str(cell,L"tilesetId"));}}
+      sharedAtlasClaims.erase("");
+    }
     std::set<std::string> layerIds,frameIds,celIds;
     for(const auto& item:array(doc,"layers")) {
       const auto o=itemObject(item,"layer");ManifestLayer layer;
@@ -233,7 +241,11 @@ static ReadManifest readManifestWithClock(std::shared_ptr<const Bytes> bytes,Lim
       if(auto v=value(o,"displayColor");v&&v.ValueType()==JsonValueType::Object){auto color=v.GetObject();double rgba[4];bool valid=true;const char* keys[]={"r","g","b","a"};for(int i=0;i<4;++i){auto c=value(color,keys[i]);if(!c||c.ValueType()!=JsonValueType::Number){valid=false;break;}rgba[i]=c.GetNumber();}if(valid)layer.displayColor=normalizeLayerDisplayColor(rgba[0],rgba[1],rgba[2],rgba[3]);}if(auto v=value(o,"description");v&&v.ValueType()==JsonValueType::String)layer.description=winrt::to_string(v.GetString());
       layer.blendMode=textjson::str(o,L"blendMode");if(!parseLayerBlendMode(layer.blendMode))layer.blendMode="normal";layer.kind=textjson::str(o,L"kind");if(layer.kind!="text"&&layer.kind!="adjustment"&&layer.kind!="tilemap"&&layer.kind!="free-tile")layer.kind.clear();if(layer.kind=="tilemap")layer.tilemapTilesetId=textjson::str(o,L"tilemapTilesetId");if(auto group=value(o,"groupId");group&&group.ValueType()==JsonValueType::String){layer.groupId=winrt::to_string(group.GetString());if(!layer.groupId.empty()&&!groupIds.count(layer.groupId))layer.groupId.clear();}if(const auto linked=value(o,"linkedContentId")){if(linked.ValueType()!=JsonValueType::String||textjson::truthy(o,L"kind"))bad("linked layer identity/kind");std::u16string units;for(const auto c:linked.GetString())units+=char16_t(c);if(javascriptTrim(textUtf32(units)).empty())bad("empty linked layer identity");layer.linkedContentId=winrt::to_string(linked.GetString());}
 
-      if(layer.kind=="free-tile")layer.freeTiles=freejson::decodeLayer(o,layer.id,sourceVersion>=15);
+      if(layer.kind=="free-tile"){
+        const auto atlas=textjson::str(o,L"freeTileTilesetId");
+        const bool sharedAtlas=!atlas.empty()&&sharedAtlasClaims.count(atlas)&&array(o,"freeTileSources",false).Size()==0;
+        layer.freeTiles=freejson::decodeLayer(o,layer.id,sourceVersion>=15&&!sharedAtlas);
+      }
       layer.clippingMask=literal("clippingMask",true);
       if(layer.kind=="adjustment"){
        const auto adjustment=textjson::object(o,L"adjustment"),styles=textjson::object(o,L"layerStyles");

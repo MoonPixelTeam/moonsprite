@@ -152,16 +152,17 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
 
  // project-format-decode validates modern free-tile ownership before aliases
  // or source names can modify prepared state. A source sheet owns one tile;
- // source IDs and sheet IDs may be shared only inside the same source set.
- std::set<std::string> gridClaims;for(const auto& layer:state.layers)if(layer.kind=="tilemap")gridClaims.insert(layer.tilemapTilesetId);
+ // free source IDs and sheet IDs share only inside one free source set;
+ // grid references to those same sheets are explicitly user-approved.
  std::map<std::string,std::string> sourceOwners,sheetOwners;
  std::map<std::string,tiles::Tileset*> freeSheets;for(auto& set:state.tilesets)freeSheets.emplace(set.id,&set);
  std::map<std::string,std::vector<timeline::Cel*>> freeCels;for(auto& cel:state.cels)if(cel.freeTiles)freeCels[cel.layerId].push_back(&cel);
- // Legacy schema14 atlases have exclusive ownership, including empty cels.
+ // Legacy schema14 atlases retain exclusive free-layer ownership, including
+ // empty cels. Grid references may share the same resource.
  std::set<std::string> legacyClaims;
  for(const auto& layer:state.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&layer.freeTiles->sources.empty()){
   const auto& id=layer.freeTiles->legacyTilesetId;
-  corrupt(id.empty()||!freeSheets.count(id)||gridClaims.count(id)||!legacyClaims.insert(id).second,"Invalid legacy free tile atlas ownership");
+  corrupt(id.empty()||!freeSheets.count(id)||!legacyClaims.insert(id).second,"Invalid legacy free tile atlas ownership");
  }
  for(const auto& layer:state.layers)if(layer.kind=="free-tile"&&layer.freeTiles&&!layer.freeTiles->sources.empty()){
   const auto& data=*layer.freeTiles;const auto setName=unicode(data.setId);corrupt(setName.empty()||(setName.front()<=0xffff&&legacyjson::numberSpace(wchar_t(setName.front())))||(setName.back()<=0xffff&&legacyjson::numberSpace(wchar_t(setName.back()))),"Invalid free tile source set ID");
@@ -171,7 +172,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
    auto sourceOwner=sourceOwners.emplace(source.id,data.setId),sheetOwner=sheetOwners.emplace(source.tilesetId,data.setId);
    corrupt(sourceOwner.first->second!=data.setId||sheetOwner.first->second!=data.setId,"Conflicting free tile source ownership");
    const auto sheet=freeSheets.find(source.tilesetId);
-   corrupt(sheet==freeSheets.end()||sheet->second->tileIds.size()!=1||sheet->second->columns!=1||sheet->second->rows!=1||gridClaims.count(source.tilesetId),"Invalid free tile source sheet");
+   corrupt(sheet==freeSheets.end()||sheet->second->tileIds.size()!=1||sheet->second->columns!=1||sheet->second->rows!=1,"Invalid free tile source sheet");
   }
  }
  // ensureFreeTileTilesetOwnership names each owned sheet from its source;
@@ -203,8 +204,7 @@ PreparedImport prepareEditableImport(const ReadManifest& m) {
   while(true){if(const auto cached=celRoots.find(root->id);cached!=celRoots.end()){root=cached->second;break;}corrupt(!visited.insert(root->id).second,"Cyclic link");path.push_back(root);if(root->linkedCelId.empty())break;const auto next=celIds.find(root->linkedCelId);corrupt(next==celIds.end(),"Missing associated cel owner");root=&m.cels[next->second];}
   for(const auto* entry:path)celRoots.emplace(entry->id,root);return root;
  };
- // Legacy owns free-tile source resources separately from grid-edit resources.
- for(const auto& l:state.layers)if(l.freeTiles){std::set<std::string> owned;owned.insert(l.freeTiles->legacyTilesetId);for(const auto& source:l.freeTiles->sources)owned.insert(source.tilesetId);for(const auto& grid:state.layers)unsupported(grid.kind=="tilemap"&&owned.count(grid.tilemapTilesetId),"Mixed grid/free source ownership is not migrated");for(const auto& c:state.cels)if(c.tilemap)for(const auto& cell:c.tilemap->cells)unsupported(cell&&owned.count(cell->tilesetId),"Mixed grid/free source references are not migrated");}
+ // User-approved mixed grid/free references retain their shared resource ID.
  corrupt(m.layers.empty()||m.frames.empty(),"Missing layer or frame");
  corrupt(std::none_of(m.layers.begin(),m.layers.end(),[&](const auto& l){return l.id==m.activeLayerId;}),"Missing active layer");
  corrupt(std::none_of(m.frames.begin(),m.frames.end(),[&](const auto& f){return f.id==m.activeFrameId;}),"Missing active frame");

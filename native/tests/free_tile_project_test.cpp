@@ -284,21 +284,20 @@ void linkedFreeCelLifecycle(){
 }
 void modernFreeSourceOwnership(){
  // project-format-decode.ts: modern sources own a single 1x1 sheet,
- // never a grid-owned sheet; the same free source set may share its catalog.
+ // the approved grid/free sharing retains this geometry and stable catalog.
  auto original=fixture(false);check(original->createTilemapLayer(2,1,U"Ownership grid"),"Ownership grid fixture");
  for(bool recovery:{false,true}){
   const auto encoded=recovery?encodeRecoveryProject(*original):encodeEditableProject(*original);
   const auto baseline=readProjectManifest(encoded.bytes);
   const auto valid=prepareEditableImport(baseline);check(valid.timeline.layers.size()==3,"Shared free catalog and independent grid import together");
-  for(int invalid=0;invalid<4;++invalid){
+  for(int invalid=0;invalid<3;++invalid){
    auto manifest=baseline;
    auto sheet=std::find_if(manifest.tilesets.begin(),manifest.tilesets.end(),[](const auto& t){return t.id=="free-resource";});
    if(invalid==0)tiles::appendTile(*sheet,"forbidden-second-tile",{0,0});
    if(invalid==1)sheet->columns=2;
    if(invalid==2)sheet->rows=2;
-   if(invalid==3)for(auto& layer:manifest.layers)if(layer.kind=="tilemap")layer.tilemapTilesetId=sheet->id;
    bool rejected=false;try{prepareEditableImport(manifest);}catch(const Error& e){rejected=std::string(e.what())=="Invalid free tile source sheet";}
-   check(rejected,"Modern free sheet rejects legacy-forbidden geometry or grid ownership at exact import guard");
+   check(rejected,"Modern free sheet still rejects invalid single-source geometry");
   }
   check(prepareEditableImport(baseline).timeline.tilesets.size()==valid.timeline.tilesets.size(),"Rejected import leaves valid baseline unchanged");
  }

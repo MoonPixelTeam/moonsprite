@@ -7868,3 +7868,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 GIF/WebP失效图层目标回退
 
 对照onion-skin.ts::documentForAnimationLayerComposite、layer-export.ts及document-export.worker.ts，缺失图层ID应使用完整可见画布。移除动画导出专有拒绝，在共享prepareAnimationExport统一解析有效绘制目标，用于全部帧裁切和最终合成；保持目标类型互斥校验。GIF检查三种裁切模式的原始帧、尺寸、时长、帧顺序、loop及编码结果，WebP检查相同回退、范围/缩放和编码结果，两者验证源作品状态不变。正式Release及两测试构建成功，gif-export/webp-export两项CTest通过（0.23秒），来源与diff检查通过；未运行GUI或人工图像验收。来源见animationStaleLayerFallback20261118，整体迁移INCOMPLETE。
+
+
+## 2026-11-18 网格与自由瓦片共享资源图像缩放
+
+用户明确采用共享资源预乘透明度方案。resizeResourceImage复用既有按ID唯一资源计划，去除混合引用拒绝，共享资源走自由瓦片采样一次，网格及自由Cel按各自权威重绘；保持资源ID、单元格、实例、链接和既有快照Undo/Redo。可编辑导入允许共享，但保留现代单源表结构和自由资源集归属校验。扩展检查发现历史图集自动拆分及schema21拒绝历史元数据两处缺口，已修复为网格有引用时保留图集和原ID，并在清单读取时限定兼容；不保证旧版读取该原生共享扩展。48组既有真实旧版像素样本加入共享网格，另检查后台提交/取消、单元格独有引用、历史多tile图集、普通/恢复重开。最终tile-image-resize通过6.38秒、free-tile-project通过49.90秒、project-import通过0.06秒、project-manifest通过175.73秒，正式Release构建成功，来源1043文件及证据快照、diff检查通过。未GUI或人工图像验收；无性能优化。来源见sharedGridFreeResize20261118及shared-resource-image-resize-20261118.md，整体迁移INCOMPLETE。
