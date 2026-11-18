@@ -29605,6 +29605,12 @@
           "legacy/src/renderer/src/platform/font-service.ts"
         ],
         "adaptation": "Legacy import_system_font delegates to copy_font_into_library, reusing identical destination bytes. Native DirectWrite has no source pathname, so reuse existing imported bytes only with matching collection face index; retain resource ID and sidecar across service reload. Initial test exposed system catalog/internal family mismatch; family-name gate removed in favor of bytes+face identity. Real system-font fixture checks repeat import, file count, service reload, deletion and reimport. Sole formal Release and text-font-tests built; text-font CTest passed 0.95s. No GUI or manual image acceptance."
+      },
+      "unicodeFontKeys20261119": {
+        "evidence": [
+          "legacy/src/renderer/src/platform/font-service.ts"
+        ],
+        "adaptation": "uniqueOptions lowercases Unicode without trimming; fontUsageKey trims ECMAScript whitespace then lowercases. Native replaces ANSI UTF8-byte CharLowerBuffA with UTF16 Windows user-locale mapping and shared javascriptWhitespace; directory dedup uses untrimmed key, persisted usage uses trimmed key. Real preference fixture checks accented uppercase/lowercase, NBSP/ideographic-space trimming, counts and service reload. Initial fixture held preference stream open during replacement; closed before write and rerun passed. Sole formal Release built; text-font CTest passed 1.14s. Cross-platform/all-locale browser parity remains unproven."
       }
     },
     {
@@ -29638,6 +29644,12 @@
           "legacy/src/renderer/src/platform/font-service.ts"
         ],
         "adaptation": "Legacy import_system_font delegates to copy_font_into_library, reusing identical destination bytes. Native DirectWrite has no source pathname, so reuse existing imported bytes only with matching collection face index; retain resource ID and sidecar across service reload. Initial test exposed system catalog/internal family mismatch; family-name gate removed in favor of bytes+face identity. Real system-font fixture checks repeat import, file count, service reload, deletion and reimport. Sole formal Release and text-font-tests built; text-font CTest passed 0.95s. No GUI or manual image acceptance."
+      },
+      "unicodeFontKeys20261119": {
+        "evidence": [
+          "legacy/src/renderer/src/platform/font-service.ts"
+        ],
+        "adaptation": "uniqueOptions lowercases Unicode without trimming; fontUsageKey trims ECMAScript whitespace then lowercases. Native replaces ANSI UTF8-byte CharLowerBuffA with UTF16 Windows user-locale mapping and shared javascriptWhitespace; directory dedup uses untrimmed key, persisted usage uses trimmed key. Real preference fixture checks accented uppercase/lowercase, NBSP/ideographic-space trimming, counts and service reload. Initial fixture held preference stream open during replacement; closed before write and rerun passed. Sole formal Release built; text-font CTest passed 1.14s. Cross-platform/all-locale browser parity remains unproven."
       }
     },
     {

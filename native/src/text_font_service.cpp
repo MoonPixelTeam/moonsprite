@@ -1,4 +1,5 @@
 #include "text_font_service.h"
+#include "javascript_text.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkData.h"
@@ -23,7 +24,18 @@
 namespace moon {
 namespace {
 using Microsoft::WRL::ComPtr;
-std::string usageKey(std::string s){while(!s.empty()&&std::isspace(static_cast<unsigned char>(s.front())))s.erase(s.begin());while(!s.empty()&&std::isspace(static_cast<unsigned char>(s.back())))s.pop_back();if(!s.empty())CharLowerBuffA(s.data(),DWORD(s.size()));return s;}
+// font-service.ts keeps whitespace for directory identity, but trims usage keys.
+std::string familyKey(const std::string& family,bool trim=false){
+ auto wide=std::filesystem::u8path(family).wstring();
+ if(trim){auto first=std::find_if_not(wide.begin(),wide.end(),[](wchar_t c){return javascriptWhitespace(c);});auto last=std::find_if_not(wide.rbegin(),wide.rend(),[](wchar_t c){return javascriptWhitespace(c);}).base();wide=first<last?std::wstring(first,last):std::wstring{};}
+ if(wide.empty())return {};
+ const int count=LCMapStringEx(LOCALE_NAME_USER_DEFAULT,LCMAP_LOWERCASE,wide.data(),int(wide.size()),nullptr,0,nullptr,nullptr,0);
+ if(!count)throw std::runtime_error("Cannot normalize font family");std::wstring lower(count,L'\0');
+ if(!LCMapStringEx(LOCALE_NAME_USER_DEFAULT,LCMAP_LOWERCASE,wide.data(),int(wide.size()),lower.data(),count,nullptr,nullptr,0))throw std::runtime_error("Cannot normalize font family");
+ return std::filesystem::path(lower).u8string();
+}
+std::string usageKey(const std::string& family){return familyKey(family,true);}
+
 std::vector<char> fontBytes(const std::filesystem::path& p){std::ifstream in(p,std::ios::binary);if(!in)throw std::runtime_error("Cannot read text font");return {(std::istreambuf_iterator<char>(in)),{}};}
 sk_sp<SkData> fontData(const std::vector<char>& bytes){
  if(bytes.size()>128*1024*1024)throw std::length_error("Font exceeds memory limit");
@@ -46,7 +58,7 @@ TextFontService::TextFontService(std::filesystem::path library,std::filesystem::
  std::ifstream in(p.settings);std::string header;if(std::getline(in,header)&&header=="MoonSprite text-font-usage 1"){int size;if(in>>size)p.size=std::clamp(size,1,512);std::string family;int count;while(in>>std::quoted(family)>>count)if(count>0)p.usage[usageKey(family)]=count;}
 }
 std::vector<TextFontOption> TextFontService::catalog()const{
- auto files=impl_->fonts;std::sort(files.begin(),files.end(),[](const auto& a,const auto& b){return std::tie(a.family,a.id)<std::tie(b.family,b.id);});std::vector<TextFontOption> result;std::set<std::string> seen;for(const auto& f:files)if(f.imported&&seen.insert(usageKey(f.family)).second)result.push_back(f);for(int i=0;i<3;++i)for(const auto& f:files)if(f.builtIn&&f.family==builtinFamilies[i]&&seen.insert(usageKey(f.family)).second)result.push_back(f);if(seen.insert(usageKey("Noto Sans SC")).second)result.push_back({"Noto Sans SC",{},false,true,0,{}});auto rank=[](const std::string& f){for(int i=0;i<3;++i)if(f==builtinFamilies[i])return i;return f=="Noto Sans SC"?3:4;};std::stable_sort(result.begin(),result.end(),[&](const auto& a,const auto& b){const auto ua=impl_->usage.find(usageKey(a.family)),ub=impl_->usage.find(usageKey(b.family));const int ca=ua==impl_->usage.end()?0:ua->second,cb=ub==impl_->usage.end()?0:ub->second;return ca!=cb?ca>cb:rank(a.family)<rank(b.family);});return result;
+ auto files=impl_->fonts;std::sort(files.begin(),files.end(),[](const auto& a,const auto& b){return std::tie(a.family,a.id)<std::tie(b.family,b.id);});std::vector<TextFontOption> result;std::set<std::string> seen;for(const auto& f:files)if(f.imported&&seen.insert(familyKey(f.family)).second)result.push_back(f);for(int i=0;i<3;++i)for(const auto& f:files)if(f.builtIn&&f.family==builtinFamilies[i]&&seen.insert(familyKey(f.family)).second)result.push_back(f);if(seen.insert(familyKey("Noto Sans SC")).second)result.push_back({"Noto Sans SC",{},false,true,0,{}});auto rank=[](const std::string& f){for(int i=0;i<3;++i)if(f==builtinFamilies[i])return i;return f=="Noto Sans SC"?3:4;};std::stable_sort(result.begin(),result.end(),[&](const auto& a,const auto& b){const auto ua=impl_->usage.find(usageKey(a.family)),ub=impl_->usage.find(usageKey(b.family));const int ca=ua==impl_->usage.end()?0:ua->second,cb=ub==impl_->usage.end()?0:ub->second;return ca!=cb?ca>cb:rank(a.family)<rank(b.family);});return result;
 }
 std::vector<std::string> TextFontService::systemFamilies()const{std::vector<std::string> result;for(int i=0;i<impl_->manager->countFamilies();++i){SkString name;impl_->manager->getFamilyName(i,&name);if(name.size())result.emplace_back(name.c_str());}std::sort(result.begin(),result.end());result.erase(std::unique(result.begin(),result.end()),result.end());return result;}
 TextFontOption TextFontService::importFile(const std::filesystem::path& source){

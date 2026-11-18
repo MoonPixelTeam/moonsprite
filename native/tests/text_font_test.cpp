@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <windows.h>
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <map>
 #include <stdexcept>
 #define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
 using namespace moon;
@@ -18,5 +21,11 @@ int wmain(int argc,wchar_t** argv){try{
  const auto fileCount=fontFileCount();const auto repeated=restored.importSystem(systemFamily);CHECK(repeated.id==system.id&&repeated.file==system.file&&repeated.faceIndex==system.faceIndex&&fontFileCount()==fileCount);
  TextFontService reopened(library,bundled,settings);const auto persisted=reopened.importSystem(systemFamily);CHECK(persisted.id==system.id&&persisted.faceIndex==system.faceIndex&&fontFileCount()==fileCount);
  reopened.erase(persisted.id);CHECK(!std::filesystem::exists(system.file));const auto reimported=reopened.importSystem(systemFamily);CHECK(std::filesystem::is_regular_file(reimported.file)&&reimported.faceIndex==system.faceIndex);
+ // Legacy usage keys trim ECMAScript whitespace and lowercase Unicode.
+ reopened.recordUsage(u8"\u00a0\u00c9COLE\u3000");reopened.recordUsage(u8"\u00e9cole");
+ std::ifstream preferenceFile(settings);std::string header;std::getline(preferenceFile,header);int lastSize=0;preferenceFile>>lastSize;std::map<std::string,int> counts;std::string key;int count=0;while(preferenceFile>>std::quoted(key)>>count)counts[key]=count;
+ CHECK(counts[u8"\u00e9cole"]==2&&counts.count(u8"\u00a0\u00c9COLE\u3000")==0);preferenceFile.close();
+ TextFontService unicodeReload(library,bundled,settings);unicodeReload.recordUsage(u8"\u00c9cole");
+ std::ifstream reloadedPreferences(settings);std::getline(reloadedPreferences,header);reloadedPreferences>>lastSize;counts.clear();while(reloadedPreferences>>std::quoted(key)>>count)counts[key]=count;CHECK(counts[u8"\u00e9cole"]==3);
  std::cout<<"Native font decoding/threshold/import/preferences fixtures passed; scratch: "<<run.u8string()<<"\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
