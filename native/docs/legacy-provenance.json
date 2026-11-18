@@ -29598,6 +29598,13 @@
           "legacy/src/renderer/src/components/TextToolDialog.tsx"
         ],
         "adaptation": "Legacy delete_font rejects missing file and propagates filesystem removal errors; frontend only reloads catalog and chooses fallback on success. Native erase now rejects remove=false before mutating catalog or face cache. Isolated font test checks real Windows sharing violation, externally missing file, retained catalog identity and successful same-service retry after restoration. Sole formal Release and text-font-tests built; text-font CTest passed 0.20s. No manual GUI acceptance."
+      },
+      "systemFontReuse20261119": {
+        "evidence": [
+          "legacy/src-tauri/src/platform_fonts.rs",
+          "legacy/src/renderer/src/platform/font-service.ts"
+        ],
+        "adaptation": "Legacy import_system_font delegates to copy_font_into_library, reusing identical destination bytes. Native DirectWrite has no source pathname, so reuse existing imported bytes only with matching collection face index; retain resource ID and sidecar across service reload. Initial test exposed system catalog/internal family mismatch; family-name gate removed in favor of bytes+face identity. Real system-font fixture checks repeat import, file count, service reload, deletion and reimport. Sole formal Release and text-font-tests built; text-font CTest passed 0.95s. No GUI or manual image acceptance."
       }
     },
     {
@@ -29624,6 +29631,13 @@
           "legacy/src/renderer/src/components/TextToolDialog.tsx"
         ],
         "adaptation": "Legacy delete_font rejects missing file and propagates filesystem removal errors; frontend only reloads catalog and chooses fallback on success. Native erase now rejects remove=false before mutating catalog or face cache. Isolated font test checks real Windows sharing violation, externally missing file, retained catalog identity and successful same-service retry after restoration. Sole formal Release and text-font-tests built; text-font CTest passed 0.20s. No manual GUI acceptance."
+      },
+      "systemFontReuse20261119": {
+        "evidence": [
+          "legacy/src-tauri/src/platform_fonts.rs",
+          "legacy/src/renderer/src/platform/font-service.ts"
+        ],
+        "adaptation": "Legacy import_system_font delegates to copy_font_into_library, reusing identical destination bytes. Native DirectWrite has no source pathname, so reuse existing imported bytes only with matching collection face index; retain resource ID and sidecar across service reload. Initial test exposed system catalog/internal family mismatch; family-name gate removed in favor of bytes+face identity. Real system-font fixture checks repeat import, file count, service reload, deletion and reimport. Sole formal Release and text-font-tests built; text-font CTest passed 0.95s. No GUI or manual image acceptance."
       }
     },
     {

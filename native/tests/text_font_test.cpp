@@ -12,5 +12,11 @@ int wmain(int argc,wchar_t** argv){try{
  auto blocked=CreateFileW(imported.file.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(blocked!=INVALID_HANDLE_VALUE);bool failed=false;try{restored.erase(imported.id);}catch(const std::exception&){failed=true;}CloseHandle(blocked);CHECK(failed&&present()&&std::filesystem::exists(imported.file));
  std::filesystem::remove(imported.file);failed=false;try{restored.erase(imported.id);}catch(const std::exception&){failed=true;}CHECK(failed&&present());
  std::filesystem::copy_file(local,imported.file);restored.erase(imported.id);CHECK(!std::filesystem::exists(imported.file)&&!present());
+ // Real system-font imports reuse persistent bytes and collection face.
+ const auto systemFamily=fonts.systemFamilies().front();const auto system=restored.importSystem(systemFamily);CHECK(system.imported&&std::filesystem::is_regular_file(system.file));
+ auto fontFileCount=[&]{std::size_t count=0;for(const auto& entry:std::filesystem::directory_iterator(library))if(entry.is_regular_file())++count;return count;};
+ const auto fileCount=fontFileCount();const auto repeated=restored.importSystem(systemFamily);CHECK(repeated.id==system.id&&repeated.file==system.file&&repeated.faceIndex==system.faceIndex&&fontFileCount()==fileCount);
+ TextFontService reopened(library,bundled,settings);const auto persisted=reopened.importSystem(systemFamily);CHECK(persisted.id==system.id&&persisted.faceIndex==system.faceIndex&&fontFileCount()==fileCount);
+ reopened.erase(persisted.id);CHECK(!std::filesystem::exists(system.file));const auto reimported=reopened.importSystem(systemFamily);CHECK(std::filesystem::is_regular_file(reimported.file)&&reimported.faceIndex==system.faceIndex);
  std::cout<<"Native font decoding/threshold/import/preferences fixtures passed; scratch: "<<run.u8string()<<"\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

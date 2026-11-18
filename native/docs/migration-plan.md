@@ -8145,3 +8145,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体删除失败迁移
 
 对照 platform_fonts.rs::delete_font 和 TextToolDialog.tsx::removeSelectedFont，字体文件不存在或无法删除时明确失败，保留目录身份和字形缓存，成功后才进入既有目录刷新/字体回退。修复 remove 返回 false 被当作成功的问题。隔离测试实际持有 Windows 禁止删除共享句柄、移除测试字体，再恢复文件并在同一服务重试，验证失败保留目录、成功移除。唯一正式 Release 及 text-font-tests 构建成功（text-font-delete-build.log），text-font CTest 通过（0.20秒）。未 GUI 或人工图像验收，整体迁移仍 INCOMPLETE。来源见 fontDeleteFailure20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 系统字体重复导入资源迁移
+
+对照 platform_fonts.rs::import_system_font/copy_font_into_library，承接相同字体内容复用资源。DirectWrite 无原文件路径，原生按完整字体字节及集合 face 索引复用已导入项，保留资源 ID 和 sidecar，避免每次创建副本。首次定向检查发现系统目录名称与字体内部名称不同，删除名称匹配条件后通过。实际系统字体夹具覆盖连续导入、文件数不增长、重建服务后复用、删除及重新导入。唯一正式 Release 和 text-font-tests 构建成功（system-font-reuse-build.log），text-font CTest 通过（0.95秒）。未 GUI 或人工图像验收，整体迁移仍 INCOMPLETE。来源见 systemFontReuse20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
