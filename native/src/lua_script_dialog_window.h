@@ -86,7 +86,7 @@ public:
  std::string draftValuesForCheck()const{return state_.valuesJson();}
  void clickForCheck(const std::string& key){for(auto& r:rows_)if(id(r.model)==key){auto b=dynamic_cast<PixelButton*>(r.widget);if(!b)throw std::runtime_error("Expected script button");b->Click();return;}throw std::runtime_error("Script button missing");}
  bool busyForCheck()const{return busy_;}
- void setBusy(bool busy){busy_=busy;close_->setEnabled(!busy);for(auto& r:rows_)if(r.widget)r.widget->setEnabled(!busy&&r.model.GetNamedBoolean(L"enabled"));}
+ void setBusy(bool busy){busy_=busy;if(color_)color_->setEditingEnabled(!busy);close_->setEnabled(!busy);for(auto& r:rows_)if(r.widget)r.widget->setEnabled(!busy&&r.model.GetNamedBoolean(L"enabled"));}
  void replace(std::string model){resetting_=true;if(color_)color_->closeWindow(nullptr);model_=Object::Parse(winrt::to_hstring(model));state_.reset(model);build();resetting_=false;}
  gfx::Size minimumDialogSize(int)const override{return {320*uiScale,100*uiScale};}
  int preferredHeight()const{return DialogLayout::bodyTop+std::min(total_,360)+6;}

@@ -8320,3 +8320,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 颜色通道草稿与采样确认迁移
 
 对照ColorValueControl.tsx通道NumberInput默认live=false及onValueChange确认、sampledColorHandlerRef=applyEditorColor，通道键入不再即时改色，Enter/失焦经已有PixelEntry表达式和边界处理提交；滚轮/拖调从已接受的四舍五入通道值调整并确认。模式切换更新通道边界；采样在apply后确认并复用RGBA去重。既有颜色smoke覆盖草稿隔离、确认、表达式和重复采样；既有真实失焦夹具将等于原红值51的输入改为52，保留真实焦点与回调断言。首轮颜色检查因此同值样本失败，修正夹具后唯一正式Release重建成功（color-channel-commit-recheck-build.log），--color-editor-check与--script-report-check实际退出均为0。来源覆盖与证据快照、diff检查见本轮结果，无人工交互/图像验收。完整数字步进按钮/过滤及busy颜色窗口生命周期仍partial，整体INCOMPLETE；保留既有main.cpp及用户数据。
+
+## 2026-11-19 Lua 忙碌期间颜色编辑禁用迁移
+
+实际对照LuaScriptDialog.tsx的disabled与preserveEditorOnDisable，以及ColorValueControl.tsx禁用效果和各控件disabled属性：Lua忙碌时保留已打开颜色窗口，禁用模式、HEX、通道、色板与采样，停止已有采样并清理HEX右键捕获；关闭和比较色复制仍可用。ColorEditorPopup增加默认开启的编辑门控，Lua setBusy接线，色板刷新继承门控，apply和HEX防止禁用期间改色。既有颜色smoke检查禁用/恢复、关闭与复制可用及拒绝采样改色。唯一正式Release构建成功（color-busy-build.log）；带主题/指针的--color-editor-check、--script-report-check、--script-window-host-check实际退出均为0。来源覆盖1043及证据快照、diff通过，无人工交互/图像验收。返回模型时保留颜色窗口、目标隐藏/禁用的精确生命周期仍partial，整体INCOMPLETE；保留main.cpp及用户数据。
