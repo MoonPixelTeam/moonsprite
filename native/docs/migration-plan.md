@@ -8080,3 +8080,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 透明色导入身份迁移
 
 对照 workspace-palette.ts::applyPalette 和 document-model.ts::findOrAddPaletteColor，导入先复用未使用的精确颜色身份，未匹配的透明颜色回退到 ID0，不消耗普通颜色分配器；显式新增透明色仍创建独立身份。普通与 Lua 提取入口采用相同回退。调整色板增长测试的独立透明色构造，并覆盖透明输入重复、原身份优先、无变化历史及 Undo/Redo。Release 两个测试目标构建成功，CTest lua-script-invocation、palette-growth 均通过（5.84秒）。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移 INCOMPLETE。来源见 paletteTransparentImport20261119。
+
+
+## 2026-11-19 色板迁移正式程序集成
+
+已将73118fac之后至d723a85b的色板迁移编入唯一正式产物 native/build/Release/moonsprite-native.exe，包括Lua提取跨帧事务、导入身份与名称快照、索引色透明槽粘贴、排序反转与渐变的重复身份处理、直接改色改名首项规则及透明色导入ID0回退。Release moonsprite-native构建退出0（palette-migration-formal-build.log），使用正式主题和指针，Start-Process -WindowStyle Hidden -Wait -PassThru运行--script-entry-check退出0。未重复已通过的定向核心测试，未人工图像验收。生产索引色准入保持关闭，整体迁移INCOMPLETE。本次仅提交集成记录，不提交生成物、用户数据或既有main.cpp状态。
