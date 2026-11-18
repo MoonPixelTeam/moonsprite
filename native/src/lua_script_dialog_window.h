@@ -48,8 +48,8 @@ class ScriptDialogWindow final:public PixelDialog {
  static Pixel packed(const winrt::Windows::Data::Json::IJsonValue& v){if(v.ValueType()!=Type::Object)return 0xff000000;const auto o=v.GetObject();Pixel p=0;int shift=0;for(auto k:{L"r",L"g",L"b",L"a"}){p|=Pixel(std::clamp(number(o,k,k==std::wstring(L"a")?255:0),0.,255.))<<shift;shift+=8;}return p;}
  static std::string colorJson(Pixel p){Object o;int shift=0;for(auto k:{L"r",L"g",L"b",L"a"}){o.Insert(k,Value::CreateNumberValue((p>>shift)&255));shift+=8;}return winrt::to_string(o.Stringify());}
  void openColor(const std::string& key,PixelButton* button){
-  if(busy_)return;if(!color_){color_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,colorStorage_);color_->Close.connect([this](ui::CloseEvent&){auto key=std::move(colorId_);colorId_.reset();if(key&&!closing_&&!resetting_)commit(*key,script::DialogState::Commit::Change);});}
-  colorId_=key;color_->setDisplay(display(),false);color_->open(button->bounds(),display()->bounds(),button->swatch,U"颜色",{},[this,key,button](Pixel p){draft(key,colorJson(p));button->swatch=p;button->invalidate();},{});
+  if(busy_)return;if(!color_){color_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,colorStorage_);color_->Close.connect([this](ui::CloseEvent&){auto key=std::move(colorId_);colorId_.reset();});}
+  colorId_=key;color_->setDisplay(display(),false);color_->open(button->bounds(),display()->bounds(),button->swatch,U"颜色",{},[this,key,button](Pixel p){draft(key,colorJson(p));button->swatch=p;button->invalidate();},{},[this,key](Pixel p){if(closing_||resetting_)return;draft(key,colorJson(p));commit(key,script::DialogState::Commit::Change);});
  }
  void layout(){
   const auto r=bounds();layoutHeaderButton(close_);const auto body=uiPhysical({6,DialogLayout::bodyTop,r.w/uiScale-12,std::max(1,r.h/uiScale-DialogLayout::bodyTop-6)}).offset(r.origin());viewport_->setBounds(body);

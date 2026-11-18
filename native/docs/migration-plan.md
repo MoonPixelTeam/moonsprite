@@ -8312,3 +8312,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 单选键盘与重复选项匹配迁移
 
 实际对照 LuaScriptDialog.tsx 的 button role=radio：Enter/Space激活；原生此前复用PixelCheckbox时Enter被公共复选框规则屏蔽。Lua局部Radio仅将Enter/小键盘Enter交给已有MIT ui::Button，保留Space和DialogState连续单选组、重复选择与busy事务。未替换素材，单选外观仍是已登记缺口。对照ThemedSelect.tsx options.find，组合框重复字符串匹配第一项，修正此前最后一项覆盖；未知值及空选项回退不变。实际弹窗verify用已挂载/聚焦Radio检查三种按键共三次激活；重复选项为源码分支核对，未另加GUI样本。唯一正式Release构建成功（lua-control-selection-build.log），正式程序--script-report-check实际退出0，来源覆盖1043及证据快照、diff通过。未人工键盘/图像验收，整体INCOMPLETE，保留已有main.cpp及用户文件。
+
+## 2026-11-19 Lua 颜色控件确认回调迁移
+
+实际对照 ColorValueControl.tsx::commitEditorColor/applyEditorColor 与通道范围控件，颜色预览和确认回调分离，确认按最近已提交RGBA去重。ColorEditorPopup新增可选committed回调，滑块交互结束（含离散滚轮）、HEX确认/粘贴及色板选择触发确认；既有changed预览调用保留。Lua弹窗消费确认回调，去除关闭窗口时无条件发送change，避免未改色或重复确认的脚本通知。既有颜色smoke补充预览不提前提交、重复确认去重和HEX确认检查。唯一正式Release构建成功（lua-color-commit-build.log），正式程序带主题/指针的--color-editor-check和--script-report-check均等待实际退出0。来源覆盖1043及证据快照、diff检查通过。未人工颜色交互或图像验收；通道数字输入完整NumberInput时机、采样提交及busy期间保留编辑器等仍有缺口，不声明完整ColorValueControl迁移。整体INCOMPLETE，保留已有main.cpp及用户文件。

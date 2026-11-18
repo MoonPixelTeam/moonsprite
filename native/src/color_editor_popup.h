@@ -110,7 +110,8 @@ class ColorEditorPopup final : public PixelDialog {
   PixelEntry* hex_=nullptr;PixelButton *previousButton_=nullptr,*currentButton_=nullptr,*close_=nullptr,*sample_=nullptr;
   std::vector<PixelButton*> paletteButtons_;
   std::filesystem::path storage_;std::u32string role_;
-  std::function<void(std::uint32_t)> changed_;
+  std::function<void(std::uint32_t)> changed_,committed_;
+  std::uint32_t committedColor_=0;
   std::function<void(bool)> samplingChanged_;
   inline static constexpr ColorValueMode modes_[]{ColorValueMode::Hsv,ColorValueMode::Rgb,ColorValueMode::Lab,ColorValueMode::Gray,ColorValueMode::Palette,ColorValueMode::Hsl,ColorValueMode::Cmyk};
   PixelButton* button(std::u32string text,std::function<void()> action){auto b=new StatusToastControl<PixelButton>(copyToast_,font_,skin_,std::move(text),std::move(action));addChild(b);return b;}
@@ -143,7 +144,7 @@ class ColorEditorPopup final : public PixelDialog {
     for(auto it=paletteButtons_.rbegin();it!=paletteButtons_.rend();++it)available[static_cast<PaletteChoice*>(*it)->colorId].push_back(*it);
     paletteButtons_.clear();paletteEntries_=palette;
     for(const auto& entry:palette){const int index=int(paletteButtons_.size());auto& existing=available[entry.id];PaletteChoice* b;
-      if(existing.empty()){b=new PaletteChoice(copyToast_,font_,skin_,U"",[]{});addChild(b);b->Click.connect([this,b]{if(b->isEnabled()&&b->parent()==this)apply(b->swatch);});}
+      if(existing.empty()){b=new PaletteChoice(copyToast_,font_,skin_,U"",[]{});addChild(b);b->Click.connect([this,b]{if(b->isEnabled()&&b->parent()==this){apply(b->swatch);commitColor();}});}
       else{b=static_cast<PaletteChoice*>(existing.back());existing.pop_back();}
       b->colorId=entry.id;b->swatch=entry.color;b->active=entry.color==current_;
       b->paletteCell=true;b->paletteSharedSelection=true;b->paletteViewport=[this]{return paletteViewport_;};
@@ -163,7 +164,7 @@ class ColorEditorPopup final : public PixelDialog {
   }
   void pasteHex(){
     std::optional<std::string> text;try{text=readClipboard_();}catch(...){return;}
-    std::uint32_t color;if(text&&!text->empty()&&pickerParseRgbaHex(unicodeText(*text),color,int(current_>>24))){apply(color);hex_->setText(colorValueHex(current_));}
+    std::uint32_t color;if(text&&!text->empty()&&pickerParseRgbaHex(unicodeText(*text),color,int(current_>>24))){apply(color);commitColor();hex_->setText(colorValueHex(current_));}
   }
   void revealPalette(int index){
     if(mode_!=ColorValueMode::Palette||index<0||index>=int(paletteButtons_.size()))return;
@@ -181,9 +182,10 @@ class ColorEditorPopup final : public PixelDialog {
     if(!hex_->hasFocus())hex_->setText(colorValueHex(current_));
     previousButton_->swatch=previous_;currentButton_->swatch=current_;updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();refreshCopyFeedback();
   }
+  void commitColor(){if(current_==committedColor_)return;committedColor_=current_;if(committed_)committed_(current_);}
   void apply(std::uint32_t color,bool derive=true){current_=color;sync(derive);if(changed_)changed_(color);}
   void updateField(int i,double value){const auto fields=colorValueFields(mode_);if(i>=int(fields.size())||!std::isfinite(value))return;values_[i]=std::clamp(value,double(fields[i].minimum),double(fields[i].maximum));apply(colorFromValues(mode_,values_,current_),false);}
-  void commitHex(){if(updating_)return;std::uint32_t next;if(pickerParseRgbaHex(unicodeText(hex_->text()),next,int(current_>>24))&&next!=current_)apply(next);hex_->setText(colorValueHex(current_));}
+  void commitHex(){if(updating_)return;std::uint32_t next;if(pickerParseRgbaHex(unicodeText(hex_->text()),next,int(current_>>24))&&next!=current_)apply(next);hex_->setText(colorValueHex(current_));commitColor();}
   bool samplingFilters_=false;
   void samplingFilters(bool enabled){
     if(enabled==samplingFilters_)return;samplingFilters_=enabled;
@@ -245,10 +247,10 @@ public:
     sample_=button(U"",[this]{setSampling(!sampling_);});sample_->iconSkin=&icons_;sample_->icon="tool-eyedropper-normal";
     paletteBar_=new StatusToastControl<PixelScrollBar>(copyToast_,skin_,true);addChild(paletteBar_);paletteBar_->wheelStep=15*uiScale;paletteBar_->changed=[this](int value){paletteScroll_=value;layout();invalidate();};
     copyFeedback_.Tick.connect([this]{copyFeedback_.stop();copiedSwatch_=0;refreshCopyFeedback();});
-    for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};
+    for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};slider->interactionCommit=[this]{commitColor();};
       slider->colorGradient=[this,i](double t){auto next=values_;const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return current_;next[i]=fields[i].minimum+t*(fields[i].maximum-fields[i].minimum);return colorFromValues(mode_,next,current_);};
       auto entry=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->Change.connect([this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size())updateField(i,v);}catch(...){}});entry->blur=[this]{sync(false);};entry->accept=[this]{sync(false);};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
-    Close.connect([this](ui::CloseEvent&){static_cast<HexEntry*>(hex_)->cancelContextGesture();commitHex();if(sampling_)setSampling(false);paletteFilters(false);changed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
+    Close.connect([this](ui::CloseEvent&){static_cast<HexEntry*>(hex_)->cancelContextGesture();commitHex();if(sampling_)setSampling(false);paletteFilters(false);changed_={};committed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
     mode_=modes_[availableModes().front()];instances_.push_back(this);
     for(int i=0;i<7;++i)tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));
   }
@@ -275,8 +277,8 @@ public:
     const int rowHeight=mode_==ColorValueMode::Palette?16:textControlHeight;
     return DialogLayout::bodyTop+textControlHeight+2+rows*rowHeight+(rows-1)*2+6;
   }
-  void open(gfx::Rect trigger,gfx::Rect viewport,std::uint32_t color,std::u32string role,const std::vector<std::uint32_t>& palette,std::function<void(std::uint32_t)> changed,std::function<void(bool)> samplingChanged){
-    previous_=current_=color;role_=std::move(role);changed_=std::move(changed);samplingChanged_=std::move(samplingChanged);sample_->setEnabled(bool(samplingChanged_));resident_=sampling_=false;setClickBehavior(ClickBehavior::CloseOnClickInOtherWindow);
+  void open(gfx::Rect trigger,gfx::Rect viewport,std::uint32_t color,std::u32string role,const std::vector<std::uint32_t>& palette,std::function<void(std::uint32_t)> changed,std::function<void(bool)> samplingChanged,std::function<void(std::uint32_t)> committed={}){
+    committedColor_=color;committed_=std::move(committed);previous_=current_=color;role_=std::move(role);changed_=std::move(changed);samplingChanged_=std::move(samplingChanged);sample_->setEnabled(bool(samplingChanged_));resident_=sampling_=false;setClickBehavior(ClickBehavior::CloseOnClickInOtherWindow);
     paletteScroll_=0;if(paletteProvider_)updatePalette(paletteProvider_());else replacePalette(palette);
     int w=320,h=preferredHeight();std::ifstream in(storage_);in>>w>>h;w=std::clamp(w,1,640);h=std::clamp(h,1,500);const auto floor=minimumDialogSize(w*uiScale);w=std::max(floor.w,std::min(w*uiScale,viewport.w));h=std::max(floor.h,std::min(h*uiScale,viewport.h));
     const int x=std::clamp(trigger.x,viewport.x,std::max(viewport.x,viewport.x2()-w)),y=trigger.y2()+h<=viewport.y2()?trigger.y2():std::max(viewport.y,trigger.y-h);
@@ -378,6 +380,7 @@ public:
     changed_=savedChanged;clipboard_=savedClipboard;
   }
   void smoke(){
+    {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedColor=current_,savedAccepted=committedColor_;int drafts=0,commits=0;changed_=[&](auto){++drafts;};committed_=[&](auto){++commits;};committedColor_=current_;apply(current_^1u);if(drafts!=1||commits)throw std::runtime_error("Color draft committed early");commitColor();commitColor();if(commits!=1)throw std::runtime_error("Color duplicate commit");hex_->setText(colorValueHex(current_^2u));commitHex();if(commits!=2||drafts!=2)throw std::runtime_error("Color HEX commit missing");current_=savedColor;committedColor_=savedAccepted;changed_=savedChanged;committed_=savedCommitted;sync(true);}
     auto check=[](bool v,const char* why){if(!v)throw std::runtime_error(why);};
     check(icons_.assets.patches.count(sample_->icon)!=0,"Missing legacy eyedropper icon");
     check(skin_.assets.patches.count("icon.marker-light") && skin_.assets.patches.count("icon.marker-dark"),"Missing shared picker markers");
