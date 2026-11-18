@@ -8324,3 +8324,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 忙碌期间颜色编辑禁用迁移
 
 实际对照LuaScriptDialog.tsx的disabled与preserveEditorOnDisable，以及ColorValueControl.tsx禁用效果和各控件disabled属性：Lua忙碌时保留已打开颜色窗口，禁用模式、HEX、通道、色板与采样，停止已有采样并清理HEX右键捕获；关闭和比较色复制仍可用。ColorEditorPopup增加默认开启的编辑门控，Lua setBusy接线，色板刷新继承门控，apply和HEX防止禁用期间改色。既有颜色smoke检查禁用/恢复、关闭与复制可用及拒绝采样改色。唯一正式Release构建成功（color-busy-build.log）；带主题/指针的--color-editor-check、--script-report-check、--script-window-host-check实际退出均为0。来源覆盖1043及证据快照、diff通过，无人工交互/图像验收。返回模型时保留颜色窗口、目标隐藏/禁用的精确生命周期仍partial，整体INCOMPLETE；保留main.cpp及用户数据。
+
+## 2026-11-19 Lua 返回模型保留颜色编辑窗口迁移
+
+实际对照 LuaScriptDialog.tsx 按 control.id 保留 ScriptControl，以及 ColorValueControl.tsx 的颜色属性同步与 disabled/preserveEditorOnDisable 效果。原生返回模型重建行控件时保留同一可见且启用颜色目标的弹窗及窗口几何；外部颜色变化更新编辑值，目标缺失、隐藏、禁用或改变类型则关闭。预览回调按 ID 查找当前按钮，避免访问已删除控件。既有真实弹窗 verify 覆盖忙碌模型返回保留、重建按钮收到回调及显式禁用关闭，其余关闭条件为源码核对。唯一正式 Release 构建成功（color-model-retention-build.log），带正式主题/指针的 --color-editor-check、--script-report-check、--script-window-host-check 等待实际退出均为0。来源覆盖1043文件及证据快照、diff检查通过；未人工交互或图像验收，整体迁移INCOMPLETE。保留既有main.cpp及用户文件，不提交生成物。

@@ -294,6 +294,8 @@ public:
     for(auto slider:sliders_)slider->setEnabled(enabled);
     for(auto choice:paletteButtons_)choice->setEnabled(enabled);
   }
+  // External controlled value update; retain popup geometry and previous swatch.
+  void receiveColor(std::uint32_t color){if(color==current_)return;current_=committedColor_=color;sync(true);hex_->setText(colorValueHex(current_));}
   bool sampling()const{return sampling_;}
   void sampled(std::uint32_t color){apply(color);commitColor();}
   void finishSampling(){if(sampling_)setSampling(false);}
