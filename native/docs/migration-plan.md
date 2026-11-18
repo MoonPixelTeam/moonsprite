@@ -8165,3 +8165,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字布局切换迁移
 
 对照 TextToolDialog.tsx::setLayoutMode/boxedLayout，自由文字切到文字框按当前自由渲染尺寸初始化，保留原点、样式和变换；已是文字框时保留编辑后的尺寸。返回自由文字清除活动框体尺寸，重新切入重新测量；自由模式禁用对齐和原生已有尺寸字段。原生非可选整数尺寸在自由模式使用默认值占位，渲染与再次切换不使用旧框尺寸。唯一正式 Release 构建成功（text-layout-switch-build.log），正式主题与指针下 --text-tool-check 等待实际退出0。新增检查覆盖两种间距×两种渲染模式、原点、初始化尺寸、重复选择、编辑尺寸、控件禁用和重新测量，沿用原有确认/取消检查。未人工图像验收，不声明浏览器字形等价，整体迁移 INCOMPLETE。来源见 textLayoutSwitch20261119；保留既有 main.cpp 状态及用户数据，不提交生成物。
+
+
+## 2026-11-19 文字数字输入提交迁移
+
+对照 TextToolDialog.tsx 数字字段和 NumberInput.tsx live=false，字号/行距/字距复用 PixelEntry 延迟输入、表达式和提交值步进；Enter/失焦/确认提交，范围限制后按 Math.round 取整，保留 UTF16 选中文字样式及字号偏好。原生已有框体尺寸接入同一适配。唯一正式 Release 构建成功（text-number-input-build.log）。首次 --text-tool-check 遇到通用剪贴板夹具仍要求即时 Change，改为夹具显式普通输入模式后重新构建；正式主题/指针下检查实际退出0。新增断言覆盖延迟草稿、表达式、错误恢复、边界、正负半值取整、步进和选区，沿用文字确认/取消及通用剪贴板/上下文检查。混合值空白恢复仍待迁移，不声明数字组件完全等价。来源覆盖及diff检查另记本轮结果；未人工图像验收，整体迁移 INCOMPLETE。保留既有 main.cpp 状态，不提交生成物和用户数据。
