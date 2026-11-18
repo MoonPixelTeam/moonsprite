@@ -255,7 +255,7 @@ bool Editor::restoreExportMemory(bool frames){
 
     auto entries=readExportMemory();auto it=std::find_if(entries.begin(),entries.end(),[&](const auto& r){return r.identity==exportMemoryIdentity();});if(it==entries.end())return false;
 
-    auto p=it->settings;if(frames){if(p.kind==1||p.format>6)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;p.animation.frameEnd=int(currentDocument().timeline().state().frames.size());}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;p.slices=false;p.sliceId.clear();}
+    auto p=it->settings;if(frames){if(p.kind==1||p.format>6)p.format=4;if(p.kind==0){p.animation.scalePercent=p.image.scalePercent;p.animation.trim=p.image.trim;p.animation.trimCommon=p.image.trimCommon;}p.kind=2;p.animation.layerId.clear();p.animation.selection=false;p.allLayers=false;p.slices=false;p.sliceId.clear();}
 
     else if(p.kind==2&&currentDocument().timeline().state().frames.size()<=1){p.kind=0;p.image.scalePercent=p.animation.scalePercent;p.image.trim=p.animation.trim;p.image.trimCommon=p.animation.trimCommon;p.image.automatic=p.format==4;p.image.selection=false;p.image.layerId.clear();}
 
@@ -263,7 +263,8 @@ bool Editor::restoreExportMemory(bool frames){
 
     if(!it->directory.empty())exportDirectory_=std::filesystem::u8path(it->directory);exportFilename_->setText(it->filename);auto name=std::filesystem::u8path(it->filename);name.replace_extension(exportExtension());exportFilename_->setText(name.u8string());
 
-    const bool knownPreset=std::any_of(savedExportPresets_.begin(),savedExportPresets_.end(),[&](const auto& preset){return preset.name==p.name&&preset.kind==p.kind&&preset.format==p.format&&preset.image.selection==p.image.selection&&preset.image.layerId==p.image.layerId&&preset.animation.layerId==p.animation.layerId&&preset.animation.selection==p.animation.selection&&preset.allLayers==p.allLayers&&preset.slices==p.slices&&preset.sliceId==p.sliceId;});
+    const auto target=[](const ExportPreset& value){if(value.kind==2)return 5;if(value.slices)return 3;if(value.allLayers)return 2;if(value.kind==0?value.image.selection:value.animation.selection)return 1;if(!(value.kind==0?value.image.layerId:value.animation.layerId).empty())return 4;return 0;};
+    const bool knownPreset=std::any_of(savedExportPresets_.begin(),savedExportPresets_.end(),[&](const auto& preset){return preset.name==p.name&&preset.kind==p.kind&&preset.format==p.format&&target(preset)==target(p);});
 
     if(!knownPreset)exportPresets_.name->setText("");updateExportPresetOptions();refresh();return true;
 

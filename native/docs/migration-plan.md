@@ -7953,3 +7953,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出预设选择与删除
 
 对照ExportDialogHost.tsx的预设onChange和deletePreset，选择占位项时清空名称并保留导出设置；删除路径裁剪名称，空名称直接返回。扩展既有--export-memory-check覆盖裁剪名称删除后的持久化及空名称不改草稿。正式Release构建、该检查退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportPresetSelection20261118。
+
+
+## 2026-11-18 导出记忆范围与预设目标恢复
+
+对照ExportDialogHost.tsx的openExport，显式帧序列入口保留静态导出记忆中的隐藏起止帧、循环段和方向，不再覆盖结束帧。预设名称按格式与目标类别恢复，不再要求图层或切片资源ID一致。扩展--export-memory-check覆盖指定范围和循环段、目标不匹配清名、同类图层目标身份变化仍保留名称。正式Release构建及该检查退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportMemoryRangeTarget20261118。

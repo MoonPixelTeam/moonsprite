@@ -25811,6 +25811,13 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Match preset placeholder selection by clearing the preset name while retaining export options. Match deletePreset name trimming and empty-name no-op. Existing export-memory check validates trimmed deletion persistence and empty draft preservation."
+      },
+      "exportMemoryRangeTarget20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "Preserve remembered static hidden animation endpoints when requesting frame sequence; existing preset name restoration compares format and target category rather than resource identity, matching openExport. Production memory check covers explicit and loop range, direction, target mismatch and layer identity independence."
       }
     },
     {
@@ -26851,6 +26858,13 @@
           "legacy/src/renderer/src/core/export-settings.ts"
         ],
         "nativeAdaptation": "Derive animated preset and remembered format solely from current GIF/WebP selection, excluding inactive frame sequence flags. Keep existing GIF format zero and WebP six representation. Extend actual switched animation export check to inspect persisted memory format for GIF/WebP and loop/range variants."
+      },
+      "exportMemoryRangeTarget20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/core/export-settings.ts"
+        ],
+        "nativeAdaptation": "Preserve remembered static hidden animation endpoints when requesting frame sequence; existing preset name restoration compares format and target category rather than resource identity, matching openExport. Production memory check covers explicit and loop range, direction, target mismatch and layer identity independence."
       }
     },
     {
