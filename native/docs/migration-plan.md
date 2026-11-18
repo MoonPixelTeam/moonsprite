@@ -8160,3 +8160,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 系统字体搜索选择迁移
 
 对照 TextToolDialog.tsx 系统字体 searchable ThemedSelect 与 ThemedSelect.tsx filteredGroups/select，原生系统字体入口支持裁剪 ECMAScript 空白、用户语言 Unicode 小写子串搜索、空查询全部结果、滚动与选择后导入；Esc 和外部点击取消，关闭后焦点回到入口。复用 PixelDialog/PixelEntry/PixelButton/PixelScrollBar，按共享 DialogLayout 排版并随显示区高度减少可见行。唯一正式 Release 构建成功（system-font-search-build.log），正式主题与指针下 --text-tool-check 实际退出0；新增真实弹窗检查覆盖自动聚焦、筛选、无匹配、清空查询、滚动边界、行选择和 Esc 取消。外部点击关闭经公共 PopupWindow 源码核对，未做人工点击/图像验收。来源覆盖和 diff 检查通过。系统字体按各自字体显示名称的字形预览仍未迁移，整体迁移 INCOMPLETE。来源见 systemFontSearch20261119；保留既有 main.cpp 状态，不提交生成物或用户数据。
+
+
+## 2026-11-19 文字布局切换迁移
+
+对照 TextToolDialog.tsx::setLayoutMode/boxedLayout，自由文字切到文字框按当前自由渲染尺寸初始化，保留原点、样式和变换；已是文字框时保留编辑后的尺寸。返回自由文字清除活动框体尺寸，重新切入重新测量；自由模式禁用对齐和原生已有尺寸字段。原生非可选整数尺寸在自由模式使用默认值占位，渲染与再次切换不使用旧框尺寸。唯一正式 Release 构建成功（text-layout-switch-build.log），正式主题与指针下 --text-tool-check 等待实际退出0。新增检查覆盖两种间距×两种渲染模式、原点、初始化尺寸、重复选择、编辑尺寸、控件禁用和重新测量，沿用原有确认/取消检查。未人工图像验收，不声明浏览器字形等价，整体迁移 INCOMPLETE。来源见 textLayoutSwitch20261119；保留既有 main.cpp 状态及用户数据，不提交生成物。

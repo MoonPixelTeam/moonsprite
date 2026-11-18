@@ -30182,7 +30182,8 @@
         "native/.cache/aseprite/src/ui/property.h",
         "native/.cache/aseprite/src/ui/textcmd.h",
         "legacy/LICENSE",
-        "legacy/src/renderer/src/components/ThemedSelect.tsx"
+        "legacy/src/renderer/src/components/ThemedSelect.tsx",
+        "legacy/src/renderer/src/core/text-raster.ts"
       ],
       "classification": "legacy-partial",
       "scope": "Native editable text tool integration and text metadata preservation",
@@ -30216,6 +30217,15 @@
           "ThemedSelect.tsx filteredGroups/select/outside pointerdown/Escape"
         ],
         "adaptation": "Native PixelDialog, PixelEntry, buttons and scrollbar replace DOM popover. Preserve supplied family order, ECMAScript trimmed query, locale Unicode lowercase substring matching, selection-only import, cancel without import, outside dismissal and focus return. Windows locale mapping replaces browser locale lowercase; cross-locale glyph equivalence remains unproven. Shared DialogLayout geometry with display-clamped height and scrollable rows. System font glyph previews remain incomplete."
+      },
+      "textLayoutSwitch20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::setLayoutMode/boxedLayout",
+          "legacy/src/renderer/src/core/text-cel-data.ts::normalizeTextCelData",
+          "legacy/src/renderer/src/core/text-raster.ts::rasterizeText"
+        ],
+        "adaptation": "Free-to-box measures current free raster through existing native glyph provider, retaining origin and styles; repeated box selection preserves dimensions. Free mode resets inactive integer dimensions to native defaults because native TextCelData has concrete integer dimensions instead of optional JS fields. Re-enter box always remeasures. Alignment disabled outside boxed mode; existing native dimension fields also disabled when inactive. No raster algorithm change or glyph equivalence claim.",
+        "verification": "Formal Release build text-layout-switch-build.log succeeded; formal --text-tool-check waited for actual exit 0. Actual layout callback fixtures cover both spacing and rendering modes, unchanged origin, rendered extent initialization, repeated box selection, edited dimension retention, disabled free controls and re-entry. Existing confirm/cancel checks pass. No manual image acceptance."
       }
     },
     {
