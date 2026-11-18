@@ -21675,6 +21675,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Expose separate ASE and ASEPRITE entries matching legacy format choices, reusing existing project formats 8/9 and encoders. Keep existing dropdown indices stable by appending ASE. Extend production preference smoke to actual ASE output and memory restore of all project formats, verifying selector index and filename extension."
+      },
+      "exportPresetDraftTransitions20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve presetName state across format and static-to-sequence transitions, matching separate legacy presetName state. Current-frame range action clears explicit range and loop identity per changeFrameRange. Extend existing formal preference smoke with complete static/sequence/current/animation preset name chain and range clearing."
       }
     },
     {
@@ -25728,6 +25734,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Expose separate ASE and ASEPRITE entries matching legacy format choices, reusing existing project formats 8/9 and encoders. Keep existing dropdown indices stable by appending ASE. Extend production preference smoke to actual ASE output and memory restore of all project formats, verifying selector index and filename extension."
+      },
+      "exportPresetDraftTransitions20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Preserve presetName state across format and static-to-sequence transitions, matching separate legacy presetName state. Current-frame range action clears explicit range and loop identity per changeFrameRange. Extend existing formal preference smoke with complete static/sequence/current/animation preset name chain and range clearing."
       }
     },
     {

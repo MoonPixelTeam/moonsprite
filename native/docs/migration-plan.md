@@ -7923,3 +7923,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 ASE与ASEPRITE独立导出入口
 
 对照ExportDialogHost.tsx独立ase和aseprite选项，将原合并标签明确为ASEPRITE，追加ASE入口并映射既有工程格式8；保留原下拉索引，复用既有编码及导出事务。扩展正式偏好检查，实际写出ASE并对四种工程格式重新打开导出设置，验证格式、扩展名和下拉选择保持。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见distinctAseExport20261118。
+
+
+## 2026-11-18 导出切换保留预设名称
+
+对照ExportDialogHost.tsx独立presetName状态及changeFrameRange，静态、动画和静态到帧序列切换保留预设名称；返回当前帧清除指定范围和循环段身份。扩展正式偏好检查覆盖静态到序列、返回当前帧、切动画的连续交互，验证名称与范围状态。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportPresetDraftTransitions20261118。
