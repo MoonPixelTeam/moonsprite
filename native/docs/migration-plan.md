@@ -8275,3 +8275,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展包目录大小规则迁移
 
 对照 platform_extensions.rs::inspect_archive/extract_archive，扩展包目录条目不累计解压预算，安装只创建目录而不读取目录载荷。共用 Archive 增加默认关闭的选项，仅 msext 检查启用；普通工程预算规则不变。集中夹具把目录中央声明大小改为300MiB，验证普通 Archive 拒绝、扩展检查将目录大小记零、安装成功并可解析 Lua 入口。Release extension-runtime-directory-tests 构建成功（extension-directory-size-build.log），对应CTest通过0.77秒；来源覆盖1043文件及证据快照、diff检查通过。未重建正式GUI、未人工验收；ZIP64、其他压缩及CP437兼容仍未完成，整体迁移INCOMPLETE。保留已有差异和未跟踪文件，不提交生成物或用户数据。
+
+
+## 2026-11-19 扩展包 CP437 文件名迁移
+
+对照 platform_extensions.rs::inspect_archive/extract_archive 使用的 zip4.6.1，并核对该依赖 read.rs 的 FromCp437 分支，未设UTF8标记的扩展包文件名按CP437转换UTF8后匹配清单。Archive仅为msext启用转换，保留原始中央文件名用于本地头一致性检查；普通工程默认规则不变。真实ZIP夹具覆盖重音字符Lua入口检查、读取、安装、解析及UTF8标记旁路。首轮新增非法UTF8拒绝预期不成立，已改为合法UTF8旁路断言；非法UTF8的旧版有损转换和Unicode路径extra field仍未迁移。Release定向构建成功（extension-cp437-build.log），extension-runtime-directory通过0.81秒，来源覆盖1043文件及证据快照、diff检查通过。未重建正式GUI、未人工验收，不声明完整ZIP编码兼容；整体迁移INCOMPLETE，保留既有main.cpp及用户数据。

@@ -10,6 +10,15 @@ void span(const Bytes& b,std::size_t at,std::size_t n) {if(at>b.size() || n>b.si
 std::uint16_t u16(const Bytes& b,std::size_t at) {span(b,at,2);return b[at]|std::uint16_t(b[at+1])<<8;}
 std::uint32_t u32(const Bytes& b,std::size_t at) {span(b,at,4);return b[at]|std::uint32_t(b[at+1])<<8|std::uint32_t(b[at+2])<<16|std::uint32_t(b[at+3])<<24;}
 std::string text(const Bytes& b,std::size_t at,std::size_t n) {span(b,at,n);return std::string(b.begin()+at,b.begin()+at+n);}
+// zip 4.6.1 read.rs decodes unflagged names with FromCp437.
+std::string cp437Name(const std::string& raw) {
+  static constexpr unsigned mapping[128]={0x00c7,0x00fc,0x00e9,0x00e2,0x00e4,0x00e0,0x00e5,0x00e7,0x00ea,0x00eb,0x00e8,0x00ef,0x00ee,0x00ec,0x00c4,0x00c5,0x00c9,0x00e6,0x00c6,0x00f4,0x00f6,0x00f2,0x00fb,0x00f9,0x00ff,0x00d6,0x00dc,0x00a2,0x00a3,0x00a5,0x20a7,0x0192,0x00e1,0x00ed,0x00f3,0x00fa,0x00f1,0x00d1,0x00aa,0x00ba,0x00bf,0x2310,0x00ac,0x00bd,0x00bc,0x00a1,0x00ab,0x00bb,0x2591,0x2592,0x2593,0x2502,0x2524,0x2561,0x2562,0x2556,0x2555,0x2563,0x2551,0x2557,0x255d,0x255c,0x255b,0x2510,0x2514,0x2534,0x252c,0x251c,0x2500,0x253c,0x255e,0x255f,0x255a,0x2554,0x2569,0x2566,0x2560,0x2550,0x256c,0x2567,0x2568,0x2564,0x2565,0x2559,0x2558,0x2552,0x2553,0x256b,0x256a,0x2518,0x250c,0x2588,0x2584,0x258c,0x2590,0x2580,0x03b1,0x00df,0x0393,0x03c0,0x03a3,0x03c3,0x00b5,0x03c4,0x03a6,0x0398,0x03a9,0x03b4,0x221e,0x03c6,0x03b5,0x2229,0x2261,0x00b1,0x2265,0x2264,0x2320,0x2321,0x00f7,0x2248,0x00b0,0x2219,0x00b7,0x221a,0x207f,0x00b2,0x25a0,0x00a0};
+  std::string result;
+  for(unsigned char c:raw){if(c<128){result+=char(c);continue;}auto code=mapping[c-128];
+    if(code<0x800){result+=char(0xc0|(code>>6));result+=char(0x80|(code&63));}
+    else {result+=char(0xe0|(code>>12));result+=char(0x80|((code>>6)&63));result+=char(0x80|(code&63));}
+  }return result;
+}
 }
 Archive::Archive(std::shared_ptr<const Bytes> bytes,Limits limits):bytes_(std::move(bytes)),limits_(limits) {
   if(!bytes_) corrupt("Missing project archive");
@@ -37,7 +46,8 @@ Archive::Archive(std::shared_ptr<const Bytes> bytes,Limits limits):bytes_(std::m
     if(u16(b,at+34)!=0 || e.size==0xffffffff || e.compressed==0xffffffff || e.offset==0xffffffff) throw Error(ErrorKind::Unsupported,"ZIP64 or split entries are unsupported");
     if(e.flags&1) throw Error(ErrorKind::Unsupported,"Encrypted project archives are unsupported");
     if(e.method!=0 && e.method!=8) throw Error(ErrorKind::Unsupported,"Unsupported ZIP compression method");
-    const auto name=text(b,at+46,nameLen);
+    e.rawName=text(b,at+46,nameLen);
+    const auto name=limits.decodeCp437Names && !(e.flags&0x800)?cp437Name(e.rawName):e.rawName;
     if(name.empty() || name.find('\0')!=std::string::npos || !entries_.emplace(name,e).second) corrupt("Duplicate or empty ZIP filename");
     // Extension archives follow inspect_archive: directory entries consume no
     // expanded budget. Project archives retain their existing strict accounting.
@@ -56,7 +66,7 @@ Bytes Archive::read(const std::string& name,std::size_t limit) const {
   const std::size_t at=e.offset;span(b,at,30);
   if(u32(b,at)!=0x04034b50 || u16(b,at+6)!=e.flags || u16(b,at+8)!=e.method) corrupt("ZIP local header mismatch: "+name);
   const auto n=u16(b,at+26),extra=u16(b,at+28);
-  if(text(b,at+30,n)!=name) corrupt("ZIP filename mismatch: "+name);
+  if(text(b,at+30,n)!=e.rawName) corrupt("ZIP filename mismatch: "+name);
   const std::size_t start=at+30u+n+extra;
   if(start>centralOffset_ || e.compressed>centralOffset_-start) corrupt("ZIP resource overlaps directory: "+name);
   if(!(e.flags&8) && (u32(b,at+14)!=e.crc || u32(b,at+18)!=e.compressed || u32(b,at+22)!=e.size)) corrupt("ZIP size/CRC header mismatch: "+name);
