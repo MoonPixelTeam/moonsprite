@@ -7993,3 +7993,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua Cel格式捕获与过期结果校验
 
 对照lua-script-service.ts的snapshotFromLayer、buildInvocation和snapshotsEqual，Lua捕获保留活动表面及各帧Cel实际格式与原始像素字，目标快速校验、完整比较、分步捕获及操作后刷新均纳入格式变化。新增混合Indexed/RGBA Cel上下文及无Document revision变化的格式变更检查；已有索引色笔刷操作夹具显式隔离其RGBA线协议伪装与真实目标。Release lua-script-invocation-tests构建及定向CTest通过（9.34秒），来源覆盖1043文件、证据快照及diff检查通过。未重建正式GUI、未人工图像验收；索引色Lua执行和生产编辑准入仍未开放，整体迁移INCOMPLETE。来源见luaSurfaceFormat20261118。
+
+
+## 2026-11-18 Lua索引色栅格事务迁移
+
+对照lua-script-service.ts的validateResult、validateCreatedStructures、applySnapshotToLayer、applyResult，history.ts的recordPixelKnownCurrent及document-model.ts的normalizeLayerPackedValue，贯通索引色线协议验证、整幅替换、其他帧Cel更新、刷新快照和新图层格式；新图层按非零颜色ID统计像素，普通像素写入复用既有色板规范化。真实复用旧版Lua引擎的定向检查覆盖关联/非关联帧、像素写入、稀疏替换及原点、其他帧Cel、新图层、Undo/Redo；已有笔刷操作夹具改用真实indexed上下文。Release lua-script-invocation-tests构建及CTest通过（8.90秒）。来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；索引色创建工程、生产编辑准入及全面MSE等价仍未完成，整体迁移INCOMPLETE。来源见luaIndexedRaster20261118。
