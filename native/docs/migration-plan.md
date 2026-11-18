@@ -8035,3 +8035,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 对照 document-model.ts 的 remapIndexedDocumentToVisiblePalette 以及 workspace-palette.ts 的 applyPalette/deletePaletteColors，普通色板删除、切换、提取和 Lua remove/extract 在索引色工程中将隐藏或缺失 ID 映射到剩余可见颜色，保留透明 ID0；历史保存精确原始 ID，承接全部帧、锁定层和关联 Cel。RGBA 工程不重映射混合格式中的索引像素。复用可见色匹配算法与原生表面替换历史，不改变生产索引色准入。
 
 Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation 通过（7.71 秒），覆盖直接删除/切换/提取、真实旧版 Lua 索引色删除、结果适配器混合格式排除、锁定层、关联及独立帧、隐藏/无效 ID 和 Undo/Redo。旧版 Lua 引擎拒绝 RGBA 模式中的活动 Indexed 表面，故该混合分支仅验证结果适配器，不声称 Lua 实际支持。未重建正式 GUI、未人工图像验收，整体迁移 INCOMPLETE。来源见 indexedVisiblePaletteRemap20261119。
+
+
+## 2026-11-19 Lua与色板事务正式程序集成
+
+已将混合格式色板同步、Lua灰度/像素精度规范化、索引色色板提取和可见ID重映射编入唯一正式产物 native/build/Release/moonsprite-native.exe（源码至73118fac）。Release moonsprite-native构建退出0，日志 indexed-visible-palette-formal-build.log；使用正式主题与指针，Start-Process -WindowStyle Hidden -Wait -PassThru 运行 --script-entry-check，实际进程退出0。未重复已通过的核心定向测试，未人工图像验收；脚本入口检查不替代精确索引像素事务验证。生产索引色准入保持关闭，整体迁移 INCOMPLETE。仅提交集成记录，不提交生成物、用户数据或既有 main.cpp 状态。
