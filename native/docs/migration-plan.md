@@ -8190,3 +8190,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 系统字体目录顺序迁移
 
 对照 platform_fonts.rs::windows_system_fonts 与 font-service.ts::loadSystemFontCatalog/uniqueOptions，系统字体目录按 Unicode 小写名称稳定排序，再按用户语言小写身份去重，不裁剪名称空白。DirectWrite 枚举继续作为原生平台适配；Windows invariant 映射代替 Rust Unicode 小写，特殊 Unicode/语言环境等价尚未证明。唯一正式 Release 和 text-font-tests 构建成功（system-font-order-build.log），text-font CTest 通过（1.24秒），实际安装字体目录验证排序及去重，既有导入/删除/偏好检查通过。来源覆盖及diff检查见本轮命令；未 GUI/人工图像验收，整体迁移 INCOMPLETE。来源见 systemFontCatalogOrder20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 字体操作反馈迁移
+
+对照 TextToolDialog.tsx::addFont/removeSelectedFont/fontMessage 与 zh-CN 文案，字体导入/选择/删除成功提示名称，失败显示旧版提示；字体状态与渲染错误分开保存，普通预览更新不清除字体反馈。文件选择前清除旧提示，系统字体实际选择后清除；已有状态行按可用宽度裁剪，渲染错误优先显示。唯一正式 Release 构建成功（text-font-status-build.log），正式主题/指针下 --text-tool-check 实际退出0。夹具覆盖导入/本地选择提示、普通预览后保留状态、删除失败保留目录/选中项/字体；成功删除反馈仅源码核对，未进行 GUI 夹具或人工图像验收。异步字体操作及 busy 行为仍未迁移，整体迁移 INCOMPLETE。来源见 fontOperationStatus20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。

@@ -30290,6 +30290,14 @@
         ],
         "adaptation": "Only a transition from font spacing to actual spacing replaces zero base/range spacing with one; reselecting actual spacing preserves intentional zero values. Empty text disables confirmation and local Undo restores availability. Reuse existing shared pixel controls without geometry changes.",
         "verification": "Formal Release build text-spacing-state-build.log succeeded. Actual callback fixtures cover transition, repeated selection and return to font spacing. Existing empty draft fixture checks disabled confirmation and restoration after Undo. Formal theme/cursors --text-tool-check waited for actual exit 0; provenance coverage and diff checks pass. No manual image acceptance."
+      },
+      "fontOperationStatus20261119": {
+        "sources": [
+          "TextToolDialog.tsx::addFont/removeSelectedFont/fontMessage",
+          "locales/zh-CN.ts textTool.fontImported/fontSelected/fontDeleted/fontLoadFailed/fontDeleteFailed"
+        ],
+        "adaptation": "Keep font operation status separate from raster-preview errors, preserving it during ordinary editing. File import clears previous status before picker, system selection clears before import. Successful import/local selection/deletion reports family; failure uses original Chinese message. Existing status row clips text to available width; raster errors have display priority. Native synchronous font operations retain existing implementation; async busy behavior remains incomplete.",
+        "verification": "Formal Release build text-font-status-build.log succeeded; formal theme/cursors --text-tool-check waited for actual exit 0. Fixtures cover imported/local selection messages, status persistence across preview, and failed deletion retaining catalog/selection/family. Successful deletion feedback source-reviewed, not exercised in GUI fixture. No manual image acceptance."
       }
     },
     {
