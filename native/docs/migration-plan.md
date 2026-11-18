@@ -8295,3 +8295,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 脚本弹窗控件显示迁移
 
 对照 LuaScriptDialog.tsx::ScriptControl 与 ThemedSelect.tsx，字段标签按label/text/id回退；分隔符按旧版在可选文字两侧绘制横线，无文字时连续横线；组合框空选项保留字符串原值，选项提供完整名称提示。未知值且非空选项仍按旧版回退第一项。复用现有PixelDialog、PixelDropdown和10px字体，沿用原生间距和裁剪。既有verify补充标签优先级检查。唯一正式Release构建成功（script-control-presentation-build.log）；正式程序--script-report-check带正式主题和指针，等待实际进程退出0。检查覆盖原有控件布局、草稿提交和报告窗口；分隔线及提示未人工图像/悬浮验收，空选项分支仅源码核对。来源覆盖和diff检查见本轮结果，整体迁移INCOMPLETE；保留既有main.cpp及用户文件，不提交生成物。
+
+
+## 2026-11-19 Lua 数字输入提交时机迁移
+
+对照 LuaScriptDialog.tsx number 的 NumberInput 默认live=false，以及 NumberInput.tsx::updateDraft/commit/adjust，Lua数字字段键入只保留草稿，Enter/失焦提交数值；脚本回调仍仅失焦发送。滚轮、方向键及拖调继续即时按最近已接受值调整，不使用未提交文字。ScriptNumberEntry增加默认开启的live参数，仅Lua数字字段关闭，保留扩展表单和设置既有实时输入。既有实际弹窗verify覆盖延迟草稿、接受与步进忽略未提交草稿，原实时/表达式检查保留。唯一正式Release构建成功（lua-number-commit-build.log），正式程序--script-report-check带正式主题/指针等待实际退出0。未人工交互/图像验收；来源与diff检查见本轮命令，整体迁移INCOMPLETE，保留已有main.cpp及用户文件。

@@ -4,26 +4,27 @@
 #include <cmath>
 #include <sstream>
 namespace moon {
-// LuaScriptDialog NumberInput: live plain-number drafts, expressions committed
+// NumberInput: configurable live drafts, expressions committed
 // on Enter/blur, callback only on blur. Reuse PixelEntry's expression parser,
 // edit history, clipboard, caret, scrub and keyboard numeric interactions.
 class ScriptNumberEntry final:public PixelEntry {
- double value_=0;bool updating_=false;
+ double value_=0;bool updating_=false,live_=true;
  void normalize(){if(updating_)return;try{std::size_t used=0;const auto v=std::stod(text(),&used);if(used==text().size()&&std::isfinite(v)){const auto next=std::clamp(v,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}if(next!=v)displayValue();}}catch(...){}}
  void displayValue(){std::ostringstream out;out.precision(17);out<<value_;updating_=true;setText(out.str());updating_=false;}
 public:
  std::function<void(double)> changed;std::function<void()> committed;
- ScriptNumberEntry(const PixelFont& font,const Skin& skin,double value,double minimum,double maximum,double step):PixelEntry(font,skin){
+ ScriptNumberEntry(const PixelFont& font,const Skin& skin,double value,double minimum,double maximum,double step,bool live=true):PixelEntry(font,skin),live_(live){
   numeric=true;numericMinimum=minimum;numericMaximum=maximum;numericStep=std::isfinite(step)&&step!=0?std::abs(step):1;
   numericValue=[this]{return value_;};
-  Change.connect([this]{if(updating_)return;const auto s=text();if(s.size()>1&&s.find_first_of("+-*/()",1)!=std::string::npos)return;normalize();});
+  if(!live_)wheel=[this](int delta){const auto next=std::clamp(value_+delta*numericStep,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}displayValue();};
+  Change.connect([this]{if(updating_||!live_)return;const auto s=text();if(s.size()>1&&s.find_first_of("+-*/()",1)!=std::string::npos)return;normalize();});
   accept=[this]{normalize();displayValue();};blur=[this]{normalize();displayValue();if(committed)committed();};sync(value);
  }
  void sync(double value){value_=std::isfinite(value)?value:0;displayValue();}
  double value()const{return value_;}
  bool onProcessMessage(ui::Message* msg)override{
   // Invalid/empty expressions revert to the last accepted numeric value.
-  if(isEnabled()&&msg->type()==ui::kFocusLeaveMessage){if(!commitExpression())displayValue();}
+  if(isEnabled()&&msg->type()==ui::kFocusLeaveMessage){if(!commitExpression())displayValue();else normalize();}
   if(isEnabled()&&msg->type()==ui::kKeyDownMessage){const auto code=static_cast<ui::KeyMessage*>(msg)->scancode();if(code==ui::kKeyEnter||code==ui::kKeyEnterPad){if(!commitExpression())displayValue();normalize();displayValue();return true;}}
   return PixelEntry::onProcessMessage(msg);
  }
