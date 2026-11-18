@@ -21651,6 +21651,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx"
         ],
         "nativeAdaptation": "Reuse shared range dropdown for multiframe static document target, default current frame; all/range/loop selections enter existing frame sequence transaction preserving format, scale, trim, filename and directory. Reuse DialogLayout rows; existing formal preference smoke checks actual range control, transitions and loop sequence write. Selection/layer/slices/project targets remain excluded per legacy stillFrameRange condition."
+      },
+      "sequenceCurrentFrame20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Offer current-frame choice from multiframe static frame sequences, reusing shared static format transition and retaining image scale, trim, filename and directory. Include sequence state in shared animated-to-static transfer. Extend production preference check across all six static format mappings, SVG scale rule and selected current-frame state."
       }
     },
     {
@@ -25680,6 +25686,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx"
         ],
         "nativeAdaptation": "Reuse shared range dropdown for multiframe static document target, default current frame; all/range/loop selections enter existing frame sequence transaction preserving format, scale, trim, filename and directory. Reuse DialogLayout rows; existing formal preference smoke checks actual range control, transitions and loop sequence write. Selection/layer/slices/project targets remain excluded per legacy stillFrameRange condition."
+      },
+      "sequenceCurrentFrame20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Offer current-frame choice from multiframe static frame sequences, reusing shared static format transition and retaining image scale, trim, filename and directory. Include sequence state in shared animated-to-static transfer. Extend production preference check across all six static format mappings, SVG scale rule and selected current-frame state."
       }
     },
     {

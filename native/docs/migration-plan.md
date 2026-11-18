@@ -7903,3 +7903,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 多帧静态导出范围入口
 
 对照ExportDialogHost.tsx的stillFrameRange、changeFrameRange及对应GIF切PNG后选择循环段用例，为多帧静态画布目标显示公共帧范围下拉，默认当前帧；选择全部帧、指定范围或循环段时转入既有帧序列事务，保留格式、比例、修剪、文件名和目录。复用DialogLayout分组计算，选区、图层、切片及工程目标不显示该入口。扩展正式偏好检查覆盖可见/可用/模态路由、三种范围映射及实际两帧BMP循环段导出。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收。此阶段补齐静态入口，帧序列返回当前帧的交互仍需继续对照，整体迁移INCOMPLETE。来源见staticFrameRangeEntry20261118。
+
+
+## 2026-11-18 帧序列返回当前帧
+
+对照ExportDialogHost.tsx的stillFrameRange与changeFrameRange，多帧静态序列帧范围下拉增加当前帧，复用静态格式切换返回画布导出。共享动画选项转静态逻辑纳入帧序列，保留格式、比例、修剪、文件名及目录，SVG继续归一100%。扩展正式偏好检查覆盖PNG RGBA、PNG自动、BMP、ICO、SVG、JPEG六种映射及当前帧选中状态。正式Release构建及--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见sequenceCurrentFrame20261118。
