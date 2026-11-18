@@ -7933,3 +7933,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出范围格式往返保持
 
 对照ExportDialogHost.tsx格式及范围变更对current表单的保留，动画切静态再切回动画保留帧起止、范围模式、循环段及播放方向；静态转帧序列保留隐藏动画草稿。全新静态导出才初始化动画草稿，避免继承其他导出会话状态。扩展正式偏好检查验证指定范围及循环段经过GIF、PNG、BMP、WebP往返后保持，以及新打开隔离。正式Release构建及--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportRangeRoundtrip20261118。
+
+
+## 2026-11-18 静态预设恢复隐藏动画设置
+
+对照ExportDialogHost.tsx完整options恢复，静态预设及共用导出记忆应用路径读回隐藏动画范围、循环段和播放方向；按当前帧数约束端点并清除失效循环段。扩展正式偏好检查覆盖静态预设恢复后切GIF/WebP的指定范围、循环段、端点越界和失效循环段回退。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见staticPresetAnimationDraft20261118。
