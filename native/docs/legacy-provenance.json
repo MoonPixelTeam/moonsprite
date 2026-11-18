@@ -20927,6 +20927,14 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
+      },
+      "wholeCelActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
+        ],
+        "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
       }
     },
     {
@@ -22720,6 +22728,14 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
+      },
+      "wholeCelActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
+        ],
+        "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
       }
     },
     {
@@ -27650,6 +27666,14 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
+      },
+      "wholeCelActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
+        ],
+        "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
       }
     },
     {
@@ -35748,6 +35772,14 @@
           "legacy/src/renderer/src/store/workspace-commands-clipboard.ts"
         ],
         "nativeAdaptation": "Legacy whole-Cel clipboard paste replaces complete targets while retaining a static destination pixel selection. Remove destination-selection rejection in special whole-Cel transaction; source selection-only payloads remain separately rejected there. Registry/editor/free menu route whole Cel payload before raster selection fallback, retaining active edit, active mask, target lock and external image checks. Four grid/free local/cross cases verify full content beyond selected pixel, selection preserved, one history, Undo/Redo, links and save/reopen; dedicated cel-static-selection phase reuses cases."
+      },
+      "wholeCelActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-commands-clipboard.ts",
+          "legacy/src/renderer/src/store/workspace-animation-selection-history.ts"
+        ],
+        "nativeAdaptation": "Legacy whole Cel paste exits active mask editing and historyEntryWithAnimationSelection restores the before mask/isolation on Undo and after document target on Redo. Special whole-Cel transaction now admits static mask context, clears it only after validation/reservation and records before/after mask context. Existing whole-Cel editor/registry route admits special documents with active masks; ordinary mask admission remains unchanged. Extend grid/free local/cross cases with normal/isolated mask context, exact old mask pixels and Undo restoration, Redo exit, static selection, full Cel content and save/reopen."
       }
     },
     {

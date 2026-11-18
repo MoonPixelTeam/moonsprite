@@ -7804,3 +7804,7 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 完整Cel粘贴保留目标静态像素选区
 
 对照workspace-commands-animation-cel-clipboard.ts与workspace-commands-clipboard.ts，完整Cel载荷替换整个目标，目标静态像素选区保持，不限制替换范围。特殊图层完整Cel事务移除目标静态选区拒绝；源选区载荷仍使用独立路径。registry、编辑器及自由菜单将完整Cel载荷分流至既有事务，保留外部系统图片优先、活动编辑、活动蒙版和目标锁定校验。新增网格/自由层、同/跨工程四组核心检查，验证选区外完整内容、选区保留、单条历史、Undo/Redo、链接及保存重开。正式Release及测试构建退出0，cel-static-selection四组通过，完整free-tile-project回归通过（40.71秒），正式程序既有--tileset-management-check --grid-transform-entry-only入口回归带正式主题/指针退出0；本轮未新增此差异的GUI专用断言。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见wholeCelStaticSelection20261118。
+
+## 2026-11-18 特殊图层完整Cel粘贴与活动蒙版历史
+
+对照workspace-commands-animation-cel-clipboard.ts及workspace-animation-selection-history.ts，完整Cel粘贴退出蒙版编辑，Undo恢复粘贴前蒙版及隔离状态，Redo恢复文档编辑。特殊图层完整Cel事务允许静态活动蒙版，验证和预留历史成功后清除蒙版编辑，记录明确前后maskContext；既有完整Cel菜单/编辑器分流允许特殊工程活动蒙版，普通工程准入保持。扩展网格/自由层、同/跨工程、普通/隔离蒙版八组核心检查，验证原蒙版像素及Undo恢复、Redo退出、原静态选区、完整内容和保存重开。正式Release及测试构建退出0，cel-static-selection八组通过，完整free-tile-project回归通过（36.77秒），正式程序既有--tileset-management-check --grid-transform-entry-only入口回归带正式主题/指针退出0；未新增该差异的GUI专用断言。来源1043文件及快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见wholeCelActiveMask20261118。

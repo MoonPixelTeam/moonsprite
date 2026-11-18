@@ -522,7 +522,7 @@ void Document::detachTilemapCelTargets(timeline::State& candidate,const std::vec
  for(const auto& id:destinations){auto& c=find(id);const auto source=baseline.resolveSurface(id);if(!source.source)throw std::invalid_argument("Missing detached Cel source");c.surface=source.surface?std::optional<timeline::Surface>{*source.surface}:std::nullopt;c.tilemap=source.source->tilemap;c.freeTiles=source.source->freeTiles;c.text=source.source->text;c.linkedCelId.reset();c.runtimeSharedCelId.reset();}
 }
 bool Document::pasteTilemapCels(const CelClipboardSnapshot& clip){
- if(clip.items.empty())return false;if(active()||!activeMaskId_.empty())throw std::runtime_error("Only complete inactive Cel paste is migrated");
+ if(clip.items.empty())return false;if(active())throw std::runtime_error("Only complete inactive Cel paste is migrated");
  if(clip.width<1||clip.height<1||clip.layers.empty())throw std::invalid_argument("Invalid portable Cel clipboard metadata");
  const auto& before=timeline_.state();const bool same=clip.sourceIdentity==identity_;const auto* anchor=timelineSelection_.cels.empty()?&cel():timeline_.findCelById(timelineSelection_.cels.back());if(!anchor)return false;
  const int row=int(timeline_.layerIndex(anchor->layerId)),column=int(timeline_.frameIndex(anchor->frameId));
@@ -554,7 +554,8 @@ bool Document::pasteTilemapCels(const CelClipboardSnapshot& clip){
  for(std::size_t i=initialCelSets;i<candidate.tilesets.size();++i){charge(candidate.tilesets[i].pixels.size());resources.after.push_back({i,candidate.tilesets[i]});}
  timeline::Timeline validated(std::move(candidate));if(!validated.diagnoseLinks().empty())throw std::invalid_argument("Cel paste leaves invalid links");TimelineSelection selected=timelineSelection_;selected.layers.clear();selected.layerAnchor.clear();selected.cels=destinations;selected.celAnchor=destinations.back();
  Edit e{{},state_,nextState_};e.snapshotHistory.beforeTimeline=before;e.snapshotHistory.afterTimeline=validated.state();e.snapshotHistory.beforeTimeline->tilesets.clear();e.snapshotHistory.afterTimeline->tilesets.clear();e.layerHistory.layerTilesets=std::make_shared<const LayerTilesetHistory>(std::move(resources));e.beforeActive=e.afterActive=activeLayerId_;e.beforeFrame=e.afterFrame=activeFrameId_;e.beforeTimelineSelection=timelineSelection_;e.afterTimelineSelection=selected;e.beforeSelection=selectedFrames_;e.afterSelection=std::vector<std::string>{};e.beforeFrameAnchor=frameAnchor_;e.afterFrameAnchor=std::string{};
- reserveHistoryEntries();timeline_=std::move(validated);nextFrameId_=frameCounter;nextTileId_=tileCounter;timelineSelection_=std::move(selected);selectedFrames_.clear();frameAnchor_.clear();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"粘贴动画单元格");return true;
+ e.maskHistory.maskContext=std::make_shared<MaskHistory::MaskContextHistory>(MaskHistory::MaskContextHistory{activeMaskId_,{},maskIsolated_,false});
+ reserveHistoryEntries();activeMaskId_.clear();maskIsolated_=false;timeline_=std::move(validated);nextFrameId_=frameCounter;nextTileId_=tileCounter;timelineSelection_=std::move(selected);selectedFrames_.clear();frameAnchor_.clear();projectActiveCelOpacities();change_={0,0,width_,height_};publishChange();pushEdit(std::move(e),U"粘贴动画单元格");return true;
 }
 }
 
