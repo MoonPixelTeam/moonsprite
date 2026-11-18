@@ -8003,3 +8003,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua索引色空帧迁移
 
 对照lua-script-service.ts的buildInvocation、snapshotFromLayer及applyResult，空帧捕获与操作后刷新按工程模式保留Indexed格式，拒绝错误RGBA基线；同步规划器创建Cel也保留栅格格式。真实复用旧版Lua引擎检查覆盖捕获不创建Cel、错误格式拒绝、首次ID写入及既有保留Cel的Undo/Redo。Release lua-script-invocation-tests构建及定向CTest通过（8.68秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见luaAbsentIndexed20261118。
+
+
+## 2026-11-18 索引色色板同步排除规则
+
+对照workspace-commands-color.ts的updatePaletteColorWithSynchronization及lua-script-operations.ts的palette.update，索引色工程修改色板时跳过普通像素/瓦片资源替色；普通Document入口与Lua规划、执行路径统一保留旧版规则，避免颜色ID被误当RGBA改写。直接入口及真实复用旧版Lua引擎的回归使用数值等于ID7的旧颜色，覆盖同步开关开启、连续更新、关联帧、存储身份、单历史与Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（9.17秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见indexedPaletteSyncExclusion20261118。

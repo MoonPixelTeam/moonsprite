@@ -2023,7 +2023,7 @@ void Document::deletePaletteColors(const std::vector<int>& ids) {
 }
 void Document::updatePaletteColor(int id,Pixel color) {
   const auto current=paletteEntry(id);if(!current || current->color==color) return;
-  if(paletteColorSynchronization_){
+  if(paletteColorSynchronization_&&colorMode_!=color_mode::Mode::Indexed){
     // legacy workspace-commands-color: document frames x bottom-to-top layers,
     // owner dedup BEFORE lock filtering, hidden layers included, no selection clip.
     const Pixel source=current->color;Edit compound{{},state_,nextState_};compound.beforeActive=compound.afterActive=layer().id;compound.beforeFrame=compound.afterFrame=frame().id;compound.beforeSelection=compound.afterSelection=selectedFrames_;

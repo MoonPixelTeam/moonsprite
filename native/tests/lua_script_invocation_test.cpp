@@ -174,6 +174,17 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(!linked){summary=run("app.transaction('Other Cel',function() app.activeLayer:cel(app.activeSprite.frames[2]).image:drawPixel(0,0,123) end)");check(summary.transactionCount==1&&model->activeSurface().pixels[0]==7&&model->timeline().resolveSurface("cel-1").surface->pixels[0]==123&&model->timeline().resolveSurface("cel-1").surface->format==timeline::RasterFormat::Indexed,"Indexed Lua secondary Cel lost format/IDs");model->undo();check(model->timeline().resolveSurface("cel-1").surface->pixels[0]==7,"Indexed secondary Cel undo wrong");model->redo();check(model->timeline().resolveSurface("cel-1").surface->pixels[0]==123,"Indexed secondary Cel redo wrong");model->undo();}
   summary=run("app.transaction('New ID layer',function() local layer=app.activeSprite:newLayer(); app.activeLayer=layer; app.activeImage:drawPixel(0,0,7) end)");check(model->timeline().state().layers.size()==2&&model->activeSurface().format==timeline::RasterFormat::Indexed&&model->activeSurface().pixels[0]==7&&summary.changedPixelCount>=1,"Indexed Lua created layer lost format/count");model->undo();check(model->timeline().state().layers.size()==1,"Indexed Lua created layer undo wrong");model->redo();check(model->activeSurface().format==timeline::RasterFormat::Indexed,"Indexed Lua created layer redo lost format");
  }
+ // Legacy indexed palette edits never replace raw IDs, even when an ID's
+ // numeric word equals the packed old palette color and synchronization is on.
+ for(bool scripted:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,true));RasterHistoryFixture::indexedBrush(*model);
+  model->updatePaletteColor(7,7);model->setPaletteColorSynchronization(true);const auto history=model->historyPosition();
+  const auto before=capture(*model).target.expected;const auto storage=model->activeSurface().pixels.identity();
+  if(scripted){std::ofstream(root/"scripts/indexed-palette.lua")<<"app.transaction(function() mse.palette.update(7,{r=9,g=8,b=7}); mse.palette.update(7,{r=6,g=5,b=4}) end)";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;auto result=applyWorkspaceResult(*model,target,runtime.startInvocation("indexed-palette.lua",std::move(invocation)).get(),{});check(result.transactionCount==1,"Indexed palette transaction grouping wrong");}
+  else model->updatePaletteColor(7,0xff040506);
+  check(model->historyPosition()==history+1&&model->palette().entries[1].color==0xff040506&&before.matches(model->activeSurface())&&model->activeSurface().pixels.identity()==storage,"Indexed palette edit replaced IDs/storage");
+  check(model->timeline().resolveSurface("cel-1").surface->pixels[0]==7,"Indexed palette changed linked ID");model->undo();check(model->palette().entries[1].color==7&&before.matches(model->activeSurface()),"Indexed palette undo wrong");model->redo();check(model->palette().entries[1].color==0xff040506&&before.matches(model->activeSurface()),"Indexed palette redo wrong");
+ }
  // Absent indexed frame stays absent through capture, then materializes IDs.
  {auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::indexedBrush(*model);RasterHistoryFixture::removeFrameCels(*model,model->frame().id);
   auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;check(target.expected.format==timeline::RasterFormat::Indexed&&target.matches(*model)&&!model->activeSurfaceIfPresent(),"Absent indexed Lua capture format wrong");
