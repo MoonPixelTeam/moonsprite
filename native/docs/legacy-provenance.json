@@ -21657,6 +21657,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Offer current-frame choice from multiframe static frame sequences, reusing shared static format transition and retaining image scale, trim, filename and directory. Include sequence state in shared animated-to-static transfer. Extend production preference check across all six static format mappings, SVG scale rule and selected current-frame state."
+      },
+      "sequenceAnimationSwitch20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Enable GIF and WebP format choices from frame sequences, matching legacy format onChange target frames to document. Reuse complete animated option transfer for sequences, preserving range, loop, direction, scale, trim, name and directory. Formal preference smoke covers both encoders with explicit range and loop selection and actual file writes."
       }
     },
     {
@@ -25692,6 +25698,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Offer current-frame choice from multiframe static frame sequences, reusing shared static format transition and retaining image scale, trim, filename and directory. Include sequence state in shared animated-to-static transfer. Extend production preference check across all six static format mappings, SVG scale rule and selected current-frame state."
+      },
+      "sequenceAnimationSwitch20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Enable GIF and WebP format choices from frame sequences, matching legacy format onChange target frames to document. Reuse complete animated option transfer for sequences, preserving range, loop, direction, scale, trim, name and directory. Formal preference smoke covers both encoders with explicit range and loop selection and actual file writes."
       }
     },
     {

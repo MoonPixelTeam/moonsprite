@@ -7908,3 +7908,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 帧序列返回当前帧
 
 对照ExportDialogHost.tsx的stillFrameRange与changeFrameRange，多帧静态序列帧范围下拉增加当前帧，复用静态格式切换返回画布导出。共享动画选项转静态逻辑纳入帧序列，保留格式、比例、修剪、文件名及目录，SVG继续归一100%。扩展正式偏好检查覆盖PNG RGBA、PNG自动、BMP、ICO、SVG、JPEG六种映射及当前帧选中状态。正式Release构建及--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见sequenceCurrentFrame20261118。
+
+
+## 2026-11-18 帧序列切换GIF与WebP
+
+对照ExportDialogHost.tsx格式onChange，开放帧序列到GIF/WebP的格式选择，目标转为文档动画；复用完整动画选项传递，保留指定范围、循环段、播放方向、比例、修剪、文件名及目录。扩展正式偏好检查覆盖两种动画格式及范围/循环段两条路径，实际写出文件。首次检查因夹具重复文件名触发覆盖确认，终止该专用smoke进程并改为每用例独立文件名后通过。最终正式Release构建、--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见sequenceAnimationSwitch20261118。
