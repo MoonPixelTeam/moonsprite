@@ -1,4 +1,5 @@
 #include "canvas_renderer.h"
+#include "canvas_feedback_composite.h"
 #include "layer_compositor.h"
 #include "os/skia/skia_surface.h"
 #include "ui/paint.h"
@@ -211,9 +212,26 @@ static void hybridFloatingRenderOracle(){
 
  }
 }
+static void palettePreviewOracle(){
+ Document doc(2,1);const Pixel source=0xff123456,target=0xffabcdef;
+ doc.applyStoredPalette({source});doc.beginStroke({0,0},source);doc.commitStroke();doc.addLinkedFrame(true);
+ require(doc.convertColorMode(color_mode::Mode::Indexed),"Indexed preview fixture");
+ const auto raw=doc.activeSurface().pixels;const auto history=doc.historyPosition();doc.markSaved();CanvasRenderer cache;
+ auto pixel=[&](CanvasRenderer& renderer,const std::string& frame){renderer.syncFrame(doc,frame);auto output=os::instance()->makeRgbaSurface(2,1);ui::Graphics g(output);renderer.draw(g,{0,0,2,1},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));return output->getPixel(0,0);};
+ const auto active=doc.frame().id,other=doc.timeline().state().frames.front().id;
+ const auto before=pixel(cache,active);require(doc.beginPaletteReplacement()&&doc.updatePaletteReplacement(source,target),"Palette preview begin");
+ const auto preview=pixel(cache,active);require(preview!=before&&preview==gfx::rgba(0xef,0xcd,0xab),"Palette preview cache/color stale");
+ require(pixel(cache,other)==preview,"Other-frame palette preview stale");
+ require(selectionFeedbackComposite(doc,{0,0,1,1})==std::vector<Pixel>{target},"Selection feedback ignored preview palette");
+ require(doc.activeSurface().pixels==raw&&doc.historyPosition()==history&&!doc.dirty(),"Preview mutated document");
+ doc.cancelPaletteReplacement();require(pixel(cache,active)==before&&pixel(cache,other)==before,"Palette cancel retained preview");
+ require(doc.beginPaletteReplacement()&&doc.updatePaletteReplacement(source,target)&&doc.commitPaletteReplacement(),"Palette preview commit");
+ require(pixel(cache,active)==preview,"Palette commit differs from preview");doc.undo();require(pixel(cache,active)==before,"Palette undo display stale");doc.redo();require(pixel(cache,active)==preview,"Palette redo display stale");
+}
 int main(int argc,char* argv[]){try{
   auto system=os::System::make();system->setAppMode(os::AppMode::GUI);
   if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();hybridFloatingRenderOracle();return 0;}
+  if(argc>1&&std::string(argv[1])=="--palette-preview"){palettePreviewOracle();return 0;}
   checkerboardOracle();if(argc>1 && std::string(argv[1])=="--checkerboard")return 0;
   absentPasteRenderOracle();absentStrokeRenderOracle();absentEffectRenderOracle();absentGradientRenderOracle();spatialDirtyOracle();floatingEffectDirtyOracle();clipboardPreviewAdmissionOracle();clipboardStackParityOracle();strokeRecorderOracle();pixelOracle();largeTimeline();
   for(int size:{32,256,512,1024})benchmark(size,1,1);

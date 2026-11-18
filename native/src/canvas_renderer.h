@@ -19,7 +19,7 @@ struct CheckerboardSettings {
 class CanvasRenderer {
   os::SurfaceRef content_;
   std::string previewFrame_;
-  std::uint64_t identity_=0,revision_=0;
+  std::uint64_t identity_=0,revision_=0,documentRevision_=0;
   unsigned uploads_=0;
   OnionSkinSettings onion_;
   bool onionPlaying_=false;

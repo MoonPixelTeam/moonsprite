@@ -2176,12 +2176,12 @@ bool Document::updatePaletteReplacement(Pixel source,Pixel replacement,bool enab
   // ColorReplacementDialog overwrites preview.primaryColor with sourceColor
   // so restoring a live preview keeps the source as the foreground role.
 
- }return true;
+ }++gradientRevision_;return true;
 }
-void Document::cancelPaletteReplacement(){if(paletteReplacement_){if(paletteReplacement_->restorePrimary)palette_.primary=*paletteReplacement_->restorePrimary;paletteReplacement_.reset();}}
+void Document::cancelPaletteReplacement(){if(paletteReplacement_){if(paletteReplacement_->restorePrimary)palette_.primary=*paletteReplacement_->restorePrimary;paletteReplacement_.reset();++gradientRevision_;}}
 bool Document::commitPaletteReplacement(){
  if(!paletteReplacement_)return false;const auto& p=*paletteReplacement_;if(p.contentRevision!=contentRevision_){cancelPaletteReplacement();return false;}bool changed=false;for(std::size_t i=0;i<p.baseline.entries.size();++i)changed|=p.baseline.entries[i].color!=p.preview.entries[i].color;
- auto before=p.baseline;if(p.restorePrimary)before.primary=*p.restorePrimary;auto after=p.preview;paletteReplacement_.reset();
+ auto before=p.baseline;if(p.restorePrimary)before.primary=*p.restorePrimary;auto after=p.preview;paletteReplacement_.reset();++gradientRevision_;
  if(!changed){palette_=std::move(after);return false;}Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=6;edit.paletteHistory.beforePalette=std::move(before);edit.paletteHistory.afterPalette=after;reserveHistoryEntries();palette_=std::move(after);change_={0,0,width_,height_};publishChange();pushEdit(std::move(edit),U"替换颜色板颜色");return true;
 }
 void Document::acceptSaved(std::string projectId,std::shared_ptr<const std::vector<std::uint8_t>> sourceArchive,bool exact) {

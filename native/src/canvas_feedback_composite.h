@@ -4,13 +4,13 @@
 namespace moon {
 // Legacy selection feedback samples the displayed document, including floats.
 inline std::vector<Pixel> selectionFeedbackComposite(const Document& doc,PixelRegion region){
- const RasterColorContext colors(doc.palette().entries,doc.palette().order(),doc.colorMode(),doc.pixelFormat());
+ const RasterColorContext colors(doc.displayPalette().entries,doc.displayPalette().order(),doc.colorMode(),doc.pixelFormat());
  const auto overlay=doc.floatingDeferred()?doc.floatingOverlayRegion(region):std::vector<Pixel>{};
  return compositeNormalRegion(doc.displayTimeline(),doc.frame().id,{region.x,region.y,region.w,region.h},doc.layer().id,doc.floatingDeferred()?&overlay:nullptr,region.w,region.x,region.y,false,{},{},nullptr,nullptr,&colors);
 }
 // brushPreview returns layer storage words; compositor replacements are RGBA.
 inline std::vector<Pixel> brushFeedbackComposite(const Document& doc,PixelRegion region,const std::unordered_map<std::size_t,Pixel>& replacements){
- const RasterColorContext colors(doc.palette().entries,doc.palette().order(),doc.colorMode(),doc.pixelFormat());
+ const RasterColorContext colors(doc.displayPalette().entries,doc.displayPalette().order(),doc.colorMode(),doc.pixelFormat());
  const auto* mask=doc.activeMask();const auto* source=mask?&mask->surface:doc.activeSurfaceIfPresent();if(source)raster::validate(*source);
  std::vector<Pixel> pixels(std::size_t(region.w)*region.h);
  const bool dense=source&&raster::fullCanvas(*source,doc.width(),doc.height());

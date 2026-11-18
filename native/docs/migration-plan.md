@@ -8095,3 +8095,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 角色颜色资源匹配顺序迁移
 
 对照workspace-commands-color.ts::setPrimaryColor/setSecondaryColor，锁定色卡编辑时先保留当前精确匹配，否则按资源存储顺序查找第一个可见同色条目，不按重排后的显示顺序查找。前景与背景复用同一原生入口。新增重排同色色卡、隐藏项排除、撤销恢复可见性及角色变更不新增历史检查。Release moon-core-tests构建成功，CTest document-transactions通过（0.39秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见paletteRoleResourceOrder20261119。
+
+
+## 2026-11-19 色板预览显示与缓存迁移
+
+对照workspace-commands-color.ts的替色预览/恢复和canvas-composite-cache.ts，活动画布、其他帧、选区/笔刷反馈及预览面板取色采用displayPalette与displayTimeline配对。色板替换更新、取消、提交推进既有预览代次；画布缓存同时识别仅文档revision变化，修复色板撤销后残留新颜色。新增离屏--palette-preview检查，覆盖精确像素、关联其他帧、选区反馈、预览不改原始ID/历史/dirty、取消、提交、Undo/Redo。首轮检查实际发现撤销缓存失效，修正后同项退出0；未执行性能基准。Release canvas-performance-tests及唯一正式moonsprite-native构建成功（palette-preview-build.log、palette-preview-formal-build.log），正式程序带主题和指针运行--script-entry-check退出0。来源覆盖及diff检查通过。无布局变更，未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见displayPalettePreview20261119。
