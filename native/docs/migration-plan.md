@@ -7888,3 +7888,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 默认导出格式优先级补齐
 
 对照ExportDialogHost.tsx的openExport：保留导出记忆优先与MoonSprite工程偏好，多帧其余偏好统一默认GIF，修复PSD偏好绕过动画默认值。单帧PSD接入既有统一导出格式，承接预设及记忆。扩展正式偏好检查覆盖全部非MoonSprite偏好的单帧、多帧及显式帧导出；既有PSD实际文件测试改为显式PSD入口。正式Release构建、--export-format-preference-check和--aseprite-io-check（正式主题及指针）均退出0，来源覆盖及证据快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见exportDefaultPriority20261118。
+
+
+## 2026-11-18 导出切片目标失效恢复
+
+对照ExportDialogHost.tsx的openExport、exportTarget、selectedExportSliceId和预设应用逻辑，预设及导出记忆恢复时，没有切片回退整幅画布；指定切片已失效但仍有其他切片则回退全部切片。保持有效切片选择与持久化内容。扩展正式--export-memory-check，同时检查两条恢复路径的有效、替换及空切片状态。正式Release构建及该检查（正式主题和指针）退出0，1043文件来源覆盖及证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见exportSliceFallback20261118。

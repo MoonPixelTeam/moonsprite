@@ -21625,6 +21625,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Match openExport default format precedence: memory first, MoonSprite project preferred across frame counts, otherwise multiframe GIF including PSD preference. Single-frame PSD uses existing shared static PSD format, preserving memory and preset integration. Extend production preference smoke across all non-native preferences and explicit frame fallback; retain explicit layered PSD IO smoke through its actual export entry."
+      },
+      "exportSliceFallback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match openExport, exportTarget and selectedExportSliceId normalization when applying presets or remembered settings: no slices falls back document, missing selected slice with surviving slices falls back all slices. Extend existing production export-memory smoke with valid, replaced and empty slices for both restoration paths, preserving persisted IDs and project target normalization."
       }
     },
     {
@@ -25635,6 +25641,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Match openExport default format precedence: memory first, MoonSprite project preferred across frame counts, otherwise multiframe GIF including PSD preference. Single-frame PSD uses existing shared static PSD format, preserving memory and preset integration. Extend production preference smoke across all non-native preferences and explicit frame fallback; retain explicit layered PSD IO smoke through its actual export entry."
+      },
+      "exportSliceFallback20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match openExport, exportTarget and selectedExportSliceId normalization when applying presets or remembered settings: no slices falls back document, missing selected slice with surviving slices falls back all slices. Extend existing production export-memory smoke with valid, replaced and empty slices for both restoration paths, preserving persisted IDs and project target normalization."
       }
     },
     {
