@@ -29586,6 +29586,7 @@
     },
     {
       "file": "src/text_font_service.cpp",
+      "asyncAccess20261119": "TextToolDialog.tsx addFont/removeSelectedFont Promise workflows require concurrent native service ownership. Serialize catalog, face cache, preferences, imports and erase with a service mutex; glyph-provider captures use the same lock. See textFontActionsAsync20261119 for evidence and validation limits.",
       "classification": "legacy-partial",
       "sources": [
         "legacy/src/renderer/src/platform/font-service.ts",
@@ -30290,6 +30291,14 @@
         ],
         "adaptation": "Only a transition from font spacing to actual spacing replaces zero base/range spacing with one; reselecting actual spacing preserves intentional zero values. Empty text disables confirmation and local Undo restores availability. Reuse existing shared pixel controls without geometry changes.",
         "verification": "Formal Release build text-spacing-state-build.log succeeded. Actual callback fixtures cover transition, repeated selection and return to font spacing. Existing empty draft fixture checks disabled confirmation and restoration after Undo. Formal theme/cursors --text-tool-check waited for actual exit 0; provenance coverage and diff checks pass. No manual image acceptance."
+      },
+      "textFontActionsAsync20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::addFont/removeSelectedFont/fontBusy",
+          "legacy/src/renderer/src/platform/font-service.ts::importTextFont/importSystemTextFont/deleteTextFont"
+        ],
+        "adaptation": "Local picker stays on the UI thread; font import, system-font import and delete/catalog reload use packaged tasks owning a service handle, never the dialog. UI timer applies import promotion or deletion fallback using the current draft. Busy disables only import/system/delete; selection remains editable. Close stops polling without waiting or mutating a later dialog. Service mutex serializes shared catalog, face cache, preferences and worker writes; native rendering can wait for an in-flight service operation, so this is lifecycle migration rather than a claim of fully nonblocking rendering.",
+        "verification": "Formal Release and text-font-tests build text-font-async-build.log succeeded; text-font CTest passed 1.29 seconds. Formal theme/cursors --text-tool-check actual exit 0, including asynchronous deletion failure and busy-action restoration. Import success retains existing synchronous completion fixtures; real async import success/close race and manual image acceptance remain unverified."
       },
       "textSystemCatalogAsync20261119": {
         "sources": [
