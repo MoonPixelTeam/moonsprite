@@ -27,7 +27,7 @@ bool Target::matches(const Document& d,bool requireExpected,bool rasterOnly)cons
  }
  // Reading an absent Cel is transparent, without materializing it or history.
  const auto g=d.displayedLayerGeometry(layerId);
- return expected.pixels&&g==std::array<int,4>{expected.width,expected.height,expected.x,expected.y}&&std::all_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p==0;});
+ return expected.format==absentSurfaceFormat(d)&&expected.pixels&&g==std::array<int,4>{expected.width,expected.height,expected.x,expected.y}&&std::all_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p==0;});
 }
 InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::optional<std::filesystem::path> path,bool allowFloating){
  if(!d.activeMaskId().empty())throw std::invalid_argument("Lua scripts cannot edit a layer mask");
@@ -54,11 +54,11 @@ InvocationCapture::InvocationCapture(const Document& d,std::string mse,std::opti
   sources_.push_back({r.source->id,s.width,s.height,s.offsetX,s.offsetY,s.pixels.identity(),s.pixels.revision(),pixels,s.format});out.cels.push_back({c->id,f.id,i+1,snapshot});
   if(f.id==d.frame().id){out.target.expected=snapshot;out.target.expectedStorage=s.pixels.identity();out.target.expectedStorageRevision=s.pixels.revision();}
  }
- if(!out.target.expected.pixels){auto pixels=std::make_shared<std::vector<Pixel>>();out.target.expected={g[0],g[1],g[2],g[3],pixels};sources_.push_back({{},g[0],g[1],g[2],g[3],nullptr,0,pixels});}
+ if(!out.target.expected.pixels){auto pixels=std::make_shared<std::vector<Pixel>>();out.target.expected={g[0],g[1],g[2],g[3],pixels,absentSurfaceFormat(d)};sources_.push_back({{},g[0],g[1],g[2],g[3],nullptr,0,pixels});}
 }
 bool InvocationCapture::unchanged(const Document& d)const{
  if(d.contentMutationRevision()!=invocation_.target.contentMutationRevision||d.active(false)||!invocation_.target.matches(d,false)||d.revision()!=invocation_.target.revision||d.floating()!=invocation_.target.expectedFloating||d.floatingOverlayRevision()!=invocation_.target.overlayRevision||!selectionEqual(d.selection(),invocation_.target.expectedSelection))return false;
- for(const auto& p:sources_){if(p.owner.empty()){if(d.activeSurfaceIfPresent()||d.displayedLayerGeometry(d.layer().id)!=std::array<int,4>{p.width,p.height,p.x,p.y})return false;continue;}
+ for(const auto& p:sources_){if(p.owner.empty()){if(invocation_.target.expected.format!=absentSurfaceFormat(d)||d.activeSurfaceIfPresent()||d.displayedLayerGeometry(d.layer().id)!=std::array<int,4>{p.width,p.height,p.x,p.y})return false;continue;}
   const auto r=d.timeline().resolveSurface(p.owner);const auto* s=r.surface;if(r.issue!=timeline::LinkIssue::None||!s||s->format!=p.format||s->width!=p.width||s->height!=p.height||s->offsetX!=p.x||s->offsetY!=p.y||s->pixels.size()!=std::uint64_t(p.width)*p.height||s->pixels.identity()!=p.storage||s->pixels.revision()!=p.revision)return false;
  }
  return true;

@@ -144,7 +144,7 @@ bool Document::commitScriptRasterBatch(const script::RasterBatch& batch){auto se
  const auto* current=resolved.surface;
  if(slot&&(!current||!resolved.source||resolved.issue!=timeline::LinkIssue::None))throw std::logic_error("Invalid Lua raster owner");
  if(current){raster::validate(*current);if(expected.format!=current->format||expected.width!=current->width||expected.height!=current->height||expected.x!=current->offsetX||expected.y!=current->offsetY||current->pixels!=*expected.pixels)throw std::logic_error("Lua raster baseline changed");}
- else{const auto g=displayedLayerGeometry(layer().id);if(g!=std::array<int,4>{expected.width,expected.height,expected.x,expected.y}||std::any_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p!=0;}))throw std::logic_error("Lua empty raster baseline changed");}
+ else{const auto g=displayedLayerGeometry(layer().id);if(expected.format!=script::absentSurfaceFormat(*this)||g!=std::array<int,4>{expected.width,expected.height,expected.x,expected.y}||std::any_of(expected.pixels->begin(),expected.pixels->end(),[](Pixel p){return p!=0;}))throw std::logic_error("Lua empty raster baseline changed");}
  if(batch.after&&batch.after->format!=expected.format)throw std::invalid_argument("Lua replacement format changed");
  if(batch.historyBefore&&batch.historyBefore->format!=expected.format)throw std::invalid_argument("Lua replacement history format changed");
  if(batch.after&&!batch.changes.empty())throw std::invalid_argument("Lua surface replacement also contains pixel changes");

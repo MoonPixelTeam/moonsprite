@@ -6,6 +6,7 @@
 namespace moon::script {
 // lua-script-service.ts buildInvocation/findActiveTargetSession. Native surfaces
 // retain their actual storage format; editable indexed admission remains separate.
+inline timeline::RasterFormat absentSurfaceFormat(const Document& d){return d.colorMode()==color_mode::Mode::Indexed?timeline::RasterFormat::Indexed:timeline::RasterFormat::Rgba;}
 struct SurfaceSnapshot {
  int width=0,height=0,x=0,y=0;
  std::shared_ptr<const std::vector<Pixel>> pixels;
