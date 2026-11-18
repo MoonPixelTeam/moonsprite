@@ -48,6 +48,20 @@ template<class Entries> int paletteColorIdForCanvas(const Entries& entries,const
  }
  return nearest;
 }
+// legacy document-model::remapIndexedDocumentToVisiblePalette. Preserve exact
+// ID buffers for replay; shared physical buffers reuse one remapped allocation.
+struct VisiblePaletteRemap {std::string ownerId;timeline::Surface before,after;};
+template<class Entries> std::vector<VisiblePaletteRemap> visiblePaletteRemaps(const timeline::State& state,const Entries& entries,const std::vector<int>& order){
+ std::vector<VisiblePaletteRemap> result;std::unordered_set<Pixel> visible;for(int id:order)if(id>=0)visible.insert(Pixel(id));
+ std::unordered_map<Pixel,Pixel> mapped;std::unordered_map<const void*,std::size_t> shared;std::size_t bytes=0;
+ for(const auto& cel:state.cels){if(!cel.surface||cel.linkedCelId||cel.runtimeSharedCelId||cel.surface->format!=timeline::RasterFormat::Indexed)continue;const auto& before=*cel.surface;
+  if(const auto found=shared.find(before.pixels.identity());found!=shared.end()){auto after=before;after.pixels.share(result[found->second].after.pixels);result.push_back({cel.id,before,std::move(after)});continue;}
+  bool changed=false;for(auto value:before.pixels)if(value&&!visible.count(value)){changed=true;break;}if(!changed)continue;
+  const auto cost=before.pixels.size()*sizeof(Pixel)*4ull;if(cost>256ull*1024*1024-bytes)throw std::length_error("Indexed palette remap exceeds native working budget");bytes+=cost;
+  auto after=before;auto& pixels=static_cast<std::vector<Pixel>&>(after.pixels);for(auto& value:pixels)if(value&&!visible.count(value)){auto [it,inserted]=mapped.emplace(value,0);if(inserted)it->second=Pixel(paletteColorIdForCanvas(entries,order,value<=Pixel(std::numeric_limits<int>::max())?paletteColor(entries,int(value)):0));value=it->second;}
+  shared.emplace(before.pixels.identity(),result.size());result.push_back({cel.id,before,std::move(after)});
+ }return result;
+}
 template<class Entries> Pixel resolveDocumentCanvasColor(Mode mode,PixelFormat format,const Entries& entries,const std::vector<int>& order,Pixel color){return mode==Mode::Indexed?paletteColor(entries,paletteColorIdForCanvas(entries,order,color)):normalizeDocumentColor(mode,format,color);}
 template<class Entries> Pixel resolveLayerCanvasColor(Mode mode,PixelFormat format,bool indexed,bool mask,const Entries& entries,const std::vector<int>& order,Pixel color){if(mask)return timeline::normalizedMaskPixel(color);return indexed?resolveDocumentCanvasColor(mode,format,entries,order,color):normalizeDocumentColor(mode,format,color);}
 template<class Entries> Pixel normalizeLayerPackedValue(Mode mode,PixelFormat format,bool indexed,bool mask,const Entries& entries,const std::vector<int>& order,Pixel value){

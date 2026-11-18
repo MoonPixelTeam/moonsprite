@@ -8028,3 +8028,10 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua索引色色板提取迁移
 
 对照lua-script-operations.ts的palette.extract、workspace-palette.ts的applyPalette及lua-script-service.ts的批次顺序，索引色色板提取通过保留格式的同步Timeline合成，避免将颜色ID作为RGBA预览，并承接同批先前像素写入；结果保留透明ID0。Lua完整色板历史撤销以beforePalette规范化索引像素，保持旧版先撤销色板操作再撤销像素的顺序。真实复用旧版Lua引擎回归覆盖提取、清空后提取、关联帧和Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（8.13秒）；重建indexed-history-tests，实际旧版oracle和历史回放两项通过（0.93秒）。来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见luaIndexedExtraction20261118。
+
+
+## 2026-11-19 索引色色板可见身份迁移
+
+对照 document-model.ts 的 remapIndexedDocumentToVisiblePalette 以及 workspace-palette.ts 的 applyPalette/deletePaletteColors，普通色板删除、切换、提取和 Lua remove/extract 在索引色工程中将隐藏或缺失 ID 映射到剩余可见颜色，保留透明 ID0；历史保存精确原始 ID，承接全部帧、锁定层和关联 Cel。RGBA 工程不重映射混合格式中的索引像素。复用可见色匹配算法与原生表面替换历史，不改变生产索引色准入。
+
+Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation 通过（7.71 秒），覆盖直接删除/切换/提取、真实旧版 Lua 索引色删除、结果适配器混合格式排除、锁定层、关联及独立帧、隐藏/无效 ID 和 Undo/Redo。旧版 Lua 引擎拒绝 RGBA 模式中的活动 Indexed 表面，故该混合分支仅验证结果适配器，不声称 Lua 实际支持。未重建正式 GUI、未人工图像验收，整体迁移 INCOMPLETE。来源见 indexedVisiblePaletteRemap20261119。

@@ -12,6 +12,7 @@ using namespace moon;
 using namespace moon::script;
 using namespace winrt::Windows::Data::Json;
 namespace moon {struct RasterHistoryFixture {
+ static void remapPalette(Document& d,bool indexed){indexedBrush(d);if(!indexed)d.colorMode_=color_mode::Mode::Rgba;d.palette_.entries={{0,U"Empty",0},{7,U"Red",0xff0000ff},{9,U"Near red",0xff0000ee},{11,U"Hidden",0xff0000ed}};d.palette_.setOrder({0,7,9});auto state=d.timeline_.state();for(auto& c:state.cels)if(c.surface){c.surface->pixels.assign(c.surface->pixels.size(),7);c.surface->pixels[0]=11;c.surface->pixels[1]=0xffffffff;}auto locked=state.layers.front();locked.id="locked-remap";locked.locked=true;state.layers.push_back(locked);auto extra=state.cels.front();extra.id="locked-remap-cel";extra.layerId=locked.id;state.cels.push_back(extra);d.timeline_=timeline::Timeline(std::move(state));}
  static void indexedBrush(Document& d){auto state=d.timeline_.state();for(auto& c:state.cels)if(c.surface){c.surface->format=timeline::RasterFormat::Indexed;c.surface->pixels.assign(c.surface->pixels.size(),7);}d.timeline_=timeline::Timeline(std::move(state));d.colorMode_=color_mode::Mode::Indexed;d.palette_.entries={{0,U"Empty",0},{7,U"First",0x80332211},{7,U"Duplicate",0xffabcdef}};d.palette_.setOrder({0,7});d.projectActiveCelOpacities();}
  static void mixedPalette(Document& d){auto state=d.timeline_.state();auto l=state.layers.front();l.id="mixed-indexed";state.layers.push_back(l);for(int n=0;n<2;++n){auto c=state.cels.front();c.id="mixed-"+std::to_string(n);c.layerId=l.id;c.frameId=state.frames[n].id;c.surface->format=timeline::RasterFormat::Indexed;c.surface->pixels={7,8,7,8,7,8,7,8,7};if(n)c.linkedCelId="mixed-0";state.cels.push_back(std::move(c));}d.timeline_=timeline::Timeline(std::move(state));d.palette_.entries={{7,U"Changed",0xff010203},{8,U"Same old color",0xff010203},{9,U"Other",0xff998877}};d.palette_.setOrder({7,8,9});d.palette_.nextId=10;}
  static void clearCels(Document& d){auto state=d.timeline_.state();state.cels.clear();d.timeline_=timeline::Timeline(std::move(state));}
@@ -210,6 +211,22 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;const auto result=applyWorkspaceResult(*model,target,runtime.startInvocation("indexed-extract.lua",std::move(invocation)).get(),{});
   check(model->palette().order()==(clear?std::vector<int>{0}:std::vector<int>{0,7})&&model->activeSurface().format==timeline::RasterFormat::Indexed,"Indexed extraction lost transparent ID or read IDs as RGBA");
   if(clear){check(result.transactionCount==1&&std::all_of(model->activeSurface().pixels.begin(),model->activeSurface().pixels.end(),[](Pixel p){return p==0;}),"Indexed extraction did not see batch pixel writes");model->undo();check(model->palette().order()==order&&model->activeSurface().pixels==baseline,"Indexed extraction undo wrong");model->redo();check(model->palette().order()==std::vector<int>{0},"Indexed extraction redo lost transparent ID");}
+ }
+ // Visible palette transitions remap all owners, even locked/other-frame
+ // surfaces, preserve links and restore exact hidden/missing IDs on undo.
+ for(bool script:{false,true})for(bool linked:{false,true})for(bool indexed:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,linked));RasterHistoryFixture::remapPalette(*model,indexed);const auto before=model->activeSurface().pixels;const auto second=model->timeline().resolveSurface("cel-1").surface->pixels;
+  if(script){std::ofstream(root/"scripts/indexed-remove.lua")<<"app.transaction(function() mse.palette.remove(0); mse.palette.remove(7) end)";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;if(indexed)applyWorkspaceResult(*model,target,runtime.startInvocation("indexed-remove.lua",std::move(invocation)).get(),{});else applyWorkspaceResult(*model,target,R"({"batches":[{"label":"Remove","changes":[],"operations":[{"path":"palette.remove","arguments":{"id":0}},{"path":"palette.remove","arguments":{"id":7}}]}],"createdLayers":[],"createdDocuments":[]})",{});}
+  else model->deletePaletteColors({0,7});
+  const auto expected=indexed?std::vector<Pixel>{9,0,9,9,9,9,9,9,9}:std::vector<Pixel>(before.begin(),before.end());
+  check(model->activeSurface().pixels==expected&&model->timeline().resolveSurface("cel-1").surface->pixels==expected&&model->timeline().resolveSurface("locked-remap-cel").surface->pixels==expected,"Palette removal missed locked/secondary indexed owner or changed RGBA mode");
+  check(model->palette().order()==(indexed?std::vector<int>{0,9}:std::vector<int>{9}),"Palette removal transparent ID protection wrong");
+  model->undo();check(model->activeSurface().pixels==before&&model->timeline().resolveSurface("cel-1").surface->pixels==second,"Palette removal undo lost raw IDs");model->redo();check(model->activeSurface().pixels==expected,"Palette removal redo wrong");
+ }
+ for(bool extract:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::remapPalette(*model,true);const auto before=model->activeSurface().pixels;
+  if(extract)model->applyExtractedPalette({0xff0000ee});else model->applyStoredPalette({0xff0000ee});
+  check(model->palette().order()==std::vector<int>({0,9})&&model->activeSurface().pixels==std::vector<Pixel>({9,0,9,9,9,9,9,9,9}),"Stored/extracted indexed palette did not remap or retain ID0");model->undo();check(model->activeSurface().pixels==before,"Stored palette undo lost hidden IDs");model->redo();check(model->activeSurface().pixels.front()==9,"Stored palette redo wrong");
  }
  // Absent indexed frame stays absent through capture, then materializes IDs.
  {auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::indexedBrush(*model);RasterHistoryFixture::removeFrameCels(*model,model->frame().id);

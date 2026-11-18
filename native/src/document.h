@@ -1114,6 +1114,7 @@ private:
   void applyPaletteEdit(const Edit& edit,bool redo,PaletteReplay* prepared=nullptr);
   std::optional<PaletteViewSelection> paletteViewRestore_;
   std::uint64_t paletteViewRestoreSerial_=0;
+  void prepareVisiblePaletteRemap(Edit&,const PaletteState&)const;
   void selectPaletteIds(const std::vector<int>& ids,int primary);
   void line(Point from, Point to);
   void plot(int x, int y);
