@@ -6049,7 +6049,21 @@ void Editor::smokeExportFormatPreference(){
 
     currentDocument().addFrame();for(int pref:{1,4,5,6,7}){runtimePreferences_.set("files.exportFormat.Select",std::to_string(pref));openDocumentExport();require(pending_==Pending::GifExport&&!framePngMode_,"Export animated default override");resolve(false);}replaceDocumentForSmoke(Document(2,1));refresh();
 
-    for(int pref:{0}){runtimePreferences_.set("files.exportFormat.Select",std::to_string(pref));openDocumentExport();require(pending_==Pending::None&&status_.find(U"尚未接入")!=std::u32string::npos,"Export unsupported preference silently replaced");}
+    runtimePreferences_.set("files.exportFormat.Select","0");
+    for(bool animated:{false,true}){
+      if(animated)currentDocument().addFrame();
+      const auto history=currentDocument().historySize(),revision=currentDocument().revision();const auto path=currentPath();
+      openDocumentExport();require(pending_==Pending::StaticExport&&exportProjectFormat_==10&&exportOptions_.scalePercent==100&&exportExtension()==L".moonsprite","Native preferred whole-project format including animation");
+      require(!exportScaleInput_->isVisible()&&!exportTrimButton_->isVisible()&&!exportLayerButton_->isEnabled(),"Native export hides scale/trim and fixes document target");
+      resolve(false);require(currentDocument().historySize()==history&&currentDocument().revision()==revision&&currentPath()==path,"Native export cancellation preserves source");
+      openFramePngExport();require(pending_==Pending::GifExport&&framePngMode_&&framePngAutomatic_,"Native preference explicit frames uses PNG");resolve(false);
+    }
+    auto* exportFormat=static_cast<PixelDropdown*>(exportFormatButton_);openStaticExport();require(exportFormat->optionEnabled(10),"Native export format selector available");exportOptions_.scalePercent=200;exportOptions_.trim=true;exportFormat->changed(10);require(exportProjectFormat_==10&&exportOptions_.scalePercent==100&&!exportOptions_.trim&&!exportOptions_.trimCommon&&exportOptions_.layerId.empty(),"Native format switch normalizes whole project");
+    const auto output=exportMemoryPathOverride_.parent_path()/"native-preference.moonsprite";exportDirectory_=output.parent_path();exportFilename_->setText(output.filename().u8string());
+    const auto beforeHistory=currentDocument().historySize(),beforeRevision=currentDocument().revision();const auto sourcePath=currentPath();resolve(true);
+    require(pending_==Pending::None&&std::filesystem::is_regular_file(output)&&currentPath()==sourcePath&&currentDocument().historySize()==beforeHistory&&currentDocument().revision()==beforeRevision,"Native preference exports without saving live document");
+    std::ifstream input(output,std::ios::binary);auto bytes=std::make_shared<const project::Bytes>(std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>());auto imported=project::createEditableDocument(project::prepareEditableImport(project::readProjectManifest(bytes)));require(imported.width()==currentDocument().width()&&imported.height()==currentDocument().height()&&imported.timeline().state().frames.size()==currentDocument().timeline().state().frames.size(),"Native export reopens with all frames");
+    openDocumentExport();require(exportProjectFormat_==10&&exportOptions_.scalePercent==100,"Native export memory restored");resolve(false);replaceDocumentForSmoke(Document(2,1));refresh();
 
     runtimePreferences_.set("files.exportFormat.Select","4");openStaticExport();require(!staticSvg_&&!staticBmp_&&!staticIco_&&!exportOptions_.automatic,"Export explicit static entry changed");const auto chosen=exportMemoryPathOverride_.parent_path()/L"remember.bmp";chooseExportFile_=[&](OPENFILENAMEW* d){auto name=chosen.wstring();std::copy(name.begin(),name.end(),d->lpstrFile);d->lpstrFile[name.size()]=0;return true;};switchStaticExportFormat(1);exportDirectory_.clear();resolve(true);openDocumentExport();require(pending_==Pending::StaticExport&&staticBmp_,"Export memory precedence over preference");resolve(false);replaceDocumentForSmoke(Document());refresh();
 

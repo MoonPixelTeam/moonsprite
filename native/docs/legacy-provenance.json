@@ -1174,7 +1174,8 @@
     "legacy/src/renderer/src/components/app/document-pane-dock-resize.test.ts": "27c7817994c47eceb8e6c81044061eef48632473f0c04249d2545034d14fbd16",
     "legacy/src/renderer/src/components/app/document-tab-close-range.ts": "5a3f30204774a145133590b72f94127f33213f8afffab9a66964f771bbd5323a",
     "legacy/src/renderer/src/components/canvas-brush-composite-preview.ts": "82e5dba82b75c9ff1ba949f5d6a892a380498b0fc2bf375fce71379356b6e35a",
-    "legacy/src-tauri/src/platform_dialogs.rs": "bc931dbd70327cf22d202a6d7486eb95022da4e22adcd9bf2ae4f06d64b5566f"
+    "legacy/src-tauri/src/platform_dialogs.rs": "bc931dbd70327cf22d202a6d7486eb95022da4e22adcd9bf2ae4f06d64b5566f",
+    "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx": "ccbdde37568cd3674b150a452d12c73ce2c955e5aeaf495ac848d22c6bd25c5c"
   },
   "files": [
     {
@@ -21603,6 +21604,15 @@
           "legacy/src/renderer/src/components/PixelUtilityIcon.tsx"
         ],
         "nativeAdaptation": "FileLocationPicker local gallery selects executable gallery directory, independent of save location preference. Enable shared native export location menu action using existing galleryDirectory, ensure directory and show errors; preserve filename, reuse converted legacy image utility icon. Formal palette-paths check validates enabled action, icon, selected directory/filename and actual PNG export without document mutation in test-owned gallery. Existing recent/project/chooser paths remain tested."
+      },
+      "nativeExportPreference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx",
+          "legacy/src/renderer/src/core/file-preferences.ts",
+          "legacy/src/renderer/src/core/file-preferences.test.ts"
+        ],
+        "nativeAdaptation": "Enable MoonSprite export preference and actual format dropdown using existing native project export transaction. Preserve export memory precedence and explicit frame PNG fallback; project format forces document target and 100 percent, clears trim, hides scale/trim controls. Extend formal export-format-preference smoke to single/multiple frames, cancellation, actual export and editable reopen, source revision/history/path preservation and memory restoration. No new encoder or layout system."
       }
     },
     {
@@ -25592,6 +25602,15 @@
           "legacy/src/renderer/src/store/workspace-commands-selection-transform.ts"
         ],
         "nativeAdaptation": "Legacy canvas-input-selection-begin reuses existing pending clipboard sources for content/handle dragging before capturing any new layer/mask transform. Native beginSelectionContentMove now preserves an already pending multi-Cel selection paste before active-mask routing; the clipboard transaction already has copy=true and owns every destination. Extend 24 mask Cel-paste cases to two distinct source pixels, normal/Alt drag capture and horizontal flip. Add actual Editor Paste and Flip menu fixture with independent expected pixels after 2x scaling and translation, original mask/isolation, cancellation and single commit/Undo/Redo. No new layout or materials."
+      },
+      "nativeExportPreference20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx",
+          "legacy/src/renderer/src/components/app/ExportDialogHost.test.tsx",
+          "legacy/src/renderer/src/core/file-preferences.ts",
+          "legacy/src/renderer/src/core/file-preferences.test.ts"
+        ],
+        "nativeAdaptation": "Enable MoonSprite export preference and actual format dropdown using existing native project export transaction. Preserve export memory precedence and explicit frame PNG fallback; project format forces document target and 100 percent, clears trim, hides scale/trim controls. Extend formal export-format-preference smoke to single/multiple frames, cancellation, actual export and editable reopen, source revision/history/path preservation and memory restoration. No new encoder or layout system."
       }
     },
     {

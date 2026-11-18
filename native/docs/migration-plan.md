@@ -7873,3 +7873,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 网格与自由瓦片共享资源图像缩放
 
 用户明确采用共享资源预乘透明度方案。resizeResourceImage复用既有按ID唯一资源计划，去除混合引用拒绝，共享资源走自由瓦片采样一次，网格及自由Cel按各自权威重绘；保持资源ID、单元格、实例、链接和既有快照Undo/Redo。可编辑导入允许共享，但保留现代单源表结构和自由资源集归属校验。扩展检查发现历史图集自动拆分及schema21拒绝历史元数据两处缺口，已修复为网格有引用时保留图集和原ID，并在清单读取时限定兼容；不保证旧版读取该原生共享扩展。48组既有真实旧版像素样本加入共享网格，另检查后台提交/取消、单元格独有引用、历史多tile图集、普通/恢复重开。最终tile-image-resize通过6.38秒、free-tile-project通过49.90秒、project-import通过0.06秒、project-manifest通过175.73秒，正式Release构建成功，来源1043文件及证据快照、diff检查通过。未GUI或人工图像验收；无性能优化。来源见sharedGridFreeResize20261118及shared-resource-image-resize-20261118.md，整体迁移INCOMPLETE。
+
+
+## 2026-11-18 MoonSprite工程默认导出与格式入口
+
+对照ExportDialogHost.tsx及其whole-project和remembered-native用例，默认导出偏好开放MoonSprite工程，单/多帧均使用完整工程及100%比例；显式帧导出仍使用PNG，导出记忆优先。实际格式下拉新增MoonSprite，复用已有工程编码与导出事务；切换强制整幅工程、清除trim与其他目标，隐藏比例/修剪控件，保留公共弹窗组件。扩展正式--export-format-preference-check覆盖偏好入口、格式切换、取消、实际写出后可编辑重开、多帧保持、源路径/历史/revision不变和记忆恢复。正式Release构建及该入口带正式主题/指针运行退出0，来源和diff检查通过；未人工图像验收。来源见nativeExportPreference20261118，整体迁移INCOMPLETE。

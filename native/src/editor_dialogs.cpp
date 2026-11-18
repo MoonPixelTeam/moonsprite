@@ -253,7 +253,7 @@ void Editor::openImageResize(){if(pending_!=Pending::None||currentDocument().act
 
 bool Editor::framePngBusy()const{return scriptExporting_||framePngTask_.busy();}
 
-bool Editor::supportedExportPreference(int index)const{return index==1||index==2||index==3||index==4||index==5||index==6||index==7||index==8;}
+bool Editor::supportedExportPreference(int index)const{return index>=0&&index<=8;}
 
 void Editor::unsupportedExportPreference(){status_=U"默认导出格式尚未接入，请在首选项选择已支持格式";refresh();}
 
@@ -355,7 +355,9 @@ void Editor::createSpriteSheetControls(){sheetPreviewTimer_.Tick.connect([this]{
 
   }
 
-void Editor::switchStaticExportFormat(int format){const bool previousSlices=exportSlices_;const auto previousSliceId=exportSliceId_;const bool wasStatic=pending_==Pending::StaticExport,wasSvg=wasStatic&&staticSvg_;const bool wasAnimated=pending_==Pending::GifExport&&!framePngMode_;const bool previousAllLayers=exportAllLayers_;const auto animation=gifOptions_;const auto previous=exportOptions_;const auto previousName=exportFilename_->text();const auto previousDirectory=exportDirectory_;if(pending_!=Pending::None)resolve(false);openStaticExport();if(pending_!=Pending::StaticExport)return;exportProjectFormat_=format>=7?format:0;if(wasAnimated){exportFilename_->setText(previousName);exportDirectory_=previousDirectory;exportOptions_.scalePercent=animation.scalePercent;exportOptions_.trim=animation.trim;exportOptions_.trimCommon=animation.trimCommon;exportOptions_.selection=animation.selection&&currentDocument().selection().has_value();exportOptions_.layerId=animation.layerId;}if(wasStatic){exportFilename_->setText(previousName);exportDirectory_=previousDirectory;exportOptions_.trimCommon=previous.trimCommon;exportOptions_.layerId=previous.layerId;if(previousAllLayers||!previous.layerId.empty()){exportOptions_.scalePercent=previous.scalePercent;exportOptions_.trim=previous.trim;}}exportAllLayers_=previousAllLayers;staticBmp_=format==1;staticIco_=format==2;staticSvg_=format==3;staticJpeg_=format==5;exportOptions_.automatic=format==4;if(staticSvg_&&wasStatic){exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(wasSvg&&!staticSvg_){exportOptions_.scalePercent=previous.scalePercent;exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(staticSvg_)exportOptions_.scalePercent=100;exportScaleInput_->suffix=staticSvg_?U"x":U"%";exportScaleInput_->setText(staticSvg_?"1":std::to_string(exportOptions_.scalePercent));discard_->caption=staticJpeg_?U"导出 JPEG":staticSvg_?U"导出 SVG":staticIco_?U"导出 ICO":staticBmp_?U"导出 BMP":U"导出 PNG";exportSlices_=previousSlices;exportSliceId_=previousSliceId;refresh();}
+void Editor::switchStaticExportFormat(int format){const bool previousSlices=exportSlices_;const auto previousSliceId=exportSliceId_;const bool wasStatic=pending_==Pending::StaticExport,wasSvg=wasStatic&&staticSvg_;const bool wasAnimated=pending_==Pending::GifExport&&!framePngMode_;const bool previousAllLayers=exportAllLayers_;const auto animation=gifOptions_;const auto previous=exportOptions_;const auto previousName=exportFilename_->text();const auto previousDirectory=exportDirectory_;if(pending_!=Pending::None)resolve(false);openStaticExport();if(pending_!=Pending::StaticExport)return;exportProjectFormat_=format>=7?format:0;if(wasAnimated){exportFilename_->setText(previousName);exportDirectory_=previousDirectory;exportOptions_.scalePercent=animation.scalePercent;exportOptions_.trim=animation.trim;exportOptions_.trimCommon=animation.trimCommon;exportOptions_.selection=animation.selection&&currentDocument().selection().has_value();exportOptions_.layerId=animation.layerId;}if(wasStatic){exportFilename_->setText(previousName);exportDirectory_=previousDirectory;exportOptions_.trimCommon=previous.trimCommon;exportOptions_.layerId=previous.layerId;if(previousAllLayers||!previous.layerId.empty()){exportOptions_.scalePercent=previous.scalePercent;exportOptions_.trim=previous.trim;}}exportAllLayers_=previousAllLayers;staticBmp_=format==1;staticIco_=format==2;staticSvg_=format==3;staticJpeg_=format==5;exportOptions_.automatic=format==4;if(staticSvg_&&wasStatic){exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(wasSvg&&!staticSvg_){exportOptions_.scalePercent=previous.scalePercent;exportOptions_.trim=previous.trim;exportOptions_.selection=previous.selection;}if(staticSvg_)exportOptions_.scalePercent=100;exportScaleInput_->suffix=staticSvg_?U"x":U"%";exportScaleInput_->setText(staticSvg_?"1":std::to_string(exportOptions_.scalePercent));discard_->caption=staticJpeg_?U"导出 JPEG":staticSvg_?U"导出 SVG":staticIco_?U"导出 ICO":staticBmp_?U"导出 BMP":U"导出 PNG";exportSlices_=previousSlices;exportSliceId_=previousSliceId;
+ if(exportProjectFormat_){exportSlices_=false;exportSliceId_.clear();exportAllLayers_=false;exportOptions_.selection=false;exportOptions_.layerId.clear();discard_->caption=exportProjectFormat_==7?U"导出 PSD":exportProjectFormat_==8?U"导出 ASE":exportProjectFormat_==9?U"导出 ASEPRITE":U"导出 MoonSprite";if(exportProjectFormat_==10){exportOptions_.scalePercent=100;exportOptions_.trim=exportOptions_.trimCommon=false;exportScaleInput_->setText("100");}}
+ refresh();}
 
 void Editor::openSvgExport(){switchStaticExportFormat(3);}
 
@@ -365,7 +367,7 @@ void Editor::openBmpExport(){openStaticExport();if(pending_!=Pending::StaticExpo
 
 void Editor::writeCurrentStaticExport(const std::filesystem::path& path){auto options=exportOptions_;options.protection=ExportProtection(runtimePreferences_.index("files.exportProtection.Select"));if(staticJpeg_){auto out=encodeStaticImageJpeg(currentDocument(),options);writeExportBytesAtomic(path,out.bytes);}else if(staticSvg_){auto out=encodeStaticImageSvg(currentDocument(),options);writeExportBytesAtomic(path,out.bytes);}else if(staticIco_){auto out=encodeStaticImageIco(currentDocument(),options);writeExportBytesAtomic(path,out.bytes);}else if(staticBmp_){auto out=encodeStaticImageBmp(currentDocument(),options);writeExportBytesAtomic(path,out.bytes);}else{auto out=encodeStaticImagePng(currentDocument(),options);writeStaticImagePngAtomic(path,out);}}
 
-void Editor::openDocumentExport(){if(pending_!=Pending::None||!resolveGradientForIo())return;if(pending_!=Pending::None||currentDocument().active())return;if(restoreExportMemory())return;const int preferred=runtimePreferences_.index("files.exportFormat.Select");if(preferred==8){openAsepriteExport(true);return;}if(currentDocument().timeline().state().frames.size()>1&&preferred!=0){openGifExport();return;}if(preferred==3||preferred==5){openGifExport();gifWebp_=preferred==3;discard_->caption=gifWebp_?U"导出 WebP":U"导出 GIF";refresh();return;}if(!supportedExportPreference(preferred)){unsupportedExportPreference();return;}switchStaticExportFormat(preferred==2?5:preferred==4?3:preferred==6?1:preferred==7?2:4);}
+void Editor::openDocumentExport(){if(pending_!=Pending::None||!resolveGradientForIo())return;if(pending_!=Pending::None||currentDocument().active())return;if(restoreExportMemory())return;const int preferred=runtimePreferences_.index("files.exportFormat.Select");if(preferred==0){switchStaticExportFormat(10);return;}if(preferred==8){openAsepriteExport(true);return;}if(currentDocument().timeline().state().frames.size()>1&&preferred!=0){openGifExport();return;}if(preferred==3||preferred==5){openGifExport();gifWebp_=preferred==3;discard_->caption=gifWebp_?U"导出 WebP":U"导出 GIF";refresh();return;}if(!supportedExportPreference(preferred)){unsupportedExportPreference();return;}switchStaticExportFormat(preferred==2?5:preferred==4?3:preferred==6?1:preferred==7?2:4);}
 
 void Editor::setFrameSequenceFormat(FrameSequenceFormat format,bool automatic){const bool wasSvg=frameSvg_;frameJpeg_=format==FrameSequenceFormat::Jpeg;frameSvg_=format==FrameSequenceFormat::Svg;frameIco_=format==FrameSequenceFormat::Ico;frameBmp_=format==FrameSequenceFormat::Bmp;framePngAutomatic_=automatic;if(frameSvg_)gifOptions_.scalePercent=100;if(frameSvg_||wasSvg){gifInputs_[0]->suffix=frameSvg_?U"x":U"";gifInputs_[0]->setText(frameSvg_?"1":std::to_string(gifOptions_.scalePercent));}discard_->caption=frameSvg_?U"导出 SVG 序列":frameIco_?U"导出 ICO 序列":frameBmp_?U"导出 BMP 序列":U"导出 PNG 序列";refresh();}
 
@@ -457,11 +459,11 @@ void Editor::createExportComponents() {
 
     auto format=exportDropdown(exportFormatButton_);
 
-    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASE / ASEPRITE"});
+    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASE / ASEPRITE",U"MoonSprite 工程"});
 
-    format->optionEnabled=[this](int i){return (i<=9)&&!(pending_==Pending::GifExport&&framePngMode_&&(i==2||i==7||i==8||i==9));};
+    format->optionEnabled=[this](int i){return i>=0&&i<=10&&!(pending_==Pending::GifExport&&framePngMode_&&(i==2||i==7||i==8||i==9||i==10));};
 
-    format->changed=[this](int i){if(i==8||i==9){resolve(false);openAsepriteExport(i==8);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
+    format->changed=[this](int i){if(i==10){switchStaticExportFormat(10);return;}if(i==8||i==9){resolve(false);openAsepriteExport(i==8);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
 
     auto target=exportDropdown(exportLayerButton_);
 
@@ -531,7 +533,7 @@ void Editor::layoutExportForm(const gfx::Rect& modal) {
 
     auto place=[&](ui::Widget* control,int left,int top,int width){control->setBounds(toDisplay({left,modal.y+top,width,textControlHeight}));};
 
-    static_cast<PixelDropdown*>(exportFormatButton_)->setSelectedIndex(exportProjectFormat_?(exportProjectFormat_==7?8:9):(animated?framePngMode_&&frameJpeg_:staticJpeg_)?6:animated&&!framePngMode_?(gifWebp_?7:2):(animated?frameSvg_:staticSvg_)?5:(animated?frameIco_:staticIco_)?4:(animated?frameBmp_:staticBmp_)?3:(animated?framePngAutomatic_:exportOptions_.automatic)?1:0);
+    static_cast<PixelDropdown*>(exportFormatButton_)->setSelectedIndex(exportProjectFormat_?(exportProjectFormat_==10?10:exportProjectFormat_==7?8:9):(animated?framePngMode_&&frameJpeg_:staticJpeg_)?6:animated&&!framePngMode_?(gifWebp_?7:2):(animated?frameSvg_:staticSvg_)?5:(animated?frameIco_:staticIco_)?4:(animated?frameBmp_:staticBmp_)?3:(animated?framePngAutomatic_:exportOptions_.automatic)?1:0);
 
     auto defaultName=(exportOptions_.layerId.empty()||animated?std::filesystem::path(currentDocument().name()).stem():std::filesystem::path(staticLayerExportStem(currentDocument(),exportOptions_.layerId)));if((!animated&&staticJpeg_)||(animated&&framePngMode_&&frameJpeg_))defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),animated?std::string{}:exportOptions_.layerId)+U".jpg");else if(exportAllLayers_)defaultName=std::filesystem::path(framePngExportStem(currentDocument().name())+std::filesystem::path(exportExtension()).u32string());else if(animated&&!framePngMode_&&gifWebp_)defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),{})+U".webp");else defaultName.replace_extension(exportExtension());
 
@@ -606,6 +608,8 @@ void Editor::layoutExportForm(const gfx::Rect& modal) {
     for(std::size_t i=0;i<runtimePreferences_.exportScales.size();++i){auto b=exportScaleButtons_[i];const int value=runtimePreferences_.exportScales[i];std::ostringstream text;text<<(svg?value/100.:value);b->caption=unicodeText(text.str())+(svg?U"x":U"%");b->active=current==value;b->setEnabled(!busy);place(b,at,scaleY,widths[i]);b->setBounds(b->bounds().offset(-exportScaleScroll_,0));b->paletteViewport=[this]{return exportScaleViewport_;};b->setVisible(exportScaleViewport_.intersects(b->bounds()));at+=widths[i]-1;}
 
     if(exportScaleBar_){exportScaleBar_->setDockBounds(PixelScrollBar::edgeBounds(toDisplay({presetX,modal.y+scaleY+textControlHeight,presetWidth,6}),false));exportScaleBar_->configure(total*uiScale,page,exportScaleScroll_);exportScaleBar_->setVisible(total*uiScale>page);exportScaleBar_->setEnabled(!busy);}
+
+    if(!animated&&exportProjectFormat_==10){exportScaleInput_->setVisible(false);exportTrimButton_->setVisible(false);for(auto b:exportScaleButtons_)b->setVisible(false);if(exportScaleBar_)exportScaleBar_->setVisible(false);}
 
     const int action=modalActionY(modal),cancelWidth=48,folderWidth=font_.measure(exportOpenFolderButton_->caption)+12,exportWidth=std::max(66,font_.measure(discard_->caption)+12);
 
@@ -2068,9 +2072,9 @@ void Editor::paintDialog(ui::Graphics& g) {
 
         label(U"导出文件",modal.x+6,modal.y+DialogLayout::label());label(U"格式",modal.x+6,modal.y+DialogLayout::label(1));label(U"导出区域",modal.x+6+(modal.w-18)/2+6,modal.y+DialogLayout::label(1));
 
-        label(staticSvg_?U"比例":U"比例（百分比）",modal.x+6,modal.y+exportScaleY());
+        if(exportProjectFormat_!=10)label(staticSvg_?U"比例":U"比例（百分比）",modal.x+6,modal.y+exportScaleY());
 
-        label(U"修剪",modal.x+6,modal.y+exportScaleY()+38);
+        if(exportProjectFormat_!=10)label(U"修剪",modal.x+6,modal.y+exportScaleY()+38);
 
         label(U"导出预设",modal.x+6,modal.y+exportScaleY()+76);if(!exportPresetFeedback_.empty())label(exportPresetFeedback_,modal.x+6,modal.y+exportScaleY()+132,true);return;
 
