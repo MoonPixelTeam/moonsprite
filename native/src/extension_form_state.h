@@ -6,6 +6,7 @@
 #include "javascript_text.h"
 #include <charconv>
 #include <array>
+#include <locale.h>
 namespace moon::extension {
 // ExtensionDialogForm's state, scoped to one authenticated window generation.
 // Renderer/chooser adapters use these values on the event thread.
@@ -44,7 +45,26 @@ public:
  static bool displayBoolean(const Value& value){return truthy(value);}
  // ExtensionDialogForm Number.isFinite(Number(value)): preserve coercion at
  // presentation only. Defaults and strict visibleWhen comparisons stay raw.
- static double displayNumber(const Value& value){if(!value)return 1;if(value.ValueType()==Type::Null)return 0;if(value.ValueType()==Type::Boolean)return value.GetBoolean()?1:0;if(value.ValueType()==Type::Number)return std::isfinite(value.GetNumber())?value.GetNumber():1;if(value.ValueType()==Type::Object)return 1;const auto string=diagnosticString(value);std::u32string units;for(auto c:string)units+=char32_t(c);const auto trimmed=javascriptTrim(units);if(trimmed.empty())return 0;std::string ascii;for(auto c:trimmed){if(c>127)return 1;ascii+=char(c);}if(ascii.size()>2&&ascii[0]=='0'&&(ascii[1]=='x'||ascii[1]=='X'||ascii[1]=='b'||ascii[1]=='B'||ascii[1]=='o'||ascii[1]=='O')){const int base=ascii[1]=='x'||ascii[1]=='X'?16:ascii[1]=='b'||ascii[1]=='B'?2:8;double result=0;for(std::size_t i=2;i<ascii.size();++i){const char c=ascii[i];const int digit=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:99;if(digit>=base)return 1;result=result*base+digit;}return std::isfinite(result)?result:1;}const char* first=ascii.data();if(*first=='+')++first;if(first==ascii.data()+ascii.size())return 1;double result=0;auto parsed=std::from_chars(first,ascii.data()+ascii.size(),result,std::chars_format::general);return parsed.ec==std::errc{}&&parsed.ptr==ascii.data()+ascii.size()&&std::isfinite(result)?result:1;}
+ static double displayNumber(const Value& value){if(!value)return 1;if(value.ValueType()==Type::Null)return 0;if(value.ValueType()==Type::Boolean)return value.GetBoolean()?1:0;if(value.ValueType()==Type::Number)return std::isfinite(value.GetNumber())?value.GetNumber():1;if(value.ValueType()==Type::Object)return 1;const auto string=diagnosticString(value);std::u32string units;for(auto c:string)units+=char32_t(c);const auto trimmed=javascriptTrim(units);if(trimmed.empty())return 0;std::string ascii;for(auto c:trimmed){if(c>127)return 1;ascii+=char(c);}if(ascii.size()>2&&ascii[0]=='0'&&(ascii[1]=='x'||ascii[1]=='X'||ascii[1]=='b'||ascii[1]=='B'||ascii[1]=='o'||ascii[1]=='O')){const int base=ascii[1]=='x'||ascii[1]=='X'?16:ascii[1]=='b'||ascii[1]=='B'?2:8;double result=0;for(std::size_t i=2;i<ascii.size();++i){const char c=ascii[i];const int digit=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:99;if(digit>=base)return 1;result=result*base+digit;}return std::isfinite(result)?result:1;}// Validate DecimalLiteral before using the native converter: from_chars
+  // alone accepts nan and removing '+' alone would admit the invalid '+-2'.
+  std::size_t cursor=0;if(ascii[cursor]=='+'||ascii[cursor]=='-')++cursor;
+  const auto digit=[](char c){return c>='0'&&c<='9';};
+  std::size_t digits=0;while(cursor<ascii.size()&&digit(ascii[cursor])){++cursor;++digits;}
+  if(cursor<ascii.size()&&ascii[cursor]=='.'){++cursor;while(cursor<ascii.size()&&digit(ascii[cursor])){++cursor;++digits;}}
+  if(!digits)return 1;
+  if(cursor<ascii.size()&&(ascii[cursor]=='e'||ascii[cursor]=='E')){++cursor;if(cursor<ascii.size()&&(ascii[cursor]=='+'||ascii[cursor]=='-'))++cursor;const auto exponent=cursor;while(cursor<ascii.size()&&digit(ascii[cursor]))++cursor;if(cursor==exponent)return 1;}
+  if(cursor!=ascii.size())return 1;
+  const char* first=ascii.data();if(*first=='+')++first;double result=0;
+  auto parsed=std::from_chars(first,ascii.data()+ascii.size(),result,std::chars_format::general);
+  if(parsed.ec==std::errc::result_out_of_range){
+   // ECMAScript keeps finite underflow (including signed zero); from_chars
+   // reports it together with overflow. The C locale conversion distinguishes
+   // these without inheriting the user's decimal separator.
+   const auto locale=_create_locale(LC_NUMERIC,"C");if(!locale)return 1;
+   result=_strtod_l(ascii.c_str(),nullptr,locale);_free_locale(locale);
+  }else if(parsed.ec!=std::errc{}||parsed.ptr!=ascii.data()+ascii.size())return 1;
+  return std::isfinite(result)?result:1;
+ }
  struct File {std::wstring name,mime;std::vector<std::uint8_t> bytes;};
  using Save=std::function<bool(const File&)>;
  struct ExportTicket{std::uint64_t generation=0,sequence=0;};

@@ -8254,3 +8254,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 扩展表单选项标题与说明同行迁移
 
 实际对照 ExtensionDialogForm.tsx 的 choice 与 styles.css 的 extension-form-choice-content、small 和末尾45%约束，修正原生此前上下两行的近似布局：标题和说明在同一20px按钮内并排，间距2px，说明最多占内容45%，分别省略并沿用完整提示。保留原按钮素材、动作、选中与禁用状态；原生字体继续10px，未套用旧版较小说明字号。同步更正规范中此前误记的双行说明。唯一正式 Release 构建成功（form-choice-inline-build.log），extension-form-ui CTest通过（1.69秒），来源覆盖1043文件及证据快照检查通过，diff检查通过。既有检查覆盖表单布局及交互；未新增专门像素断言，未人工图像验收。整体迁移 INCOMPLETE；保留既有 main.cpp 差异，不提交生成物或用户数据。
+
+## 2026-11-19 扩展数字字段边界转换迁移
+
+对照 ExtensionDialogForm.tsx number 分支的 Number.isFinite(Number(value))，补齐原生十进制字符串转换边界：先验证符号、小数和指数语法，拒绝此前会误接受的 +-2；from_chars 范围失败时用独立 C locale 的 Windows 转换区分有限下溢和无穷溢出，保留极小数及负零，溢出仍按旧版回退1。不修改原始默认值、visibleWhen严格比较和编辑事务。新增集中样本覆盖非法符号/指数、合法小数、Unicode空白、最小次正规数、正负零及溢出。Release状态测试与唯一正式程序构建成功（form-number-boundary-build.log），extension-form-state CTest通过（1.09秒），来源覆盖及证据快照、diff检查通过。未运行GUI或人工图像验收，整体迁移INCOMPLETE；保留既有main.cpp差异，不提交生成物和用户数据。

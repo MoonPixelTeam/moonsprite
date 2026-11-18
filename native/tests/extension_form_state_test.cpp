@@ -1,9 +1,23 @@
 #include "extension_form_state.h"
 #include <iostream>
+#include <limits>
 using namespace moon::extension;using namespace winrt::Windows::Data::Json;
 void check(bool v,const char* why){if(!v)throw std::runtime_error(why);}
 int main(){winrt::init_apartment();try{
  {check(FormState::displayNumber(nullptr)==1,"undefined number fallback");for(const auto& sample:std::vector<std::pair<std::wstring,double>>{{L"null",0},{L"false",0},{L"true",1},{L"\"\"",0},{L"\"  -2.5e1  \"",-25},{L"\"0x20\"",32},{L"\"0b101\"",5},{L"\"0o17\"",15},{L"\"12px\"",1},{L"\"Infinity\"",1},{L"\"-0x10\"",1},{L"[]",0},{L"[3]",3},{L"[1,2]",1},{L"{}",1}})check(FormState::displayNumber(JsonValue::Parse(sample.first))==sample.second,"legacy Number coercion");check(FormState::displayBoolean(JsonValue::CreateStringValue(L"false"))&&!FormState::displayBoolean(JsonValue::CreateNumberValue(0)),"legacy Boolean coercion");}
+ // Legacy number fields use Number.isFinite(Number(value)), including valid
+ // decimal underflow and strict sign/exponent syntax before fallback to one.
+ for(const auto& sample:std::vector<std::pair<std::wstring,double>>{
+  {L"+-2",1},{L"++2",1},{L"--2",1},{L"+",1},{L"-",1},{L".",1},
+  {L"1e",1},{L"1e+",1},{L"1e-",1},{L"2e3x",1},{L"nan",1},
+  {L"+2",2},{L"+.5",.5},{L"-.5",-.5},{L"2.",2},{L"2.e2",200},
+  {L"1e-400",0},{L"-1e-400",-0.0},{L"1e400",1},{L"-1e400",1},
+  {L"0e9999",0},{L"5e-324",std::numeric_limits<double>::denorm_min()},
+  {L"\ufeff\u2000+2\u2029",2},{L"2 3",1},{L"+0x20",1},{L"0b2",1}}){
+  const auto actual=FormState::displayNumber(JsonValue::CreateStringValue(sample.first));
+  check(actual==sample.second&&(actual!=0||std::signbit(actual)==std::signbit(sample.second)),"legacy decimal syntax/underflow/sign");
+ }
+
  FormState form;const auto start=std::chrono::steady_clock::now();form.tick(start+std::chrono::seconds(16));check(!form.loadError().empty(),"15s stall");form.retry(start);check(form.loadError().empty()&&!form.loaded()&&form.generation()==1,"retry reset");
  auto nodes=JsonArray::Parse(LR"([{"id":"name","type":"input","value":""},{"id":"scale","type":"number","value":0},{"id":"event","type":"select","value":"idle"},{"id":"dependent","type":"text","visibleWhen":{"event":"tool"}},{"id":"save","type":"button","action":{"type":"save","values":"spoof","requestId":"spoof"}},{"id":"toggle","type":"toggle","action":{"type":"toggle"}},{"id":"slot","type":"slot","contextAction":{"type":"clear"},"children":[{"id":"file","type":"file","multiple":false,"action":{"type":"upload","animation":"SHOW"}}]}])");
  auto view=[&](const std::wstring& reply=L"",bool file=false){JsonObject v;v.Insert(L"nodes",nodes);if(!reply.empty()){JsonObject result;result.Insert(L"requestId",JsonValue::CreateStringValue(reply));if(file)result.Insert(L"file",JsonObject::Parse(LR"({"name":"cat.mspet","bytes":[1,2]})"));v.Insert(L"result",result);}return v;};
