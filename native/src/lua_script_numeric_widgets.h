@@ -25,7 +25,7 @@ public:
  bool onProcessMessage(ui::Message* msg)override{
   // Invalid/empty expressions revert to the last accepted numeric value.
   if(isEnabled()&&msg->type()==ui::kFocusLeaveMessage){if(!commitExpression())displayValue();else normalize();}
-  if(isEnabled()&&msg->type()==ui::kKeyDownMessage){const auto code=static_cast<ui::KeyMessage*>(msg)->scancode();if(code==ui::kKeyEnter||code==ui::kKeyEnterPad){if(!commitExpression())displayValue();normalize();displayValue();return true;}}
+  if(isEnabled()&&msg->type()==ui::kKeyDownMessage){const auto code=static_cast<ui::KeyMessage*>(msg)->scancode();if(code==ui::kKeyEnter||code==ui::kKeyEnterPad){const bool expression=text().find_first_of("+-*/()",1)!=std::string::npos;if(!commitExpression())displayValue();normalize();displayValue();if(!expression)releaseFocus();return true;}}
   return PixelEntry::onProcessMessage(msg);
  }
 };

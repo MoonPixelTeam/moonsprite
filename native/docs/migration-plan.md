@@ -8304,3 +8304,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 组合框重复选择回调迁移
 
 对照 LuaScriptDialog.tsx 与 ThemedSelect.tsx::select，重新选择当前选项仍更新值并发送 change，包括只有一个选项的组合框。PixelDropdown 增加默认关闭的 notifyOnReselect，仅 Lua 组合框启用；其他调用方保持原行为。既有弹窗 verify 检查默认重复选择不通知及显式启用后通知一次。唯一正式 Release 构建成功（lua-combobox-reselect-build.log），正式程序 --script-report-check 带正式主题/指针等待实际进程退出0。来源覆盖1043文件及证据快照、diff检查通过；未人工点击下拉选项或图像验收，整体迁移INCOMPLETE。保留既有main.cpp和未跟踪文件，不提交生成物或用户数据。
+
+## 2026-11-19 数字输入 Enter 焦点与回调迁移
+
+实际对照 NumberInput.tsx onKeyDown：提交前记录算式标记；无表单时普通数值 Enter 失焦，触发 onBlur；算式 Enter 只计算并保留焦点。ScriptNumberEntry 在 commitExpression 前记录标记，普通 Enter 调用继承的 releaseFocus，沿用原生焦点离开消息发送一次提交；算式保留原焦点。既有实际弹窗 verify 附加数字控件验证2+3得到5且焦点/回调不变，随后7失焦且仅一次提交。首轮检查受到原入口失焦回调干扰，已在夹具中屏蔽该窗口业务派发，未改变生产逻辑。最终唯一正式Release构建成功（lua-number-enter-focus-build.log），正式程序--script-report-check实际退出0。来源覆盖1043及证据快照、diff通过；无人工键盘/图像验收，完整NumberInput步进按钮等仍有缺口，整体INCOMPLETE。保留main.cpp及用户文件。
