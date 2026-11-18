@@ -8200,3 +8200,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字弹窗几何记忆迁移
 
 对照 TextToolDialog.tsx 的 ModalShell storageKey=text-tool、floating-panel.tsx 与 panel-preferences.ts，复用 ModalGeometryPreferences 保存与恢复位置、宽度和用户调整后的高度；关闭时保存，拖动捕获结束后复用异步写入。保留原生 440×340 默认/最小像素布局，恢复上限使用旧版 980×760；视口约束沿用现有原生适配，跨显示器浏览器等价未证明。检查模式跳过真实用户几何偏好。唯一正式 Release 构建成功（text-geometry-build.log），正式主题/指针下 --text-tool-check 实际退出0，来源覆盖与 diff 检查通过。该检查验证既有编辑流程，几何持久化仅源码核对现成适配，未新增端到端持久化验收或人工图像验收。来源见 textModalGeometry20261119；整体迁移 INCOMPLETE，不提交生成物、用户数据或既有 main.cpp 差异。
+
+
+## 2026-11-19 文字系统字体目录异步加载迁移
+
+对照 TextToolDialog.tsx::loadSystemFontCatalog effect 与 active 标记，弹窗创建时后台加载系统字体目录；加载中、空目录和失败时禁用系统字体入口，成功后搜索使用已加载目录，失败显示旧版提示。工作线程只持有字体服务值句柄，不持有弹窗；UI 定时器应用结果，关闭时停止轮询，packaged_task 的 future 析构不等待后台任务。复用现有 DirectWrite 枚举与排序，仅将只读枚举接入旧版异步生命周期。字体导入、删除与 fontBusy 仍未迁移，不声明整套字体异步流程完成。唯一正式 Release 构建成功（text-system-catalog-build.log），正式主题/指针下 --text-tool-check 实际退出0，新增夹具覆盖 pending/success/empty/error 状态。来源覆盖和 diff 检查通过；关闭时后台生命周期仅源码核对，未人工图像验收。来源见 textSystemCatalogAsync20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物或用户数据。
