@@ -7968,3 +7968,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua灰度工程默认色板
 
 对照lua-script-service.ts的createScriptDocument及document-model.ts的createDocument，脚本创建灰度工程初始化ID1灰色24和ID2白色，替代误用的RGBA墨黑/月蓝，保持可见顺序与nextColorId=3。扩展既有实际Lua灰度Sprite创建、会话接纳与保存重开检查，断言确切颜色/ID/顺序/分配器。Release lua-script-invocation-tests构建及lua-script-invocation CTest通过（6.52秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；索引色生产创建仍关闭，整体迁移INCOMPLETE。来源见luaGrayPalette20261118。
+
+
+## 2026-11-18 四角透视与Lua灰度正式程序集成
+
+已将四角透视边界及Lua灰度工程默认色板修复编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志quad-lua-formal-build.log；使用正式主题/指针，Start-Process -Wait -PassThru确认--script-entry-check与--selection-check均退出0。本轮未新增实现改动，未重复运行已通过的985组旧版选区事务或Lua调用核心检查；入口检查不替代其精确像素/色板断言。未人工图像验收，索引色生产准入保持关闭，整体迁移INCOMPLETE。未提交生成物、用户数据或既有main.cpp状态。
