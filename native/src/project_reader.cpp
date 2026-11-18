@@ -39,8 +39,11 @@ Archive::Archive(std::shared_ptr<const Bytes> bytes,Limits limits):bytes_(std::m
     if(e.method!=0 && e.method!=8) throw Error(ErrorKind::Unsupported,"Unsupported ZIP compression method");
     const auto name=text(b,at+46,nameLen);
     if(name.empty() || name.find('\0')!=std::string::npos || !entries_.emplace(name,e).second) corrupt("Duplicate or empty ZIP filename");
-    if(e.size>limits.expandedBytes-expanded) throw Error(ErrorKind::Limit,"Project archive exceeds expanded budget");
-    expanded+=e.size;
+    // Extension archives follow inspect_archive: directory entries consume no
+    // expanded budget. Project archives retain their existing strict accounting.
+    const auto expandedSize=limits.ignoreDirectoryExpandedBytes && name.back()=='/'?0u:e.size;
+    if(expandedSize>limits.expandedBytes-expanded) throw Error(ErrorKind::Limit,"Project archive exceeds expanded budget");
+    expanded+=expandedSize;
     at+=46u+nameLen+extra+comment;
     if(at>end) corrupt("Invalid ZIP directory entry length");
   }
