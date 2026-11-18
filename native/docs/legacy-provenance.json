@@ -21669,6 +21669,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Enable project formats from frame sequences and route PSD/ASEPRITE through existing shared static project export rather than a fresh standalone popup. Preserve filename, directory and scale, force document target and retain MoonSprite scale/trim normalization. Production preference smoke checks transitions and actual PSD, ASEPRITE and MoonSprite writes."
+      },
+      "distinctAseExport20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Expose separate ASE and ASEPRITE entries matching legacy format choices, reusing existing project formats 8/9 and encoders. Keep existing dropdown indices stable by appending ASE. Extend production preference smoke to actual ASE output and memory restore of all project formats, verifying selector index and filename extension."
       }
     },
     {
@@ -25716,6 +25722,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Enable project formats from frame sequences and route PSD/ASEPRITE through existing shared static project export rather than a fresh standalone popup. Preserve filename, directory and scale, force document target and retain MoonSprite scale/trim normalization. Production preference smoke checks transitions and actual PSD, ASEPRITE and MoonSprite writes."
+      },
+      "distinctAseExport20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Expose separate ASE and ASEPRITE entries matching legacy format choices, reusing existing project formats 8/9 and encoders. Keep existing dropdown indices stable by appending ASE. Extend production preference smoke to actual ASE output and memory restore of all project formats, verifying selector index and filename extension."
       }
     },
     {

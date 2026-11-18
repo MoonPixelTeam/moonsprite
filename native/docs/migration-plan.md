@@ -7918,3 +7918,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 帧序列切换工程格式
 
 对照ExportDialogHost.tsx格式onChange，开放帧序列到PSD、ASEPRITE、MoonSprite的格式选择，复用统一静态工程导出事务；PSD与ASEPRITE不再进入丢失原草稿的独立弹窗。保留文件名、目录、比例并强制整幅工程，MoonSprite仍归一100%及清除修剪。正式偏好检查覆盖三类入口、控件约束及实际文件写出。首次检查误在弹窗关闭后推算扩展名，修正为提前记录完整输出路径后通过。最终正式Release构建、--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见sequenceProjectSwitch20261118。
+
+
+## 2026-11-18 ASE与ASEPRITE独立导出入口
+
+对照ExportDialogHost.tsx独立ase和aseprite选项，将原合并标签明确为ASEPRITE，追加ASE入口并映射既有工程格式8；保留原下拉索引，复用既有编码及导出事务。扩展正式偏好检查，实际写出ASE并对四种工程格式重新打开导出设置，验证格式、扩展名和下拉选择保持。正式Release构建及--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见distinctAseExport20261118。

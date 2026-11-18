@@ -459,11 +459,11 @@ void Editor::createExportComponents() {
 
     auto format=exportDropdown(exportFormatButton_);
 
-    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASE / ASEPRITE",U"MoonSprite 工程"});
+    format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASEPRITE",U"MoonSprite 工程",U"ASE"});
 
-    format->optionEnabled=[](int i){return i>=0&&i<=10;};
+    format->optionEnabled=[](int i){return i>=0&&i<=11;};
 
-    format->changed=[this](int i){if(i==10){switchStaticExportFormat(10);return;}if(i==8||i==9){switchStaticExportFormat(i==8?7:9);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
+    format->changed=[this](int i){if(i==11){switchStaticExportFormat(8);return;}if(i==10){switchStaticExportFormat(10);return;}if(i==8||i==9){switchStaticExportFormat(i==8?7:9);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
 
     auto target=exportDropdown(exportLayerButton_);
 
@@ -535,7 +535,7 @@ void Editor::layoutExportForm(const gfx::Rect& modal) {
 
     auto place=[&](ui::Widget* control,int left,int top,int width){control->setBounds(toDisplay({left,modal.y+top,width,textControlHeight}));};
 
-    static_cast<PixelDropdown*>(exportFormatButton_)->setSelectedIndex(exportProjectFormat_?(exportProjectFormat_==10?10:exportProjectFormat_==7?8:9):(animated?framePngMode_&&frameJpeg_:staticJpeg_)?6:animated&&!framePngMode_?(gifWebp_?7:2):(animated?frameSvg_:staticSvg_)?5:(animated?frameIco_:staticIco_)?4:(animated?frameBmp_:staticBmp_)?3:(animated?framePngAutomatic_:exportOptions_.automatic)?1:0);
+    static_cast<PixelDropdown*>(exportFormatButton_)->setSelectedIndex(exportProjectFormat_?(exportProjectFormat_==10?10:exportProjectFormat_==8?11:exportProjectFormat_==7?8:9):(animated?framePngMode_&&frameJpeg_:staticJpeg_)?6:animated&&!framePngMode_?(gifWebp_?7:2):(animated?frameSvg_:staticSvg_)?5:(animated?frameIco_:staticIco_)?4:(animated?frameBmp_:staticBmp_)?3:(animated?framePngAutomatic_:exportOptions_.automatic)?1:0);
 
     auto defaultName=(exportOptions_.layerId.empty()||animated?std::filesystem::path(currentDocument().name()).stem():std::filesystem::path(staticLayerExportStem(currentDocument(),exportOptions_.layerId)));if((!animated&&staticJpeg_)||(animated&&framePngMode_&&frameJpeg_))defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),animated?std::string{}:exportOptions_.layerId)+U".jpg");else if(exportAllLayers_)defaultName=std::filesystem::path(framePngExportStem(currentDocument().name())+std::filesystem::path(exportExtension()).u32string());else if(animated&&!framePngMode_&&gifWebp_)defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),{})+U".webp");else defaultName.replace_extension(exportExtension());
 
