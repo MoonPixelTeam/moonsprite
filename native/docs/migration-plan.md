@@ -7973,3 +7973,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 四角透视与Lua灰度正式程序集成
 
 已将四角透视边界及Lua灰度工程默认色板修复编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0，日志quad-lua-formal-build.log；使用正式主题/指针，Start-Process -Wait -PassThru确认--script-entry-check与--selection-check均退出0。本轮未新增实现改动，未重复运行已通过的985组旧版选区事务或Lua调用核心检查；入口检查不替代其精确像素/色板断言。未人工图像验收，索引色生产准入保持关闭，整体迁移INCOMPLETE。未提交生成物、用户数据或既有main.cpp状态。
+
+
+## 2026-11-18 索引色普通选区斜切事务核对
+
+执行旧版selection.ts、tools-selection-transform-apply.ts和workspace-floating-clipboard.ts实际斜切逻辑，新增192组n/s/w/e、0度及37度、移动/复制/粘贴、dense/sparse/负偏移、mask及即时/延迟输入。夹具将旧版边缘斜切转换为等价原生中心斜切；现有生产实现无需修改。Release indexed-selection-tests定向构建通过，1177组实际旧版事务、32组链接变体及3组缺失Cel检查通过，覆盖预览像素/浮动复制/取消/提交/Undo/Redo。来源覆盖及diff检查通过。仅扩展行为证据，未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见indexedShearTransactions20261118。
