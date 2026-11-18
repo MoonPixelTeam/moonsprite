@@ -8215,3 +8215,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字字体目录初始化异步迁移
 
 对照 TextToolDialog.tsx 初始 fonts 与 loadTextFontCatalog effect，弹窗先显示 TEXT_FONT_FAMILIES 的四种内置字体，再后台读取服务目录；UI 定时器应用目录，沿用原生缺失文档字体占位。失败保留当前列表并显示旧版提示；关闭停止轮询，后台只持有服务句柄。字体服务构造中的磁盘初始化仍同步，本轮不声明该部分异步完成。唯一正式 Release 构建成功（text-initial-catalog-build.log），正式主题/指针下 --text-tool-check 实际退出0，覆盖加载中、成功和失败状态；来源覆盖与 diff 检查通过。未人工图像验收或关闭竞争验收，整体迁移 INCOMPLETE。来源见 textInitialCatalogAsync20261119；保留既有 main.cpp 差异，不提交生成物和用户数据。
+
+
+## 2026-11-19 字体后台导入删除真实流程验收
+
+按 TextToolDialog.tsx::addFont/removeSelectedFont 的当前值更新和 fontBusy 语义，既有文字工具检查新增独立临时字体库，复制内置 Fusion WOFF2 为独立导入身份，运行真实后台导入与删除。验证忙碌按钮、磁盘资源、导入选中与成功反馈、操作期间编辑文字保留、删除资源及目录回退。只读用户字体，不向用户字体库写入；临时证据保留。唯一正式 Release 构建成功（text-font-roundtrip-build.log），正式主题/指针下 --text-tool-check 实际退出0。关闭竞争、真实系统字体弹窗导入及人工图像验收仍未验证；整体迁移 INCOMPLETE。来源见 textFontAsyncRoundtrip20261119；保留既有 main.cpp 差异，不提交生成物和用户数据。

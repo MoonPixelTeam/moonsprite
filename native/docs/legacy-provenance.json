@@ -30300,6 +30300,14 @@
         "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
         "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
       },
+      "textFontAsyncRoundtrip20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::addFont/removeSelectedFont current-value updates and fontBusy",
+          "legacy/src/renderer/src/platform/font-service.ts::importTextFont/deleteTextFont"
+        ],
+        "adaptation": "Existing text-tool smoke creates a private temporary font library, copies bundled Fusion WOFF2 under an imported identity, runs actual packaged-task import and deletion, and edits the current draft during import. Leaves fixture evidence in temporary storage; never writes to or deletes user fonts. A bounded wait observes the exact worker future before applying completion.",
+        "verification": "Formal Release build text-font-roundtrip-build.log succeeded; formal theme/cursors --text-tool-check actual exit 0. Checks busy actions, persisted imported identity, success feedback, retained edited text, deleted resource and catalog fallback. Close race, real system-font import via popup and manual image acceptance remain unverified."
+      },
       "textFontActionsAsync20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::addFont/removeSelectedFont/fontBusy",
