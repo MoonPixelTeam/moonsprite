@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <stdexcept>
 #define CHECK(...) do{if(!(__VA_ARGS__))throw std::runtime_error(#__VA_ARGS__);}while(false)
 using namespace moon;
@@ -22,6 +23,10 @@ int wmain(int argc,wchar_t** argv){try{
   CHECK(selected(collision).builtIn&&selected(collision).id!=lateFont.id);
   const auto early=run/"aaa-silkscreen.ttf";std::filesystem::copy_file(local,early);const auto earlyFont=collision.importFile(early);CHECK(selected(collision).id==earlyFont.id&&selected(collision).imported);
   TextFontService collisionReload(collisionLibrary,bundled,run/"collision-preferences"/"fonts.txt");CHECK(selected(collisionReload).id==earlyFont.id);collisionReload.erase(earlyFont.id);CHECK(selected(collisionReload).builtIn);
+ }
+ // System catalog follows lowercase ordering, with locale-insensitive identity.
+ {const auto names=fonts.systemFamilies();std::string previous;std::set<std::wstring> seen;
+  for(const auto& name:names){auto wide=std::filesystem::u8path(name).wstring();auto lower=[&](const wchar_t* locale){int n=LCMapStringEx(locale,LCMAP_LOWERCASE,wide.data(),int(wide.size()),nullptr,0,nullptr,nullptr,0);CHECK(n>0);std::wstring out(n,L'\0');CHECK(LCMapStringEx(locale,LCMAP_LOWERCASE,wide.data(),int(wide.size()),out.data(),n,nullptr,nullptr,0)>0);return out;};const auto key=std::filesystem::path(lower(LOCALE_NAME_INVARIANT)).u8string();CHECK(previous.empty()||previous<=key);previous=key;CHECK(seen.insert(lower(LOCALE_NAME_USER_DEFAULT)).second);}
  }
  // Real system-font imports reuse persistent bytes and collection face.
  const auto systemFamily=fonts.systemFamilies().front();const auto system=restored.importSystem(systemFamily);CHECK(system.imported&&std::filesystem::is_regular_file(system.file));

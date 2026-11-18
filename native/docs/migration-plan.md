@@ -8185,3 +8185,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体目录身份顺序迁移
 
 对照 platform_fonts.rs::list_fonts 与 font-service.ts::uniqueOptions/sortTextFontsByUsage，全部磁盘字体先按名称及文件 ID 排序，再按 Unicode 小写名称去重，移除原生导入项优先规则；内置使用顺序排名复用裁剪空白后的 Unicode 使用键。实际复制字体夹具覆盖导入文件名在内置 ID 前后、服务重开及删除后的内置回退。唯一正式 Release 与 text-font-tests 构建成功（font-catalog-order-build.log），text-font CTest 通过（1.25秒）。来源覆盖和diff检查结果见本轮命令；未 GUI/人工图像验收，整体迁移 INCOMPLETE。来源见 fontCatalogIdentityOrder20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 系统字体目录顺序迁移
+
+对照 platform_fonts.rs::windows_system_fonts 与 font-service.ts::loadSystemFontCatalog/uniqueOptions，系统字体目录按 Unicode 小写名称稳定排序，再按用户语言小写身份去重，不裁剪名称空白。DirectWrite 枚举继续作为原生平台适配；Windows invariant 映射代替 Rust Unicode 小写，特殊 Unicode/语言环境等价尚未证明。唯一正式 Release 和 text-font-tests 构建成功（system-font-order-build.log），text-font CTest 通过（1.24秒），实际安装字体目录验证排序及去重，既有导入/删除/偏好检查通过。来源覆盖及diff检查见本轮命令；未 GUI/人工图像验收，整体迁移 INCOMPLETE。来源见 systemFontCatalogOrder20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。

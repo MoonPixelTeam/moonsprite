@@ -29629,6 +29629,14 @@
         ],
         "adaptation": "Sort all native on-disk fonts, including bundled entries, by family and id before Unicode family dedup; remove imported-first precedence. Usage rank uses the same trimmed Unicode key as legacy builtInOrder. Native original font identity and deletion flags retained.",
         "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in font-catalog-order-build.log; text-font CTest passed 1.25 seconds. Actual copied-font collisions cover imported filename before/after bundled id, service reopen and deletion fallback. Existing font import/delete/usage tests pass. No GUI or manual image acceptance."
+      },
+      "systemFontCatalogOrder20261119": {
+        "sources": [
+          "legacy/src-tauri/src/platform_fonts.rs::windows_system_fonts lowercase sort",
+          "legacy/src/renderer/src/platform/font-service.ts::loadSystemFontCatalog/uniqueOptions"
+        ],
+        "adaptation": "DirectWrite family enumeration replaces Windows registry listing. Stable invariant Unicode lowercase ordering uses Windows mapping in place of Rust lowercase, then locale lowercase identity dedup follows renderer uniqueOptions without whitespace trim. Windows and Rust Unicode mappings may differ for special Unicode/context cases; full cross-locale equivalence remains unproven.",
+        "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in system-font-order-build.log; text-font CTest passed 1.24 seconds. Actual installed-family catalog checked for lowercase order and unique locale keys; existing import/delete/preferences tests pass. No GUI/manual image acceptance."
       }
     },
     {
@@ -29676,6 +29684,14 @@
         ],
         "adaptation": "Sort all native on-disk fonts, including bundled entries, by family and id before Unicode family dedup; remove imported-first precedence. Usage rank uses the same trimmed Unicode key as legacy builtInOrder. Native original font identity and deletion flags retained.",
         "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in font-catalog-order-build.log; text-font CTest passed 1.25 seconds. Actual copied-font collisions cover imported filename before/after bundled id, service reopen and deletion fallback. Existing font import/delete/usage tests pass. No GUI or manual image acceptance."
+      },
+      "systemFontCatalogOrder20261119": {
+        "sources": [
+          "legacy/src-tauri/src/platform_fonts.rs::windows_system_fonts lowercase sort",
+          "legacy/src/renderer/src/platform/font-service.ts::loadSystemFontCatalog/uniqueOptions"
+        ],
+        "adaptation": "DirectWrite family enumeration replaces Windows registry listing. Stable invariant Unicode lowercase ordering uses Windows mapping in place of Rust lowercase, then locale lowercase identity dedup follows renderer uniqueOptions without whitespace trim. Windows and Rust Unicode mappings may differ for special Unicode/context cases; full cross-locale equivalence remains unproven.",
+        "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in system-font-order-build.log; text-font CTest passed 1.24 seconds. Actual installed-family catalog checked for lowercase order and unique locale keys; existing import/delete/preferences tests pass. No GUI/manual image acceptance."
       }
     },
     {
