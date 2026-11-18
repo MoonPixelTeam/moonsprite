@@ -8023,3 +8023,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 Lua色板同步灰度与像素精度
 
 对照workspace-commands-color.ts的同步替色、tools-fill.ts的replaceLayerColor及history.ts的recordPixelKnownCurrent，Lua同步生成RGBA表面时应用工程灰度/像素精度规范化，色板条目保留请求颜色。真实复用旧版Lua引擎回归覆盖灰度、RGB565、关联Cel、色板与像素精确值以及Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（8.02秒），来源覆盖与diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见luaPaletteNormalization20261118。
+
+
+## 2026-11-18 Lua索引色色板提取迁移
+
+对照lua-script-operations.ts的palette.extract、workspace-palette.ts的applyPalette及lua-script-service.ts的批次顺序，索引色色板提取通过保留格式的同步Timeline合成，避免将颜色ID作为RGBA预览，并承接同批先前像素写入；结果保留透明ID0。Lua完整色板历史撤销以beforePalette规范化索引像素，保持旧版先撤销色板操作再撤销像素的顺序。真实复用旧版Lua引擎回归覆盖提取、清空后提取、关联帧和Undo/Redo。Release lua-script-invocation-tests构建及CTest通过（8.13秒）；重建indexed-history-tests，实际旧版oracle和历史回放两项通过（0.93秒）。来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见luaIndexedExtraction20261118。

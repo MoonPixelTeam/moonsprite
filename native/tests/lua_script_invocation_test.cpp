@@ -202,6 +202,15 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   std::ofstream(root/"scripts/normalized-palette.lua")<<"mse.palette.update(2,{r=17,g=83,b=201})";auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;applyWorkspaceResult(*model,target,runtime.startInvocation("normalized-palette.lua",std::move(invocation)).get(),{});
   const auto expected=color_mode::normalizePackedValue(model->colorMode(),model->pixelFormat(),0xffc95311);check(model->activeSurface().pixels.back()==expected&&model->palette().entries[1].color==0xffc95311,"Lua palette sync skipped raster normalization");check(model->timeline().resolveSurface("cel-1").surface->pixels.back()==expected,"Normalized palette sync lost linked owner");model->undo();check(model->activeSurface().pixels==before&&model->palette().entries[1].color==source,"Normalized palette sync undo wrong");model->redo();check(model->activeSurface().pixels.back()==expected,"Normalized palette sync redo wrong");
  }
+ // Indexed palette extraction resolves canonical ID surfaces, including the
+ // batch's earlier pixel writes; applyPalette always keeps transparent ID0.
+ for(bool clear:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,2,true));RasterHistoryFixture::indexedBrush(*model);auto& surface=const_cast<timeline::Surface&>(model->activeSurface());surface.offsetX=surface.offsetY=0;const auto baseline=surface.pixels;const auto order=model->palette().order();
+  std::ofstream(root/"scripts/indexed-extract.lua")<<(clear?"app.transaction(function() for y=0,2 do for x=0,2 do app.activeImage:drawPixel(x,y,0) end end; mse.palette.extract() end)":"mse.palette.extract()");
+  auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;const auto result=applyWorkspaceResult(*model,target,runtime.startInvocation("indexed-extract.lua",std::move(invocation)).get(),{});
+  check(model->palette().order()==(clear?std::vector<int>{0}:std::vector<int>{0,7})&&model->activeSurface().format==timeline::RasterFormat::Indexed,"Indexed extraction lost transparent ID or read IDs as RGBA");
+  if(clear){check(result.transactionCount==1&&std::all_of(model->activeSurface().pixels.begin(),model->activeSurface().pixels.end(),[](Pixel p){return p==0;}),"Indexed extraction did not see batch pixel writes");model->undo();check(model->palette().order()==order&&model->activeSurface().pixels==baseline,"Indexed extraction undo wrong");model->redo();check(model->palette().order()==std::vector<int>{0},"Indexed extraction redo lost transparent ID");}
+ }
  // Absent indexed frame stays absent through capture, then materializes IDs.
  {auto model=std::make_unique<Document>(fixture(3,2,false));RasterHistoryFixture::indexedBrush(*model);RasterHistoryFixture::removeFrameCels(*model,model->frame().id);
   auto invocation=capture(*model,buildMseSnapshot(*model,{},JsonArray{}));auto target=invocation.target;check(target.expected.format==timeline::RasterFormat::Indexed&&target.matches(*model)&&!model->activeSurfaceIfPresent(),"Absent indexed Lua capture format wrong");

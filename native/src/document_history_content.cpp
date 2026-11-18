@@ -187,7 +187,10 @@ void Document::applyPixelEdit(const Edit& e,bool forward,bool activateTarget,boo
  // their captured uint32 words directly. Do not interpret IDs as RGBA colors.
  const bool indexed=s.format==timeline::RasterFormat::Indexed;
  std::unordered_map<Pixel,Pixel> normalized;
- if(indexed){const auto order=palette_.order();const auto prepare=[&](Pixel value){if(!normalized.count(value))normalized.emplace(value,color_mode::normalizeLayerPackedValue(colorMode_,pixelFormat_,true,false,palette_.entries,order,value));};for(const auto& p:e.pixels)prepare(forward?p.after:p.before);for(const auto& run:e.contentHistory.runs)prepare(forward?run.after:run.before);}
+ // Lua batches install pixels before MSE palette operations. Undo reverses
+ // those operations first, so indexed point normalization sees the old palette.
+ const auto& replayPalette=!forward&&e.paletteHistory.paletteKind==12&&e.paletteHistory.beforePalette?*e.paletteHistory.beforePalette:palette_;
+ if(indexed){const auto order=replayPalette.order();const auto prepare=[&](Pixel value){if(!normalized.count(value))normalized.emplace(value,color_mode::normalizeLayerPackedValue(colorMode_,pixelFormat_,true,false,replayPalette.entries,order,value));};for(const auto& p:e.pixels)prepare(forward?p.after:p.before);for(const auto& run:e.contentHistory.runs)prepare(forward?run.after:run.before);}
  const auto packed=[&](Pixel value){return indexed?normalized.at(value):normalizeCanvasPacked(value);};
  // Existing pre-push operations use canvas indices. Only explicitly migrated
  // owner-local operations may provide a different address space.
