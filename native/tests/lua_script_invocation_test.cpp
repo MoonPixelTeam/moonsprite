@@ -228,6 +228,16 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   if(extract)model->applyExtractedPalette({0xff0000ee});else model->applyStoredPalette({0xff0000ee});
   check(model->palette().order()==std::vector<int>({0,9})&&model->activeSurface().pixels==std::vector<Pixel>({9,0,9,9,9,9,9,9,9}),"Stored/extracted indexed palette did not remap or retain ID0");model->undo();check(model->activeSurface().pixels==before,"Stored palette undo lost hidden IDs");model->redo();check(model->activeSurface().pixels.front()==9,"Stored palette redo wrong");
  }
+ // Indexed transparent slot consumes its paired color without modification
+ // or selection. RGBA identity zero remains an ordinary editable swatch.
+ for(bool indexed:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::remapPalette(*model,indexed);const auto pixels=model->activeSurface().pixels;const auto history=model->historyPosition();
+  model->pastePaletteColors({0xff112233,0xff445566},{0,1});
+  check(model->paletteEntry(0)->color==(indexed?0:0xff112233)&&model->paletteEntry(7)->color==0xff445566,"Palette paste changed reserved zero or shifted color pairing");
+  check(model->palette().selected==(indexed?std::vector<int>{7}:std::vector<int>{0,7})&&model->activeSurface().pixels==pixels,"Palette paste selection/ID storage wrong");
+  model->undo();check(model->paletteEntry(0)->color==0&&model->paletteEntry(7)->color==0xff0000ff,"Palette paste undo wrong");model->redo();check(model->paletteEntry(0)->color==(indexed?0:0xff112233)&&model->paletteEntry(7)->color==0xff445566,"Palette paste redo wrong");
+  if(indexed){const auto h=model->historyPosition();model->pastePaletteColors({0xffabcdef},{0});check(model->historyPosition()==h&&model->paletteEntry(0)->color==0&&model->palette().selected.empty(),"Zero-only indexed paste created history or selected reserved slot");}
+ }
  // Legacy applyPalette consumes identities once, including malformed duplicate
  // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();

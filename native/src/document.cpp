@@ -1993,6 +1993,7 @@ void Document::pastePaletteColors(const std::vector<Pixel>& colors,const std::ve
  std::unordered_map<int,std::size_t> positions;positions.reserve(palette_.entries.size()+allocations);for(std::size_t i=0;i<palette_.entries.size();++i)positions.emplace(palette_.entries[i].id,i);std::size_t hole=0;
  for(std::size_t i=0;i<count;++i){if(targets.empty())while(hole<palette_.slots.size()&&palette_.slots[hole]!=EmptyPaletteSlot)++hole;auto slot=targets.empty()?hole:indices[i];
   if(slot>=65536)continue;if(slot>=palette_.slots.size())palette_.slots.resize(slot+1,EmptyPaletteSlot);int id=palette_.slots[slot];
+  if(id==0&&colorMode_==color_mode::Mode::Indexed)continue; // legacy reserved transparent slot consumes its input color.
   if(id!=EmptyPaletteSlot){if(const auto found=positions.find(id);found!=positions.end())palette_.entries[found->second].color=colors[i];}
   else{id=allocatePaletteId(palette_);const auto number=std::to_string(id);positions.emplace(id,palette_.entries.size());palette_.entries.push_back({id,std::u32string(number.begin(),number.end()),colors[i]});palette_.slots[slot]=id;}ids.push_back(id);
  }

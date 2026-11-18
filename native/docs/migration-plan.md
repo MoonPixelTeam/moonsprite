@@ -8055,3 +8055,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板导入名称快照迁移
 
 对照 workspace-palette.ts::applyPalette 的 beforeNames/afterNames Map，导入名称按ID汇总，重复ID以末项名称为准；无变化时保留原条目，不创建历史，实际布局或名称改变时才统一发布名称。沿用kind11的按ID撤销重做，承接旧版重复ID名称恢复规则。Release lua-script-invocation-tests构建成功，CTest通过（5.71秒），覆盖无变化导入、显式布局、名称发布和Undo/Redo。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteNameSnapshot20261119。
+
+
+## 2026-11-19 索引色透明色板槽粘贴迁移
+
+对照 workspace-palette.ts::pastePaletteColors，索引色粘贴跳过已有透明ID0，仍消费对应输入颜色，后续槽位保持原配对；跳过项不加入选择。RGBA模式的ID0继续允许覆盖。Release lua-script-invocation-tests构建成功，CTest通过（5.73秒），覆盖两种模式、颜色配对、选择、原始像素不变、Undo/Redo及仅粘贴透明槽不新增历史。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见indexedPalettePasteZero20261119。
