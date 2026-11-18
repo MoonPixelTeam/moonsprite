@@ -48,8 +48,8 @@ struct CreatedDocument {
  std::string colorMode;
  std::vector<CreatedLayer> layers;
 };
-// Builds a detached, dirty native document with no initial history. RGBA is
-// admitted; indexed/grayscale document semantics need native color-mode state.
+// Builds a detached, dirty RGBA/grayscale document with no initial history.
+// Indexed creation remains gated with indexed production editing.
 Document buildCreatedDocument(const CreatedDocument&);
 // Validates every batch and created structure before the caller may apply any
 // result. Returns the final raster baseline; does not execute MSE operations.

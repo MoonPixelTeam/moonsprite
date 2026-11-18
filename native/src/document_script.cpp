@@ -85,7 +85,7 @@ struct ScriptDocumentBuilder {
   if(frames>(limit-bytes)/(sizeof(DocumentFrame)+64))throw std::length_error("Lua created document frame metadata exceeds native budget");
   // Native constructor supplies IDs/statistics/role colors; replace its default
   // bitmap with the exact sparse per-frame result, no creation undo entries.
-  Document d(value.width,value.height);d.colorMode_=color_mode::editableMode(value.colorMode);timeline::State state;state.canvasWidth=value.width;state.canvasHeight=value.height;
+  Document d(value.width,value.height);d.colorMode_=color_mode::editableMode(value.colorMode);if(d.colorMode_==color_mode::Mode::Grayscale)d.palette_.entries={{1,U"墨黑",0xff181818},{2,U"颜色 2",0xffffffff}};timeline::State state;state.canvasWidth=value.width;state.canvasHeight=value.height;
   for(std::size_t i=0;i<frames;++i)state.frames.push_back({"frame-"+std::to_string(i+1),100,false});
   for(const auto& l:value.layers){DocumentLayer layer;layer.id=l.id;layer.name=l.name;layer.opacity=l.opacity/255.;layer.visible=l.visible;layer.locked=l.locked;layer.groupId=l.parentGroupId;state.layers.push_back(std::move(layer));
    timeline::Surface s;s.width=l.surface.width;s.height=l.surface.height;s.offsetX=l.surface.x;s.offsetY=l.surface.y;s.storageOriginX=s.storageOriginY=0;s.pixels=*l.surface.pixels;

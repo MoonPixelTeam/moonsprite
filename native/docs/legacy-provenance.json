@@ -41381,7 +41381,14 @@
       "mseTransformOperationTargets20261110": "Legacy lua-script-service.ts559 applyResult raster-first then operation order and lua-script-operations tile/free layer creation/use active operation-time target. Ordered executor now uses an internal operations-only adapter for subsequent MSE commands on non-raster layers, validates every wire batch has no changes/surfaceChange, retains raster-only invocation/public result entry and lock/mask checks. Existing planners and Document structural/palette candidate installation reused; internal synthesized replacement surfaces allowed without admitting wire raster edits. Real Lua transform/create grid/place/update/palette and transform/create free/source/update/palette compound history, stable identities, original target pixels and rollback tested. Full selection.transform remains false; geometry replacement and broad host acceptance incomplete.",
       "mseTransformSurfaceBaseline20261110": "Legacy lua-script-service.ts255 validates wire image sequence without MSE pixels,559 executes raster before operations;475 commitSurfaceChange stores cloned wire before in undo and counts wire before/after. Native ordered adapter rebases only current installation validation after prior MSE transform, retains validated wire snapshot as replacement history baseline and count input, admits its real bytes. Document surfaceChanges reuses existing installation/UndoRedo with separate live rollback surface. Real Lua cross-batch horizontal flip, Image replacement, Cel position, movement/cancel and sequential UndoRedo regression. Full selection.transform still false pending wider sparse/multi-target replacement and formal acceptance; no complete capability claim.",
       "scriptExportHost20261111": "Legacy lua-script-operations.ts398 io.export passes operationSpec to workspace-commands-document-io.ts429 exportActive: commits floating, executes in order, handles cancellation/failure as workspace status. document-file-service.ts461-930 covers native/project export, selection mask, layer fallback, slice naming, frame range/direction and WebP frames fallback. Native reuses bounded DocumentSnapshot, static/GIF/WebP/PSD/ASE/project encoders, frame/layer/slice path planners, existing conflict and modal cancel controls; host preflight before writes and worker completion before later MSE. Real Lua ordering/UndoRedo/external effect tests and formal production format/target checks added; actual results in migration-plan. Discovery remains incomplete until richer export memory and event integration closes; project/slice settings are not misrecorded as PNG.",
-      "workspaceBoundary20261111": "Legacy lua-script-service.ts focusScriptTarget/applyResult (503-636) and lua-script-operations.ts document.create/document.open/io.open (373-389): operation-time workspace switch, next batch source refocus, original-source-only compound rollback, created-session effects retained, boundary suppresses final selection/modeless continuation. Native identity resolver reacquires moved Document wrappers for history completion/checkpoint restore; reuse Editor addProject/openPath/chooseProject. Core real Lua four-case moved-wrapper matrix plus formal asynchronous create/open/alias/cancel/failure/refocus/rollback regressions. RGBA create implemented; non-RGBA document model, complete capability enablement and production extension events remain incomplete."
+      "workspaceBoundary20261111": "Legacy lua-script-service.ts focusScriptTarget/applyResult (503-636) and lua-script-operations.ts document.create/document.open/io.open (373-389): operation-time workspace switch, next batch source refocus, original-source-only compound rollback, created-session effects retained, boundary suppresses final selection/modeless continuation. Native identity resolver reacquires moved Document wrappers for history completion/checkpoint restore; reuse Editor addProject/openPath/chooseProject. Core real Lua four-case moved-wrapper matrix plus formal asynchronous create/open/alias/cancel/failure/refocus/rollback regressions. RGBA create implemented; non-RGBA document model, complete capability enablement and production extension events remain incomplete.",
+      "luaGrayPalette20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/lua-script-service.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Match createScriptDocument -> createDocument grayscale default palette: stable IDs 1 and 2, gray 24 and opaque white, preserving default order and allocator. Existing real Lua grayscale Sprite creation/adoption and save/reopen check now asserts palette entries, visible order and next ID. Indexed creation remains gated."
+      }
     },
     {
       "file": "src/lua_script_result.cpp",
@@ -41616,6 +41623,13 @@
           "legacy/src/renderer/src/core/document-model.ts"
         ],
         "nativeAdaptation": "brushes.ts createSelectionBrush reads active-layer document colors via readLayerColorAt/readLayerColor (first duplicate palette ID). Surface capture resolves stored indices only, preserving transparent sparse exterior, mask, alpha and transparent RGB. Temporary/library callers supply document palette. Lua freezes copied indexed source to RGBA with planned palette at operation order before later palette changes; selection remains resolved in ordered host dispatch. Regression covers opaque zero, duplicate IDs, transparent RGB, clipping/mask, absent source, unchanged source/history and ordered Lua palette updates."
+      },
+      "luaGrayPalette20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/lua-script-service.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Match createScriptDocument -> createDocument grayscale default palette: stable IDs 1 and 2, gray 24 and opaque white, preserving default order and allocator. Existing real Lua grayscale Sprite creation/adoption and save/reopen check now asserts palette entries, visible order and next ID. Indexed creation remains gated."
       }
     },
     {
@@ -41723,6 +41737,13 @@
       "grayscaleMigration20261114": {
         "scope": "Production RGBA/grayscale document mode, legacy luminance write boundaries, standalone mode/palette/raster/mask history preserving current frame/selection and pixel-format preference; snapshot/rollback, native/project/recovery/local-history codecs, Lua context and created documents, existing new-document mode/presets and conversion menu. Grid/free display normalizes source pixels before blend while source resources retain original colors. See grayscale-color-mode-migration-20261114.md for actual verification and remaining boundaries.",
         "adaptation": "Retain native four-byte RGBA raster storage and canonical Cel projection; do not restore hidden WebView2. Existing user-requested pixel-core-32 default palette applies to native grayscale creation. Indexed IDs/storage and overall migration remain incomplete. No performance optimization."
+      },
+      "luaGrayPalette20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/lua-script-service.ts",
+          "legacy/src/renderer/src/core/document-model.ts"
+        ],
+        "nativeAdaptation": "Match createScriptDocument -> createDocument grayscale default palette: stable IDs 1 and 2, gray 24 and opaque white, preserving default order and allocator. Existing real Lua grayscale Sprite creation/adoption and save/reopen check now asserts palette entries, visible order and next ID. Indexed creation remains gated."
       }
     },
     {

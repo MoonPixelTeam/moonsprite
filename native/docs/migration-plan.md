@@ -7963,3 +7963,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色四角透视变换
 
 沿用既有选区变换事务，对照实际旧版selection.ts、tools-selection-transform-apply.ts及workspace-floating-clipboard.ts，增加54组四角透视输入：移动/复制/粘贴、dense/sparse/负偏移、即时/延迟、镜像四角和变换中色板变化。首次对照发现原生通过homography反算角点时浮点误差导致剪贴板范围扩张，修复为直接取四角坐标边界，最小宽高1与旧版一致。Release indexed-selection-tests定向构建通过，985组旧版事务、27组链接变体和3组缺失Cel检查通过，覆盖预览/复制/取消/提交/Undo/Redo及既有编码边界。来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见indexedQuadBounds20261118。
+
+
+## 2026-11-18 Lua灰度工程默认色板
+
+对照lua-script-service.ts的createScriptDocument及document-model.ts的createDocument，脚本创建灰度工程初始化ID1灰色24和ID2白色，替代误用的RGBA墨黑/月蓝，保持可见顺序与nextColorId=3。扩展既有实际Lua灰度Sprite创建、会话接纳与保存重开检查，断言确切颜色/ID/顺序/分配器。Release lua-script-invocation-tests构建及lua-script-invocation CTest通过（6.52秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；索引色生产创建仍关闭，整体迁移INCOMPLETE。来源见luaGrayPalette20261118。
