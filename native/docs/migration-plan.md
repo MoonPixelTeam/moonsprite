@@ -8240,3 +8240,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体操作旧版图标迁移
 
 对照 TextToolDialog.tsx、DeleteIconButton.tsx 与 PixelUtilityIcon.tsx，本地字体导入和删除复用现有 folderOpen/delete 及禁用态素材，接入公共 15px icon_button；系统字体入口使用操作行剩余宽度。保留回调、忙碌状态和提示，不新增或重画图标。正式 Release 构建成功（text-font-icons-build.log），素材来源、布局源码核对及来源覆盖和 diff 检查通过；未人工图像／悬浮验收，图标改动未重复整套文字检查。来源见 textFontActionIcons20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物或用户数据。
+
+
+## 2026-11-19 文字编辑当前位置读取迁移
+
+对照 TextToolHost.tsx::textToolValueAtCurrentPlacement，已有 Cel 每次预览和最终渲染前重新解析当前 surface 位置，缺失时依次使用已解析文字 origin、草稿 origin；同步文字 origin 后复用既有变换渲染校正。新建文字保留草稿位置。正式 Release 构建成功（text-current-placement-build.log），正式主题/指针下既有 --text-tool-check 实际退出0；来源覆盖和 diff 检查通过。未专门验证弹窗期间移动文字，原生模态/草稿仍限制并发移动，不据此声明该交互全面等价；未人工验收。来源见 editor_text.cpp/currentPlacement20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。
