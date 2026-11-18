@@ -40,7 +40,9 @@ std::unique_ptr<Document::PaletteReplay> Document::preparePaletteEdit(const Edit
  }
  if(kind==8){
   std::unordered_map<int,Pixel> colors;colors.reserve(state.entries.size());for(const auto& entry:state.entries)colors[entry.id]=entry.color;
-  for(std::size_t i=0;i<palette_.entries.size();++i)if(const auto found=colors.find(palette_.entries[i].id);found!=colors.end())target.patches.push_back({i,{},found->second});
+  // Legacy applyPaletteColors retains the last Map entry per identity.
+  std::unordered_map<int,std::size_t> positions;for(std::size_t i=0;i<palette_.entries.size();++i)positions[palette_.entries[i].id]=i;
+  for(const auto& [id,color]:colors)if(const auto found=positions.find(id);found!=positions.end())target.patches.push_back({found->second,{},color});
   return prepared;
  }
  if(kind==3){

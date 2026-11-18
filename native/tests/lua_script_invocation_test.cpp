@@ -246,6 +246,15 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   model->clearPaletteSelection();model->reversePaletteColors();check(model->paletteEntry(0)->color==(indexed?0:0xff0000ee)&&model->paletteEntry(7)->color==(indexed?0xff0000ee:0xff0000ff),"Palette fallback reverse included reserved zero");model->undo();check(model->paletteEntry(0)->color==0&&model->paletteEntry(7)->color==0xff0000ff,"Palette reverse undo wrong");model->redo();model->undo();
   model->selectPalette(0);model->selectPalette(7,true);model->reversePaletteColors();check(model->paletteEntry(0)->color==0xff0000ff&&model->paletteEntry(7)->color==0,"Explicit reverse selection did not include zero");model->undo();check(model->activeSurface().pixels==pixels&&model->paletteEntry(0)->color==0,"Palette ordering changed raw IDs");
  }
+ // Gradient and reverse use legacy last-entry identity lookup, including
+ // replay: earlier duplicate entries remain byte-for-byte unchanged.
+ for(int operation:{0,1,2}){
+  auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().entries;const auto pixels=model->activeSurface().pixels;
+  model->selectPalette(0);model->selectPalette(7,true);
+  if(operation==0)model->reversePaletteColors();else if(operation==1)model->gradientPaletteColors();else model->gradientPaletteSlots({0,1,2},8);
+  check(model->palette().entries[1].color==original[1].color,"Palette operation modified earlier duplicate ID");
+  const auto after=model->palette().entries;model->undo();check(model->palette().entries.size()==original.size()&&model->palette().entries[1].color==original[1].color&&model->palette().entries[2].color==original[2].color,"Palette duplicate undo changed wrong entry");model->redo();check(model->palette().entries[1].color==original[1].color&&model->palette().entries[2].color==after[2].color&&model->activeSurface().pixels==pixels,"Palette duplicate redo changed wrong entry or raw pixels");
+ }
  // Legacy applyPalette consumes identities once, including malformed duplicate
  // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();

@@ -8065,3 +8065,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 索引色色板排序与反转迁移
 
 对照workspace-palette.ts::sortPaletteColors和paletteOperationIds，索引色排序固定可见透明ID0于首项；无至少两项显式选择时，反转排除ID0，显式多选则保留旧版包含ID0的规则。排序与反转查色按旧版Map取同ID末项。Release lua-script-invocation-tests构建成功，CTest通过（5.71秒），覆盖RGBA/索引色排序、Undo/Redo、默认反转、显式选择反转及原始像素不变。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见indexedPaletteOrdering20261119。
+
+
+## 2026-11-19 色板渐变与反转重复身份迁移
+
+对照workspace-palette.ts::gradientPaletteSlots及applyPaletteColors的Map(id,entry)，网格渐变取同ID末项作为端点和修改对象；选中色渐变与反转的kind8历史也仅作用于末项，保持较早重复条目的原始颜色。Release lua-script-invocation-tests构建成功，CTest通过（5.71秒），覆盖网格渐变、选中色渐变、反转、Undo/Redo及原始像素不变。来源覆盖与diff检查通过；未重建正式GUI、未人工图像验收，生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteGradientIdentity20261119。
