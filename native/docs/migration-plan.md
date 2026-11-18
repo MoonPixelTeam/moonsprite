@@ -8195,3 +8195,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体操作反馈迁移
 
 对照 TextToolDialog.tsx::addFont/removeSelectedFont/fontMessage 与 zh-CN 文案，字体导入/选择/删除成功提示名称，失败显示旧版提示；字体状态与渲染错误分开保存，普通预览更新不清除字体反馈。文件选择前清除旧提示，系统字体实际选择后清除；已有状态行按可用宽度裁剪，渲染错误优先显示。唯一正式 Release 构建成功（text-font-status-build.log），正式主题/指针下 --text-tool-check 实际退出0。夹具覆盖导入/本地选择提示、普通预览后保留状态、删除失败保留目录/选中项/字体；成功删除反馈仅源码核对，未进行 GUI 夹具或人工图像验收。异步字体操作及 busy 行为仍未迁移，整体迁移 INCOMPLETE。来源见 fontOperationStatus20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字弹窗几何记忆迁移
+
+对照 TextToolDialog.tsx 的 ModalShell storageKey=text-tool、floating-panel.tsx 与 panel-preferences.ts，复用 ModalGeometryPreferences 保存与恢复位置、宽度和用户调整后的高度；关闭时保存，拖动捕获结束后复用异步写入。保留原生 440×340 默认/最小像素布局，恢复上限使用旧版 980×760；视口约束沿用现有原生适配，跨显示器浏览器等价未证明。检查模式跳过真实用户几何偏好。唯一正式 Release 构建成功（text-geometry-build.log），正式主题/指针下 --text-tool-check 实际退出0，来源覆盖与 diff 检查通过。该检查验证既有编辑流程，几何持久化仅源码核对现成适配，未新增端到端持久化验收或人工图像验收。来源见 textModalGeometry20261119；整体迁移 INCOMPLETE，不提交生成物、用户数据或既有 main.cpp 差异。
