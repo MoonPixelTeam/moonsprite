@@ -8155,3 +8155,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体 Unicode 名称身份迁移
 
 对照 font-service.ts::uniqueOptions/fontUsageKey，目录去重只做 Unicode 小写，使用次数键另裁剪 ECMAScript 空白。替换 UTF-8 字节上的 ANSI CharLowerBuffA，复用 javascriptWhitespace 和 Windows 用户语言 UTF-16 映射，避免非 ASCII 名称损坏。偏好文件夹具覆盖 É/é、NBSP/全角空格、计数合并及服务重开。首轮夹具未关闭读取句柄导致原子替换失败，修正句柄生命周期后 text-font CTest 通过（1.14秒）。唯一正式 Release 构建成功（font-unicode-identity-build.log）；未 GUI/人工图像验收，不宣称跨平台或全部语言映射等价，整体迁移仍 INCOMPLETE。来源见 unicodeFontKeys20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 系统字体搜索选择迁移
+
+对照 TextToolDialog.tsx 系统字体 searchable ThemedSelect 与 ThemedSelect.tsx filteredGroups/select，原生系统字体入口支持裁剪 ECMAScript 空白、用户语言 Unicode 小写子串搜索、空查询全部结果、滚动与选择后导入；Esc 和外部点击取消，关闭后焦点回到入口。复用 PixelDialog/PixelEntry/PixelButton/PixelScrollBar，按共享 DialogLayout 排版并随显示区高度减少可见行。唯一正式 Release 构建成功（system-font-search-build.log），正式主题与指针下 --text-tool-check 实际退出0；新增真实弹窗检查覆盖自动聚焦、筛选、无匹配、清空查询、滚动边界、行选择和 Esc 取消。外部点击关闭经公共 PopupWindow 源码核对，未做人工点击/图像验收。来源覆盖和 diff 检查通过。系统字体按各自字体显示名称的字形预览仍未迁移，整体迁移 INCOMPLETE。来源见 systemFontSearch20261119；保留既有 main.cpp 状态，不提交生成物或用户数据。

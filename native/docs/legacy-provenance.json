@@ -30181,7 +30181,8 @@
         "native/.cache/aseprite/src/ui/component.cpp",
         "native/.cache/aseprite/src/ui/property.h",
         "native/.cache/aseprite/src/ui/textcmd.h",
-        "legacy/LICENSE"
+        "legacy/LICENSE",
+        "legacy/src/renderer/src/components/ThemedSelect.tsx"
       ],
       "classification": "legacy-partial",
       "scope": "Native editable text tool integration and text metadata preservation",
@@ -30208,6 +30209,13 @@
           "legacy/src/renderer/src/platform/font-service.ts"
         ],
         "adaptation": "TextToolDialog addFont promotes returned option and removes case-insensitive same-family prior options within current dialog. Native file/system import share acceptImportedFont, retaining returned resource identity/delete eligibility, existing default size and preview update. Fresh catalog and delete fallback still reload usage order. Windows user-locale lowercase adapts browser toLocaleLowerCase; cross-locale Unicode parity not claimed. Formal dialog fixtures cover promotion, identity replacement, case folding, selection/delete state and persistent catalog reload without modifying library files. Sole formal Release and --text-tool-check with formal theme/cursors exited 0. No manual image acceptance."
+      },
+      "systemFontSearch20261119": {
+        "sources": [
+          "TextToolDialog.tsx systemFontGroups/useSystemFont searchable ThemedSelect",
+          "ThemedSelect.tsx filteredGroups/select/outside pointerdown/Escape"
+        ],
+        "adaptation": "Native PixelDialog, PixelEntry, buttons and scrollbar replace DOM popover. Preserve supplied family order, ECMAScript trimmed query, locale Unicode lowercase substring matching, selection-only import, cancel without import, outside dismissal and focus return. Windows locale mapping replaces browser locale lowercase; cross-locale glyph equivalence remains unproven. Shared DialogLayout geometry with display-clamped height and scrollable rows. System font glyph previews remain incomplete."
       }
     },
     {
