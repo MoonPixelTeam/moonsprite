@@ -2113,7 +2113,7 @@ void Document::setPaletteRole(Pixel color,bool secondary,bool locked) {
   (secondary?palette_.secondary:palette_.primary)=color;
   if(!locked) return;
   int matching=entry && entry->color==color?id:EmptyPaletteSlot;
-  if(matching==EmptyPaletteSlot) for(int candidate:palette_.order()) if(const auto* found=paletteEntry(candidate);found&&found->color==color) {matching=candidate;break;}
+  if(matching==EmptyPaletteSlot){const auto& order=palette_.order();const std::unordered_set<int> visible(order.begin(),order.end());for(const auto& candidate:palette_.entries)if(visible.count(candidate.id)&&candidate.color==color){matching=candidate.id;break;}}
   if(secondary) palette_.secondaryId=matching;
   else {palette_.primaryId=matching;if(matching==EmptyPaletteSlot) palette_.selected.clear();
     else if(std::find(palette_.selected.begin(),palette_.selected.end(),matching)==palette_.selected.end()) palette_.selected={matching};}

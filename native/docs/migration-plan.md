@@ -8090,3 +8090,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板导入无历史资源修改迁移
 
 更正此前“无变化导入保留全部原名称”的结论：workspace-palette.ts::applyPalette先直接修改匹配条目名称，再按末项ID名称Map判断是否新增历史。重复ID末项名称未变时，首项新名称仍保留。原生无历史分支现保留候选资源与分配器，不发布布局、选择或历史；实际布局变化继续按末项名称快照发布与撤销重做。修正对应回归预期。Release lua-script-invocation-tests构建成功，CTest通过（5.73秒）。未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteNoopResources20261119。
+
+
+## 2026-11-19 角色颜色资源匹配顺序迁移
+
+对照workspace-commands-color.ts::setPrimaryColor/setSecondaryColor，锁定色卡编辑时先保留当前精确匹配，否则按资源存储顺序查找第一个可见同色条目，不按重排后的显示顺序查找。前景与背景复用同一原生入口。新增重排同色色卡、隐藏项排除、撤销恢复可见性及角色变更不新增历史检查。Release moon-core-tests构建成功，CTest document-transactions通过（0.39秒）。来源覆盖及diff检查通过；未重建正式GUI、未人工图像验收，整体迁移INCOMPLETE。来源见paletteRoleResourceOrder20261119。

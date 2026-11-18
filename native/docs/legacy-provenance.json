@@ -6099,6 +6099,13 @@
           "legacy/src/renderer/src/store/workspace-palette.ts::applyPalette"
         ],
         "nativeAdaptation": "Legacy mutates matched resource names before comparing last-ID name Maps and returning without history. Native now retains candidate entries and allocator on that no-history branch while leaving layout, selection and history unchanged. Corrected duplicate-ID regression to expect the matched first name mutation; actual layout change and undo/redo still publish last-ID name snapshots. Release lua-script-invocation build and CTest passed (5.73s). No formal GUI rebuild or manual acceptance; production Indexed admission closed."
+      },
+      "paletteRoleResourceOrder20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::setPrimaryColor",
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::setSecondaryColor"
+        ],
+        "nativeAdaptation": "Locked role updates retain a matching current entry, otherwise find the first visible matching entry in resource storage order rather than displayed palette order. Both foreground and background share the native boundary. Regression covers reordered identical swatches, hidden resource exclusion, undo restoring visibility and role changes without added history. Release moon-core-tests build and document-transactions CTest passed (0.39s). No formal GUI rebuild or manual image acceptance."
       }
     },
     {
@@ -6287,6 +6294,13 @@
           "legacy/src/renderer/src/store/workspace-animation-reverse.test.ts"
         ],
         "nativeAdaptation": "Legacy reverseSelectedAnimationCels calls refreshActiveAnimationFrame/applyFrameSurfaces after moving Cel identities. Native now projects active Cel opacity and layer geometry after applyCelEdit before publication. Existing three-Cel reversal test uses distinct endpoint opacities and checks immediate projection and Undo/Redo, retaining slot selection, center Cel and frame metadata assertions."
+      },
+      "paletteRoleResourceOrder20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::setPrimaryColor",
+          "legacy/src/renderer/src/store/workspace-commands-color.ts::setSecondaryColor"
+        ],
+        "nativeAdaptation": "Locked role updates retain a matching current entry, otherwise find the first visible matching entry in resource storage order rather than displayed palette order. Both foreground and background share the native boundary. Regression covers reordered identical swatches, hidden resource exclusion, undo restoring visibility and role changes without added history. Release moon-core-tests build and document-transactions CTest passed (0.39s). No formal GUI rebuild or manual image acceptance."
       }
     },
     {

@@ -431,6 +431,15 @@ int main() {
       CHECK(p.pixels()==pixels && p.contentRevision()==revision);
       dot(p,0,0);p.undo();CHECK(p.pixels()==pixels);p.undo();CHECK(p.paletteEntry(1)->name==U"墨黑");
       p.redo();p.redo();CHECK(p.pixels()[0]==ink);
+      // workspace-commands-color chooses the first visible resource in storage
+      // order, even after the swatches have been reordered on screen.
+      {Document roles(1,1);const Pixel same=0xff765432;
+       const int first=roles.addPaletteColor(same,false),second=roles.addPaletteColor(same,false);
+       roles.applyStoredPalette({same,same});roles.reorderPaletteColors({first,second},{second,first},2);
+       for(bool secondary:{false,true}){roles.setPaletteRole(0xffabcdef,secondary,true);const auto h=roles.historyPosition();roles.setPaletteRole(same,secondary,true);CHECK((secondary?roles.palette().secondaryId:roles.palette().primaryId)==first&&roles.historyPosition()==h);}
+       roles.deletePaletteColors({first});for(bool secondary:{false,true}){roles.setPaletteRole(0xffabcdef,secondary,true);roles.setPaletteRole(same,secondary,true);CHECK((secondary?roles.palette().secondaryId:roles.palette().primaryId)==second);}
+       roles.undo();for(bool secondary:{false,true}){roles.setPaletteRole(0xffabcdef,secondary,true);roles.setPaletteRole(same,secondary,true);CHECK((secondary?roles.palette().secondaryId:roles.palette().primaryId)==first);}
+      }
       p.setPaletteRole(0xff123456,false,true);CHECK(p.paletteEntry(1)->color==ink);
       p.selectPalette(1);p.setPaletteRole(0xff654321,false,false);CHECK(p.paletteEntry(1)->color==0xff654321);
       p.undo();CHECK(p.paletteEntry(1)->color==ink);
