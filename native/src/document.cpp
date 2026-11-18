@@ -2147,7 +2147,11 @@ void Document::applyStoredPalette(const std::vector<Pixel>& colors,int columns,c
  // Legacy snapshots names with Map(id,name): the last duplicate wins,
  // and apply() publishes that name to every entry sharing the identity.
  std::unordered_map<int,std::u32string> beforeNames,afterNames;for(const auto& e:palette_.entries)beforeNames[e.id]=e.name;for(const auto& e:next.entries)afterNames[e.id]=e.name;
- bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(const auto& [id,name]:beforeNames)if(afterNames.at(id)!=name)same=false;if(same)return;
+ bool same=next.columns==palette_.columns&&next.slots==currentPaletteSlots(palette_);for(const auto& [id,name]:beforeNames)if(afterNames.at(id)!=name)same=false;if(same){
+  // Legacy mutates resources before its history/no-op check. Keep these
+  // entry names and allocations without publishing a layout or history edit.
+  palette_.entries=std::move(next.entries);palette_.nextId=next.nextId;return;
+ }
  for(auto& e:next.entries)e.name=afterNames.at(e.id);
  next.independentOrder.reset();next.selected.clear();next.primaryId=EmptyPaletteSlot;for(int id:next.order())if(next.entries[positions.at(id)].color==next.primary){next.primaryId=id;next.selected={id};break;}
  cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.paletteKind=11;edit.paletteHistory.beforePalette=palette_;normalizePaletteSnapshot(*edit.paletteHistory.beforePalette,true);edit.paletteHistory.afterPalette=next;prepareVisiblePaletteRemap(edit,next);auto replay=prepareSurfaceEdit(edit,true);reserveHistoryEntries();applySurfaceEdit(edit,true,replay.get());palette_=std::move(next);pushEdit(std::move(edit),U"切换颜色板");

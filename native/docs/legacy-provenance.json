@@ -6093,6 +6093,12 @@
           "legacy/src/renderer/src/store/workspace-palette.ts::createPaletteColor"
         ],
         "nativeAdaptation": "Stored/extracted palette import first reuses an exact unused identity, then reserves transparent ID0 without consuming nextId; explicit new transparent swatches retain ordinary independent IDs. Lua extraction uses the same transparent fallback. Direct regression covers duplicate transparent inputs, allocator, exact swatch reuse, no-op and undo/redo; palette growth fixture now creates independent transparent swatches explicitly. Release lua-script-invocation and palette-growth CTests passed (5.84s). No formal GUI rebuild or manual image acceptance; production Indexed admission remains closed."
+      },
+      "paletteNoopResources20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-palette.ts::applyPalette"
+        ],
+        "nativeAdaptation": "Legacy mutates matched resource names before comparing last-ID name Maps and returning without history. Native now retains candidate entries and allocator on that no-history branch while leaving layout, selection and history unchanged. Corrected duplicate-ID regression to expect the matched first name mutation; actual layout change and undo/redo still publish last-ID name snapshots. Release lua-script-invocation build and CTest passed (5.73s). No formal GUI rebuild or manual acceptance; production Indexed admission closed."
       }
     },
     {
@@ -41703,6 +41709,12 @@
           "legacy/src/renderer/src/store/workspace-palette.ts::createPaletteColor"
         ],
         "nativeAdaptation": "Stored/extracted palette import first reuses an exact unused identity, then reserves transparent ID0 without consuming nextId; explicit new transparent swatches retain ordinary independent IDs. Lua extraction uses the same transparent fallback. Direct regression covers duplicate transparent inputs, allocator, exact swatch reuse, no-op and undo/redo; palette growth fixture now creates independent transparent swatches explicitly. Release lua-script-invocation and palette-growth CTests passed (5.84s). No formal GUI rebuild or manual image acceptance; production Indexed admission remains closed."
+      },
+      "paletteNoopResources20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-palette.ts::applyPalette"
+        ],
+        "nativeAdaptation": "Legacy mutates matched resource names before comparing last-ID name Maps and returning without history. Native now retains candidate entries and allocator on that no-history branch while leaving layout, selection and history unchanged. Corrected duplicate-ID regression to expect the matched first name mutation; actual layout change and undo/redo still publish last-ID name snapshots. Release lua-script-invocation build and CTest passed (5.73s). No formal GUI rebuild or manual acceptance; production Indexed admission closed."
       }
     },
     {

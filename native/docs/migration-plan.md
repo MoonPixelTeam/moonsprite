@@ -8085,3 +8085,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 色板迁移正式程序集成
 
 已将73118fac之后至d723a85b的色板迁移编入唯一正式产物 native/build/Release/moonsprite-native.exe，包括Lua提取跨帧事务、导入身份与名称快照、索引色透明槽粘贴、排序反转与渐变的重复身份处理、直接改色改名首项规则及透明色导入ID0回退。Release moonsprite-native构建退出0（palette-migration-formal-build.log），使用正式主题和指针，Start-Process -WindowStyle Hidden -Wait -PassThru运行--script-entry-check退出0。未重复已通过的定向核心测试，未人工图像验收。生产索引色准入保持关闭，整体迁移INCOMPLETE。本次仅提交集成记录，不提交生成物、用户数据或既有main.cpp状态。
+
+
+## 2026-11-19 色板导入无历史资源修改迁移
+
+更正此前“无变化导入保留全部原名称”的结论：workspace-palette.ts::applyPalette先直接修改匹配条目名称，再按末项ID名称Map判断是否新增历史。重复ID末项名称未变时，首项新名称仍保留。原生无历史分支现保留候选资源与分配器，不发布布局、选择或历史；实际布局变化继续按末项名称快照发布与撤销重做。修正对应回归预期。Release lua-script-invocation-tests构建成功，CTest通过（5.73秒）。未重建正式GUI、未人工图像验收；生产索引色准入关闭，整体迁移INCOMPLETE。来源见paletteNoopResources20261119。

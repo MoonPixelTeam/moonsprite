@@ -277,12 +277,12 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   const auto history=model->historyPosition();model->applyStoredPalette(colors);check(model->palette().order()==order&&model->historyPosition()==history,"Repeated duplicate-ID import allocated another identity");
   model->undo();check(model->palette().order()==original,"Duplicate-ID import undo order wrong");model->redo();check(model->palette().order()==order,"Duplicate-ID import redo order wrong");
  }
- // Legacy name snapshots use the last entry per ID. A no-op must leave
- // distinct duplicate names untouched; an actual layout change publishes it.
+ // Legacy mutates matched names before comparing last-ID name snapshots.
+ // A history no-op retains that mutation; layout edits publish the snapshot.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);
   const std::vector<std::u32string> names{U"Imported first"};const auto history=model->historyPosition();
   model->applyStoredPalette({0x80332211},0,{},&names);
-  check(model->historyPosition()==history&&model->palette().entries[1].name==U"First"&&model->palette().entries[2].name==U"Duplicate","Duplicate-ID name no-op changed entries/history");
+  check(model->historyPosition()==history&&model->palette().entries[1].name==U"Imported first"&&model->palette().entries[2].name==U"Duplicate","Duplicate-ID name no-op lost mutation or created history");
   model->applyStoredPalette({0x80332211},3,{0},&names);
   check(model->palette().entries[1].name==U"Duplicate"&&model->palette().entries[2].name==U"Duplicate"&&model->palette().columns==3,"Palette apply did not publish last name per identity");
   model->undo();check(model->palette().entries[1].name==U"Duplicate"&&model->palette().entries[2].name==U"Duplicate"&&model->palette().columns==8,"Palette name undo differed from legacy ID snapshot");model->redo();check(model->palette().columns==3&&model->palette().entries[1].name==U"Duplicate","Palette name redo wrong");
