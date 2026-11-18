@@ -242,10 +242,14 @@ bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())
 }
 bool Document::cutSelectedCels(){auto selectionOperation=animationChangeBinding_.selectionOperation(*this,selectionRevision_);if((hasTilemapContent()||hasFreeTileContent())&&!selection_)return cutTilemapCels();if(!activeMaskId_.empty())return false;
  if(active())throw std::runtime_error("Cannot cut Cels during an active preview");
- if(selection_&&(hasTilemapContent()||hasFreeTileContent())&&timelineSelection_.cels.size()==1){const auto* slot=timeline_.findCelById(timelineSelection_.cels.front());if(slot&&!timeline_.state().layers[timeline_.layerIndex(slot->layerId)].kind.empty())throw std::runtime_error("Special-layer selection Cel cut is not migrated");}
  for(const auto& id:timelineSelection_.cels){const auto* c=timeline_.findCelById(id);if(!c)continue;auto l=std::find_if(timeline_.state().layers.begin(),timeline_.state().layers.end(),[&](const auto& l){return l.id==c->layerId;});if(l!=timeline_.state().layers.end() && layerEffectivelyLocked(*l))throw std::runtime_error("Cel cut layer is locked");}
  if(!copySelectedCels())return false;
  if(!selection_)return deleteSelectedCels();
+ // Legacy routes selected-Cel Cut through deleteSelection. Special single
+ // targets use the existing authority transaction; Paint keeps copy-only.
+ if(layer().kind=="free-tile"||(timelineSelection_.cels.size()==1&&layer().kind=="tilemap")){
+  deleteSelectedPixels();return true;
+ }
  // legacy workspace-cut delegates selection-only Cel cut to deleteSelection.
  // selectedEffectTargets deduplicates shared pixel storage; linked slots survive.
  Edit edit{{},state_,nextState_};std::unordered_set<std::string> sources;

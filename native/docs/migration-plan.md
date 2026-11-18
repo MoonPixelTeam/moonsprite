@@ -7818,3 +7818,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 特殊Cel选区复制为普通像素载荷
 
 对照workspace-animation-cel-links.ts::snapshotLinkedAnimationCels与workspace-animation-cel-conversion.ts::clipAnimationCelToSelection，特殊源Cel按已解析像素及世界坐标选区裁切，删除text/tilemap/freeTiles编辑权威，保留复制链接分组；复用现有裁切算法，移除特殊源拒绝。选区导出不携带无用图层/瓦片资源，网格工程Copy菜单遵循Cel作用域。目标仍按workspace-paste-cel-selection.ts只接受普通未锁层；单特殊Cel选区Cut仍明确拒绝，防止仅修改像素缓存，未宣称完成。新增网格/自由、链接/独立、蒙版/矩形八组合，分别验证本地混合及跨工程普通目标、取消、Undo/Redo、重开与源像素不变；更新旧的“选区Copy必须拒绝”准入断言。正式Release构建成功，定向检查通过，既有正式程序--tileset-management-check --grid-transform-entry-only入口退出0。未新增专用GUI断言、未人工图像验收。完整free-tile-project回归通过33.27秒，来源1043文件快照及diff检查通过。来源见specialCelSelectionCopy20261118，整体INCOMPLETE。
+
+
+## 2026-11-18 特殊Cel选区剪切复用权威删除事务
+
+对照workspace-cut.ts::cutWorkspaceItems，Cel作用域有像素选区时先复制再调用deleteSelection。移除单特殊Cel拒绝，网格单目标及活动自由图层接入已有deleteSelectedPixels，避免直接写派生像素缓存。网格Create/Edit/Hybrid沿用各自瓦片事务及共享引用规则，Paint按旧版复制但不删除；自由Edit按选中实例源更新资源，源选择不存在时沿用不删除。多目标继续普通图层过滤，并保留自由源Edit在多目标之前的优先级。新增十组四种网格模式/自由Edit与独立/链接Cel检查，覆盖选区蒙版、剪贴板旧像素、单事务、撤销重做和重开；自由源检查在选择Cel后显式重新进入Edit，匹配时间轴切换清除实例选择的既有规则。正式Release构建成功，special-cel-selection定向检查通过，既有正式程序--tileset-management-check --grid-transform-entry-only入口退出0。未新增专用GUI断言、未人工图像验收。完整free-tile-project通过33.52秒，来源1043文件快照及diff检查通过。来源见specialCelSelectionCut20261118，整体INCOMPLETE。

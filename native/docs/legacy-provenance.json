@@ -6005,6 +6005,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
+      },
+      "specialCelSelectionCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "cutWorkspaceItems copies animation Cels first then calls deleteSelection when a pixel selection exists. Replace the single-special-Cel refusal with existing grid/free deleteSelectedPixels transactions, retaining grid mode semantics and free source Edit priority. Paint remains copy-only; multi-target ordinary filtering remains existing behavior. Test grid Create/Edit/Hybrid/Paint and free Edit, independent/linked slots, masked selection, portable pre-delete pixels, one transaction, Undo/Redo and save/reopen."
       }
     },
     {
@@ -35856,6 +35864,14 @@
           "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
         ],
         "nativeAdaptation": "snapshotLinkedAnimationCels resolves linked owners then clipAnimationCelToSelection removes editable text/grid/free authority and clips pixels in world coordinates. Allow this existing raster clipping path for special source Cels; selection exports omit unused layer/resource metadata and native grid Copy admission honors selected Cel scope. Paste remains limited to ordinary targets via legacy pasteCelSelection. Preserve unimplemented single special selection Cut rejection to avoid corrupting resource authority; multi-target deletion retains existing special-target exclusion. Tests cover grid/free, linked/unlinked, masked/unmasked selection, source preservation, local mixed/cross-project raster target, cancel, Undo/Redo and saved reopening."
+      },
+      "specialCelSelectionCut20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-selection-effects-support.ts"
+        ],
+        "nativeAdaptation": "cutWorkspaceItems copies animation Cels first then calls deleteSelection when a pixel selection exists. Replace the single-special-Cel refusal with existing grid/free deleteSelectedPixels transactions, retaining grid mode semantics and free source Edit priority. Paint remains copy-only; multi-target ordinary filtering remains existing behavior. Test grid Create/Edit/Hybrid/Paint and free Edit, independent/linked slots, masked selection, portable pre-delete pixels, one transaction, Undo/Redo and save/reopen."
       }
     },
     {
