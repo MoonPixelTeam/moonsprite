@@ -35,7 +35,7 @@ std::unique_ptr<Document::PaletteReplay> Document::preparePaletteEdit(const Edit
  if(kind==12||kind==7){target.full.emplace(state);if(kind==7){target.full->secondary=palette_.secondary;target.full->secondaryId=palette_.secondaryId;}return prepared;}
  if(kind==4||kind==11){
   std::unordered_map<int,const std::u32string*> names;names.reserve(state.entries.size());for(const auto& entry:state.entries)names[entry.id]=&entry.name;
-  for(std::size_t i=0;i<palette_.entries.size();++i){const auto& entry=palette_.entries[i];if(kind==4&&entry.id!=edit.paletteHistory.colorId)continue;if(const auto found=names.find(entry.id);found!=names.end())target.patches.push_back({i,*found->second,{}});}
+  for(std::size_t i=0;i<palette_.entries.size();++i){const auto& entry=palette_.entries[i];if(kind==4&&entry.id!=edit.paletteHistory.colorId)continue;if(const auto found=names.find(entry.id);found!=names.end()){target.patches.push_back({i,*found->second,{}});if(kind==4)break;}}
   if(kind==4)return prepared;
  }
  if(kind==8){
@@ -48,7 +48,7 @@ std::unique_ptr<Document::PaletteReplay> Document::preparePaletteEdit(const Edit
  if(kind==3){
   Pixel before=0,after=0;for(const auto& entry:edit.paletteHistory.beforePalette->entries)if(entry.id==edit.paletteHistory.colorId)before=entry.color;
   for(const auto& entry:state.entries)if(entry.id==edit.paletteHistory.colorId)after=entry.color;
-  for(std::size_t i=0;i<palette_.entries.size();++i)if(palette_.entries[i].id==edit.paletteHistory.colorId)target.patches.push_back({i,{},after});
+  for(std::size_t i=0;i<palette_.entries.size();++i)if(palette_.entries[i].id==edit.paletteHistory.colorId){target.patches.push_back({i,{},after});break;}
   if(!redo){target.primary=state.primary;target.secondary=state.secondary;}
   else{if(palette_.primary==before)target.primary=after;if(palette_.secondary==before)target.secondary=after;}
   return prepared;

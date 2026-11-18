@@ -2030,7 +2030,7 @@ void Document::updatePaletteColor(int id,Pixel color) {
     // legacy workspace-commands-color: document frames x bottom-to-top layers,
     // owner dedup BEFORE lock filtering, hidden layers included, no selection clip.
     const Pixel source=current->color;Edit compound{{},state_,nextState_};compound.beforeActive=compound.afterActive=layer().id;compound.beforeFrame=compound.afterFrame=frame().id;compound.beforeSelection=compound.afterSelection=selectedFrames_;
-    Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteHistory.paletteKind=3;paletteEdit.paletteHistory.colorId=id;paletteEdit.paletteHistory.beforePalette=capturePaletteEdit(3,id);paletteEdit.paletteHistory.afterPalette=*paletteEdit.paletteHistory.beforePalette;for(auto& entry:paletteEdit.paletteHistory.afterPalette->entries)if(entry.id==id)entry.color=color;if(paletteEdit.paletteHistory.afterPalette->primary==source)paletteEdit.paletteHistory.afterPalette->primary=color;if(paletteEdit.paletteHistory.afterPalette->secondary==source)paletteEdit.paletteHistory.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
+    Edit paletteEdit{{},state_,nextState_};paletteEdit.paletteHistory.paletteKind=3;paletteEdit.paletteHistory.colorId=id;paletteEdit.paletteHistory.beforePalette=capturePaletteEdit(3,id);paletteEdit.paletteHistory.afterPalette=*paletteEdit.paletteHistory.beforePalette;for(auto& entry:paletteEdit.paletteHistory.afterPalette->entries)if(entry.id==id){entry.color=color;break;}if(paletteEdit.paletteHistory.afterPalette->primary==source)paletteEdit.paletteHistory.afterPalette->primary=color;if(paletteEdit.paletteHistory.afterPalette->secondary==source)paletteEdit.paletteHistory.afterPalette->secondary=color;compound.children.push_back(std::move(paletteEdit));
     if(!timeline_.state().tilesets.empty()){auto resourceState=timeline_.state();
     if(synchronizePaletteResources(resourceState,source,color,colorMode_==color_mode::Mode::Grayscale)){
       Edit resources{{},state_,nextState_};resources.snapshotHistory.beforeTimeline=timeline_.state();resources.snapshotHistory.afterTimeline=std::move(resourceState);resources.beforeActive=resources.afterActive=activeLayerId_;resources.beforeFrame=resources.afterFrame=activeFrameId_;compound.children.push_back(std::move(resources));
@@ -2044,14 +2044,14 @@ void Document::updatePaletteColor(int id,Pixel color) {
     }else for(std::size_t f=0;f<state.frames.size();++f)for(std::size_t l=0;l<state.layers.size();++l)if(const auto* c=timeline_.findCel(state.layers[state.layers.size()-1-l].id,state.frames[f].id))targets.push_back({c,f,l});
     std::vector<bool> locked;locked.reserve(state.layers.size());for(auto l=state.layers.rbegin();l!=state.layers.rend();++l)locked.push_back(layerEffectivelyLocked(*l));std::unordered_set<const void*> seen;seen.reserve(targets.size());
     for(const auto& target:targets){const auto resolved=timeline_.resolveSurface(target.cel->id);if(resolved.source&&(resolved.source->tilemap||resolved.source->freeTiles))continue;if(!resolved.source||!resolved.surface||!seen.insert(resolved.surface->pixels.identity()).second||locked[target.layer])continue;Edit child{{},state_,nextState_};child.contentHistory.targetCelId=resolved.source->id;child.contentHistory.pixelAddress=PixelAddressSpace{resolved.surface->width,resolved.surface->height,resolved.surface->storageOriginX.value_or(0),resolved.surface->storageOriginY.value_or(0)};const auto& pixels=resolved.surface->pixels;const bool indexed=resolved.surface->format==timeline::RasterFormat::Indexed;
-      auto entries=palette_.entries;for(auto& e:entries)if(e.id==id)e.color=color;std::unordered_set<Pixel> sourceIds;if(indexed)for(const auto& e:entries)if(e.color==source)sourceIds.insert(Pixel(e.id));
+      auto entries=palette_.entries;for(auto& e:entries)if(e.id==id){e.color=color;break;}std::unordered_set<Pixel> sourceIds;if(indexed)for(const auto& e:entries)if(e.color==source)sourceIds.insert(Pixel(e.id));
       const Pixel replacement=indexed?Pixel(color_mode::paletteColorIdForCanvas(entries,palette_.order(),color)):normalizeCanvasPacked(color);
       for(std::size_t i=0;i<pixels.size();++i)if((indexed?sourceIds.count(pixels[i])!=0:pixels[i]==source)&&pixels[i]!=replacement){if(!child.contentHistory.runs.empty()&&child.contentHistory.runs.back().index+child.contentHistory.runs.back().length==i&&child.contentHistory.runs.back().before==pixels[i]&&(!indexed||i%resolved.surface->width))++child.contentHistory.runs.back().length;else child.contentHistory.runs.push_back({i,1,pixels[i],replacement});}if(!child.contentHistory.runs.empty())compound.children.push_back(std::move(child));}
     auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);reserveHistoryEntries();change_={};applyEdit(compound,true);publishChange();pushEdit(std::move(compound),U"调整颜色板颜色");return;
   }
   auto gradientPreview=std::move(gradient_);cancelStroke();gradient_=std::move(gradientPreview);Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(3,id);edit.paletteHistory.paletteKind=3;edit.paletteHistory.colorId=id;
   const auto before=current->color;
-  for(auto& entry:palette_.entries) if(entry.id==id) entry.color=color;
+  for(auto& entry:palette_.entries) if(entry.id==id){entry.color=color;break;}
   if(palette_.primary==before) palette_.primary=color;if(palette_.secondary==before) palette_.secondary=color;
   edit.paletteHistory.afterPalette=capturePaletteEdit(edit.paletteHistory.paletteKind,edit.paletteHistory.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
 }
@@ -2123,7 +2123,7 @@ void Document::renamePaletteColor(int id,const std::u32string& name) {
   const std::u32string next(javascriptTrim(name));
   if(entry->name==next) return;
   cancelStroke();Edit edit{{},state_,nextState_};edit.paletteHistory.beforePalette=capturePaletteEdit(4,id);edit.paletteHistory.paletteKind=4;edit.paletteHistory.colorId=id;
-  for(auto& candidate:palette_.entries) if(candidate.id==id) candidate.name=next;
+  for(auto& candidate:palette_.entries) if(candidate.id==id){candidate.name=next;break;}
   edit.paletteHistory.afterPalette=capturePaletteEdit(edit.paletteHistory.paletteKind,edit.paletteHistory.colorId);pushEdit(std::move(edit),U"调整颜色板颜色");
 }
 // legacy workspace-palette.ts applyPalette: reuse each RGBA entry once; retain hidden IDs.

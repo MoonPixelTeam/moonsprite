@@ -255,6 +255,13 @@ int main(int argc,char** argv){try{winrt::init_apartment();check(argc==2,"Fixtur
   check(model->palette().entries[1].color==original[1].color,"Palette operation modified earlier duplicate ID");
   const auto after=model->palette().entries;model->undo();check(model->palette().entries.size()==original.size()&&model->palette().entries[1].color==original[1].color&&model->palette().entries[2].color==original[2].color,"Palette duplicate undo changed wrong entry");model->redo();check(model->palette().entries[1].color==original[1].color&&model->palette().entries[2].color==after[2].color&&model->activeSurface().pixels==pixels,"Palette duplicate redo changed wrong entry or raw pixels");
  }
+ // Direct edit commands capture the first matching entry; duplicate siblings
+ // survive initial application and history replay, with or without sync.
+ for(bool sync:{false,true})for(bool rename:{false,true}){
+  auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);model->setPaletteColorSynchronization(sync);const auto original=model->palette().entries;
+  if(rename)model->renamePaletteColor(7,U" renamed ");else model->updatePaletteColor(7,0xff112233);
+  auto verify=[&]{check(model->palette().entries[2].color==original[2].color&&model->palette().entries[2].name==original[2].name,"Direct palette edit modified duplicate sibling");};verify();check(rename?model->palette().entries[1].name==U"renamed":model->palette().entries[1].color==0xff112233,"Direct palette edit missed first entry");model->undo();verify();check(model->palette().entries[1].color==original[1].color&&model->palette().entries[1].name==original[1].name,"First-entry palette undo wrong");model->redo();verify();
+ }
  // Legacy applyPalette consumes identities once, including malformed duplicate
  // IDs with distinct colors. Repeated imports reuse the newly allocated ID.
  {auto model=std::make_unique<Document>(fixture(3,1,false));RasterHistoryFixture::indexedBrush(*model);const auto original=model->palette().order();
