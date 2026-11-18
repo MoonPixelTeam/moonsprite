@@ -6021,6 +6021,14 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "copySelectedAnimationCels snapshots selected Cel owners and attached masks independently of activeLayerMask; session.selection alone controls pixel cropping. Remove project-wide static active-mask copy/export refusals, preserve active-preview refusal and context. Copy registry permits selected Cel scope with static active mask; existing editor routing still prioritizes explicit mask slots and pixel selection override. Eight grid/free x isolated/normal x whole/selection checks preserve mask/authority/history; actual grid isolated-mask menu Copy verifies Cel payload and retained context."
+      },
+      "celSelectionCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
       }
     },
     {
@@ -25396,6 +25404,14 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "copySelectedAnimationCels snapshots selected Cel owners and attached masks independently of activeLayerMask; session.selection alone controls pixel cropping. Remove project-wide static active-mask copy/export refusals, preserve active-preview refusal and context. Copy registry permits selected Cel scope with static active mask; existing editor routing still prioritizes explicit mask slots and pixel selection override. Eight grid/free x isolated/normal x whole/selection checks preserve mask/authority/history; actual grid isolated-mask menu Copy verifies Cel payload and retained context."
+      },
+      "celSelectionCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
       }
     },
     {
@@ -35912,6 +35928,14 @@
           "legacy/src/renderer/src/components/app/app-document-shortcuts.ts"
         ],
         "nativeAdaptation": "copySelectedAnimationCels snapshots selected Cel owners and attached masks independently of activeLayerMask; session.selection alone controls pixel cropping. Remove project-wide static active-mask copy/export refusals, preserve active-preview refusal and context. Copy registry permits selected Cel scope with static active mask; existing editor routing still prioritizes explicit mask slots and pixel selection override. Eight grid/free x isolated/normal x whole/selection checks preserve mask/authority/history; actual grid isolated-mask menu Copy verifies Cel payload and retained context."
+      },
+      "celSelectionCutActiveMask20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-cut.ts",
+          "legacy/src/renderer/src/store/workspace-commands-selection-effects.ts",
+          "legacy/src/renderer/src/store/workspace-commands-animation-cel-clipboard.ts"
+        ],
+        "nativeAdaptation": "cutWorkspaceItems copies selected Cels using session.selection and delegates deletion to deleteSelection, whose active mask branch fills background color. Permit selected-Cel Cut with static active mask and pixel selection, run existing lock checks and Cel copy first, then existing deleteMaskSelection transaction. Whole-Cel active-mask Cut remains separately gated. Eight grid/free, isolated/normal and single/multiple cases verify cropped Cel clipboard, mask-only fill, retained context/resources, Undo/Redo and persistence. Extend actual isolated grid-mask Cut menu smoke assertion."
       }
     },
     {

@@ -7828,3 +7828,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 蒙版编辑状态中的Cel复制
 
 对照workspace-commands-animation-cel-clipboard.ts::copySelectedAnimationCels与workspace-animation-cel-links.ts，Cel复制只按所选Cel及像素选区决定源，不受静态活动蒙版影响。移除特殊工程Copy/Export活动蒙版拒绝，保留预览活动拒绝；Copy registry允许静态蒙版中的Cel作用域，显式蒙版格与像素选区override仍按原入口优先级。新增网格/自由、隔离/普通、完整/选区八组合，验证附加蒙版、源权威、历史及编辑上下文不变；正式菜单夹具新增网格隔离蒙版活动时复制Cel载荷检查。本批未改Cut语义。正式Release及测试构建成功，cel-copy-mask八组通过，完整free-tile-project通过35.78秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际Copy菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见celCopyActiveMask20261118，整体INCOMPLETE。
+
+
+## 2026-11-18 活动蒙版中的选区Cel剪切
+
+对照workspace-cut.ts与workspace-commands-selection-effects.ts，Cel作用域有像素选区时先复制Cel裁切像素，再调用deleteSelection的活动蒙版背景色填充分支。Document::cutSelectedCels允许该静态上下文，保留活动预览与所有所选层锁定校验；删除复用deleteMaskSelection而非源像素修改，蒙版编辑、隔离、时间轴选择保留。新增八组网格/自由、隔离/普通、单/多Cel检查，验证剪贴板源像素、蒙版单事务、瓦片资源/像素保持、Undo/Redo与保存重开；正式隔离网格蒙版菜单夹具增加Cut启用及调用验证。本批未迁移无像素选区的活动蒙版整Cel Cut。正式Release及测试构建成功，cel-copy-mask通过，完整free-tile-project通过42.60秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际Cut菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见celSelectionCutActiveMask20261118，整体INCOMPLETE。
