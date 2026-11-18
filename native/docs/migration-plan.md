@@ -8120,3 +8120,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 颜色调整显示链一致性验收
 
 补齐RGBA及内部索引色夹具的离屏显示链检查：两次亮度调整预览、实际缓存画布、合成/当前层取色、放大镜区域、选区反馈与缩略图逐像素一致，预览保持正式原始像素/历史/dirty，取消、提交及Undo/Redo一致。首次索引色夹具只含一个可见颜色，却预期色板外输出；源码核对确认旧版会规范化到可见ID，故补齐两种调整输出为可见色卡，不改生产算法。Release canvas-performance-tests构建成功，仅运行--palette-preview退出0，未执行性能基准。来源覆盖及diff检查通过；没有生产源码变更或正式GUI重建，未人工图像验收。生产索引色准入关闭，整体迁移INCOMPLETE。来源见adjustmentDisplayConsistency20261119。
+
+
+## 2026-11-19 扩展工程摘要颜色模式迁移
+
+对照 ExtensionRuntimeHost.tsx::projectSnapshot，修复原生工程摘要硬编码 rgba，统一从实际 Document 模式生成工程列表、当前工程、document.getSummary 及 project 事件载荷。正式 Editor 检查覆盖双工程隔离、RGBA/灰度、转换及 Undo/Redo、事件 JSON 和只读查询不改历史/revision；不开放 Indexed 生产入口。首次测试编译误将 void undo/redo 当作布尔值，已修正。唯一正式 Release 构建成功（extension-summary-mode-build.log），extension-workspace-ui CTest 通过（0.73秒）。未人工图像验收，JavaScript 执行器与整体功能迁移仍 INCOMPLETE。来源见 workspaceSummaryMode20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。

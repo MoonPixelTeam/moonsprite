@@ -6,7 +6,7 @@ namespace moon::editor {
 namespace {
 winrt::hstring workspaceText(const std::string& value){return winrt::to_hstring(value);}
 extension::ProjectSummary summary(const Document& value){
- return {workspaceText(std::to_string(value.identity())),workspaceText(utf8Text(value.name())),L"rgba",value.width(),value.height(),value.timeline().state().layers.size(),value.timeline().state().frames.size(),value.dirty(),value.contentRevision()};
+ return {workspaceText(std::to_string(value.identity())),workspaceText(utf8Text(value.name())),workspaceText(std::string(color_mode::name(value.colorMode()))),value.width(),value.height(),value.timeline().state().layers.size(),value.timeline().state().frames.size(),value.dirty(),value.contentRevision()};
 }
 }
 // Event-thread services use live session state on every call. The owning host
@@ -85,6 +85,22 @@ void Editor::smokeExtensionWorkspace(){
  require(layers.Size()==currentDocument().timeline().state().layers.size()&&layers.GetObjectAt(0).GetNamedString(L"id")==workspaceText(currentDocument().timeline().state().layers.back().id)&&frames.Size()==2&&frames.GetObjectAt(1).GetNamedNumber(L"index")==1&&frames.GetObjectAt(1).GetNamedNumber(L"duration")==currentDocument().timeline().state().frames[1].duration,"Real layer/frame order and values");
  require(layers.GetObjectAt(layers.Size()-1).GetNamedNumber(L"opacity")==.375&&!layers.GetObjectAt(layers.Size()-1).GetNamedBoolean(L"visible")&&frames.GetObjectAt(1).GetNamedNumber(L"duration")==170,"Layer properties/frame duration lost");
  require(currentDocument().historyPosition()==history&&currentDocument().contentRevision()==revision,"Queries mutated document");
+ // All public summaries share the live mode, including project event payloads.
+ // Conversion stays on the existing document transaction; no Indexed entry is opened.
+ auto checkMode=[&](const wchar_t* expected){
+  const auto beforeHistory=currentDocument().historyPosition(),beforeRevision=currentDocument().contentRevision();
+  require(result("document.getSummary").GetObject().GetNamedString(L"colorMode")==expected&&result("workspace.getActiveProject").GetObject().GetNamedString(L"colorMode")==expected,"Active extension summary color mode");
+  const auto projects=result("workspace.listProjects").GetArray();
+  require(projects.GetObjectAt(0).GetNamedString(L"colorMode")==L"rgba"&&projects.GetObjectAt(1).GetNamedString(L"colorMode")==expected,"Extension project list mode isolation");
+  const auto event=extension::projectEvent(extensionWorkspaceServices().active(),false);
+  require(JsonObject::Parse(workspaceText(event.payload)).GetNamedString(L"colorMode")==expected,"Extension project event color mode");
+  require(currentDocument().historyPosition()==beforeHistory&&currentDocument().contentRevision()==beforeRevision,"Mode summary changed document");
+ };
+ checkMode(L"rgba");
+ require(currentDocument().convertColorMode(color_mode::Mode::Grayscale),"Extension summary grayscale fixture");checkMode(L"grayscale");
+ currentDocument().undo();checkMode(L"rgba");
+ currentDocument().redo();checkMode(L"grayscale");
+ currentDocument().undo();require(currentDocument().historyPosition()==history,"Extension summary mode history restoration");
  auto activate=[&](const std::string& id){JsonObject params;params.Insert(L"projectId",JsonValue::CreateStringValue(workspaceText(id)));return call("workspace.activateProject",params);};
  require(activate(first).GetNamedBoolean(L"ok")&&std::to_string(currentDocument().identity())==first&&currentDocument().historyPosition()==firstHistory,"Real project activation/history");
  require(activeRailTool()=="selection.ellipse"&&currentTools().selectionMode==2&&currentTools().gradientDither==7&&currentTools().wandOptions.tolerance==73&&currentTools().brushProfiles[0].size==17&&currentTools().smoothStrength==63,"First project tool configuration was not restored");
