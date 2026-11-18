@@ -42754,6 +42754,12 @@
           "legacy/src/renderer/src/store/workspace-document-history.ts"
         ],
         "nativeAdaptation": "Migrate convertDocumentColorMode and ensureIndexedPalette through existing standalone surface/palette/mode history. Resolve indexed source IDs with last-entry Map semantics; map target colors to existing visible palette IDs; preserve storage deduplication, geometry, masks and independent resources. Add missing transparent ID 0 and visible slot according to legacy layout rules. Retain current UI roles and selection on history replay. Tests cover grayscale/indexed/RGBA transitions, empty palette, existing opaque zero, linked layers/frames, offsets and undo/redo. Production indexed import/new/menu admission remains closed; this is the conversion transaction, not full indexed admission."
+      },
+      "mixedPixelPrecision20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts"
+        ],
+        "nativeAdaptation": "Match setPixelFormat format checks before storage deduplication: quantize only RGBA surfaces in mixed documents, preserving indexed IDs, storage origins and linked ownership. Seven non-default precision fixtures assert RGBA quantization, unchanged indexed raw storage and links, unchanged history and one revision update."
       }
     },
     {
@@ -42809,6 +42815,12 @@
           "legacy/src/renderer/src/store/workspace-document-history.ts"
         ],
         "nativeAdaptation": "Migrate convertDocumentColorMode and ensureIndexedPalette through existing standalone surface/palette/mode history. Resolve indexed source IDs with last-entry Map semantics; map target colors to existing visible palette IDs; preserve storage deduplication, geometry, masks and independent resources. Add missing transparent ID 0 and visible slot according to legacy layout rules. Retain current UI roles and selection on history replay. Tests cover grayscale/indexed/RGBA transitions, empty palette, existing opaque zero, linked layers/frames, offsets and undo/redo. Production indexed import/new/menu admission remains closed; this is the conversion transaction, not full indexed admission."
+      },
+      "mixedPixelPrecision20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/store/workspace-commands-color.ts"
+        ],
+        "nativeAdaptation": "Match setPixelFormat format checks before storage deduplication: quantize only RGBA surfaces in mixed documents, preserving indexed IDs, storage origins and linked ownership. Seven non-default precision fixtures assert RGBA quantization, unchanged indexed raw storage and links, unchanged history and one revision update."
       }
     },
     {

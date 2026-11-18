@@ -7978,3 +7978,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 索引色普通选区斜切事务核对
 
 执行旧版selection.ts、tools-selection-transform-apply.ts和workspace-floating-clipboard.ts实际斜切逻辑，新增192组n/s/w/e、0度及37度、移动/复制/粘贴、dense/sparse/负偏移、mask及即时/延迟输入。夹具将旧版边缘斜切转换为等价原生中心斜切；现有生产实现无需修改。Release indexed-selection-tests定向构建通过，1177组实际旧版事务、32组链接变体及3组缺失Cel检查通过，覆盖预览像素/浮动复制/取消/提交/Undo/Redo。来源覆盖及diff检查通过。仅扩展行为证据，未重建正式GUI、未人工图像验收；生产索引色准入保持关闭，整体迁移INCOMPLETE。来源见indexedShearTransactions20261118。
+
+
+## 2026-11-18 混合格式工程像素精度转换
+
+对照workspace-commands-color.ts::setPixelFormat，仅量化RGBA表面，在共享存储去重前排除Indexed表面，避免将颜色ID当作RGBA值改写。新增七种非默认精度夹具，验证普通RGBA量化、Indexed原始ID/存储身份/原点及链接保持，历史不增加、revision更新一次。Release document-pixel-format-tests构建及document-pixel-format CTest通过（1.09秒），来源覆盖及diff检查通过。未重建正式GUI、未人工图像验收；索引色生产准入仍关闭，整体迁移INCOMPLETE。来源见mixedPixelPrecision20261118。
