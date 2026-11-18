@@ -21663,6 +21663,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Enable GIF and WebP format choices from frame sequences, matching legacy format onChange target frames to document. Reuse complete animated option transfer for sequences, preserving range, loop, direction, scale, trim, name and directory. Formal preference smoke covers both encoders with explicit range and loop selection and actual file writes."
+      },
+      "sequenceProjectSwitch20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Enable project formats from frame sequences and route PSD/ASEPRITE through existing shared static project export rather than a fresh standalone popup. Preserve filename, directory and scale, force document target and retain MoonSprite scale/trim normalization. Production preference smoke checks transitions and actual PSD, ASEPRITE and MoonSprite writes."
       }
     },
     {
@@ -25704,6 +25710,12 @@
           "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
         ],
         "nativeAdaptation": "Enable GIF and WebP format choices from frame sequences, matching legacy format onChange target frames to document. Reuse complete animated option transfer for sequences, preserving range, loop, direction, scale, trim, name and directory. Formal preference smoke covers both encoders with explicit range and loop selection and actual file writes."
+      },
+      "sequenceProjectSwitch20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Enable project formats from frame sequences and route PSD/ASEPRITE through existing shared static project export rather than a fresh standalone popup. Preserve filename, directory and scale, force document target and retain MoonSprite scale/trim normalization. Production preference smoke checks transitions and actual PSD, ASEPRITE and MoonSprite writes."
       }
     },
     {

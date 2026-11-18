@@ -7913,3 +7913,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 帧序列切换GIF与WebP
 
 对照ExportDialogHost.tsx格式onChange，开放帧序列到GIF/WebP的格式选择，目标转为文档动画；复用完整动画选项传递，保留指定范围、循环段、播放方向、比例、修剪、文件名及目录。扩展正式偏好检查覆盖两种动画格式及范围/循环段两条路径，实际写出文件。首次检查因夹具重复文件名触发覆盖确认，终止该专用smoke进程并改为每用例独立文件名后通过。最终正式Release构建、--export-format-preference-check退出0，来源覆盖与证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见sequenceAnimationSwitch20261118。
+
+
+## 2026-11-18 帧序列切换工程格式
+
+对照ExportDialogHost.tsx格式onChange，开放帧序列到PSD、ASEPRITE、MoonSprite的格式选择，复用统一静态工程导出事务；PSD与ASEPRITE不再进入丢失原草稿的独立弹窗。保留文件名、目录、比例并强制整幅工程，MoonSprite仍归一100%及清除修剪。正式偏好检查覆盖三类入口、控件约束及实际文件写出。首次检查误在弹窗关闭后推算扩展名，修正为提前记录完整输出路径后通过。最终正式Release构建、--export-format-preference-check退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见sequenceProjectSwitch20261118。

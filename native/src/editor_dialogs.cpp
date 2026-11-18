@@ -461,9 +461,9 @@ void Editor::createExportComponents() {
 
     format->setOptions({U"PNG RGBA",U"PNG 自动",U"GIF",U"BMP",U"ICO",U"SVG",U"JPEG",U"WebP",U"PSD",U"ASE / ASEPRITE",U"MoonSprite 工程"});
 
-    format->optionEnabled=[this](int i){return i>=0&&i<=10&&!(pending_==Pending::GifExport&&framePngMode_&&(i==8||i==9||i==10));};
+    format->optionEnabled=[](int i){return i>=0&&i<=10;};
 
-    format->changed=[this](int i){if(i==10){switchStaticExportFormat(10);return;}if(i==8||i==9){resolve(false);openAsepriteExport(i==8);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
+    format->changed=[this](int i){if(i==10){switchStaticExportFormat(10);return;}if(i==8||i==9){switchStaticExportFormat(i==8?7:9);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);return;}if(pending_==Pending::GifExport&&framePngMode_){setFrameSequenceFormat(i==6?FrameSequenceFormat::Jpeg:i==3?FrameSequenceFormat::Bmp:i==4?FrameSequenceFormat::Ico:i==5?FrameSequenceFormat::Svg:FrameSequenceFormat::Png,i==1);return;}if(i==2||i==7){switchAnimatedExportFormat(i==7);}else if(i==5)openSvgExport();else switchStaticExportFormat(i==6?5:i==1?4:i==3?1:i==4?2:0);};
 
     auto target=exportDropdown(exportLayerButton_);
 
