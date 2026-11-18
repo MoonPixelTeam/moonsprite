@@ -30300,6 +30300,14 @@
         "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
         "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
       },
+      "textFontOriginLabels20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::font source small labels/local import title/delete title",
+          "legacy/src/renderer/src/locales/zh-CN.ts::textTool.importedFont/localFont/selectLocalFont/deleteFont"
+        ],
+        "adaptation": "Display imported/local badges as suffix text in existing native font dropdown rows; underlying family identities remain unchanged. Reuse TooltipManager for local-file selection and dynamic delete-font name, refreshed with selection and catalog changes. Built-in rows retain bare names. React small labels adapt to the existing single-line native dropdown.",
+        "verification": "Formal Release build text-font-origin-build.log succeeded. Legacy labels, selection identity and tooltip refresh source-reviewed; provenance coverage and diff checks passed. No repeated full text-tool smoke for labels only, no manual hover/image acceptance."
+      },
       "textFontDescriptions20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::builtInFontDescription and spacingModeGroups",

@@ -8230,3 +8230,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字字体和间距说明迁移
 
 对照 TextToolDialog.tsx::builtInFontDescription/spacingModeGroups 与 zh-CN 文案，四种内置字体说明和两种间距说明接入 PixelDropdown 的既有 optionTooltips；导入与本地字体不套用内置说明。恢复旧版“字体间距”标签，未改变布局和操作。正式 Release 构建成功（text-descriptions-build.log），文案及选项顺序源码核对，来源覆盖和 diff 检查通过；纯说明改动未重复整套文字检查，未人工悬浮或图像验收。来源见 textFontDescriptions20261119；整体迁移 INCOMPLETE。保留既有 main.cpp 差异，不提交生成物或用户数据。
+
+
+## 2026-11-19 文字字体来源标识及操作提示迁移
+
+对照 TextToolDialog.tsx 字体来源 small 标签、本地导入 title 和动态删除 title，既有原生下拉行显示“已导入／本地”，内置字体保留名称；底层字体身份不变。TooltipManager 显示“选择本地字体”及随目录／选择更新的“删除字体：名称”。旧版双行来源标签适配为现有原生单行后缀。正式 Release 构建成功（text-font-origin-build.log），标签、选择身份和提示更新源码核对，来源覆盖与 diff 检查通过；显示改动未重复整套文字检查，未人工悬浮或图像验收。来源见 textFontOriginLabels20261119；整体迁移 INCOMPLETE，保留既有 main.cpp 差异，不提交生成物和用户数据。
