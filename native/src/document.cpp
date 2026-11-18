@@ -207,7 +207,7 @@ void Document::groupEdits(std::size_t start,const std::vector<std::string>& sele
 }
 namespace {void indexedSelectionSource(const SelectionClipboard&,timeline::RasterFormat,const PaletteState&,bool captureTranslation=false);}
 // Whole Cel snapshot: legacy snapshotLinkedAnimationCels rebase and block anchor.
-bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&(active()||!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before copying Cels");
+bool Document::copySelectedCels(){if((hasTilemapContent()||hasFreeTileContent())&&active())throw std::runtime_error("Finish the active edit before copying Cels");
 
  // legacy copySelectedAnimationCels filters with a Set before row/frame ordering.
  const std::unordered_set<std::string> selected(timelineSelection_.cels.begin(),timelineSelection_.cels.end());

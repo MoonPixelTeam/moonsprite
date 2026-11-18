@@ -10521,6 +10521,10 @@ namespace {
 __declspec(noinline) void runSelectionSmokeCase(const std::function<void()>& run){run();}
 }
 void Editor::smokeTilemapSelectionDelete(){
+ runSelectionSmokeCase([this]{
+  auto require=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;paletteFocused_=false;currentView().frameSelection=false;selectionCommandOverride_=false;replaceDocumentForSmoke(Document(4,2));auto& d=currentDocument();d.beginStroke({0,0},0xff123456);d.commitStroke();require(d.convertLayerToTilemap(2,1,U"Copy mask UI"),"Copy mask UI grid");const auto owner=d.layer().id,frame=d.frame().id;d.selectTimelineCel(d.cel().id);require(d.createAttachedMask(owner,frame)&&d.selectAttachedMask(owner,frame,true),"Copy mask UI editing context");const auto mask=d.activeMaskId();const auto h=d.historyPosition();currentView().maskSlots.clear();refresh();require(menuCommands_.enabled("copy")&&menuItems_.at("copy")->available()&&menuCommands_.invoke("copy"),"Copy mask Cel menu route");require(hasApplicationCelClipboard()&&!applicationCelSelectionOnly()&&celClipboardSnapshot_.items.front().cel.surface->pixels[0]==0xff123456&&d.activeMaskId()==mask&&d.maskIsolated()&&d.historyPosition()==h,"Copy mask actual Cel payload and context");replaceDocumentForSmoke(Document());refresh();
+ });
+
  for(auto mode:{tiles::Mode::Paint,tiles::Mode::Create,tiles::Mode::Edit,tiles::Mode::Hybrid})runSelectionSmokeCase([this,mode]{
   auto require=[](bool value,const char* why){if(!value)throw std::runtime_error(why);};
   smoke_=true;homeOpen_=false;documentOpen_=true;pending_=Pending::None;currentPlayback().playing=false;paletteFocused_=false;currentView().frameSelection=false;

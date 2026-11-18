@@ -501,7 +501,7 @@ bool Document::cutTilemapFrames(){
 
 namespace moon {
 Document::CelClipboardSnapshot Document::exportCelClipboard()const{
- if((hasTilemapContent()||hasFreeTileContent())&&(active()||!activeMaskId_.empty()))throw std::runtime_error("Finish the active edit before exporting Cels");
+ if((hasTilemapContent()||hasFreeTileContent())&&active())throw std::runtime_error("Finish the active edit before exporting Cels");
  CelClipboardSnapshot out{celClipboard_,identity_,width_,height_};
  for(auto& item:out.items){if(item.rgbaSnapshot)item.cel.surface=item.rgbaSnapshot;item.rgbaSnapshot.reset();if(item.selectionPixels){auto& pixels=*item.selectionPixels;std::fill(pixels.pixels.begin(),pixels.pixels.end(),0);std::fill(pixels.mask.begin(),pixels.mask.end(),0);if(item.cel.surface){const auto& source=*item.cel.surface;for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x){const auto index=std::size_t(std::int64_t(source.offsetY)+y-pixels.originY.value_or(0))*pixels.width+std::size_t(std::int64_t(source.offsetX)+x-pixels.originX.value_or(0));const auto value=source.pixels[std::size_t(y)*source.width+x];pixels.pixels.at(index)=value;pixels.mask.at(index)=(value>>24)!=0;}}}}
 if(!out.items.empty()&&out.items.front().selectionPixels)return out;

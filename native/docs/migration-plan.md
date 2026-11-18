@@ -7823,3 +7823,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 特殊Cel选区剪切复用权威删除事务
 
 对照workspace-cut.ts::cutWorkspaceItems，Cel作用域有像素选区时先复制再调用deleteSelection。移除单特殊Cel拒绝，网格单目标及活动自由图层接入已有deleteSelectedPixels，避免直接写派生像素缓存。网格Create/Edit/Hybrid沿用各自瓦片事务及共享引用规则，Paint按旧版复制但不删除；自由Edit按选中实例源更新资源，源选择不存在时沿用不删除。多目标继续普通图层过滤，并保留自由源Edit在多目标之前的优先级。新增十组四种网格模式/自由Edit与独立/链接Cel检查，覆盖选区蒙版、剪贴板旧像素、单事务、撤销重做和重开；自由源检查在选择Cel后显式重新进入Edit，匹配时间轴切换清除实例选择的既有规则。正式Release构建成功，special-cel-selection定向检查通过，既有正式程序--tileset-management-check --grid-transform-entry-only入口退出0。未新增专用GUI断言、未人工图像验收。完整free-tile-project通过33.52秒，来源1043文件快照及diff检查通过。来源见specialCelSelectionCut20261118，整体INCOMPLETE。
+
+
+## 2026-11-18 蒙版编辑状态中的Cel复制
+
+对照workspace-commands-animation-cel-clipboard.ts::copySelectedAnimationCels与workspace-animation-cel-links.ts，Cel复制只按所选Cel及像素选区决定源，不受静态活动蒙版影响。移除特殊工程Copy/Export活动蒙版拒绝，保留预览活动拒绝；Copy registry允许静态蒙版中的Cel作用域，显式蒙版格与像素选区override仍按原入口优先级。新增网格/自由、隔离/普通、完整/选区八组合，验证附加蒙版、源权威、历史及编辑上下文不变；正式菜单夹具新增网格隔离蒙版活动时复制Cel载荷检查。本批未改Cut语义。正式Release及测试构建成功，cel-copy-mask八组通过，完整free-tile-project通过35.78秒；正式程序--tileset-management-check --grid-transform-entry-only带正式主题/指针退出0，包含新增实际Copy菜单断言。来源1043文件快照及diff检查通过，未人工图像验收。来源见celCopyActiveMask20261118，整体INCOMPLETE。
