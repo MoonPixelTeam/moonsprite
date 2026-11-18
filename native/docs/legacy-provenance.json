@@ -21714,6 +21714,12 @@
           "legacy/src/renderer/src/core/export-settings.ts"
         ],
         "nativeAdaptation": "Persist filename and directory in native preset version 7 matching full exportForm save/apply; continue reading versions 1-6 with absent destination preserving native fallback. Explicit empty directory on named new preset restores file chooser mode. Extend export-memory production smoke to destination persistence, application and empty directory."
+      },
+      "exportPresetSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match preset placeholder selection by clearing the preset name while retaining export options. Match deletePreset name trimming and empty-name no-op. Existing export-memory check validates trimmed deletion persistence and empty draft preservation."
       }
     },
     {
@@ -25799,6 +25805,12 @@
           "legacy/src/renderer/src/core/export-settings.ts"
         ],
         "nativeAdaptation": "Persist filename and directory in native preset version 7 matching full exportForm save/apply; continue reading versions 1-6 with absent destination preserving native fallback. Explicit empty directory on named new preset restores file chooser mode. Extend export-memory production smoke to destination persistence, application and empty directory."
+      },
+      "exportPresetSelection20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match preset placeholder selection by clearing the preset name while retaining export options. Match deletePreset name trimming and empty-name no-op. Existing export-memory check validates trimmed deletion persistence and empty draft preservation."
       }
     },
     {

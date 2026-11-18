@@ -7948,3 +7948,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 导出预设文件名与目录
 
 对照ExportDialogHost.tsx的savePreset及预设应用保存完整exportForm，原生预设版本7增加文件名及目录，读取继续兼容版本1至6。应用新预设恢复文件名及目录，显式空目录恢复文件选择模式；旧预设缺少目的地时保持既有默认。扩展正式--export-memory-check验证持久化、重新读取、工程预设应用与空目录恢复。正式Release构建及该检查（正式主题及指针）退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportPresetDestination20261118。
+
+
+## 2026-11-18 导出预设选择与删除
+
+对照ExportDialogHost.tsx的预设onChange和deletePreset，选择占位项时清空名称并保留导出设置；删除路径裁剪名称，空名称直接返回。扩展既有--export-memory-check覆盖裁剪名称删除后的持久化及空名称不改草稿。正式Release构建、该检查退出0，来源覆盖及证据快照、diff检查通过；未人工图像验收，整体迁移INCOMPLETE。来源见exportPresetSelection20261118。
