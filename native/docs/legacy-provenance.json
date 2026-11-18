@@ -30292,6 +30292,14 @@
         "adaptation": "Only a transition from font spacing to actual spacing replaces zero base/range spacing with one; reselecting actual spacing preserves intentional zero values. Empty text disables confirmation and local Undo restores availability. Reuse existing shared pixel controls without geometry changes.",
         "verification": "Formal Release build text-spacing-state-build.log succeeded. Actual callback fixtures cover transition, repeated selection and return to font spacing. Existing empty draft fixture checks disabled confirmation and restoration after Undo. Formal theme/cursors --text-tool-check waited for actual exit 0; provenance coverage and diff checks pass. No manual image acceptance."
       },
+      "textInitialCatalogAsync20261119": {
+        "sources": [
+          "legacy/src/renderer/src/components/TextToolDialog.tsx::initial fonts state and loadTextFontCatalog effect",
+          "legacy/src/renderer/src/core/text-cel-data.ts::TEXT_FONT_FAMILIES"
+        ],
+        "adaptation": "Show the four legacy built-in families before asynchronously obtaining the service catalog. UI polling applies the loaded list while preserving the current document family through existing missing-font adaptation. Failure keeps the current list and reports the legacy load error. Close stops polling, workers own only the shared service handle. Native service construction still performs disk initialization synchronously; this entry covers dialog catalog lifecycle only.",
+        "verification": "Formal Release build text-initial-catalog-build.log succeeded. Formal theme/cursors --text-tool-check waited for actual exit 0, including pending/success/failure catalog fixtures. Provenance coverage and diff checks passed; manual image and close-race acceptance remain unverified."
+      },
       "textFontActionsAsync20261119": {
         "sources": [
           "legacy/src/renderer/src/components/TextToolDialog.tsx::addFont/removeSelectedFont/fontBusy",

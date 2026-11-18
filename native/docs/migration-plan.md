@@ -8210,3 +8210,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 字体导入与删除异步生命周期迁移
 
 对照 TextToolDialog.tsx::addFont/removeSelectedFont/fontBusy，本地文件选择保留 UI 线程，导入、系统字体导入和删除后的目录读取迁入后台任务；任务持有服务句柄，不捕获弹窗。忙碌期间禁用导入/系统/删除，保留文字和字体选择编辑；完成时按当前草稿应用导入身份或删除回退，失败恢复按钮并保留旧版文案。关闭停止轮询，后台资源操作仍可完成，不更新后续弹窗。字体服务共享目录、缓存和偏好加入互斥，避免 UI 与后台写入竞争；渲染仍可能等待服务锁，不声明完全无阻塞。唯一正式 Release 与 text-font-tests 构建成功（text-font-async-build.log），text-font CTest 通过1.29秒，正式主题/指针下 --text-tool-check 实际退出0，覆盖异步删除失败及忙碌入口恢复。真实异步导入成功、关闭竞争与人工图像验收尚未验证；成功应用沿用既有完成处理夹具。整体迁移 INCOMPLETE，来源见 textFontActionsAsync20261119，保留既有 main.cpp，不提交生成物和用户数据。
+
+
+## 2026-11-19 文字字体目录初始化异步迁移
+
+对照 TextToolDialog.tsx 初始 fonts 与 loadTextFontCatalog effect，弹窗先显示 TEXT_FONT_FAMILIES 的四种内置字体，再后台读取服务目录；UI 定时器应用目录，沿用原生缺失文档字体占位。失败保留当前列表并显示旧版提示；关闭停止轮询，后台只持有服务句柄。字体服务构造中的磁盘初始化仍同步，本轮不声明该部分异步完成。唯一正式 Release 构建成功（text-initial-catalog-build.log），正式主题/指针下 --text-tool-check 实际退出0，覆盖加载中、成功和失败状态；来源覆盖与 diff 检查通过。未人工图像验收或关闭竞争验收，整体迁移 INCOMPLETE。来源见 textInitialCatalogAsync20261119；保留既有 main.cpp 差异，不提交生成物和用户数据。
