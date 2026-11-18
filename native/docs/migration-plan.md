@@ -8180,3 +8180,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 文字间距切换与空内容确认迁移
 
 对照 TextToolDialog.tsx::updateSpacingMode，仅从传统间距进入实际间距时把基础及样式段的零间距改为1；重复选择实际间距保留用户设置的零值，返回传统间距保留当前参数。空文字禁用确认，局部 Undo 恢复文字时恢复确认资格。复用原有控件，无布局调整。唯一正式 Release 构建成功（text-spacing-state-build.log），正式主题/指针下 --text-tool-check 等待实际退出0，覆盖实际切换回调及已有清空/恢复流程。来源覆盖与diff检查通过，未人工图像验收；整体迁移 INCOMPLETE。来源见 textSpacingState20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。
+
+
+## 2026-11-19 字体目录身份顺序迁移
+
+对照 platform_fonts.rs::list_fonts 与 font-service.ts::uniqueOptions/sortTextFontsByUsage，全部磁盘字体先按名称及文件 ID 排序，再按 Unicode 小写名称去重，移除原生导入项优先规则；内置使用顺序排名复用裁剪空白后的 Unicode 使用键。实际复制字体夹具覆盖导入文件名在内置 ID 前后、服务重开及删除后的内置回退。唯一正式 Release 与 text-font-tests 构建成功（font-catalog-order-build.log），text-font CTest 通过（1.25秒）。来源覆盖和diff检查结果见本轮命令；未 GUI/人工图像验收，整体迁移 INCOMPLETE。来源见 fontCatalogIdentityOrder20261119；保留既有 main.cpp 状态，不提交生成物和用户数据。

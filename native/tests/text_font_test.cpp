@@ -15,6 +15,14 @@ int wmain(int argc,wchar_t** argv){try{
  auto blocked=CreateFileW(imported.file.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);CHECK(blocked!=INVALID_HANDLE_VALUE);bool failed=false;try{restored.erase(imported.id);}catch(const std::exception&){failed=true;}CloseHandle(blocked);CHECK(failed&&present()&&std::filesystem::exists(imported.file));
  std::filesystem::remove(imported.file);failed=false;try{restored.erase(imported.id);}catch(const std::exception&){failed=true;}CHECK(failed&&present());
  std::filesystem::copy_file(local,imported.file);restored.erase(imported.id);CHECK(!std::filesystem::exists(imported.file)&&!present());
+ // list_fonts sorts by family/id before uniqueOptions chooses the first.
+ {const auto collisionLibrary=run/"collision-library";TextFontService collision(collisionLibrary,bundled,run/"collision-preferences"/"fonts.txt");
+  const auto late=run/"zzz-silkscreen.ttf";std::filesystem::copy_file(local,late);const auto lateFont=collision.importFile(late);
+  auto selected=[&](TextFontService& service){const auto list=service.catalog();auto found=std::find_if(list.begin(),list.end(),[](const auto& f){return f.family=="Silkscreen";});CHECK(found!=list.end());return *found;};
+  CHECK(selected(collision).builtIn&&selected(collision).id!=lateFont.id);
+  const auto early=run/"aaa-silkscreen.ttf";std::filesystem::copy_file(local,early);const auto earlyFont=collision.importFile(early);CHECK(selected(collision).id==earlyFont.id&&selected(collision).imported);
+  TextFontService collisionReload(collisionLibrary,bundled,run/"collision-preferences"/"fonts.txt");CHECK(selected(collisionReload).id==earlyFont.id);collisionReload.erase(earlyFont.id);CHECK(selected(collisionReload).builtIn);
+ }
  // Real system-font imports reuse persistent bytes and collection face.
  const auto systemFamily=fonts.systemFamilies().front();const auto system=restored.importSystem(systemFamily);CHECK(system.imported&&std::filesystem::is_regular_file(system.file));
  auto fontFileCount=[&]{std::size_t count=0;for(const auto& entry:std::filesystem::directory_iterator(library))if(entry.is_regular_file())++count;return count;};

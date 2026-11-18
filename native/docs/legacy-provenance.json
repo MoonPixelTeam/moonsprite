@@ -29621,6 +29621,14 @@
           "legacy/src/renderer/src/platform/font-service.ts"
         ],
         "adaptation": "uniqueOptions lowercases Unicode without trimming; fontUsageKey trims ECMAScript whitespace then lowercases. Native replaces ANSI UTF8-byte CharLowerBuffA with UTF16 Windows user-locale mapping and shared javascriptWhitespace; directory dedup uses untrimmed key, persisted usage uses trimmed key. Real preference fixture checks accented uppercase/lowercase, NBSP/ideographic-space trimming, counts and service reload. Initial fixture held preference stream open during replacement; closed before write and rerun passed. Sole formal Release built; text-font CTest passed 1.14s. Cross-platform/all-locale browser parity remains unproven."
+      },
+      "fontCatalogIdentityOrder20261119": {
+        "sources": [
+          "platform_fonts.rs::list_fonts family/id sort",
+          "font-service.ts::uniqueOptions/sortTextFontsByUsage"
+        ],
+        "adaptation": "Sort all native on-disk fonts, including bundled entries, by family and id before Unicode family dedup; remove imported-first precedence. Usage rank uses the same trimmed Unicode key as legacy builtInOrder. Native original font identity and deletion flags retained.",
+        "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in font-catalog-order-build.log; text-font CTest passed 1.25 seconds. Actual copied-font collisions cover imported filename before/after bundled id, service reopen and deletion fallback. Existing font import/delete/usage tests pass. No GUI or manual image acceptance."
       }
     },
     {
@@ -29660,6 +29668,14 @@
           "legacy/src/renderer/src/platform/font-service.ts"
         ],
         "adaptation": "uniqueOptions lowercases Unicode without trimming; fontUsageKey trims ECMAScript whitespace then lowercases. Native replaces ANSI UTF8-byte CharLowerBuffA with UTF16 Windows user-locale mapping and shared javascriptWhitespace; directory dedup uses untrimmed key, persisted usage uses trimmed key. Real preference fixture checks accented uppercase/lowercase, NBSP/ideographic-space trimming, counts and service reload. Initial fixture held preference stream open during replacement; closed before write and rerun passed. Sole formal Release built; text-font CTest passed 1.14s. Cross-platform/all-locale browser parity remains unproven."
+      },
+      "fontCatalogIdentityOrder20261119": {
+        "sources": [
+          "platform_fonts.rs::list_fonts family/id sort",
+          "font-service.ts::uniqueOptions/sortTextFontsByUsage"
+        ],
+        "adaptation": "Sort all native on-disk fonts, including bundled entries, by family and id before Unicode family dedup; remove imported-first precedence. Usage rank uses the same trimmed Unicode key as legacy builtInOrder. Native original font identity and deletion flags retained.",
+        "verification": "Formal Release moonsprite-native and text-font-tests build succeeded in font-catalog-order-build.log; text-font CTest passed 1.25 seconds. Actual copied-font collisions cover imported filename before/after bundled id, service reopen and deletion fallback. Existing font import/delete/usage tests pass. No GUI or manual image acceptance."
       }
     },
     {
