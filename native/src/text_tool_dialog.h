@@ -31,7 +31,7 @@ class TextToolDialog final:public PixelDialog {
  void selectFont(const std::string& family){value_.fontFamily=family;if(auto size=textFontDefaultSize(family))value_.fontSize=*size;fonts_.recordSize(value_.fontSize);}
  void selectFontAfterRemoval(){const auto remaining=fonts_.catalog();value_.fontFamily=remaining.empty()?defaultTextFontFamily:remaining.front().family;}
  void style(int field,int n){if(field==0)fonts_.recordSize(n);auto [a,b]=text_->selectionRange();if(a!=b&&field<3){TextStyleRun patch;if(field==0)patch.fontSize=n;if(field==1)patch.lineSpacing=n;if(field==2)patch.letterSpacing=n;value_.styleRuns=applyTextStyleRun(value_.styleRuns,textUtf16Index(text_->value(),a),textUtf16Index(text_->value(),b),patch,int(value_.text.size()));}else{if(field==0)value_.fontSize=n;if(field==1)value_.lineSpacing=n;if(field==2)value_.letterSpacing=n;if(field==3)value_.boxWidth=n;if(field==4)value_.boxHeight=n;}update();}
- void catalog(){options_=fonts_.catalog();std::vector<std::u32string> names;int index=0;for(std::size_t i=0;i<options_.size();++i){names.push_back(unicodeText(options_[i].family));if(options_[i].family==value_.fontFamily)index=int(i);}family_->setOptions(names);family_->setSelectedIndex(index);erase_->setEnabled(!options_.empty()&&options_[index].imported);}
+ void catalog(){options_=fonts_.catalog();if(std::none_of(options_.begin(),options_.end(),[&](const auto& option){return option.family==value_.fontFamily;}))options_.insert(options_.begin(),TextFontOption{value_.fontFamily,{},false,false,0,{}});std::vector<std::u32string> names;int index=0;for(std::size_t i=0;i<options_.size();++i){names.push_back(unicodeText(options_[i].family));if(options_[i].family==value_.fontFamily)index=int(i);}family_->setOptions(names);family_->setSelectedIndex(index);erase_->setEnabled(!options_.empty()&&options_[index].imported);}
  PixelButton* button(std::u32string label,std::function<void()> action){auto b=new PixelButton(font_,skin_,label,action);addChild(b);return b;}
 public:
  TextToolDialog(const PixelFont& font,const Skin& skin,const Skin& icons,TextFontService& fonts,TextCelData value,std::function<void(const TextCelData&,bool)> preview,std::filesystem::path colorStorage):PixelDialog(skin,"",ui::PopupWindow::ClickBehavior::DoNothingOnClick),font_(font),skin_(skin),fonts_(fonts),value_(std::move(value)),preview_(std::move(preview)){
@@ -48,6 +48,10 @@ public:
  ~TextToolDialog(){if(colorPopup_)colorPopup_->closeWindow(nullptr);}
  void smokeEditing(){
  const auto original=value_;const bool originalLive=live;const int originalLastSize=fonts_.lastSize();auto check=[](bool ok,const char* why){if(!ok)throw std::runtime_error(why);};
+ value_.fontFamily="MoonSprite missing document font";const auto missingSize=value_.fontSize;catalog();
+ check(options_.front().family==value_.fontFamily&&family_->selectedIndex()==0&&!erase_->isEnabled()&&value_.fontSize==missingSize,"Missing document font remains selected without import or size changes");
+ catalog();check(std::count_if(options_.begin(),options_.end(),[&](const auto& option){return option.family==value_.fontFamily;})==1,"Missing document font catalog does not duplicate placeholder");
+ value_=original;catalog();check(options_[family_->selectedIndex()].family==original.fontFamily,"Font catalog restores actual document selection");
  value_=newTextToolData(0xff102030);value_.text=u"A\U0001f600BC";TextStyleRun run;run.start=1;run.end=3;run.fontSize=18;run.color=0xffaabbcc;value_.styleRuns={run};text_->setValue(textUtf32(value_.text));
  text_->setSelectionRange(1,2);check(numbers_[0]->text()=="18"&&color_->colorRole&&color_->swatch==*run.color,"Selected UTF16 style sync");
  text_->setSelectionRange(0,2);check(numbers_[0]->text().empty()&&!color_->colorRole,"Mixed selection style");

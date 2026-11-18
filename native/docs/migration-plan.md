@@ -8130,3 +8130,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Cel 选区剪切内容边界迁移
 
 对照 workspace-cut.ts → deleteSelection → tools-fill.ts::clearSelection 及 document-model.ts::layerContentBounds，普通 Cel 选区剪切按可见内容边界、画布与选区交集清除；保留边界外透明 RGB，内容全透明时保留选区、dirty 和历史。沿用 RasterColorContext、链接存储去重及原快照历史。新增八组矩形/掩码、关联/独立、可见/全透明夹具，检查精确像素字、剪贴板、选择、单次历史和 Undo/Redo。唯一正式 Release 与 free-tile-project-tests 构建成功（cel-cut-content-bounds-build.log），完整 free-tile-project-tests 退出0。来源覆盖与 diff 检查另记本轮命令；未 GUI 或人工图像验收，整体迁移仍 INCOMPLETE，生产 Indexed 准入保持关闭。保留既有 main.cpp 状态及用户数据，不提交生成物。
+
+
+## 2026-11-19 文字工程缺失字体选择迁移
+
+对照 TextToolDialog.tsx 的字体目录加载 effect，原生目录为不在本机目录中的当前工程字体保留本地选项，正确选中原名称，不再错误显示第一项。占位不导入字体、不改变字号且不可删除；重复刷新不累积占位。正式弹窗检查覆盖名称、选择、字号、删除门禁及恢复原字体。唯一正式 Release 构建成功（text-missing-font-build.log），正式主题/指针参数下 --text-tool-check 显式等待进程退出0，覆盖新增断言和既有输入/确认/取消检查。未人工图像验收，整体迁移仍 INCOMPLETE。来源见 missingDocumentFont20261119；保留既有 main.cpp 状态，不提交生成物或用户数据。
