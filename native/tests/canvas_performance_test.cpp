@@ -1,5 +1,7 @@
 #include "canvas_renderer.h"
 #include "canvas_feedback_composite.h"
+#include "eyedropper_model.h"
+#include "cel_thumbnail.h"
 #include "layer_compositor.h"
 #include "os/skia/skia_surface.h"
 #include "ui/paint.h"
@@ -228,10 +230,18 @@ static void palettePreviewOracle(){
  require(doc.beginPaletteReplacement()&&doc.updatePaletteReplacement(source,target)&&doc.commitPaletteReplacement(),"Palette preview commit");
  require(pixel(cache,active)==preview,"Palette commit differs from preview");doc.undo();require(pixel(cache,active)==before,"Palette undo display stale");doc.redo();require(pixel(cache,active)==preview,"Palette redo display stale");
 }
+static void adjustmentDisplayOracle(){
+ for(bool indexed:{false,true}){
+  Document doc(2,1);const Pixel source=0xff123456;ColorAdjustment visible;visible.brightness=20;const auto firstVisible=ColorAdjustmentSampler(visible)(source,0,0);visible.brightness=40;const auto secondVisible=ColorAdjustmentSampler(visible)(source,0,0);doc.applyStoredPalette({source,firstVisible,secondVisible});doc.beginStroke({0,0},source);doc.commitStroke();doc.addLinkedFrame(true);if(indexed)require(doc.convertColorMode(color_mode::Mode::Indexed),"Adjustment indexed fixture");doc.markSaved();const auto raw=doc.activeSurface().pixels;const auto history=doc.historyPosition();CanvasRenderer cache;
+  auto shown=[&]{cache.sync(doc);auto output=os::instance()->makeRgbaSurface(2,1);ui::Graphics g(output);cache.draw(g,{0,0,2,1},1,gfx::rgba(0,0,0),gfx::rgba(0,0,0));return output->getPixel(0,0);};
+  auto verify=[&](Pixel expected){const auto color=gfx::rgba(expected&255,(expected>>8)&255,(expected>>16)&255,expected>>24);const auto actual=shown();if(actual!=color)throw std::runtime_error("Adjustment canvas stale indexed="+std::to_string(indexed)+" expected="+std::to_string(color)+" actual="+std::to_string(actual));require(sampleEyedropper(doc,0,0)==expected&&sampleEyedropper(doc,0,0,EyedropperSource::CurrentLayer)==expected,"Adjustment point sampling differs");require(renderEyedropperRegion(doc,{0,0,1,1})==std::vector<Pixel>{expected},"Adjustment lens differs");require(selectionFeedbackComposite(doc,{0,0,1,1})==std::vector<Pixel>{expected},"Adjustment feedback differs");const auto& palette=doc.displayPalette();RasterColorContext context(palette.entries,palette.order(),doc.colorMode(),doc.pixelFormat());CelThumbnailOptions options{1,1,CelThumbnailBackground::Transparent,CelThumbnailFraming::Content};require(renderCelThumbnailPixels(2,1,*doc.displayTimeline().resolveSurface(doc.cel().id).surface,options,&context)==std::vector<Pixel>{expected},"Adjustment thumbnail differs");};
+  verify(source);ColorAdjustment adjustment;adjustment.brightness=20;require(doc.beginColorAdjustment()&&doc.updateColorAdjustment(adjustment),"Adjustment display begin");const Pixel first=ColorAdjustmentSampler(adjustment)(source,0,0);verify(first);adjustment.brightness=40;require(doc.updateColorAdjustment(adjustment),"Adjustment second update");const Pixel second=ColorAdjustmentSampler(adjustment)(source,0,0);verify(second);require(doc.activeSurface().pixels==raw&&doc.historyPosition()==history&&!doc.dirty(),"Adjustment display changed baseline");doc.cancelColorAdjustment();verify(source);require(doc.beginColorAdjustment()&&doc.updateColorAdjustment(adjustment)&&doc.commitColorAdjustment(),"Adjustment display commit");verify(second);doc.undo();verify(source);doc.redo();verify(second);
+ }
+}
 int main(int argc,char* argv[]){try{
   auto system=os::System::make();system->setAppMode(os::AppMode::GUI);
   if(argc>1&&std::string(argv[1])=="--tilemap-preview"){tilemapPreviewOracle();hybridFloatingRenderOracle();return 0;}
-  if(argc>1&&std::string(argv[1])=="--palette-preview"){palettePreviewOracle();return 0;}
+  if(argc>1&&std::string(argv[1])=="--palette-preview"){palettePreviewOracle();adjustmentDisplayOracle();return 0;}
   checkerboardOracle();if(argc>1 && std::string(argv[1])=="--checkerboard")return 0;
   absentPasteRenderOracle();absentStrokeRenderOracle();absentEffectRenderOracle();absentGradientRenderOracle();spatialDirtyOracle();floatingEffectDirtyOracle();clipboardPreviewAdmissionOracle();clipboardStackParityOracle();strokeRecorderOracle();pixelOracle();largeTimeline();
   for(int size:{32,256,512,1024})benchmark(size,1,1);

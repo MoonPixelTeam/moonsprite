@@ -15339,6 +15339,14 @@
           "legacy/src/renderer/src/components/canvas-composite-cache.ts"
         ],
         "nativeAdaptation": "Canvas active/other frame composition, selection/brush feedback and preview sampling use the displayed palette alongside displayed Timeline. Palette replacement update/cancel/commit advances the existing preview generation; renderer also observes document-only revision changes so palette history invalidates cached colors. Offscreen --palette-preview regression passes after exposing and fixing stale undo display: exact opaque pixel, linked other frame, selection feedback, unchanged raw IDs/history/dirty during preview, cancel, commit, undo and redo. Production Indexed admission remains closed. Formal build result recorded separately in migration-plan."
+      },
+      "adjustmentDisplayConsistency20261119": {
+        "legacySources": [
+          "legacy/src/renderer/src/core/adjustments.ts",
+          "legacy/src/renderer/src/components/panels/layer-timeline-thumbnails.tsx",
+          "legacy/src/renderer/src/store/workspace-commands-color.ts"
+        ],
+        "nativeAdaptation": "Added offscreen display-chain acceptance for RGBA and internal Indexed adjustment fixtures: two brightness preview updates, actual cached canvas pixels, composite/current-layer eyedropper, lens region, selection feedback and thumbnail pixels, baseline raw storage/history/dirty preservation, cancel, commit and undo/redo. Initial Indexed fixture expected an unavailable palette color; corrected fixture to include both adjustment outputs as visible swatches, preserving actual legacy visible-ID normalization. Rebuilt canvas-performance-tests and ran only --palette-preview, exit0; no performance benchmarks or production source changes. Production Indexed admission remains closed."
       }
     },
     {

@@ -8115,3 +8115,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 缩略图预览正式程序集成
 
 已将fda739a2及0cd618d3的缩略图预览色板、displayTimeline像素来源及预览代次连接编入唯一正式产物native/build/Release/moonsprite-native.exe。Release moonsprite-native构建退出0（thumbnail-preview-formal-build.log）；使用正式主题与指针，Start-Process -WindowStyle Hidden -Wait -PassThru运行--script-entry-check退出0。未重复已通过的缩略图管线检查；入口检查不等于实际缩略图交互或人工图像验收。生产索引色准入保持关闭，整体迁移INCOMPLETE。仅提交集成记录，不提交生成物、用户数据或既有main.cpp状态。
+
+
+## 2026-11-19 颜色调整显示链一致性验收
+
+补齐RGBA及内部索引色夹具的离屏显示链检查：两次亮度调整预览、实际缓存画布、合成/当前层取色、放大镜区域、选区反馈与缩略图逐像素一致，预览保持正式原始像素/历史/dirty，取消、提交及Undo/Redo一致。首次索引色夹具只含一个可见颜色，却预期色板外输出；源码核对确认旧版会规范化到可见ID，故补齐两种调整输出为可见色卡，不改生产算法。Release canvas-performance-tests构建成功，仅运行--palette-preview退出0，未执行性能基准。来源覆盖及diff检查通过；没有生产源码变更或正式GUI重建，未人工图像验收。生产索引色准入关闭，整体迁移INCOMPLETE。来源见adjustmentDisplayConsistency20261119。
