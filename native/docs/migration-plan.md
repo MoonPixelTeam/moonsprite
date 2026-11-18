@@ -7883,3 +7883,8 @@ document-animation-binding 与 timeline-interaction 定向通过；旧版两个�
 ## 2026-11-18 MoonSprite导出预设参数归一
 
 对照export-settings.ts的normalizeExportPreset及normalizeDocumentExportSettings，恢复MoonSprite预设后清除trim与trimCommon，避免覆盖图像选项时恢复无效修剪参数。扩展既有正式导出偏好检查，输入带比例、修剪和失效目标的预设，验证完整工程100%以及切换GIF/PNG后无修剪残留。正式Release构建、--export-format-preference-check（正式主题及指针）退出0，1043文件来源覆盖及证据快照、diff检查通过。未人工图像验收；整体迁移INCOMPLETE。来源见nativeExportPresetNormalization20261118。
+
+
+## 2026-11-18 默认导出格式优先级补齐
+
+对照ExportDialogHost.tsx的openExport：保留导出记忆优先与MoonSprite工程偏好，多帧其余偏好统一默认GIF，修复PSD偏好绕过动画默认值。单帧PSD接入既有统一导出格式，承接预设及记忆。扩展正式偏好检查覆盖全部非MoonSprite偏好的单帧、多帧及显式帧导出；既有PSD实际文件测试改为显式PSD入口。正式Release构建、--export-format-preference-check和--aseprite-io-check（正式主题及指针）均退出0，来源覆盖及证据快照、diff检查通过。未人工图像验收，整体迁移INCOMPLETE。来源见exportDefaultPriority20261118。

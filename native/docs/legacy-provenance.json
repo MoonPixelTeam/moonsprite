@@ -21619,6 +21619,12 @@
           "legacy/src/renderer/src/core/export-settings.ts"
         ],
         "nativeAdaptation": "After restoring preset image options, normalize MoonSprite project scale to 100, clear trim/common trim and force document target, matching normalizeExportPreset and normalizeDocumentExportSettings. Extend existing formal export preference smoke with stale native preset and GIF/PNG transitions to verify settings do not leak."
+      },
+      "exportDefaultPriority20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match openExport default format precedence: memory first, MoonSprite project preferred across frame counts, otherwise multiframe GIF including PSD preference. Single-frame PSD uses existing shared static PSD format, preserving memory and preset integration. Extend production preference smoke across all non-native preferences and explicit frame fallback; retain explicit layered PSD IO smoke through its actual export entry."
       }
     },
     {
@@ -25623,6 +25629,12 @@
           "legacy/src/renderer/src/core/export-settings.ts"
         ],
         "nativeAdaptation": "After restoring preset image options, normalize MoonSprite project scale to 100, clear trim/common trim and force document target, matching normalizeExportPreset and normalizeDocumentExportSettings. Extend existing formal export preference smoke with stale native preset and GIF/PNG transitions to verify settings do not leak."
+      },
+      "exportDefaultPriority20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match openExport default format precedence: memory first, MoonSprite project preferred across frame counts, otherwise multiframe GIF including PSD preference. Single-frame PSD uses existing shared static PSD format, preserving memory and preset integration. Extend production preference smoke across all non-native preferences and explicit frame fallback; retain explicit layered PSD IO smoke through its actual export entry."
       }
     },
     {
@@ -32275,6 +32287,12 @@
         ],
         "nativeAdaptation": "C04/C09 extract existing ASE/PSD dialog cooperative DocumentSnapshot, request path/scale/format, async encoding and cancel/drain result protocol to LayeredExportTask. Default std::async future destruction and uncancellable encoding behavior retained. Worker owns detached snapshot and request values; file writing, recent paths, sound, UI layout and failure display stay in original adapter. Injected future launcher tests real ASE/PSD encoders and failure/cancel/identity/destruction without UI.",
         "validation": "Service and formal application validation pending."
+      },
+      "exportDefaultPriority20261118": {
+        "legacySources": [
+          "legacy/src/renderer/src/components/app/ExportDialogHost.tsx"
+        ],
+        "nativeAdaptation": "Match openExport default format precedence: memory first, MoonSprite project preferred across frame counts, otherwise multiframe GIF including PSD preference. Single-frame PSD uses existing shared static PSD format, preserving memory and preset integration. Extend production preference smoke across all non-native preferences and explicit frame fallback; retain explicit layered PSD IO smoke through its actual export entry."
       }
     },
     {
