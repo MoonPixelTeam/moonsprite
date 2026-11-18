@@ -8262,3 +8262,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 已安装扩展目录检查迁移
 
 实际对照 legacy/src-tauri/src/platform_extensions.rs 的 ensure_safe_directory / manifest_from_directory，RuntimeDirectory::inspect 在读取清单前检查整个安装目录：迭代遍历嵌套条目，拒绝符号链接及 canonical 路径越出扩展根目录。沿用 inspect 的列表、启停、Lua入口和资源访问共同继承检查；不修改用户文件。新增普通嵌套内容和条件符号链接夹具，检查拒绝发生在启停状态写入前。Release定向测试构建及唯一正式程序构建成功（extension-safe-tree-build.log、extension-safe-tree-release-build.log），extension-runtime-directory CTest通过（0.73秒）；当前账户创建符号链接失败1314，因此新增及既有链接分支均跳过，不声称实测通过。来源覆盖1043文件及证据快照、diff检查通过；未运行GUI或人工图像验收，整体迁移INCOMPLETE。保留既有main.cpp差异，不提交生成物和用户数据。
+
+## 2026-11-19 无 Runtime 扩展设置入口读取迁移
+
+对照 platform_extensions.rs::read_extension_settings_entry，设置入口读取独立于 Runtime 声明。readSettingsEntry 改用 inspect(requireRuntime=false)，继续验证清单、启用状态、设置路径、512KiB及UTF8；Runtime入口和资源准入不变。新增schema1仅设置扩展，验证原始中文/emoji UTF8、停用拒绝、文件缺失及未声明设置入口，Runtime读取继续拒绝。Release extension-runtime-directory-tests定向构建成功（settings-independent-build.log），对应CTest通过（0.76秒），来源覆盖和diff检查通过。本批未重建正式GUI、未人工验收；仅补齐兼容页面数据读取，不代表HTML设置UI或Runtime执行器完成，整体迁移INCOMPLETE。保留既有main.cpp差异，不提交生成物和用户数据。

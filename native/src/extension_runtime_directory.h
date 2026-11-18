@@ -131,7 +131,7 @@ public:
   return readText(directory/std::filesystem::path(winrt::to_hstring(id).c_str())/ResourceCatalog::packagePath(candidate.entry),1024u*1024u);
  }
  static std::string readSettingsEntry(const std::filesystem::path& directory,const std::string& id){
-  auto candidate=inspect(directory,id);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");if(!candidate.settings.entry)throw std::runtime_error("该扩展未提供设置页面。");
+  auto candidate=inspect(directory,id,false);if(!candidate.enabled)throw std::runtime_error("扩展已停用。");if(!candidate.settings.entry)throw std::runtime_error("该扩展未提供设置页面。");
   return readText(directory/std::filesystem::path(winrt::to_hstring(id).c_str())/ResourceCatalog::packagePath(*candidate.settings.entry),512u*1024u);
  }
  static FileDropRouter::Bytes readResource(const std::filesystem::path& directory,const std::string& id,const std::string& resource){
