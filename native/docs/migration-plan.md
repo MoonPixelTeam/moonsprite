@@ -8374,3 +8374,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Runtime 窗口失败分支迁移
 
 完整对照 ExtensionRuntimeHost.tsx 窗口入口和 platform_extension_windows.rs：非覆盖层打开先按 String(windowId) 检查覆盖层冲突，再校验资源，保留数值身份的冲突行为；缺失字符串参数使用原字段提示，覆盖层资源和显隐保留专用错误。既有窗口会话夹具检查精确错误、无 result、数值身份冲突、失败不打开窗口或改变显隐，沿用已有打开/消息/关闭/清理检查。Release extension-windows-tests、extension-session-host-tests定向构建成功，两项CTest通过0.14秒；来源1043文件及证据快照、diff检查通过。本轮未重建正式GUI、未人工/图像验收，生产JS和窗口渲染仍未接入，整体迁移INCOMPLETE；保留main.cpp和用户文件。
+
+## 2026-11-19 Runtime 资源声明准入迁移
+
+对照 ExtensionRuntimeHost.tsx::handleRequest resources.read 的完整控制流，宿主先按 stringParam 校验资源ID，再精确匹配当前 Runtime 声明，最后调用平台读取。RequestHost 与 SessionHost 将读取器和声明ID一并绑定到活动代次，未声明/大小写不同/空ID在读取前拒绝，错误参数使用原字段提示；不再仅依赖读取回调自己限制范围。既有资源夹具验证原始字节、空资源、缺失文件、错误字段、无读取副作用、权限、替换代次声明和读取器隔离及关闭；已有catalog磁盘校验保留。能力查询源码核对无新增差异，既有权限排列与旧版方法/事件对照测试复用。Release资源/会话/能力三个目标构建成功，对应CTest全部通过0.26秒，来源1043文件及证据快照、diff检查通过。本批未重建正式GUI、未人工或图像验收；生产JS执行器和会话创建仍缺失，整体INCOMPLETE。保留main.cpp和用户文件，不提交生成物。

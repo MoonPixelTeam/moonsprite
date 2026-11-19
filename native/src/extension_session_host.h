@@ -88,7 +88,7 @@ public:
  void setWindowRouter(const Token& token,std::shared_ptr<WindowRouter> router){if(auto s=find(token.extensionId,token.generation))s->requests.setWindowRouter(std::move(router));}
  void setDiagnosticServices(const Token& token,DiagnosticServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setDiagnosticServices(std::move(services));}
  void setServices(const Token& token,HostServices services){if(auto s=find(token.extensionId,token.generation))s->requests.setServices(std::move(services));}
- void setResourceReader(const Token& token,std::function<FileDropRouter::Bytes(const std::string&)> reader){if(auto s=find(token.extensionId,token.generation))s->requests.setResourceReader(std::move(reader));}
+ void setResourceReader(const Token& token,std::function<FileDropRouter::Bytes(const std::string&)> reader,std::vector<std::string> resources){if(auto s=find(token.extensionId,token.generation))s->requests.setResourceReader(std::move(reader),std::move(resources));}
  void close(const std::string& id){if(auto it=opening_.find(id);it!=opening_.end())*it->second=false;stopSession(id);}
  void close(const Token& token){if(find(token.extensionId,token.generation))close(token.extensionId);}
  void loaded(const Token& token,const RuntimeEvent& project){if(auto s=find(token.extensionId,token.generation))s->events.loaded(s->id,s->locale,project);}

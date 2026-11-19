@@ -61,7 +61,7 @@ class RequestHost {
  std::shared_ptr<HandlerBindings> handlerBindings_=std::make_shared<HandlerBindings>();
  CommandHandlers commandHandlers()const{return handlerBindings_->entries.empty()?handlers_:handlerBindings_->entries.rbegin()->second;}
 
- RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;
+ RuntimeExtension extension_;std::vector<std::string> permissions_;Storage& storage_;FileDropRouter& drops_;RuntimeRegistry& registry_;CommandHandlers handlers_;std::vector<RuntimeCommand> commands_;bool active_=true;std::function<FileDropRouter::Bytes(const std::string&)> readResource_;std::vector<std::string> resources_;
  static std::u16string units(const winrt::hstring& s){return {reinterpret_cast<const char16_t*>(s.data()),s.size()};}
 public:
  RequestHost(RuntimeExtension extension,std::vector<std::string> permissions,Storage& storage,FileDropRouter& drops,RuntimeRegistry& registry,CommandHandlers handlers={},std::vector<RuntimeCommand> commands={}):extension_(std::move(extension)),permissions_(std::move(permissions)),storage_(storage),drops_(drops),registry_(registry),handlers_(std::move(handlers)),commands_(std::move(commands)){}
@@ -88,7 +88,7 @@ public:
  void setWindowRouter(std::shared_ptr<WindowRouter> router){if(windows_==router)return;if(windows_)windows_->deactivate();windows_=std::move(router); }
  void setDiagnosticServices(DiagnosticServices services){diagnostics_=std::move(services);}
  void setServices(HostServices services){services_=std::move(services);}
- void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader){readResource_=std::move(reader);}
+ void setResourceReader(std::function<FileDropRouter::Bytes(const std::string&)> reader,std::vector<std::string> resources){readResource_=std::move(reader);resources_=std::move(resources);}
  void deactivate(){
   if(!active_)return;active_=false;*historyLifetime_=false;handlerBindings_->entries.clear();auto windows=std::move(windows_);
   std::exception_ptr failure;auto cleanup=[&](auto&& action){try{action();}catch(...){if(!failure)failure=std::current_exception();}};
@@ -123,7 +123,11 @@ public:
     std::vector<std::string> types;for(const auto& item:params.GetNamedArray(L"extensions")){if(item.ValueType()!=JsonValueType::String)throw std::invalid_argument("Invalid extension file-drop suffixes");types.push_back(winrt::to_string(item.GetString()));}drops_.setTypes(extension_.id,std::move(types));
    }
    else if(method=="menus.setItems"){if(std::find(permissions_.begin(),permissions_.end(),"commands")==permissions_.end())throw std::runtime_error("菜单操作需要 commands 权限。");menus_.set(params);}
-   else if(method=="resources.read"){if(!params.HasKey(L"resourceId")||params.GetNamedValue(L"resourceId").ValueType()!=JsonValueType::String||!readResource_)throw std::invalid_argument("扩展运行时资源不存在。");JsonArray bytes;for(auto byte:readResource_(winrt::to_string(params.GetNamedString(L"resourceId"))))bytes.Append(JsonValue::CreateNumberValue(byte));result=bytes;}
+   else if(method=="resources.read"){
+    if(!params.HasKey(L"resourceId")||params.GetNamedValue(L"resourceId").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 resourceId 必须是字符串。");
+    const auto resource=winrt::to_string(params.GetNamedString(L"resourceId"));if(std::find(resources_.begin(),resources_.end(),resource)==resources_.end())throw std::invalid_argument("扩展运行时资源不存在。");
+    if(!readResource_)throw std::runtime_error("Native extension resource reader is not connected");JsonArray bytes;for(auto byte:readResource_(resource))bytes.Append(JsonValue::CreateNumberValue(byte));result=bytes;
+   }
    else if(method=="ui.notify"||method=="notifications.show"){
     if(!params.HasKey(L"message")||params.GetNamedValue(L"message").ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 message 必须是字符串。");
     if(!services_.notify)throw std::runtime_error("Native extension notifications are not connected");const auto message=params.GetNamedString(L"message");services_.notify(winrt::hstring(message.data(),std::min<std::uint32_t>(message.size(),500)));
