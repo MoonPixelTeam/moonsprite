@@ -14,7 +14,7 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill/history/save等显式操作通知、色样完成、导出事件及文件拖放仍待正式入口接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill/history/save等显式操作通知、色样完成、导出事件仍待正式入口接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
@@ -37,3 +37,11 @@
 已有 SessionHost/EditorEventSubscription 直接连接正式Editor。订阅建立时捕获当前小型标量快照，仅有活动events订阅时refresh及脚本泵观察全部活动/非活动会话；无订阅时不构造工程快照。扩展发现发布时单次取基线，沿用workspace-extension-events.ts顺序比较工程、内容版本、工具类别、图层、帧、播放、选择身份、颜色及视图。SelectionMask由Document selectionRevision承接对象替换身份，不复制蒙版；文件路径仅用于opened布尔值，不发送路径。工具子类型归入旧版ToolId类别。视图比较对应原生已有zoom/pan/rotation/mirror/grid/iso/luminance/repeat/selection显示字段，原生尚无字段不伪造事件。
 
 UI message filter承接全窗口pointerdown/move/wheel和keydown捕获，在原生控件处理前只排队事件；指针复用500ms门限，键盘逐次发送，销毁时移除filter。每扩展从订阅建立开始30秒一次clock，迟到仅发一次、不追赶；修正此前每次30ms脚本泵误发clock的问题。语言从现有preferences catalog索引映射zh-CN/en-US/ja-JP/ko-KR/fr-FR/de-DE/es-ES/pt-BR/ru-RU，首次加载与后续变化共用既有locale协议。
+
+## 正式文件拖入
+
+复用 extension-file-drop.ts 与既有 FileDropRouter：只接受声明后缀（io权限）、优先第一个注册者、只向扩展发送 basename 和 bytes。Editor DropMessage 在笔刷库/GIF时间线/普通文档之前认领扩展文件，复用既有路径归一化，统一一次每批去重和1秒重复事件去重；未注册未知路径过滤。未匹配文件保持顺序与原位置回流原生路由，不再次命中扩展或重复去重。匹配文件即使读取失败/超过12 MiB也被认领，不误开为文档。
+
+使用既有 FormFileReadTask 后台队列逐项读取，每64 KiB检查取消与12 MiB上限，读取后用原注册对象身份再次核验。扩展停用/重注册使旧读取不再投递。Editor保存/其他弹窗期间扩展存储、网络和文件读取泵仍运行；正常文档入口继续由原有忙碌守卫管理。UI widget property持有会话回调，停止时失效，陈旧异步回流不访问已销毁Editor。
+
+files-dropped入站保持原始二进制，按每次泵的时间预算直接向QuickJS构造普通number[]，完成前不向JS发布，保留旧 Array.from(Uint8Array) 与 structured clone 可观察数据类型、属性和字节；不经WinRT逐字节JSON数组和大字符串解析。支持真实12 MiB边界；收到文件时此VM堆上限调整至512 MiB以容纳普通JS数组，待构造二进制队列64 MiB。异步读取在之前二进制事件未发布完毕时等待，合法连续投递不会因该队列上限被丢弃。上限与延后构造是禁止浏览器后必要的原生适配，未暴露任意路径读取API。

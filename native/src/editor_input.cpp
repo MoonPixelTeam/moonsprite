@@ -1,6 +1,7 @@
 #include "editor.h"
 #include "editor_canvas_references.h"
 #include "native_canvas_color_sampling.h"
+#include "native_extension_bridge.h"
 #include "image_resize_task.h"
 #include "image_sequence_dialog.h"
 #include "free_tile_selection_target.h"
@@ -192,18 +193,20 @@ bool Editor::onProcessMessage(ui::Message* msg) {
 
     if(msg->type()==ui::kDragLeaveMessage){clearTimelineGifDrop();if(brushLibraryPanel_)brushLibraryPanel_->setExternalDrop(false);return true;}
 
-    if(pending_==Pending::Saving){if(msg->type()==ui::kMouseDownMessage&&static_cast<ui::MouseMessage*>(msg)->left()&&dialogClose_->isVisible()&&dialogClose_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position())){dismissSaveProgress();return true;}if(dynamic_cast<ui::MouseMessage*>(msg)||dynamic_cast<ui::KeyMessage*>(msg)||dynamic_cast<ui::DndMessage*>(msg))return true;}
+    bool extensionDnd=false;if(msg->type()==ui::kDragEnterMessage||msg->type()==ui::kDragMessage||msg->type()==ui::kDropMessage)if(auto bridge=nativeExtensionBridge(*this);bridge&&bridge->replaying!=msg&&bridge->accepts){auto data=static_cast<ui::DndMessage*>(msg)->event().dataProvider();if(data&&data->contains(os::DragDataItemType::Paths))for(const auto& path:data->getPaths())if(bridge->accepts(PatternBrushDropPaths::normalize(path))){extensionDnd=true;break;}}
+    if(pending_==Pending::Saving&&!extensionDnd){if(msg->type()==ui::kMouseDownMessage&&static_cast<ui::MouseMessage*>(msg)->left()&&dialogClose_->isVisible()&&dialogClose_->bounds().contains(static_cast<ui::MouseMessage*>(msg)->position())){dismissSaveProgress();return true;}if(dynamic_cast<ui::MouseMessage*>(msg)||dynamic_cast<ui::KeyMessage*>(msg)||dynamic_cast<ui::DndMessage*>(msg))return true;}
 
     if(msg->type()==ui::kDragEnterMessage || msg->type()==ui::kDragMessage || msg->type()==ui::kDropMessage){
       auto& original=static_cast<ui::DndMessage*>(msg)->event();const bool drop=msg->type()==ui::kDropMessage;
       // Legacy document-drop-service filters before useAppDocumentIO chooses
       // a destination. One cache and one clock serve every drop destination.
       class Paths final:public os::DragDataProvider{base::paths paths_;public:explicit Paths(base::paths paths):paths_(std::move(paths)){}base::paths getPaths()override{return paths_;}os::SurfaceRef getImage()override{return {};}std::string getUrl()override{return {};}bool contains(os::DragDataItemType type)override{return type==os::DragDataItemType::Paths;}};
+      const auto extensions=nativeExtensionBridge(*this);const bool replay=extensions&&extensions->replaying==msg;
       std::unique_ptr<os::DragEvent> routed;
       if(auto data=original.dataProvider();data&&data->contains(os::DragDataItemType::Paths)){
-        auto paths=PatternBrushDropPaths{}.fresh(data->getPaths(),0);
-        if(drop&&pending_==Pending::None&&original.sourceSupports(os::DropOperation::Copy)&&!paths.empty()){
-          paths=brushLibraryDropPaths_.fresh(paths,static_cast<std::int64_t>(GetTickCount64()));
+        auto paths=replay?data->getPaths():extensions?extensions->fresh(data->getPaths(),static_cast<std::int64_t>(GetTickCount64()),false):PatternBrushDropPaths{}.fresh(data->getPaths(),0);
+        if(drop&&!replay&&(pending_==Pending::None||extensionDnd)&&original.sourceSupports(os::DropOperation::Copy)&&!paths.empty()){
+          paths=extensions?extensions->fresh(paths,static_cast<std::int64_t>(GetTickCount64()),true):brushLibraryDropPaths_.fresh(paths,static_cast<std::int64_t>(GetTickCount64()));
           if(paths.empty()){clearTimelineGifDrop();if(brushLibraryPanel_)brushLibraryPanel_->setExternalDrop(false);original.dropResult(os::DropOperation::Copy);original.acceptDrop(true);return true;}
         }
         routed=std::make_unique<os::DragEvent>(original.target(),original.supportedOperations(),original.position(),std::make_unique<Paths>(std::move(paths)));
@@ -211,6 +214,9 @@ bool Editor::onProcessMessage(ui::Message* msg) {
       auto& event=routed?*routed:original;
       struct DropResult{os::DragEvent& original;os::DragEvent& routed;~DropResult(){original.dropResult(routed.dropResult());original.acceptDrop(routed.acceptDrop());}} result{original,event};
       const auto claim=[&]{if(msg->type()==ui::kDragEnterMessage)static_cast<ui::DragEnterMessage*>(msg)->widget(this);if(msg->type()==ui::kDragMessage)static_cast<ui::DragMessage*>(msg)->widget(this);};
+      if(!replay&&extensions&&extensions->route&&event.sourceSupports(os::DropOperation::Copy))if(auto data=event.dataProvider();data&&data->contains(os::DragDataItemType::Paths)){auto paths=data->getPaths();if(std::any_of(paths.begin(),paths.end(),[&](const auto& path){return extensions->accepts&&extensions->accepts(path);})){
+       event.dropResult(os::DropOperation::Copy);claim();if(drop){clearTimelineGifDrop();if(brushLibraryPanel_)brushLibraryPanel_->setExternalDrop(false);event.acceptDrop(true);const auto position=event.position();extensions->route(std::move(paths),[this,weak=std::weak_ptr<NativeExtensionBridge>(extensions),position](auto remaining){if(auto live=weak.lock();live&&live->active&&nativeExtensionBridge(*this)==live)replayNativeExtensionDrop(*this,display()->nativeWindow(),position,std::move(remaining),live);});}return true;
+      }}
       if(handleBrushLibraryDrop(event,drop)||handleTimelineGifDrag(event,drop)){claim();return true;}
       // Legacy useAppDocumentIO: paths not claimed by a resource panel or a
       // single-GIF timeline drop use legacy sequence detection or separate documents. Reuse openPath so

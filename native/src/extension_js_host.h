@@ -1,18 +1,19 @@
 #pragma once
 #include "extension_js_session.h"
+#include "extension_drop_session.h"
 namespace moon::extension {
 // Reconciles discovery snapshots; no directory scan runs on idle UI ticks.
 class JsRuntimeHost final {
  struct Entry{std::string signature;std::unique_ptr<JsSession> session;std::int64_t nextClock=0;bool editorEvents=false;};
  Storage storage_;FileDropRouter drops_;RuntimeRegistry registry_;
- std::shared_ptr<SessionHost> host_;std::filesystem::path directory_;
+ std::shared_ptr<SessionHost> host_;std::unique_ptr<DropSession> dropSession_;std::filesystem::path directory_;
  WorkspaceServices workspace_;HostServices services_;JsFormFactory forms_;
  std::function<DiagnosticServices(const std::string&)> diagnostics_;
  std::function<void(std::shared_ptr<SessionHost>,const SessionHost::Token&)> bind_;
  std::function<void(const std::string&)> unbind_,report_;std::function<bool()> home_;
  std::map<std::string,Entry> entries_;EditorSnapshot editor_;std::string locale_="zh-CN";
 public:
- JsRuntimeHost(std::filesystem::path directory,std::filesystem::path storage,WorkspaceServices workspace,HostServices services,std::function<DiagnosticServices(const std::string&)> diagnostics,std::function<void(std::shared_ptr<SessionHost>,const SessionHost::Token&)> bind,std::function<void(const std::string&)> unbind,std::function<void(const std::string&)> report,std::function<bool()> home={},JsFormFactory forms={}):storage_(std::move(storage)),host_(std::make_shared<SessionHost>(storage_,drops_,registry_)),directory_(std::move(directory)),workspace_(std::move(workspace)),services_(std::move(services)),diagnostics_(std::move(diagnostics)),bind_(std::move(bind)),unbind_(std::move(unbind)),report_(std::move(report)),home_(std::move(home)),forms_(std::move(forms)){}
+ JsRuntimeHost(std::filesystem::path directory,std::filesystem::path storage,WorkspaceServices workspace,HostServices services,std::function<DiagnosticServices(const std::string&)> diagnostics,std::function<void(std::shared_ptr<SessionHost>,const SessionHost::Token&)> bind,std::function<void(const std::string&)> unbind,std::function<void(const std::string&)> report,std::function<bool()> home={},JsFormFactory forms={}):storage_(std::move(storage)),host_(std::make_shared<SessionHost>(storage_,drops_,registry_)),directory_(std::move(directory)),workspace_(std::move(workspace)),services_(std::move(services)),diagnostics_(std::move(diagnostics)),bind_(std::move(bind)),unbind_(std::move(unbind)),report_(std::move(report)),home_(std::move(home)),forms_(std::move(forms)){dropSession_=std::make_unique<DropSession>(drops_,registry_,report_,DropSession::read,[this]{for(const auto& item:entries_)if(item.second.session&&item.second.session->active()&&item.second.session->awaitingFile())return false;return true;});}
  ~JsRuntimeHost(){for(auto& entry:entries_){if(unbind_)unbind_(entry.first);entry.second.session.reset();}}
  void reconcile(const std::string& snapshot){
   using namespace winrt::Windows::Data::Json;std::set<std::string> present;
@@ -25,10 +26,13 @@ public:
   }
   for(auto it=entries_.begin();it!=entries_.end();)if(!present.count(it->first)){if(unbind_)unbind_(it->first);it=entries_.erase(it);}else ++it;
  }
+ bool acceptsFile(const std::string& path)const{return drops_.accepts(path);}
+ void routeFiles(std::vector<std::string> paths,std::function<void(std::vector<std::string>)> complete){dropSession_->route(std::move(paths),std::move(complete));}
+ void publish(const RuntimeEvent& event){registry_.broadcast(event);}
  bool observesEditor()const{for(const auto& item:entries_)if(item.second.editorEvents&&item.second.session&&item.second.session->active())return true;return false;}
  void observeEditor(EditorSnapshot snapshot){editor_=std::move(snapshot);for(auto& item:entries_)if(item.second.session&&item.second.session->active())host_->editorChanged(item.second.session->token(),editor_);}
  void locale(std::string value){if(locale_==value)return;locale_=std::move(value);host_->localeChanged(locale_);}
  void interaction(bool pointer){for(auto& item:entries_)if(item.second.session&&item.second.session->active()){if(pointer)host_->pointerInteraction(item.second.session->token());else host_->keyboardInteraction(item.second.session->token());}}
- void pump(std::int64_t now=editorEventTime()){const auto project=workspace_.active?workspace_.active():std::optional<ProjectSummary>{};for(auto& item:entries_)if(item.second.session&&item.second.session->active())try{host_->projectChanged(item.second.session->token(),project,home_?home_():!project);if(now>=item.second.nextClock){item.second.nextClock=now+InteractionEvents::clockIntervalMs;host_->clockTick(item.second.session->token(),now);}item.second.session->pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(3));}catch(const std::exception& failure){if(unbind_)unbind_(item.first);if(report_)report_(item.first+": "+failure.what());}}
+ void pump(std::int64_t now=editorEventTime()){const auto project=workspace_.active?workspace_.active():std::optional<ProjectSummary>{};for(auto& item:entries_)if(item.second.session&&item.second.session->active())try{host_->projectChanged(item.second.session->token(),project,home_?home_():!project);if(now>=item.second.nextClock){item.second.nextClock=now+InteractionEvents::clockIntervalMs;host_->clockTick(item.second.session->token(),now);}item.second.session->pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(3));}catch(const std::exception& failure){if(unbind_)unbind_(item.first);if(report_)report_(item.first+": "+failure.what());}dropSession_->pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(3));}
 };
 }

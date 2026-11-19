@@ -8453,3 +8453,11 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 真实协调器用例覆盖初始不回放、状态差分顺序与无重复、语言、指针/键盘与30秒时钟，最终 extension-js-tests 退出0。唯一正式 Release 构建成功（quickjs-events-final-build.log）；正式主题/指针 --script-entry-check 经 Start-Process -Wait -PassThru 获取真实退出0，覆盖真实工具/前景色/选择/缩放变化经JS保存为事件记录，沿用菜单、表单、素材、关闭及禁用链路。构建曾因工具连接中断停止，确认无编译进程后重新构建；最终使用 MSBuild UseMultiToolTask=true、EnforceProcessCountAcrossBuilds=true、CL_MPCount=4，并保留CMake parallel8。后续增量沿用这些本机构建参数，避免来回改变工具跟踪方式。来源1056文件、架构/编辑器边界与diff通过。夹具本轮误从根目录启动，核验所有权marker后整体移到native/build，无删除。未做人工鼠标/图像验收。
 
 显式绘制/填充/历史/保存/导出操作完成通知、色样完成及文件拖放入口仍待接通，HTML/覆盖层映射仍有缺口，整体迁移 INCOMPLETE；保留 main.cpp 原有差异及用户文件。
+
+## 2026-11-20 正式扩展文件拖入完整闭环
+
+对照 extension-file-drop.ts/test.ts、document-drop.ts/service、useAppDocumentIO 和平台read_binary，将io注册后缀实际接到原生OLE DragTarget代理及Editor DropMessage。复用首注册者优先、路径归一化/大小写去重、单秒重复投递过滤、扩展先于笔刷/GIF/文档路由、只发送basename/bytes、失败认领不回流文档。未匹配路径保留顺序与位置回流现有文档路由，单条合成消息身份防止嵌套弹窗期间真实投递被跳过。代理以原Manager的DragTarget接口委托普通事件；上游private方法不可直接调用，首轮直接覆盖编译失败后改为代理适配。
+
+复用现有后台文件读取队列逐项读取，64KiB块检查取消和12MiB上限；完成时再核验注册对象身份，停用/同后缀重注册使旧读取失效。后续合法读取在前次二进制事件构造期间等待，不因原生队列限制丢弃。真实QuickJS普通number[]按时间预算直接构造，保持Array.from语义和事件顺序，避免WinRT逐字节对象与巨型JSON解析。文件入站VM允许512MiB，二进制待投递上限及适配差异已登记。
+
+extension-js-tests最终退出0，包含真实异步读取、失败/超限、等价重注册失效、背压、完整12MiB普通数组及原VM/表单/素材/状态链路。一次失败来自旧观察夹具复用存储，改为逐次独立目录后通过。唯一正式Release最终构建成功（quickjs-file-drop-native-final-build.log）；正式主题/指针 --script-entry-check 以Start-Process -Wait -PassThru取得真实退出0，直接nativeWindow notifyDrop覆盖重复/未注册文件过滤、实际JS字节落盘、混合PNG打开、原工程content/history不变及弹窗表面OLE投递、停用注册清理。来源1058文件、架构/编辑器边界及diff通过，无物理鼠标/新增图像验收。显式操作完成通知及普通HTML/覆盖层仍待迁移，整体INCOMPLETE，保留main.cpp原差异和用户文件。

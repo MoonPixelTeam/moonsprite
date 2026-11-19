@@ -1,6 +1,7 @@
 #pragma once
 #include "editor.h"
 #include "native_canvas_color_sampling.h"
+#include "native_extension_bridge.h"
 
 namespace moon::editor {
 class Desktop : public ui::Window {
@@ -41,7 +42,24 @@ public:
 
   std::function<void()> refreshCursor;
 
-  explicit Manager(const os::WindowRef& window):ui::Manager(window) {}
+private:
+  class ExtensionDragTarget final:public os::DragTarget {
+    os::DragTarget& fallback_;std::function<bool(os::DragEvent&,ui::MessageType)> route_;
+  public:
+    ExtensionDragTarget(os::DragTarget& fallback,std::function<bool(os::DragEvent&,ui::MessageType)> route):fallback_(fallback),route_(std::move(route)){}
+    void dragEnter(os::DragEvent& event)override{if(route_(event,ui::kDragEnterMessage)){fallback_.dragLeave(event);return;}fallback_.dragEnter(event);}
+    void drag(os::DragEvent& event)override{if(route_(event,ui::kDragMessage)){fallback_.dragLeave(event);return;}fallback_.drag(event);}
+    void dragLeave(os::DragEvent& event)override{fallback_.dragLeave(event);}
+    void drop(os::DragEvent& event)override{if(route_(event,ui::kDropMessage)){fallback_.dragLeave(event);return;}fallback_.drop(event);}
+  };
+  os::WindowRef extensionDropWindow_;std::shared_ptr<ExtensionDragTarget> extensionDrag_;
+public:
+  explicit Manager(const os::WindowRef& window):ui::Manager(window),extensionDropWindow_(window){
+    extensionDrag_=std::make_shared<ExtensionDragTarget>(*static_cast<os::DragTarget*>(this),[this](auto& event,auto type){return desktop&&desktop->editor&&routeNativeExtensionDrop(*desktop->editor,event,type);});
+    // Base Manager defers its native target setup. Attach this proxy afterwards.
+    auto callback=new ui::CallbackMessage([window,weak=std::weak_ptr<ExtensionDragTarget>(extensionDrag_)]{if(auto target=weak.lock())window->setDragTarget(target.get());});callback->setRecipient(this);enqueueMessage(callback);
+  }
+  ~Manager()override{desktop=nullptr;if(extensionDropWindow_)extensionDropWindow_->setDragTarget(nullptr);extensionDrag_.reset();}
 
   void onNewDisplayConfiguration(ui::Display* display) override {
 

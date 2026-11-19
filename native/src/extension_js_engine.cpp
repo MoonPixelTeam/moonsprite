@@ -2,6 +2,7 @@
 #include "extension_js_bootstrap.h"
 #include "extension_js_window_bootstrap.h"
 #include "quickjs.h"
+#include "extension_runtime.h"
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
@@ -11,6 +12,7 @@ struct JsEngine::State {
  JSRuntime* runtime=nullptr;JSContext* context=nullptr;
  std::chrono::steady_clock::time_point deadline;
  const std::chrono::steady_clock::time_point origin=std::chrono::steady_clock::now();
+ JSValue fileEnvelope=JS_UNDEFINED,fileFiles=JS_UNDEFINED,fileBytes=JS_UNDEFINED;std::size_t fileIndex=0,byteIndex=0;
  std::vector<Message> messages;std::size_t messageBytes=0,messageLimit=20u*1024u*1024u;
  std::vector<std::pair<JSValue,JSValue>> rejected;bool rejectionOverflow=false;
  static void rejection(JSContext* context,JSValueConst promise,JSValueConst reason,bool handled,void* opaque){auto* self=static_cast<State*>(opaque);for(auto it=self->rejected.begin();it!=self->rejected.end();++it)if(JS_VALUE_GET_PTR(it->first)==JS_VALUE_GET_PTR(promise)){if(handled){JS_FreeValue(context,it->first);JS_FreeValue(context,it->second);self->rejected.erase(it);}return;}if(!handled){if(self->rejected.size()>=256){self->rejectionOverflow=true;return;}try{self->rejected.emplace_back(JS_DupValue(context,promise),JS_DupValue(context,reason));}catch(...){self->rejectionOverflow=true;}}}
@@ -26,7 +28,7 @@ struct JsEngine::State {
  void checked(JSValue value){if(JS_IsException(value))throw std::runtime_error(exception());JS_FreeValue(context,value);}
  void call(const char* name,JSValue argument){auto global=JS_GetGlobalObject(context);auto function=JS_GetPropertyStr(context,global,name);auto result=JS_Call(context,function,global,1,&argument);JS_FreeValue(context,argument);JS_FreeValue(context,function);JS_FreeValue(context,global);checked(result);}
  State(){runtime=JS_NewRuntime();if(!runtime)throw std::runtime_error("Cannot allocate QuickJS runtime");JS_SetMemoryLimit(runtime,64u*1024u*1024u);JS_SetMaxStackSize(runtime,512u*1024u);JS_SetInterruptHandler(runtime,interrupt,this);context=JS_NewContext(runtime);if(!context){JS_FreeRuntime(runtime);runtime=nullptr;throw std::runtime_error("Cannot allocate QuickJS context");}JS_SetContextOpaque(context,this);JS_SetHostPromiseRejectionTracker(runtime,rejection,this);auto global=JS_GetGlobalObject(context);JS_SetPropertyStr(context,global,"__moonPost",JS_NewCFunction(context,post,"__moonPost",1));JS_FreeValue(context,global);}
- ~State(){for(auto& item:rejected){JS_FreeValue(context,item.first);JS_FreeValue(context,item.second);}rejected.clear();if(context)JS_FreeContext(context);if(runtime)JS_FreeRuntime(runtime);}
+ ~State(){JS_FreeValue(context,fileBytes);JS_FreeValue(context,fileFiles);JS_FreeValue(context,fileEnvelope);for(auto& item:rejected){JS_FreeValue(context,item.first);JS_FreeValue(context,item.second);}rejected.clear();if(context)JS_FreeContext(context);if(runtime)JS_FreeRuntime(runtime);}
 };
 JsEngine::JsEngine():state_(std::make_unique<State>()){evaluate(jsNativePrelude,"native-runtime.js");evaluate(jsRuntimeBootstrap,"legacy-runtime-bootstrap.js");}
 JsEngine::JsEngine(const std::string& windowId):state_(std::make_unique<State>()){
@@ -39,6 +41,23 @@ JsEngine::JsEngine(const std::string& windowId):state_(std::make_unique<State>()
 JsEngine::~JsEngine()=default;
 void JsEngine::evaluate(const std::string& source,const std::string& filename,bool module){auto& s=*state_;s.deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(100);s.checked(JS_Eval(s.context,source.c_str(),source.size(),filename.c_str(),module?JS_EVAL_TYPE_MODULE:JS_EVAL_TYPE_GLOBAL));}
 void JsEngine::deliver(const std::string& envelope){auto& s=*state_;s.deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(20);auto value=JS_ParseJSON(s.context,envelope.data(),envelope.size(),"host-message.json");if(JS_IsException(value))throw std::runtime_error(s.exception());s.call("__moonReceive",value);}
+// Construct the same ordinary number[] as Array.from(Uint8Array), directly
+// and incrementally. Avoid millions of WinRT JSON cells and a giant JSON parse.
+bool JsEngine::deliverFiles(const RuntimeEvent& event,std::chrono::steady_clock::time_point deadline){
+ auto& s=*state_;s.deadline=deadline;auto put=[&](JSValueConst object,const char* key,JSValue value){if(JS_IsException(value))throw std::runtime_error(s.exception());if(JS_DefinePropertyValueStr(s.context,object,key,value,JS_PROP_C_W_E)<0)throw std::runtime_error(s.exception());};
+ if(JS_IsUndefined(s.fileEnvelope)){
+  std::size_t total=0;for(const auto& file:event.files){if(file.bytes.size()>FileDropRouter::maxBytes-total)throw std::length_error("Extension import file exceeds 12 MiB");total+=file.bytes.size();}
+  JS_SetMemoryLimit(s.runtime,512u*1024u*1024u);s.fileEnvelope=JS_NewObject(s.context);if(JS_IsException(s.fileEnvelope))throw std::runtime_error(s.exception());
+  const char* empty=R"({"type":"moonsprite-extension-event","event":{"type":"files-dropped","files":[]}})";JS_FreeValue(s.context,s.fileEnvelope);s.fileEnvelope=JS_ParseJSON(s.context,empty,std::char_traits<char>::length(empty),"native-files.json");if(JS_IsException(s.fileEnvelope))throw std::runtime_error(s.exception());auto body=JS_GetPropertyStr(s.context,s.fileEnvelope,"event");if(JS_IsException(body))throw std::runtime_error(s.exception());s.fileFiles=JS_GetPropertyStr(s.context,body,"files");JS_FreeValue(s.context,body);if(JS_IsException(s.fileFiles))throw std::runtime_error(s.exception());s.fileIndex=s.byteIndex=0;
+ }
+ while(s.fileIndex<event.files.size()){
+  if(std::chrono::steady_clock::now()>=deadline)return false;const auto& file=event.files[s.fileIndex];
+  if(JS_IsUndefined(s.fileBytes)){auto item=JS_NewObject(s.context);if(JS_IsException(item))throw std::runtime_error(s.exception());if(JS_DefinePropertyValueUint32(s.context,s.fileFiles,std::uint32_t(s.fileIndex),item,JS_PROP_C_W_E)<0)throw std::runtime_error(s.exception());put(item,"name",JS_NewStringLen(s.context,file.name.data(),file.name.size()));s.fileBytes=JS_NewArray(s.context);put(item,"bytes",JS_DupValue(s.context,s.fileBytes));}
+  while(s.byteIndex<file.bytes.size()){if((s.byteIndex&127)==0&&std::chrono::steady_clock::now()>=deadline)return false;const auto index=s.byteIndex++;if(JS_DefinePropertyValueUint32(s.context,s.fileBytes,std::uint32_t(index),JS_NewInt32(s.context,file.bytes[index]),JS_PROP_C_W_E)<0)throw std::runtime_error(s.exception());}
+  JS_FreeValue(s.context,s.fileBytes);s.fileBytes=JS_UNDEFINED;s.byteIndex=0;++s.fileIndex;
+ }
+ if(std::chrono::steady_clock::now()>=deadline)return false;auto envelope=s.fileEnvelope;s.fileEnvelope=JS_UNDEFINED;JS_FreeValue(s.context,s.fileFiles);s.fileFiles=JS_UNDEFINED;s.fileIndex=s.byteIndex=0;s.deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(20);s.call("__moonReceive",envelope);return true;
+}
 void JsEngine::pump(std::chrono::steady_clock::time_point deadline){auto& s=*state_;s.deadline=deadline;if(std::chrono::steady_clock::now()>=deadline)return;const auto millis=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-s.origin).count();s.call("__moonTick",JS_NewFloat64(s.context,double(millis)));while(JS_IsJobPending(s.runtime)&&std::chrono::steady_clock::now()<deadline){JSContext* context=nullptr;if(JS_ExecutePendingJob(s.runtime,&context)<0)throw std::runtime_error(s.exception());}if(s.rejectionOverflow)throw std::runtime_error("Extension Promise rejection queue is full");if(!JS_IsJobPending(s.runtime)&&!s.rejected.empty()){const auto reason=s.rejected.front().second;const char* text=JS_ToCString(s.context,reason);std::string message=text?text:"Unhandled extension Promise rejection";if(text)JS_FreeCString(s.context,text);for(auto& item:s.rejected){JS_FreeValue(s.context,item.first);JS_FreeValue(s.context,item.second);}s.rejected.clear();throw std::runtime_error(message);}}
 std::vector<JsEngine::Message> JsEngine::takeMessages(){auto& s=*state_;auto result=std::move(s.messages);s.messages.clear();s.messageBytes=0;return result;}
 bool JsEngine::pending()const{return JS_IsJobPending(state_->runtime);}
