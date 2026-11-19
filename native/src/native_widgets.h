@@ -274,6 +274,7 @@ public:
   void onChange() override;
   double numericStep=1;
   void adjustNumber(int delta);
+  void smokeNumericSteppers();
   bool commitExpression();
   int contentWidth() const; // Logical pixels, including padding, unit and caret.
   int widthForValue(const std::u32string& value) const;

@@ -657,6 +657,7 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
       if(hover!=stepperHover_){stepperHover_=hover;invalidate();}
       if(isEnabled()&&!isReadOnly()&&msg->type()==ui::kMouseDownMessage&&mouse->left()&&hover){captureMouse();stepperHeld_=true;startStepper(hover);return true;}
       if(hasCapture()&&stepperHeld_){
+        if(msg->type()==ui::kMouseLeaveMessage){stopStepper();stepperHeld_=false;releaseMouse();return true;}
         if(msg->type()==ui::kMouseUpMessage&&mouse->left()){stopStepper();stepperHeld_=false;releaseMouse();return true;}
         if(msg->type()==ui::kMouseMoveMessage){if(!hover||!mouse->left()){stopStepper();stepperHeld_=false;releaseMouse();}else if(stepperDirection_&&hover!=stepperDirection_)startStepper(hover);return true;}
       }
@@ -902,6 +903,19 @@ bool PixelEntry::onProcessMessage(ui::Message* msg) {
 void PixelEntry::onResize(ui::ResizeEvent& ev) {
   auto rect=ev.bounds();rect.h=textControlHeight*uiScale;setBoundsQuietly(rect);
   refreshEntryViewport(*this);
+}
+void PixelEntry::smokeNumericSteppers(){
+  if(!numericValue||!numericSteppers)throw std::runtime_error("Stepper fixture missing numeric value");
+  const auto r=bounds();auto pointer=[&](ui::MessageType type,int direction){ui::MouseMessage msg(type,os::PointerType::Mouse,ui::kButtonLeft,ui::kKeyNoneModifier,{r.x2()-8*uiScale,direction>0?r.y+4*uiScale:r.y2()-4*uiScale});onProcessMessage(&msg);};
+  const auto before=numericValue();pointer(ui::kMouseDownMessage,1);
+  if(numericValue()!=before+numericStep||!stepperTimer_.isRunning()||stepperTimer_.interval()!=300)throw std::runtime_error("Stepper initial press and delay");
+  stepperTimer_.tick();if(numericValue()!=before+numericStep||stepperTimer_.interval()<24||stepperTimer_.interval()>180)throw std::runtime_error("Stepper initial delay changed value");
+  stepperTimer_.tick();if(numericValue()!=before+2*numericStep)throw std::runtime_error("Stepper repeat did not adjust accepted value");
+  pointer(ui::kMouseMoveMessage,-1);if(numericValue()!=before+numericStep)throw std::runtime_error("Stepper active reverse missing");
+  pointer(ui::kMouseUpMessage,-1);const auto released=numericValue();stepperTimer_.tick();if(hasCapture()||stepperTimer_.isRunning()||numericValue()!=released)throw std::runtime_error("Stepper released repeat continued");
+  pointer(ui::kMouseDownMessage,-1);pointer(ui::kMouseLeaveMessage,-1);if(hasCapture()||stepperTimer_.isRunning())throw std::runtime_error("Stepper leave did not cancel");
+  pointer(ui::kMouseDownMessage,1);releaseMouse();const auto uncaptured=numericValue();stepperTimer_.tick();if(stepperTimer_.isRunning()||numericValue()!=uncaptured)throw std::runtime_error("Stepper capture loss continued");
+  pointer(ui::kMouseDownMessage,-1);setEnabled(false);const auto disabled=numericValue();stepperTimer_.tick();if(hasCapture()||stepperTimer_.isRunning()||numericValue()!=disabled)throw std::runtime_error("Stepper disabled repeat continued");setEnabled(true);
 }
 int PixelEntry::contentWidth() const {
   if(fixedContentWidth_>0)return fixedContentWidth_;

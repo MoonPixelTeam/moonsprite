@@ -8342,3 +8342,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 数字输入步进按钮迁移
 
 对照 NumberInput.tsx 的 begin/start/schedule/switch/stopStepperRepeat 及 NumberInput.test.tsx 的反向、草稿和边界规则，共享 PixelEntry 增加默认关闭的上下步进区，Lua 数字字段和颜色通道启用。复用主题中来自 PixelUtilityIcon.tsx 的5px上下箭头，17px按钮列及1px分隔，保持20px控件行高。按下从已接受值立即调整，300ms后启动指数加速重复，跨上下按钮反向调整；释放、离开、失捕获、隐藏、禁用及只读阻止继续重复，边界停止，鼠标释放不再追加调整。ScriptNumberEntry实时和延迟字段均从已接受值步进。正式Release构建成功（number-stepper-build.log）；实际脚本窗口夹具覆盖未提交草稿隔离、跨按钮反向、释放捕获、上限和只读，--script-report-check与--color-editor-check实际退出均为0。来源覆盖1043文件及证据快照、diff检查通过。长按定时重复、物理鼠标及图像验收未执行，不能据此声明所有NumberInput交互完整等价；整体迁移INCOMPLETE。保留既有main.cpp差异及用户文件。
+
+## 2026-11-19 数字步进生命周期验收迁移
+
+补齐 NumberInput 失焦与失捕获取消规则：鼠标离开、释放、焦点离开、控件隐藏/禁用或只读时停止定时器并释放捕获。新增生产定时器驱动的脚本窗口夹具，验证立即步进、300ms 初始延迟、重复回调、方向反转、释放后不再重复、鼠标离开、失捕获和禁用取消。正式 Release 构建成功（number-stepper-lifecycle-build.log），--script-report-check 与 --color-editor-check 实际退出均为0；来源登记和 diff 检查通过。未进行人工物理鼠标和图像验收，整体迁移仍为 INCOMPLETE。保留 main.cpp 既有差异。
