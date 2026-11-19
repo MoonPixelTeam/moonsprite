@@ -9,19 +9,20 @@ namespace moon {
 // edit history, clipboard, caret, scrub and keyboard numeric interactions.
 class ScriptNumberEntry final:public PixelEntry {
  double value_=0;bool updating_=false,live_=true;
- void normalize(){if(updating_)return;try{struct NumericLocale{_locale_t value=_create_locale(LC_NUMERIC,"C");~NumericLocale(){if(value)_free_locale(value);}};static NumericLocale locale;if(!locale.value)return;const auto source=text();char* end=nullptr;const auto v=_strtod_l(source.c_str(),&end,locale.value);if(end!=source.c_str()&&end==source.c_str()+source.size()&&std::isfinite(v)){const auto next=std::clamp(v,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}if(next!=v)displayValue();}}catch(...){}}
+ void normalize(){if(updating_)return;try{const auto parsed=evaluateExpression();if(!parsed)return;const auto next=normalized(*parsed);if(next!=value_){value_=next;if(changed)changed(value_);}if(next!=*parsed)displayValue();}catch(...){}}
  void displayValue(){std::ostringstream out;out.precision(17);out<<value_;updating_=true;setText(out.str());updating_=false;}
 public:
  std::function<void(double)> changed;std::function<void()> committed;
  ScriptNumberEntry(const PixelFont& font,const Skin& skin,double value,double minimum,double maximum,double step,bool live=true):PixelEntry(font,skin),live_(live){
   numeric=true;numericSteppers=true;numericExpressionFilter=true;numericMinimum=minimum;numericMaximum=maximum;numericStep=std::isfinite(step)&&step!=0?std::abs(step):1;
   numericValue=[this]{return value_;};
-  wheel=[this](int delta){const auto next=std::clamp(value_+delta*numericStep,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}displayValue();};
+  wheel=[this](int delta){const auto next=normalized(value_+delta*numericStep);if(next!=value_){value_=next;if(changed)changed(value_);}displayValue();};
   Change.connect([this]{if(updating_||!live_)return;const auto s=text();if(s.size()>1&&s.find_first_of("+-*/()",1)!=std::string::npos)return;normalize();});
   accept=[this]{normalize();displayValue();};blur=[this]{normalize();displayValue();if(committed)committed();};sync(value);
  }
  void sync(double value){value_=std::isfinite(value)?value:0;displayValue();}
  double value()const{return value_;}
+ double normalized(double candidate)const{return std::isfinite(candidate)?std::clamp(candidate,numericMinimum,numericMaximum):value_;}
  bool onProcessMessage(ui::Message* msg)override{
   // Invalid/empty expressions revert to the last accepted numeric value.
   if(isEnabled()&&msg->type()==ui::kFocusLeaveMessage){if(!commitExpression())displayValue();else normalize();}
@@ -30,7 +31,7 @@ public:
  }
 };
 // FormField label capture adjusts accepted values without focus or blur.
- class ScriptNumberLabel final:public ui::Widget{std::function<ScriptNumberEntry*()> resolve_;bool dragging_=false;int lastX_=0;public:explicit ScriptNumberLabel(std::function<ScriptNumberEntry*()> resolve):ui::Widget(ui::kGenericWidget),resolve_(std::move(resolve)){setTransparent(true);}void cancelDrag(){dragging_=false;if(hasCapture())releaseMouse();}bool scrubbable()const{auto* entry=resolve_();return entry&&entry->isEnabled()&&!entry->isReadOnly();}bool onProcessMessage(ui::Message* message)override{if(dragging_&&!hasCapture())dragging_=false;auto* entry=resolve_();const bool enabled=entry&&entry->isEnabled()&&!entry->isReadOnly();if(message->type()==ui::kMouseDownMessage){auto* mouse=static_cast<ui::MouseMessage*>(message);if(mouse->left()&&enabled){lastX_=mouse->position().x;dragging_=true;captureMouse();return true;}}if(message->type()==ui::kMouseMoveMessage&&dragging_&&hasCapture()){auto* mouse=static_cast<ui::MouseMessage*>(message);const double pixels=double(mouse->position().x-lastX_)/uiScale;lastX_=mouse->position().x;if(enabled&&pixels){const double next=std::clamp(entry->value()+pixels*entry->numericStep*(mouse->shiftPressed()?10:1),entry->numericMinimum,entry->numericMaximum);if(next!=entry->value()){entry->sync(next);if(entry->changed)entry->changed(next);}}return true;}if(message->type()==ui::kMouseUpMessage&&dragging_&&static_cast<ui::MouseMessage*>(message)->left()){dragging_=false;if(hasCapture())releaseMouse();return true;}if(message->type()==ui::kFocusLeaveMessage){dragging_=false;if(hasCapture())releaseMouse();}return ui::Widget::onProcessMessage(message);}};
+ class ScriptNumberLabel final:public ui::Widget{std::function<ScriptNumberEntry*()> resolve_;bool dragging_=false;int lastX_=0;public:explicit ScriptNumberLabel(std::function<ScriptNumberEntry*()> resolve):ui::Widget(ui::kGenericWidget),resolve_(std::move(resolve)){setTransparent(true);}void cancelDrag(){dragging_=false;if(hasCapture())releaseMouse();}bool scrubbable()const{auto* entry=resolve_();return entry&&entry->isEnabled()&&!entry->isReadOnly();}bool onProcessMessage(ui::Message* message)override{if(dragging_&&!hasCapture())dragging_=false;auto* entry=resolve_();const bool enabled=entry&&entry->isEnabled()&&!entry->isReadOnly();if(message->type()==ui::kMouseDownMessage){auto* mouse=static_cast<ui::MouseMessage*>(message);if(mouse->left()&&enabled){lastX_=mouse->position().x;dragging_=true;captureMouse();return true;}}if(message->type()==ui::kMouseMoveMessage&&dragging_&&hasCapture()){auto* mouse=static_cast<ui::MouseMessage*>(message);const double pixels=double(mouse->position().x-lastX_)/uiScale;lastX_=mouse->position().x;if(enabled&&pixels){const double next=entry->normalized(entry->value()+pixels*entry->numericStep*(mouse->shiftPressed()?10:1));if(next!=entry->value()){entry->sync(next);if(entry->changed)entry->changed(next);}}return true;}if(message->type()==ui::kMouseUpMessage&&dragging_&&static_cast<ui::MouseMessage*>(message)->left()){dragging_=false;if(hasCapture())releaseMouse();return true;}if(message->type()==ui::kFocusLeaveMessage){dragging_=false;if(hasCapture())releaseMouse();}return ui::Widget::onProcessMessage(message);}};
 // RangeField accepts arbitrary finite doubles. PixelSlider's existing skin and
 // hit outline paint the normalized position; input stays in the Lua domain.
 class ScriptRangeSlider final:public PixelSlider {

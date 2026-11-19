@@ -275,6 +275,7 @@ public:
   double numericStep=1;
   void adjustNumber(int delta);
   void smokeNumericSteppers();
+  std::optional<double> evaluateExpression() const;
   bool commitExpression();
   int contentWidth() const; // Logical pixels, including padding, unit and caret.
   int widthForValue(const std::u32string& value) const;

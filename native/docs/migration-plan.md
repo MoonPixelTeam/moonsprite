@@ -8406,3 +8406,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 补齐 ScriptDialogWindow::Radio 借用复选框外观的已登记缺口。实际依据 LuaScriptDialog.tsx button role=radio 与 styles.css 1578–1581：将原 CSS 的10px方框、1px边框、选中态2px内嵌暗色与4×4中心转换为主题sheet素材，正常/悬浮按钮背景与选中标记分别绘制；禁用透明度为旧版 .42。保留既有单选组、重复选择、Enter/Space、忙碌门控和草稿事务。字体、20px控件、2px相关间距与主题配色沿用原生统一规范，按钮按标题内容收缩并限制到可用宽度。更新切片索引与皮肤编辑器连接登记，新增可追溯转换脚本，无自行设计替代图标。
 
 唯一正式Release最终构建成功（lua-radio-final-build.log），正式主题/指针下 --script-report-check 实际退出0，覆盖材质加载/尺寸/选中色块及原有键盘、控件、报告检查。lua-script-invocation CTest通过8.10秒，复用既有真实Lua单选分组事务验收。逐像素核对原sheet全部既有像素不变；查看本轮默认2×控件截图，单选按钮、标记与文字无遮挡。未做1×实机、物理鼠标或全部状态的人工图像验收；无性能优化，整体迁移仍INCOMPLETE。保留main.cpp既有差异和用户文件，不提交生成物。
+
+## 2026-11-19 Lua 实时数值解析与溢出归一化迁移
+
+对照 NumberInput.tsx 的 updateDraft/commit/normalize/adjust、numeric-expression.ts 和 FormField.tsx 标签拖动，实时数字草稿与提交复用同一十进制表达式及 ECMAScript 空白解析；保持表达式延迟提交和原始草稿。步进及标签拖动出现非有限结果时保留已接受值，有限值再按范围夹取。提取 PixelEntry 只读求值接口，保留提交通知与异常保护，不改变布局或性能方案。实际脚本窗口夹具覆盖尾部空白、NBSP/全角空白、小数/指数、无效和非有限草稿、表达式提交、只读调整、正负溢出、最大有限值及标签捕获释放。唯一正式 Release 构建及最终增量构建均成功；正式主题和指针下 --script-report-check、--color-editor-check 实际退出均为0。来源1044文件覆盖及证据快照通过；未人工鼠标或图像验收，整体迁移仍为 INCOMPLETE。保留 main.cpp 既有差异及未跟踪文件，不提交生成物。
