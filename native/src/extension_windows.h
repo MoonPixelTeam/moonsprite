@@ -25,7 +25,7 @@ struct WindowServices {
 class WindowRouter {
  WindowServices services_;std::map<std::wstring,WindowDefinition> overlays_,native_;std::optional<WindowDefinition> dialog_;std::set<std::wstring> embedded_;
  std::set<std::wstring> resources_;std::wstring name_;bool active_=true;
- static std::wstring string(const WindowObject& p,const wchar_t* key){using namespace winrt::Windows::Data::Json;if(!p.HasKey(key)||p.GetNamedValue(key).ValueType()!=JsonValueType::String)throw std::invalid_argument("窗口参数必须是字符串。");return std::wstring(p.GetNamedString(key));}
+ static std::wstring string(const WindowObject& p,const wchar_t* key){using namespace winrt::Windows::Data::Json;if(!p.HasKey(key)||p.GetNamedValue(key).ValueType()!=JsonValueType::String)throw std::invalid_argument("参数 "+winrt::to_string(key)+" 必须是字符串。");return std::wstring(p.GetNamedString(key));}
  static bool truthy(const WindowValue& v){using namespace winrt::Windows::Data::Json;if(!v||v.ValueType()==JsonValueType::Null)return false;if(v.ValueType()==JsonValueType::Boolean)return v.GetBoolean();if(v.ValueType()==JsonValueType::Number)return v.GetNumber()!=0;if(v.ValueType()==JsonValueType::String)return !v.GetString().empty();return true;}
  static double number(const WindowObject& p,const wchar_t* key,double fallback,bool overlay){using namespace winrt::Windows::Data::Json;if(!p.HasKey(key)||p.GetNamedValue(key).ValueType()==JsonValueType::Null)return fallback;const auto value=p.GetNamedValue(key);if(value.ValueType()!=JsonValueType::Number){if(overlay)throw std::invalid_argument("覆盖层边界无效。");return fallback;}const auto n=value.GetNumber();if(!std::isfinite(n))throw std::invalid_argument("窗口边界无效。");return overlay?n:std::floor(n+.5);}
  void connected()const{if(!active_)throw std::runtime_error("Extension windows are inactive");if(!services_.open||!services_.close||!services_.visible||!services_.message)throw std::runtime_error("Native extension window presentation is not connected");}
@@ -39,10 +39,14 @@ public:
   const auto rawId=params.HasKey(L"windowId")?params.GetNamedValue(L"windowId"):WindowValue{nullptr};
   const auto id=rawId&&rawId.ValueType()==JsonValueType::String?std::wstring(rawId.GetString()):std::wstring{};
   if(method=="windows.open"){
-   WindowDefinition next;next.id=string(params,L"windowId");next.resource=string(params,L"resourceId");
-   if(!resources_.count(next.resource))throw std::invalid_argument("扩展窗口资源不存在。");
+   WindowDefinition next;
    WindowObject options;if(params.HasKey(L"options")&&params.GetNamedValue(L"options").ValueType()==JsonValueType::Object)options=params.GetNamedObject(L"options");
    next.presentation=options.HasKey(L"presentation")&&options.GetNamedValue(L"presentation").ValueType()==JsonValueType::String?std::wstring(options.GetNamedString(L"presentation")):L"native";
+   // The legacy renderer rejects non-overlay opens against existing overlays
+   // before validating resourceId (including String(windowId) coercion).
+   if(next.presentation!=L"overlay"&&overlays_.count(diagnosticString(rawId)))throw std::invalid_argument("窗口 ID 已用于覆盖层。");
+   next.id=string(params,L"windowId");next.resource=string(params,L"resourceId");
+   if(!resources_.count(next.resource))throw std::invalid_argument(next.presentation==L"overlay"?"扩展覆盖层资源不存在。":"扩展窗口资源不存在。");
    if(next.presentation==L"overlay"){
     if(dialog_&&dialog_->id==next.id)throw std::invalid_argument("窗口 ID 已用于弹窗。");
     if(!overlays_.count(next.id)&&overlays_.size()>=16)throw std::length_error("覆盖层数量已达上限。");
@@ -72,7 +76,7 @@ public:
    const auto target=string(params,L"windowId");if(!native_.count(target))throw std::invalid_argument("扩展窗口不存在。");services_.message(native_.at(target),message);return;
   }
   if(method=="windows.setVisible"){
-   if(!params.HasKey(L"visible")||params.GetNamedValue(L"visible").ValueType()!=JsonValueType::Boolean)throw std::invalid_argument("窗口显示状态无效。");
+   if(!params.HasKey(L"visible")||params.GetNamedValue(L"visible").ValueType()!=JsonValueType::Boolean)throw std::invalid_argument(overlay!=overlays_.end()?"覆盖层显示状态无效。":"窗口显示状态无效。");
    const auto target=string(params,L"windowId");const bool visible=params.GetNamedBoolean(L"visible");if(overlay==overlays_.end()&&!native_.count(target))throw std::invalid_argument("扩展窗口不存在。");services_.visible(overlay!=overlays_.end()?overlay->second:native_.at(target),visible);if(overlay!=overlays_.end())overlay->second.visible=visible;else native_.at(target).visible=visible;return;
   }
   if(method=="windows.close"){

@@ -8370,3 +8370,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Runtime 空工作区前置守卫纠正
 
 完整核对 ExtensionRuntimeHost.tsx::handleRequest 控制流，纠正前阶段遗漏的无活动工程守卫：document.getSummary 仍返回 null，document.getLayers/getFrames/undo/redo 均返回 ok=false 与“当前没有打开的工程。”，不含 result 且不执行查询或历史回调。同步修正请求夹具、真实 Editor 工作区夹具和此前错误的来源/迁移说明，保留权限优先与服务断开错误。Release request/session 和唯一正式程序构建成功；两项 CTest 通过0.18秒，正式 --extension-workspace-check 带正式主题/指针实际退出0，来源1043文件覆盖及证据快照、diff检查通过。未人工或图像验收，生产JS执行器仍未接入，整体INCOMPLETE；保留既有main.cpp和用户数据。
+
+## 2026-11-19 Runtime 窗口失败分支迁移
+
+完整对照 ExtensionRuntimeHost.tsx 窗口入口和 platform_extension_windows.rs：非覆盖层打开先按 String(windowId) 检查覆盖层冲突，再校验资源，保留数值身份的冲突行为；缺失字符串参数使用原字段提示，覆盖层资源和显隐保留专用错误。既有窗口会话夹具检查精确错误、无 result、数值身份冲突、失败不打开窗口或改变显隐，沿用已有打开/消息/关闭/清理检查。Release extension-windows-tests、extension-session-host-tests定向构建成功，两项CTest通过0.14秒；来源1043文件及证据快照、diff检查通过。本轮未重建正式GUI、未人工/图像验收，生产JS和窗口渲染仍未接入，整体迁移INCOMPLETE；保留main.cpp和用户文件。
