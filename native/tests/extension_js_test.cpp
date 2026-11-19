@@ -1,6 +1,7 @@
 #include "extension_js_session.h"
 #include "extension_form_state.h"
 #include <iostream>
+#include <thread>
 using namespace moon::extension;using namespace winrt::Windows::Data::Json;
 void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 int main(){winrt::init_apartment();try{
@@ -28,6 +29,21 @@ int main(){winrt::init_apartment();try{
  {JsEngine engine;engine.evaluate("setInterval(()=>console.log('tick'),0);Promise.resolve().then(()=>console.log('promise'));","jobs.js");engine.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));check(!engine.takeMessages().empty(),"Jobs/timers failed");}
  check(runtimeScripts(R"(<div title="<script>throw 1</script>"></div><style>a{content:'<script>throw 2</script>'}</style><textarea><script>throw 3</script></textarea><script>let a=1</script>)").size()==1,"HTML raw text/quoted attributes executed script");
  check(runtimeScripts("<script>let a=1</script><SCRIPT type='module'>export const b=2</SCRIPT>").size()==2,"Inline/module source extraction");
+ // Reuse legacy extension-assets.test.ts values and quota expectations.
+ {
+  const auto database=root/("assets-"+std::to_string(GetTickCount64())+".sqlite");
+  auto asset=[&](const std::string& owner,const std::string& method,std::u16string key,std::optional<std::u16string> value={}){return startAssetRequest(database,owner,method,std::move(key),std::move(value));};
+  const std::u16string preview(400000,u'x');asset("pet","assets.set",u"sprite",preview).get();check(asset("pet","assets.get",u"sprite").get()==preview,"Legacy large asset roundtrip");check(!asset("other","assets.get",u"sprite").get(),"Asset namespaces leaked");
+  auto rejects=[&](const std::string& method,std::u16string key,std::optional<std::u16string> value,const std::string& message){bool rejected=false;try{asset("pet",method,std::move(key),std::move(value)).get();}catch(const std::exception& error){rejected=std::string(error.what()).find(message)!=std::string::npos;}check(rejected,"Asset validation/quota error mismatch");};
+  rejects("assets.set",u"sprite",std::u16string(8u*1024u*1024u+1,u'x'),"8 MiB");check(asset("pet","assets.get",u"sprite").get()==preview,"Failed asset write changed prior value");
+  rejects("assets.set",u"",u"x","扩展素材键无效");rejects("assets.get",std::u16string(161,u'a'),{},"扩展素材键无效");rejects("assets.set",u"bad",{},"扩展素材必须是字符串");
+  std::u16string unusual{char16_t(0xd800),u'\0',char16_t(0xdc00),u'月'};asset("pet","assets.set",u"unicode",unusual).get();check(asset("pet","assets.get",u"unicode").get()==unusual,"Asset UTF-16/NUL preservation");
+  asset("pet","assets.set",u"empty",u"").get();check(asset("pet","assets.get",u"empty").get()==std::u16string{},"Empty asset became null");asset("pet","assets.remove",u"sprite").get();check(!asset("pet","assets.get",u"sprite").get(),"Asset removal failed");
+  const std::u16string large(8u*1024u*1024u,u'x');std::vector<std::future<AssetResult>> concurrent;
+  for(int i=0;i<8;++i)concurrent.push_back(asset("quota","assets.set",std::u16string(1,char16_t(u'0'+i)),large));for(auto& future:concurrent)future.get();
+  bool quota=false;try{asset("quota","assets.set",u"overflow",u"x").get();}catch(const std::exception& error){quota=std::string(error.what()).find("64 MiB")!=std::string::npos;}check(quota&&!asset("quota","assets.get",u"overflow").get(),"Aggregate quota failed atomically");
+  asset("quota","assets.set",u"0",large).get();asset("quota","assets.remove",u"0").get();asset("quota","assets.set",u"overflow",u"ok").get();check(asset("quota","assets.get",u"overflow").get()==u"ok","Quota replacement/release failed");
+ }
  // Execute the actual legacy window bootstrap and documented ui-form example
  // through authenticated runtime open, not a direct call to the presenter.
  {
@@ -39,16 +55,18 @@ int main(){winrt::init_apartment();try{
   const std::string formSource=R"HTML(<script>
 let name='Moon';
 const draw=requestId=>moonsprite.window.postMessage({type:'ui-state',nodes:[{id:'name',type:'input',value:name},{id:'save',type:'button',action:{type:'save'}},{id:'close',type:'button',action:{type:'close'}}],...(requestId?{result:{requestId}}:{})});
-moonsprite.window.onMessage(async message=>{if(message.type==='close'){await moonsprite.window.close();return;}if(message.type==='host-ping'){await moonsprite.window.postMessage({type:'pong'});return;}if(message.type==='save'){name=message.values.name;await moonsprite.storage.set('profile',{name,id:moonsprite.window.id,tiny:5e-324});const data=await moonsprite.resources.read('data');if(data.join(',')!=='65,66,67')throw Error('window resource bytes');await moonsprite.window.postMessage({type:'saved'});await draw(message.requestId);}});draw();
+moonsprite.window.onMessage(async message=>{if(message.type==='close'){await moonsprite.window.close();return;}if(message.type==='host-ping'){await moonsprite.window.postMessage({type:'pong'});return;}if(message.type==='save'){const preview='x'.repeat(400000)+'\ud800\u0000🌙';await moonsprite.assets.set('preview',preview);if(await moonsprite.assets.get('preview')!==preview)throw Error('asset bridge string');await moonsprite.assets.remove('preview');if(await moonsprite.assets.get('preview')!==null)throw Error('asset bridge removal');name=message.values.name;await moonsprite.storage.set('profile',{name,id:moonsprite.window.id,tiny:5e-324});const data=await moonsprite.resources.read('data');if(data.join(',')!=='65,66,67')throw Error('window resource bytes');await moonsprite.window.postMessage({type:'saved'});await draw(message.requestId);}});draw();
 </script>)HTML";
   std::ofstream(root/"form.html")<<formSource;
   std::vector<std::string> formLogs;JsSession formSession(host,forms,"en-US",{},{},{},[&](const auto& line){formLogs.push_back(line);},[&](const auto&,const auto&,JsFormCallbacks callbacks){++opened;view=std::make_shared<ViewState>();view->callbacks=std::move(callbacks);return std::make_unique<View>(view);});
   formSession.start(R"(<script>moonsprite.on('activate',()=>moonsprite.windows.open({windowId:'profile',resourceId:'form',options:{presentation:'dialog',component:'form'}}));moonsprite.on('window-message',event=>{if(event.message.type==='saved')moonsprite.windows.postMessage({windowId:'profile',message:{type:'host-ping'}});if(event.message.type==='pong')console.log('pong');});</script>)",project);
-  auto tick=[&]{for(int i=0;i<30;++i)formSession.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));};tick();
+  auto tick=[&]{for(int i=0;i<300;++i){formSession.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));std::this_thread::sleep_for(std::chrono::milliseconds(1));}};tick();
   check(view&&view->form.loaded()&&view->form.loadError().empty(),"Real window bootstrap initial ui-state failed");
   check(view->form.edit(L"name",JsonValue::CreateStringValue(L"原生 Moon")),"Native form draft missing");view->callbacks.send(*view->form.click(L"save"));tick();
   auto profile=storage.get(u"js-form",u"profile").GetObject();check(profile.GetNamedString(L"name")==L"原生 Moon"&&profile.GetNamedString(L"id")==L"profile"&&profile.GetNamedNumber(L"tiny")==5e-324&&!view->form.busy()&&view->form.drafts().Size()==0,"Window JS storage/action/result/draft roundtrip failed");
   check(std::find(formLogs.begin(),formLogs.end(),"pong")!=formLogs.end(),"Runtime/window message directions not connected");
+  // Queued window messages must be discarded when retry replaces the VM.
+  auto stale=view->callbacks;stale.send(JsonObject::Parse(LR"({"type":"host-ping"})"));
   // Retry replaces the window VM; old queued work cannot update its generation.
   view->form.retry();view->callbacks.restart();tick();check(view->form.loaded()&&view->form.effectiveValue(L"name").GetString()==L"Moon","Window retry did not reset JS model");
   view->callbacks.send(*view->form.click(L"close"));tick();check(view->closed,"window.close did not retire presenter");

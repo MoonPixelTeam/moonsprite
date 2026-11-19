@@ -1,5 +1,6 @@
 #pragma once
 #include "extension_js_engine.h"
+#include "extension_assets.h"
 #include "extension_session_host.h"
 #include "extension_runtime_directory.h"
 #include <deque>
@@ -21,16 +22,17 @@ class JsForms final {
  struct Page {
   WindowDefinition definition;std::unique_ptr<JsEngine> engine;
   std::unique_ptr<JsFormPresentation> view;std::deque<std::string> inbox;
+  struct PendingAsset{winrt::hstring id;std::future<AssetResult> task;};std::deque<PendingAsset> assets;
   bool close=false,restart=false;std::size_t bytes=0;
-  void enqueue(std::string message){if(inbox.size()>=512||message.size()>20u*1024u*1024u-bytes)throw std::length_error("Extension window message queue is full");bytes+=message.size();inbox.push_back(std::move(message));}
+  void enqueue(std::string message){if(inbox.size()>=512||message.size()>128u*1024u*1024u-bytes)throw std::length_error("Extension window message queue is full");bytes+=message.size();inbox.push_back(std::move(message));}
  };
  std::shared_ptr<SessionHost> host_;SessionHost::Token token_;RuntimeCandidate candidate_;
  DiagnosticServices diagnostics_;JsFormFactory factory_;std::shared_ptr<WindowRouter> router_;
  std::map<std::wstring,std::shared_ptr<Page>> pages_;bool stopped_=false;
  static std::u16string units(const winrt::hstring& value){return {reinterpret_cast<const char16_t*>(value.data()),value.size()};}
- static std::string envelope(const WindowValue& message){using namespace winrt::Windows::Data::Json;WindowObject result;result.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-window-message"));result.Insert(L"message",message?message:JsonValue::CreateNullValue());return winrt::to_string(result.Stringify());}
+ static std::string envelope(const WindowValue& message){using namespace winrt::Windows::Data::Json;WindowObject result;result.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-window-message"));result.Insert(L"message",message?message:JsonValue::CreateNullValue());return javascriptJsonUtf8(result.Stringify().c_str());}
  void load(Page& page){
-  page.inbox.clear();page.bytes=0;page.engine=std::make_unique<JsEngine>(winrt::to_string(page.definition.id));
+  page.inbox.clear();page.assets.clear();page.bytes=0;page.engine=std::make_unique<JsEngine>(winrt::to_string(page.definition.id));
   const auto bytes=candidate_.resources->read(winrt::to_string(page.definition.resource));
   for(const auto& script:runtimeScripts({bytes.begin(),bytes.end()}))page.engine->evaluate(script.source,token_.extensionId+"/"+winrt::to_string(page.definition.resource),script.module);
  }
@@ -85,12 +87,16 @@ class JsForms final {
    auto call=wire.GetNamedObject(L"message");if(call.GetNamedString(L"type",L"")!=L"moonsprite-extension-request")continue;
    const auto id=call.GetNamedValue(L"requestId"),method=call.GetNamedValue(L"method");if(id.ValueType()!=JsonValueType::String||method.ValueType()!=JsonValueType::String)continue;
    WindowObject response;response.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));response.Insert(L"requestId",id);
-   try{WindowObject params;if(call.HasKey(L"params")&&call.GetNamedValue(L"params").ValueType()==JsonValueType::Object)params=call.GetNamedObject(L"params");std::optional<std::string> encoded;if(wire.HasKey(L"encoded"))encoded=winrt::to_string(wire.GetNamedString(L"encoded"));response.Insert(L"result",request(page,winrt::to_string(method.GetString()),params,encoded));response.Insert(L"ok",JsonValue::CreateBooleanValue(true));}
+   try{WindowObject params;if(call.HasKey(L"params")&&call.GetNamedValue(L"params").ValueType()==JsonValueType::Object)params=call.GetNamedObject(L"params");const auto name=winrt::to_string(method.GetString());if(name=="assets.get"||name=="assets.set"||name=="assets.remove"){
+    if(!params.HasKey(L"key")||params.GetNamedValue(L"key").ValueType()!=JsonValueType::String)throw std::invalid_argument("扩展素材键无效。");std::optional<std::u16string> value;if(name=="assets.set"&&params.HasKey(L"value")&&params.GetNamedValue(L"value").ValueType()==JsonValueType::String)value=units(params.GetNamedString(L"value"));
+    if(page.assets.size()>=256)throw std::length_error("Extension asset request queue is full");page.assets.push_back({id.GetString(),startAssetRequest(host_->storage().path().parent_path()/"extension-assets.sqlite",token_.extensionId,name,units(params.GetNamedString(L"key")),std::move(value))});continue;
+   }std::optional<std::string> encoded;if(wire.HasKey(L"encoded"))encoded=winrt::to_string(wire.GetNamedString(L"encoded"));response.Insert(L"result",request(page,winrt::to_string(method.GetString()),params,encoded));response.Insert(L"ok",JsonValue::CreateBooleanValue(true));}
    catch(const std::exception& error){response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(error.what())));}
    catch(const winrt::hresult_error& error){response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(error.message()));}
-   page.enqueue(winrt::to_string(response.Stringify()));
+   page.enqueue(javascriptJsonUtf8(response.Stringify().c_str()));
   }
  }
+ void pollAssets(Page& page){using namespace winrt::Windows::Data::Json;while(!page.assets.empty()&&page.assets.front().task.wait_for(std::chrono::seconds(0))==std::future_status::ready){auto pending=std::move(page.assets.front());page.assets.pop_front();WindowObject response;response.Insert(L"type",JsonValue::CreateStringValue(L"moonsprite-extension-response"));response.Insert(L"requestId",JsonValue::CreateStringValue(pending.id));try{auto value=pending.task.get();response.Insert(L"result",value?JsonValue::CreateStringValue(winrt::hstring(reinterpret_cast<const wchar_t*>(value->data()),std::uint32_t(value->size()))):JsonValue::CreateNullValue());response.Insert(L"ok",JsonValue::CreateBooleanValue(true));}catch(const std::exception& error){response.Insert(L"ok",JsonValue::CreateBooleanValue(false));response.Insert(L"error",JsonValue::CreateStringValue(winrt::to_hstring(error.what())));}page.enqueue(javascriptJsonUtf8(response.Stringify().c_str()));}}
 public:
  JsForms(std::shared_ptr<SessionHost> host,SessionHost::Token token,RuntimeCandidate candidate,DiagnosticServices diagnostics,JsFormFactory factory):host_(std::move(host)),token_(std::move(token)),candidate_(std::move(candidate)),diagnostics_(std::move(diagnostics)),factory_(std::move(factory)){
   std::set<std::wstring> resources;if(candidate_.manifest.HasKey(L"runtime")){auto runtime=candidate_.manifest.GetNamedObject(L"runtime");if(runtime.HasKey(L"resources"))for(const auto& pair:runtime.GetNamedObject(L"resources"))resources.insert(std::wstring(pair.Key()));}
@@ -101,9 +107,9 @@ public:
  void stop(){if(stopped_)return;stopped_=true;host_->setWindowRouter(token_,{});for(auto& item:pages_)item.second->view->close();pages_.clear();router_.reset();}
  void pump(std::chrono::steady_clock::time_point deadline){
   if(stopped_)return;for(auto& item:pages_){auto& page=*item.second;if(page.close)continue;
-   try{if(page.restart){page.restart=false;load(page);}if(page.engine){while(!page.inbox.empty()&&std::chrono::steady_clock::now()<deadline){auto message=std::move(page.inbox.front());page.bytes-=message.size();page.inbox.pop_front();page.engine->deliver(message);}page.engine->pump(deadline);consume(page);}page.view->pump();}
-   catch(const std::exception& error){page.engine.reset();page.inbox.clear();page.bytes=0;page.view->failure(error.what());page.view->pump();}
-   catch(const winrt::hresult_error& error){page.engine.reset();page.inbox.clear();page.bytes=0;page.view->failure(winrt::to_string(error.message()));page.view->pump();}
+   try{if(page.restart){page.restart=false;load(page);}if(page.engine){pollAssets(page);while(!page.inbox.empty()&&std::chrono::steady_clock::now()<deadline){auto message=std::move(page.inbox.front());page.bytes-=message.size();page.inbox.pop_front();page.engine->deliver(message);}page.engine->pump(deadline);consume(page);}page.view->pump();}
+   catch(const std::exception& error){page.engine.reset();page.inbox.clear();page.assets.clear();page.bytes=0;page.view->failure(error.what());page.view->pump();}
+   catch(const winrt::hresult_error& error){page.engine.reset();page.inbox.clear();page.assets.clear();page.bytes=0;page.view->failure(winrt::to_string(error.message()));page.view->pump();}
   }
   for(auto it=pages_.begin();it!=pages_.end();)if(it->second->close){WindowObject params;params.Insert(L"windowId",winrt::Windows::Data::Json::JsonValue::CreateStringValue(it->first));router_->request("windows.close",params);it->second->view->close();it=pages_.erase(it);}else ++it;
  }

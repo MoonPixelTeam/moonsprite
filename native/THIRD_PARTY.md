@@ -33,3 +33,5 @@ WebM 构建工具固定为 NASM 2.16.03（BSD 2-Clause）和 GNU Make 4.4.1（GP
 ## QuickJS-ng 0.11.0
 
 Native JavaScript execution approved by the user on 2026-11-19; MIT license. Source: https://github.com/quickjs-ng/quickjs at commit `6a9fe9af5ca0bf7c49ae697edef44864272317d1`; pinned source archive SHA-256 `bae12d2c4daae37afeb7eab563b9cfaa8bfc4b6cda70a1cf2d494116f634814d`. Full notice: `assets/licenses/quickjs-ng-LICENSE.txt`. Only the core engine is linked; quickjs-libc, CLI, native module loading and OS APIs are not enabled. The existing MoonSprite source-available license governs reused legacy Runtime bootstrap code, separately from QuickJS MIT.
+
+2026-11-19：原生扩展素材事务使用 Windows 系统自带 `winsqlite3.dll`（Windows SDK `winsqlite/winsqlite3.h` / `winsqlite3.lib`），不复制SQLite源码或分发额外DLL；以SQLite事务适配旧版IndexedDB存储。

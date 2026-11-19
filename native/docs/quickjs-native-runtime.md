@@ -24,4 +24,10 @@
 
 直接复用 ExtensionWindow.tsx 的窗口 bootstrap，仅删除隐藏逻辑页不适用的 DOM 主题/指针钩子；保留 window.id、Promise 请求和 onMessage 参数习惯，不能用 runtime 的单对象参数API替代。每个表单另建隔离VM，native presenter复用已有 FormWindow 控件、FormState 全视图/action/values/requestId往返、忙碌、文件/图片/嵌套弹窗及重试。UI动作排队，不在控件回调内执行JS或销毁窗口。资源声明、扩展身份、存储配额和精确 JSON 字符串仍由既有原生模块处理；窗口桥 storage/resources 与 Runtime 权限入口保持旧版区别。
 
-宿主管理尺寸，根窗口按旧版560×600默认值与统一原生缩放实现，复用ModalGeometryPreferences按扩展和窗口ID持久化，嵌套弹窗复用现有记忆。窗口主动ui-state、原生输入与按钮、JS确认后清草稿/解忙碌、Runtime双向消息、重试模型重置、JS关闭和禁用清理均有定向真实VM夹具。assets API暂未接入；非form/overlay明确报未迁移，不显示近似HTML。
+宿主管理尺寸，根窗口按旧版560×600默认值与统一原生缩放实现，复用ModalGeometryPreferences按扩展和窗口ID持久化，嵌套弹窗复用现有记忆。窗口主动ui-state、原生输入与按钮、JS确认后清草稿/解忙碌、Runtime双向消息、重试模型重置、JS关闭和禁用清理均有定向真实VM夹具。assets API已接入下面的独立持久化事务；非form/overlay明确报未迁移，不显示近似HTML。
+
+## 窗口素材持久化
+
+窗口桥 assets.get/set/remove 复用旧版参数和校验：键非空、无控制字符、UTF-8最多160字节；value必须字符串，UTF-8单素材最多8 MiB、每扩展最多64 MiB，替换排除原记录。Windows系统 winsqlite3 提供事务存储，独立 extension-assets.sqlite 与配置存储分开；BLOB保留UTF-16，包括未配对代理项和NUL，配额采用旧版TextEncoder替换规则计数。BEGIN IMMEDIATE 将元数据配额查询与写入放在同一事务；超额/写入失败回滚，跨窗口/连接共用数据库事务。不把所有素材读入内存后重写配置文件。
+
+异步Promise/FIFO worker承接IndexedDB异步执行，数据库创建/读写/锁等待不在UI线程；关闭或重试丢弃陈旧回复，已交给事务的写入可完成，与旧页关闭后数据库事务独立一致。无libc/文件系统API向扩展开放。为合法8 MiB字符串的JSON转义留空间，窗口VM上限256 MiB、窗口出入站队列128 MiB；Runtime VM仍64 MiB/20 MiB。worker总待处理256 MiB/512项、每页256个素材请求为明确原生准入边界，单个脚本100/20ms及任务预算仍适用，不作无限时序等价声明。

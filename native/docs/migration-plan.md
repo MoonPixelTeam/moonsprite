@@ -8439,3 +8439,9 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 对照 ExtensionWindow.tsx 窗口bootstrap/嵌入式请求路由、ExtensionDialogForm.tsx 和 ui-form.md，将 runtime windows.open(dialog,component:form) 连接到真实独立窗口VM及既有 FormWindow。保留窗口API参数习惯、完整视图、action/values/requestId、忙碌与确认清草稿、资源/精确JSON存储、Runtime双向消息、命令状态、重试新VM及JS关闭/替换/禁用清理。复用旧版图标、原生文件/图片/嵌套控件及 ModalGeometryPreferences 根窗口记忆；没有恢复WebView2或模拟DOM。assets、普通HTML/覆盖层仍明确未迁移，整体 INCOMPLETE。
 
 最终唯一正式 Release 构建成功（quickjs-form-final-build.log）；extension-js-tests真实退出0，覆盖旧窗口引导脚本、无Runtime storage权限时的原窗口桥语义、资源字节、Unicode/极小双精度、草稿/请求确认、双向消息、重试与关闭。正式主题/指针 --script-entry-check 以 Start-Process -Wait -PassThru 取得实际退出0，覆盖生产菜单打开真实原生输入框/按钮，修改保存落盘、确认清草稿、窗口关闭、重开和禁用清理。首轮GUI用例的字段ID与模型键不同，落盘证据确认传输正确，修正夹具后通过。来源1054文件、架构/编辑器边界和diff检查通过。未做人工鼠标或图像验收，保留main.cpp既有差异及用户文件。
+
+## 2026-11-19 扩展窗口素材 API 完整迁移
+
+直接沿用 extension-assets.ts/test.ts 的 get/set/remove、键160 UTF-8字节、单素材8 MiB、每扩展64 MiB、替换排除旧值、失败回滚及隔离语义。IndexedDB 必要适配为 Windows 系统 SQLite 独立数据库，配额查询与写入在 BEGIN IMMEDIATE 同一事务；UTF-16 BLOB 保留NUL与未配对代理项，TextEncoder计数语义保留。复用原生FIFO/promise后台队列，不在UI执行数据库创建、锁等待或读写；关闭/重试丢弃陈旧回复。真实窗口桥与生产表单接通资产Promise，窗口VM/消息预算为合法素材序列化调整并明确登记，Runtime预算保持原值。
+
+沿用旧版400KB/8MiB/64MiB用例，验证持久化、隔离、超额回滚、八次排队写入、替换不重复计费、删除释放配额、空串/UTF16/NUL以及真实窗口JS往返；extension-js-tests退出0。初轮合法八次8MiB写入被原生队列容量阻止，调整UTF16队列总容量后通过。最终唯一正式Release构建成功（quickjs-assets-final-build.log）；正式主题/指针 --script-entry-check 用 Start-Process -Wait -PassThru 取得退出0，覆盖生产窗口400KB素材写读比对/删除、输入确认保存与关闭/禁用。来源1056文件、架构/编辑器边界及diff检查通过，无人工鼠标或图像验收。普通HTML/Canvas/覆盖层和详细事件仍是缺口，整体 INCOMPLETE；保留main.cpp既有修改及用户数据。

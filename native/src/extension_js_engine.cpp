@@ -11,7 +11,7 @@ struct JsEngine::State {
  JSRuntime* runtime=nullptr;JSContext* context=nullptr;
  std::chrono::steady_clock::time_point deadline;
  const std::chrono::steady_clock::time_point origin=std::chrono::steady_clock::now();
- std::vector<Message> messages;std::size_t messageBytes=0;
+ std::vector<Message> messages;std::size_t messageBytes=0,messageLimit=20u*1024u*1024u;
  std::vector<std::pair<JSValue,JSValue>> rejected;bool rejectionOverflow=false;
  static void rejection(JSContext* context,JSValueConst promise,JSValueConst reason,bool handled,void* opaque){auto* self=static_cast<State*>(opaque);for(auto it=self->rejected.begin();it!=self->rejected.end();++it)if(JS_VALUE_GET_PTR(it->first)==JS_VALUE_GET_PTR(promise)){if(handled){JS_FreeValue(context,it->first);JS_FreeValue(context,it->second);self->rejected.erase(it);}return;}if(!handled){if(self->rejected.size()>=256){self->rejectionOverflow=true;return;}try{self->rejected.emplace_back(JS_DupValue(context,promise),JS_DupValue(context,reason));}catch(...){self->rejectionOverflow=true;}}}
  static int interrupt(JSRuntime*,void* opaque){return std::chrono::steady_clock::now()>=static_cast<State*>(opaque)->deadline;}
@@ -19,7 +19,7 @@ struct JsEngine::State {
   auto* self=static_cast<State*>(JS_GetContextOpaque(context));
   if(argc!=1)return JS_ThrowTypeError(context,"Expected serialized extension message");
   size_t size=0;const char* text=JS_ToCStringLen(context,&size,argv[0]);if(!text)return JS_EXCEPTION;
-  if(self->messages.size()>=512||size>20u*1024u*1024u-self->messageBytes){JS_FreeCString(context,text);return JS_ThrowRangeError(context,"Extension message queue is full");}
+  if(self->messages.size()>=512||size>self->messageLimit-self->messageBytes){JS_FreeCString(context,text);return JS_ThrowRangeError(context,"Extension message queue is full");}
   try{self->messages.push_back({std::string(text,size)});self->messageBytes+=size;}catch(...){JS_FreeCString(context,text);return JS_ThrowOutOfMemory(context);}JS_FreeCString(context,text);return JS_UNDEFINED;
  }
  std::string exception(){auto error=JS_GetException(context);const char* text=JS_ToCString(context,error);std::string message=text?text:"QuickJS exception";if(text)JS_FreeCString(context,text);auto stack=JS_IsObject(error)?JS_GetPropertyStr(context,error,"stack"):JS_UNDEFINED;if(!JS_IsException(stack)&&!JS_IsUndefined(stack)){text=JS_ToCString(context,stack);if(text){message+='\n';message+=text;JS_FreeCString(context,text);}}JS_FreeValue(context,stack);JS_FreeValue(context,error);return message;}
@@ -30,6 +30,7 @@ struct JsEngine::State {
 };
 JsEngine::JsEngine():state_(std::make_unique<State>()){evaluate(jsNativePrelude,"native-runtime.js");evaluate(jsRuntimeBootstrap,"legacy-runtime-bootstrap.js");}
 JsEngine::JsEngine(const std::string& windowId):state_(std::make_unique<State>()){
+ JS_SetMemoryLimit(state_->runtime,256u*1024u*1024u);state_->messageLimit=128u*1024u*1024u;
  evaluate(jsNativePrelude,"native-window.js");
  auto id=JS_NewStringLen(state_->context,windowId.data(),windowId.size());auto json=JS_JSONStringify(state_->context,id,JS_UNDEFINED,JS_UNDEFINED);JS_FreeValue(state_->context,id);
  if(JS_IsException(json))throw std::runtime_error(state_->exception());const char* encoded=JS_ToCString(state_->context,json);if(!encoded){JS_FreeValue(state_->context,json);throw std::runtime_error(state_->exception());}

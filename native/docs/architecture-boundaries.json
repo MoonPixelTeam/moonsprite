@@ -278,7 +278,8 @@
         "mfreadwrite",
         "mfuuid",
         "*skia.lib",
-        "dwmapi"
+        "dwmapi",
+        "winsqlite3"
       ],
       "module": "platform"
     },
@@ -403,7 +404,8 @@
         "winternl.h",
         "winerror.h",
         "propvarutil.h",
-        "wrl/*"
+        "wrl/*",
+        "winsqlite/*"
       ],
       "module": "platform"
     },
