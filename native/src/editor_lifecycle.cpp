@@ -741,8 +741,17 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
 
   }
 
+namespace {
+class ExtensionInputObserver final:public ui::Widget {
+ ui::Display* display_;std::function<void(bool)> send_;
+public:
+ ExtensionInputObserver(ui::Display* display,std::function<void(bool)> send):ui::Widget(ui::kGenericWidget),display_(display),send_(std::move(send)){for(auto type:{ui::kMouseDownMessage,ui::kMouseMoveMessage,ui::kMouseWheelMessage,ui::kKeyDownMessage})ui::Manager::getDefault()->addMessageFilter(type,this);}
+ ~ExtensionInputObserver()override{ui::Manager::getDefault()->removeMessageFilterFor(this);}
+ bool onProcessMessage(ui::Message* message)override{if(message->fromFilter()&&(!message->display()||message->display()==display_))send_(message->type()!=ui::kKeyDownMessage);return false;}
+};
+}
 struct Editor::ScriptState {
- script::Runtime runtime;script::Client client;std::unique_ptr<ExtensionMenuAdapter> menus;std::unique_ptr<extension::JsRuntimeHost> extensions;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
+ script::Runtime runtime;script::Client client;std::unique_ptr<ExtensionMenuAdapter> menus;std::unique_ptr<extension::JsRuntimeHost> extensions;std::unique_ptr<ExtensionInputObserver> extensionInput;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
  ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
 };
 void Editor::initializeScripts(const std::filesystem::path& root){
@@ -812,10 +821,12 @@ void Editor::initializeScripts(const std::filesystem::path& root){
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
   state->menus=std::make_unique<ExtensionMenuAdapter>(font_,skin_,toolIcons_,this,menuBar_,palettePreferencePath().parent_path()/"extension-storage.json",[this]{return pending_==Pending::None;},[this]{return documentOpen_&&!homeOpen_;},[this]{return !scripts_||scripts_->client.busy()||!scripts_->queued.empty();},[this](const std::string& id){runScript(id);},[this]{refresh();},[this](const std::u32string& error){status_=error;invalidate();});
   state->extensions=std::make_unique<extension::JsRuntimeHost>((root.empty()?script::executableDirectory():root)/"extensions",smoke_?root/"extension-runtime-storage.json":palettePreferencePath().parent_path()/"extension-storage.json",extensionWorkspaceServices(),extension::nativeHostServices([this](const winrt::hstring& message){status_=unicodeText(winrt::to_string(message));invalidate();}),[this](const std::string& id){auto status=[this](const winrt::hstring& message){status_=unicodeText(winrt::to_string(message));invalidate();};return diagnostics_?extension::nativeDiagnosticServices(diagnostics_,id,status):extension::DiagnosticServices{{},status,{}};},[weak=std::weak_ptr<ScriptState>(state)](auto host,const auto& token){if(auto live=weak.lock();live&&live->menus)live->menus->bindRuntime(std::move(host),token.extensionId,token.generation);},[weak=std::weak_ptr<ScriptState>(state)](const std::string& id){if(auto live=weak.lock();live&&live->menus)live->menus->unbindRuntime(id);},[this](const std::string& error){status_=U"扩展 Runtime："+unicodeText(error);invalidate();},[this]{return homeOpen_;},[this,root](const std::string& id,const extension::WindowDefinition& definition,extension::JsFormCallbacks callbacks){return std::make_unique<NativeJsForm>(font_,skin_,assets_,display(),smoke_?root:palettePreferencePath().parent_path(),id,definition,std::move(callbacks));});
-  state->timer.Tick.connect([this]{pumpScripts();});state->timer.start();updateScriptsMenu();
+  state->extensionInput=std::make_unique<ExtensionInputObserver>(display(),[weak=std::weak_ptr<ScriptState>(state)](bool pointer){if(auto live=weak.lock();live&&live->extensions)live->extensions->interaction(pointer);});
+  state->timer.Tick.connect([this]{pumpScripts();});state->timer.start();publishExtensionState();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
 }
-void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->extensions.reset();scripts_->host.reset();scripts_.reset();}
+void Editor::publishExtensionState(){if(!scripts_||!scripts_->extensions)return;if(scripts_->extensions->observesEditor())scripts_->extensions->observeEditor(extensionEditorSnapshot());static const char* locales[]={"zh-CN","en-US","ja-JP","ko-KR","fr-FR","de-DE","es-ES","pt-BR","ru-RU"};scripts_->extensions->locale(locales[std::clamp(runtimePreferences_.index("general.language.Select"),0,8)]);}
+void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->extensionInput.reset();scripts_->extensions.reset();scripts_->host.reset();scripts_.reset();}
 void Editor::runScript(const std::string& id){if(!scripts_||scripts_->client.busy()||!scripts_->queued.empty()||pending_!=Pending::None||!documentOpen_||homeOpen_)return;cancelStroke();if(!scripts_->brushes.valid())scripts_->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});scripts_->queued=id;scripts_->queuedIdentity=currentDocument().identity();scripts_->queuedLayer=currentDocument().layer().id;scripts_->queuedFrame=currentDocument().frame().id;}
 bool Editor::escapeScript(){if(!scripts_||(!scripts_->client.session()&&!scripts_->host->hasReport()))return false;scripts_->host->queueEscape();return true;}
 void Editor::pumpScripts(){
@@ -823,7 +834,7 @@ void Editor::pumpScripts(){
  if(state->brushes.valid()&&state->brushes.wait_for(std::chrono::seconds(0))==std::future_status::ready){try{state->localBrushes=state->brushes.get().brushes;}catch(const std::exception& e){state->queued.clear();state->client.failRequest(e.what());}}
  if(pending_!=Pending::None)return;
  if(state->menus)state->menus->pump();
- if(state->extensions)state->extensions->pump();
+ publishExtensionState();if(state->extensions)state->extensions->pump();
  auto* active=documentOpen_&&!homeOpen_?&currentDocument():nullptr;
  const auto identity=currentDocument().identity(),content=currentDocument().contentRevision(),history=currentDocument().historyRevision(),overlay=currentDocument().floatingOverlayRevision();const auto frame=currentDocument().frame().id,layer=currentDocument().layer().id;
  if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==currentDocument().identity()&&state->queuedLayer==currentDocument().layer().id&&state->queuedFrame==currentDocument().frame().id)state->host->run(active,std::move(id));}
@@ -837,7 +848,7 @@ void Editor::pumpScripts(){
 void Editor::updateScriptsMenu(){
  if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;if(!scripts_->publishingMenu)client.refresh();scripts_->menuRevision=client.listingRevision();auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
  if(scripts_->menus)scripts_->menus->request(client.extensionsJson());
- if(scripts_->extensions)scripts_->extensions->reconcile(client.extensionsJson());
+ if(scripts_->extensions){scripts_->extensions->observeEditor(extensionEditorSnapshot());scripts_->extensions->reconcile(client.extensionsJson());}
  using namespace winrt::Windows::Data::Json;JsonArray list;for(auto value:JsonArray::Parse(winrt::to_hstring(client.scriptsJson())))if(!scripts_->menus||!scripts_->menus->placed(winrt::to_string(value.GetObject().GetNamedString(L"id"))))list.Append(value);
  if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
@@ -1140,8 +1151,8 @@ void Editor::smokeScriptEntry(){
  };checkContributions();
  auto checkJsRuntime=[&]() __declspec(noinline) {
   const auto package=root/"extensions"/"native-js";std::filesystem::create_directories(package);const auto key="formal-"+std::to_string(GetTickCount64());
-  std::ofstream(package/"manifest.json")<<R"({"schemaVersion":2,"id":"native-js","name":"Native JS","version":"1","apiVersion":"1.0.0","commands":[{"id":"go","name":"Native runtime command","runtimeEvent":"formal"}],"menuItems":[{"id":"edit","menu":"edit","commands":["go"]}],"runtime":{"entry":"runtime.html","permissions":["runtime","commands","storage","ui","windows"],"resources":{"form":"form.html"}}})";
-  std::ofstream(package/"runtime.html")<<"<script>moonsprite.on('activate',async()=>{await moonsprite.storage.set({key:'"<<key<<"',value:'ready'});await moonsprite.ui.notify({message:'JS formal ready'});});moonsprite.on('command',async event=>{await moonsprite.storage.set({key:'"<<key<<"',value:event.event});await moonsprite.ui.notify({message:'JS formal command'});await moonsprite.windows.open({windowId:'profile',resourceId:'form',options:{presentation:'dialog',component:'form',title:'JS profile'}});});</script>";
+  std::ofstream(package/"manifest.json")<<R"({"schemaVersion":2,"id":"native-js","name":"Native JS","version":"1","apiVersion":"1.0.0","commands":[{"id":"go","name":"Native runtime command","runtimeEvent":"formal"}],"menuItems":[{"id":"edit","menu":"edit","commands":["go"]}],"runtime":{"entry":"runtime.html","permissions":["runtime","commands","storage","ui","windows","events"],"resources":{"form":"form.html"}}})";
+  std::ofstream(package/"runtime.html")<<"<script>const observed=[];moonsprite.on('editor-event',event=>{observed.push({name:event.name,detail:event.detail});return moonsprite.storage.set({key:'formal-events',value:observed});});moonsprite.on('activate',async()=>{await moonsprite.storage.set({key:'"<<key<<"',value:'ready'});await moonsprite.ui.notify({message:'JS formal ready'});});moonsprite.on('command',async event=>{await moonsprite.storage.set({key:'"<<key<<"',value:event.event});await moonsprite.ui.notify({message:'JS formal command'});await moonsprite.windows.open({windowId:'profile',resourceId:'form',options:{presentation:'dialog',component:'form',title:'JS profile'}});});</script>";
   std::ofstream(package/"form.html")<<R"HTML(<script>
 let model={name:'Moon'};
 const view=requestId=>moonsprite.window.postMessage({type:'ui-state',status:requestId?'Saved':'Ready',nodes:[{id:'name',type:'input',label:'Name',value:model.name},{id:'profile-save',type:'button',label:'Save',action:{type:'save'}},{id:'profile-close',type:'button',label:'Close',action:{type:'close'}}],...(requestId?{result:{requestId}}:{})});
@@ -1153,6 +1164,8 @@ moonsprite.window.onMessage(async message=>{if(message.type==='close'){await moo
   auto waitForm=[&](auto ready){const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();manager()->dispatchMessages();std::this_thread::yield();}while(!ready()&&std::chrono::steady_clock::now()<deadline);if(!ready())throw std::runtime_error("Formal QuickJS native form roundtrip failed: "+utf8Text(status_));};
   waitForm([&]{return form()!=nullptr;});auto* view=form();auto* field=dynamic_cast<PixelEntry*>(view->controlForCheck(L"name"));if(!field)throw std::runtime_error("Real JS form input missing");field->setText("Native Moon");field->Change();dynamic_cast<PixelButton*>(view->controlForCheck(L"profile-save"))->Click();
   waitForm([&]{return form()&&!form()->stateForCheck().busy()&&form()->stateForCheck().view().GetNamedString(L"status",L"")==L"Saved";});extension::Storage formSaved(root/"extension-runtime-storage.json");if(formSaved.get(u"native-js",u"profile-form").GetObject().GetNamedString(L"name")!=L"Native Moon"||form()->stateForCheck().drafts().Size()!=0)throw std::runtime_error("Formal JS form draft/storage mismatch");
+  runToolCommand(activeRailTool()=="eraser"?"tool.pencil":"tool.eraser");refresh();setSharedColor(currentDocument().palette().primary^0x00010101u,false);currentDocument().deselectPixels();refresh();currentDocument().selectAllPixels();currentView().zoom+=1;refresh();
+  waitForm([&]{extension::Storage events(root/"extension-runtime-storage.json");auto value=events.get(u"native-js",u"formal-events");if(value.ValueType()!=winrt::Windows::Data::Json::JsonValueType::Array)return false;std::set<std::wstring> names;for(auto event:value.GetArray())names.insert(std::wstring(event.GetObject().GetNamedString(L"name")));return names.count(L"tool.changed")&&names.count(L"color.primary-changed")&&names.count(L"selection.created")&&names.count(L"view.changed");});
   dynamic_cast<PixelButton*>(form()->controlForCheck(L"profile-close"))->Click();waitForm([&]{return form()==nullptr;});
   command=find(menuBar_->getMenu());command->Click();waitForm([&]{return form()!=nullptr;});publish(false);if(form())throw std::runtime_error("Disabled runtime retained native form");publish(true);publish(false);
  };checkJsRuntime();

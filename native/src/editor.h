@@ -77,7 +77,7 @@
 #include "menu_catalog.h"
 #include "project_encode.h"
 #include "cel_thumbnail_pipeline.h"
-namespace moon::extension {struct WorkspaceServices;}
+namespace moon::extension {struct WorkspaceServices;struct EditorSnapshot;}
 namespace moon::script {struct PlaybackRequest;}
 namespace moon {class HomeBannerPane;class PixelTextArea;class LegacyCursors;class FreeTileInstancesPanel;class SheetImportTask;class ImageResizeTask;}
 
@@ -3214,6 +3214,7 @@ public:
   void setSharedColor(Pixel,bool secondary);void swapSharedColors();
   void rememberSelectedColor(bool secondary);
   extension::WorkspaceServices extensionWorkspaceServices();
+  extension::EditorSnapshot extensionEditorSnapshot();void publishExtensionState();
   void smokeExtensionWorkspace();
   void smokePlaybackFloating();
   void smokeSparseProjectIo(const std::filesystem::path& directory);

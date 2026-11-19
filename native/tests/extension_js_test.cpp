@@ -1,4 +1,5 @@
 #include "extension_js_session.h"
+#include "extension_js_host.h"
 #include "extension_form_state.h"
 #include <iostream>
 #include <thread>
@@ -29,6 +30,22 @@ int main(){winrt::init_apartment();try{
  {JsEngine engine;engine.evaluate("setInterval(()=>console.log('tick'),0);Promise.resolve().then(()=>console.log('promise'));","jobs.js");engine.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));check(!engine.takeMessages().empty(),"Jobs/timers failed");}
  check(runtimeScripts(R"(<div title="<script>throw 1</script>"></div><style>a{content:'<script>throw 2</script>'}</style><textarea><script>throw 3</script></textarea><script>let a=1</script>)").size()==1,"HTML raw text/quoted attributes executed script");
  check(runtimeScripts("<script>let a=1</script><SCRIPT type='module'>export const b=2</SCRIPT>").size()==2,"Inline/module source extraction");
+ // Production runtime coordinator: independent baseline, event delivery,
+ // locale, pointer throttle and actual 30-second clock scheduling.
+ {
+  const auto directory=root/"observer";std::filesystem::create_directories(directory/"observe");
+  auto metadata=JsonObject::Parse(LR"({"schemaVersion":2,"id":"observe","name":"Observe","version":"1","apiVersion":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime","events","storage"]}})");std::ofstream(directory/"observe"/"manifest.json")<<winrt::to_string(metadata.Stringify());
+  std::ofstream(directory/"observe"/"runtime.html")<<R"(<script>const events=[];let clocks=0,pointers=0,keys=0;moonsprite.on('editor-event',event=>{events.push(event);return moonsprite.storage.set({key:'events',value:events});});moonsprite.on('clock',()=>moonsprite.storage.set({key:'clock',value:++clocks}));moonsprite.on('interaction',event=>moonsprite.storage.set({key:event.kind,value:event.kind==='pointer'?++pointers:++keys}));moonsprite.on('locale-changed',event=>moonsprite.storage.set({key:'locale',value:event.locale}));</script>)";
+  std::vector<std::string> failures;JsRuntimeHost manager(directory,directory/"storage.json",{},{},{},{},{},[&](const auto& error){failures.push_back(error);});
+  EditorSnapshot state;state.activeId="project";EditorProjectSnapshot first;first.id="project";first.tool="pencil";first.layers={"one"};first.layer="one";first.frame="frame";state.projects.push_back(first);manager.observeEditor(state);manager.locale("en-US");JsonObject item;item.Insert(L"enabled",JsonValue::CreateBooleanValue(true));item.Insert(L"manifest",metadata);JsonArray listing;listing.Append(item);manager.reconcile(winrt::to_string(listing.Stringify()));
+  const auto now=editorEventTime();auto tick=[&](std::int64_t clock){for(int i=0;i<20;++i)manager.pump(clock);};tick(now);
+  {Storage result(directory/"storage.json");check(result.get(u"observe",u"events").ValueType()==JsonValueType::Null,"Subscription replayed preexisting project");check(result.get(u"observe",u"clock").ValueType()==JsonValueType::Null,"Clock published on every script pump");check(result.get(u"observe",u"locale").GetString()==L"en-US","Initial production locale missing");}
+  state.projects[0].tool="eraser";state.projects[0].playing=true;state.projects[0].revision=1;state.projects[0].selectionIdentity=1;state.projects[0].primary={1,2,3,4};state.projects[0].secondary={5,6,7,8};state.projects[0].view="zoom2";state.projects[0].layer="two";state.projects[0].layers={"two"};state.projects[0].frame="next";manager.observeEditor(state);tick(now);manager.observeEditor(state);tick(now);
+  {Storage result(directory/"storage.json");auto events=result.get(u"observe",u"events").GetArray();const std::vector<std::wstring> expected={L"document.changed",L"tool.changed",L"layer.activated",L"layer.created",L"layer.deleted",L"frame.changed",L"animation.started",L"selection.created",L"color.primary-changed",L"color.secondary-changed",L"view.changed"};check(events.Size()==expected.size(),"Production event duplication/loss");for(std::size_t i=0;i<expected.size();++i)check(events.GetObjectAt(std::uint32_t(i)).GetNamedString(L"name")==expected[i],"Production event order differs from legacy");}
+  manager.interaction(true);manager.interaction(true);manager.interaction(false);manager.interaction(false);manager.locale("ja-JP");tick(now);tick(now+30001);tick(now+30001);
+  {Storage result(directory/"storage.json");check(result.get(u"observe",u"pointer").GetNumber()==1&&result.get(u"observe",u"keyboard").GetNumber()==2,"Production pointer/key cadence mismatch");check(result.get(u"observe",u"clock").GetNumber()==1,"Production 30-second timer cadence mismatch");check(result.get(u"observe",u"locale").GetString()==L"ja-JP","Production locale changes missing");}
+  check(failures.empty(),"Production observer VM failed");
+ }
  // Reuse legacy extension-assets.test.ts values and quota expectations.
  {
   const auto database=root/("assets-"+std::to_string(GetTickCount64())+".sqlite");

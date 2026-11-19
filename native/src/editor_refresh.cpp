@@ -86,6 +86,7 @@ void Editor::updateControlVisibility(){
 }
 void Editor::refresh(RefreshScope scope){
   InteractionScope interactionScope(2,"refresh");
+  publishExtensionState();
   const auto needs=[scope](RefreshScope part){return (unsigned(scope)&unsigned(part))!=0;};
   if(needs(RefreshScope::Layout)){
     restoreAdvancedVisibility();

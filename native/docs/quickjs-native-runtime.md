@@ -14,7 +14,7 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。editor-event各类详细订阅、输入事件、色样事件、导出事件、非默认语言变更和文件拖放入口仍需正式接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill/history/save等显式操作通知、色样完成、导出事件及文件拖放仍待正式入口接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
@@ -31,3 +31,9 @@
 窗口桥 assets.get/set/remove 复用旧版参数和校验：键非空、无控制字符、UTF-8最多160字节；value必须字符串，UTF-8单素材最多8 MiB、每扩展最多64 MiB，替换排除原记录。Windows系统 winsqlite3 提供事务存储，独立 extension-assets.sqlite 与配置存储分开；BLOB保留UTF-16，包括未配对代理项和NUL，配额采用旧版TextEncoder替换规则计数。BEGIN IMMEDIATE 将元数据配额查询与写入放在同一事务；超额/写入失败回滚，跨窗口/连接共用数据库事务。不把所有素材读入内存后重写配置文件。
 
 异步Promise/FIFO worker承接IndexedDB异步执行，数据库创建/读写/锁等待不在UI线程；关闭或重试丢弃陈旧回复，已交给事务的写入可完成，与旧页关闭后数据库事务独立一致。无libc/文件系统API向扩展开放。为合法8 MiB字符串的JSON转义留空间，窗口VM上限256 MiB、窗口出入站队列128 MiB；Runtime VM仍64 MiB/20 MiB。worker总待处理256 MiB/512项、每页256个素材请求为明确原生准入边界，单个脚本100/20ms及任务预算仍适用，不作无限时序等价声明。
+
+## 正式编辑器状态与输入观察
+
+已有 SessionHost/EditorEventSubscription 直接连接正式Editor。订阅建立时捕获当前小型标量快照，仅有活动events订阅时refresh及脚本泵观察全部活动/非活动会话；无订阅时不构造工程快照。扩展发现发布时单次取基线，沿用workspace-extension-events.ts顺序比较工程、内容版本、工具类别、图层、帧、播放、选择身份、颜色及视图。SelectionMask由Document selectionRevision承接对象替换身份，不复制蒙版；文件路径仅用于opened布尔值，不发送路径。工具子类型归入旧版ToolId类别。视图比较对应原生已有zoom/pan/rotation/mirror/grid/iso/luminance/repeat/selection显示字段，原生尚无字段不伪造事件。
+
+UI message filter承接全窗口pointerdown/move/wheel和keydown捕获，在原生控件处理前只排队事件；指针复用500ms门限，键盘逐次发送，销毁时移除filter。每扩展从订阅建立开始30秒一次clock，迟到仅发一次、不追赶；修正此前每次30ms脚本泵误发clock的问题。语言从现有preferences catalog索引映射zh-CN/en-US/ja-JP/ko-KR/fr-FR/de-DE/es-ES/pt-BR/ru-RU，首次加载与后续变化共用既有locale协议。

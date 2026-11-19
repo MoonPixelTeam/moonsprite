@@ -8445,3 +8445,11 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 直接沿用 extension-assets.ts/test.ts 的 get/set/remove、键160 UTF-8字节、单素材8 MiB、每扩展64 MiB、替换排除旧值、失败回滚及隔离语义。IndexedDB 必要适配为 Windows 系统 SQLite 独立数据库，配额查询与写入在 BEGIN IMMEDIATE 同一事务；UTF-16 BLOB 保留NUL与未配对代理项，TextEncoder计数语义保留。复用原生FIFO/promise后台队列，不在UI执行数据库创建、锁等待或读写；关闭/重试丢弃陈旧回复。真实窗口桥与生产表单接通资产Promise，窗口VM/消息预算为合法素材序列化调整并明确登记，Runtime预算保持原值。
 
 沿用旧版400KB/8MiB/64MiB用例，验证持久化、隔离、超额回滚、八次排队写入、替换不重复计费、删除释放配额、空串/UTF16/NUL以及真实窗口JS往返；extension-js-tests退出0。初轮合法八次8MiB写入被原生队列容量阻止，调整UTF16队列总容量后通过。最终唯一正式Release构建成功（quickjs-assets-final-build.log）；正式主题/指针 --script-entry-check 用 Start-Process -Wait -PassThru 取得退出0，覆盖生产窗口400KB素材写读比对/删除、输入确认保存与关闭/禁用。来源1056文件、架构/编辑器边界及diff检查通过，无人工鼠标或图像验收。普通HTML/Canvas/覆盖层和详细事件仍是缺口，整体 INCOMPLETE；保留main.cpp既有修改及用户数据。
+
+## 2026-11-20 正式扩展状态、输入与时钟观察
+
+按 workspace-extension-events.ts/test.ts 和 ExtensionRuntimeHost.tsx，将既有 SessionHost/EditorEventSubscription 接入真实 Editor 标量快照：工程创建/打开/关闭/激活、内容版本、工具类别、图层/帧、播放、选择身份、颜色和视图，保持旧版事件顺序、初始订阅基线与无变化不重发。原生选择修订承接对象替换身份，不复制蒙版；路径仅参与 opened 布尔判断。仅存在活动 events 订阅时进行刷新/泵快照，发现发布时单次取基线。全窗口输入 filter 复用指针500ms节流与逐次键盘通知，生命周期移除；语言映射现有偏好选项，时钟纠正为每会话30秒一次，不再每次30ms脚本泵发送。
+
+真实协调器用例覆盖初始不回放、状态差分顺序与无重复、语言、指针/键盘与30秒时钟，最终 extension-js-tests 退出0。唯一正式 Release 构建成功（quickjs-events-final-build.log）；正式主题/指针 --script-entry-check 经 Start-Process -Wait -PassThru 获取真实退出0，覆盖真实工具/前景色/选择/缩放变化经JS保存为事件记录，沿用菜单、表单、素材、关闭及禁用链路。构建曾因工具连接中断停止，确认无编译进程后重新构建；最终使用 MSBuild UseMultiToolTask=true、EnforceProcessCountAcrossBuilds=true、CL_MPCount=4，并保留CMake parallel8。后续增量沿用这些本机构建参数，避免来回改变工具跟踪方式。来源1056文件、架构/编辑器边界与diff通过。夹具本轮误从根目录启动，核验所有权marker后整体移到native/build，无删除。未做人工鼠标/图像验收。
+
+显式绘制/填充/历史/保存/导出操作完成通知、色样完成及文件拖放入口仍待接通，HTML/覆盖层映射仍有缺口，整体迁移 INCOMPLETE；保留 main.cpp 原有差异及用户文件。

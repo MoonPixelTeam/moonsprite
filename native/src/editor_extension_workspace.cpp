@@ -1,6 +1,8 @@
 #include "editor.h"
 #include "extension_session_host.h"
 #include "extension_native_services.h"
+#include <sstream>
+#include <iomanip>
 
 namespace moon::editor {
 namespace {
@@ -8,6 +10,18 @@ winrt::hstring workspaceText(const std::string& value){return winrt::to_hstring(
 extension::ProjectSummary summary(const Document& value){
  return {workspaceText(std::to_string(value.identity())),workspaceText(utf8Text(value.name())),workspaceText(std::string(color_mode::name(value.colorMode()))),value.width(),value.height(),value.timeline().state().layers.size(),value.timeline().state().frames.size(),value.dirty(),value.contentRevision()};
 }
+}
+// Same scalar-only projection as workspace-extension-events.ts; no document,
+// paths, pixels or selection buffers escape to the extension snapshot.
+extension::EditorSnapshot Editor::extensionEditorSnapshot(){
+ extension::EditorSnapshot snapshot;if(!documentOpen_)return snapshot;ensureProjects();snapshot.activeId=std::to_string(currentDocument().identity());
+ for(const auto& session:projects_){if(!session->value)continue;const auto& doc=*session->value;const auto& tools=session->tools;const auto& view=session->view;extension::EditorProjectSnapshot project;
+  project.id=std::to_string(doc.identity());project.opened=!session->path.empty()||!doc.sourceFilePath().empty();project.revision=doc.contentRevision();project.layer=doc.layer().id;project.frame=doc.frame().id;project.playing=session->playback.playing;
+  project.tool=tools.liquifyTool?"liquify":tools.smoothTool?"smooth":tools.airbrushTool?"airbrush":tools.rotateTool?"rotate":tools.textTool?"text":tools.moveTool?"move":tools.shapeTool?((tools.shapeKind==ShapeKind::Line||tools.shapeKind==ShapeKind::Curve)?"line":"shape"):tools.zoomTool?"zoom":tools.eyedropperTool?"eyedropper":tools.handTool?"hand":tools.selectionTool?"selection":(tools.gradientTool||tools.fillTool)?(tools.magicEraserTool?"magic-eraser":"fill"):tools.eraser?"eraser":"pencil";
+  for(const auto& layer:doc.timeline().state().layers)project.layers.push_back(layer.id);if(doc.selection())project.selectionIdentity=doc.selectionRevision();
+  auto rgba=[](Pixel color){return std::array<int,4>{int(color&255),int((color>>8)&255),int((color>>16)&255),int(color>>24)};};project.primary=rgba(doc.palette().primary);project.secondary=rgba(doc.palette().secondary);
+  const auto grid=doc.customGrid();std::ostringstream encoded;encoded.imbue(std::locale::classic());encoded<<std::setprecision(17)<<view.zoom<<','<<view.canvas.x<<','<<view.canvas.y<<','<<view.rotation.degrees<<','<<view.rotation.mirrorX<<','<<view.rotation.mirrorY<<','<<doc.showPixelGrid()<<','<<doc.showCustomGrid()<<','<<grid.x<<','<<grid.y<<','<<grid.width<<','<<grid.height<<','<<view.isoViewEnabled<<','<<view.relativeLuminance<<','<<int(view.tileRepeat)<<','<<view.showSelectionOutline<<','<<view.selectionPivotVisible;project.view=encoded.str();snapshot.projects.push_back(std::move(project));
+ }return snapshot;
 }
 // Event-thread services use live session state on every call. The owning host
 // must be destroyed before Editor; no document or pixel snapshot is retained.
