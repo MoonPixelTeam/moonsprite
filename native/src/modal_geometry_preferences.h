@@ -10,15 +10,20 @@ class ModalGeometryPreferences {
  using Json=winrt::Windows::Data::Json::JsonValue;
  struct Pending {std::string encoded;std::shared_future<void> task;};
  static std::map<std::filesystem::path,Pending>& pending(){static std::map<std::filesystem::path,Pending> snapshots;return snapshots;}
+ static std::map<std::filesystem::path,std::weak_ptr<Object>>& liveValues(){static std::map<std::filesystem::path,std::weak_ptr<Object>> values;return values;}
+ std::shared_ptr<Object> sharedValues_;
  std::filesystem::path path_;std::wstring key_;Object values_;std::shared_future<void> write_;
  bool dirty_=false,explicitHeight_=false;std::string error_;
  std::optional<gfx::Rect> remembered_;gfx::Rect rememberedArea_;bool rememberedExplicit_=false;
 public:
  ModalGeometryPreferences(std::filesystem::path path,std::string key):path_(std::move(path)),key_(winrt::to_hstring("moonsprite.modal."+key).c_str()){
+  if(auto live=liveValues()[path_].lock()){sharedValues_=std::move(live);values_=*sharedValues_;return;}
+  auto load=[&]{
   // A modal may reopen before the accepted final FIFO write reaches disk.
   // Reuse its exact pending snapshot without waiting for the worker.
   if(auto found=pending().find(path_);found!=pending().end()){if(found->second.task.wait_for(std::chrono::seconds(0))!=std::future_status::ready){values_=Object::Parse(winrt::to_hstring(found->second.encoded));return;}pending().erase(found);}
   try{std::ifstream input(path_,std::ios::binary|std::ios::ate);if(!input)return;const auto size=input.tellg();if(size<0||size>1024*1024)return;std::string bytes(std::size_t(size),'\0');input.seekg(0);if(input.read(bytes.data(),bytes.size()))values_=Object::Parse(winrt::to_hstring(bytes));}catch(...){values_=Object{};}
+  };load();sharedValues_=std::make_shared<Object>(values_);liveValues()[path_]=sharedValues_;
  }
  ~ModalGeometryPreferences(){flush();}
  bool explicitHeight()const{return explicitHeight_;}

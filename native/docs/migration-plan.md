@@ -8382,3 +8382,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 数字提交双精度迁移
 
 对照 NumberInput.tsx commit/normalize 和 numeric-expression.ts，修正原生表达式提交先格式化为12位有效数字导致Lua接收值丢失精度的问题。仅启用numericExpressionFilter的字段改用17位往返格式，其他输入保留原精度；ScriptNumberEntry以C locale strtod接受有限次正规数和下溢零，避免stod把有效极小值作为异常忽略。实际脚本窗口夹具精确验证1/3、17位十进制、最大安全整数、最小非零双精度、下溢零及无效草稿保留已接受值。唯一正式Release构建成功，正式主题/指针下--script-report-check、--color-editor-check实际退出均为0；既有四项extension-form检查通过4.26秒，但在最终链接前执行，不作为新程序验收。来源1043文件及证据快照、diff检查通过，无人工或图像验收，无性能优化，整体迁移INCOMPLETE。文件拖入已有实现/旧版对照核对未发现新增差异，本阶段未修改该链路。保留main.cpp及用户文件。
+
+
+## 2026-11-19 Lua 窗口几何记忆迁移
+
+对照 LuaScriptDialog.tsx 的 lua-script-${sessionId}-${dialog.id}、ModalShell fitContent 和 floating-panel 持久化，将 Lua 窗口接入既有 ModalGeometryPreferences。窗口按会话和对话框独立保存显示区域相对位置与宽度，未手动调整时模型返回可自动增减高度，手动调整后保留显式高度；显示区域变化沿用已有浮窗映射，关闭时提交最终快照。同一路径的存活几何管理器共享 WinRT JsonObject，避免多个窗口各自保存时覆盖其他键；沿用 FIFO 写入与待写快照恢复。原生内容尺寸继续遵循现有 UI 规范。唯一正式 Release 构建成功（lua-window-geometry-final-build.log）；正式主题和指针下 --script-entry-check 实际退出0，覆盖内容增减、手动调整保留、立即重开恢复和双窗口键落盘。来源1043文件及证据快照、diff检查通过。未人工鼠标或图像验收，无性能优化；整体迁移 INCOMPLETE。未清理或提交用户文件。
