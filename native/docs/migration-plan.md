@@ -8358,3 +8358,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 导出多点名称迁移
 
 对照 export-settings.ts::withExportFileExtension 和 ExportDialogHost.tsx，统一导出默认名、格式切换与最终路径的已知扩展名替换规则：保留 art.v2 等未知后缀，忽略已知扩展名大小写，先后裁剪 ECMAScript 空白，空名称使用 MoonSprite-export。表单默认名承接工程名称，图层后缀继续由实际导出规划生成。既有正式导出偏好检查增加多点名称、大小写、空白及 BMP/WebP 往返断言。唯一正式 Release 构建退出0（export-dotted-name-build.log），--export-format-preference-check 带正式主题和指针实际退出0；来源1043文件覆盖及快照、diff检查通过。未人工或图像验收，整体迁移INCOMPLETE；保留已有main.cpp及用户文件。
+
+## 2026-11-19 Runtime 空工作区查询迁移
+
+对照 ExtensionRuntimeHost.tsx 的实际 handleRequest：无活动工程时 document.getLayers/document.getFrames 返回空数组，document.undo/document.redo 返回 null 且不调用工程历史；权限和断开服务仍按原规则拒绝。原生 RequestHost 补齐中性结果，并在正式 Editor 空工作区检查中验证四项结果与无副作用。Release request/session 测试目标及正式 Release 构建通过；--extension-workspace-check 使用正式主题和指针实际退出0，来源覆盖1043文件及证据快照、diff检查通过。生产 JavaScript 执行器与 HTML 运行时仍未接入，整体迁移继续 INCOMPLETE；保留 main.cpp 差异和用户文件。
