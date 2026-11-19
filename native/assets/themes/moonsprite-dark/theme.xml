@@ -285,6 +285,11 @@
     <part id="icon.selectionFlipHorizontal-disabled" x="108" y="764" w="11" h="11" />
     <part id="icon.selectionFlipVertical" x="120" y="764" w="11" h="11" />
     <part id="icon.selectionFlipVertical-disabled" x="132" y="764" w="11" h="11" />
+    <!-- styles.css .lua-script-radio-row: exact CSS box conversion. -->
+    <part id="lua_radio.unchecked" x="0" y="776" w="10" h="10" />
+    <part id="lua_radio.checked" x="12" y="776" w="10" h="10" />
+    <part id="lua_radio.normal" x="26" y="776" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
+    <part id="lua_radio.hover" x="30" y="776" w1="1" w2="1" w3="1" h1="1" h2="1" h3="1" />
   </parts>
   <styles>
     <style id="role_button.normal">
@@ -956,5 +961,9 @@
     <style id="icon.selectionFlipHorizontal-disabled"><icon part="icon.selectionFlipHorizontal-disabled" /></style>
     <style id="icon.selectionFlipVertical"><icon part="icon.selectionFlipVertical" /></style>
     <style id="icon.selectionFlipVertical-disabled"><icon part="icon.selectionFlipVertical-disabled" /></style>
+    <style id="lua_radio.unchecked"><icon part="lua_radio.unchecked" /></style>
+    <style id="lua_radio.checked"><icon part="lua_radio.checked" /></style>
+    <style id="lua_radio.normal"><background-border part="lua_radio.normal" /></style>
+    <style id="lua_radio.hover"><background-border part="lua_radio.hover" /></style>
   </styles>
 </theme>

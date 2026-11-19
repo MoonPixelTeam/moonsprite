@@ -135,7 +135,7 @@ ThemeAtlas loadThemeAtlas(const std::filesystem::path& path) {
         auto& p=theme.parts[found->second];need(layer.tag=="icon" || p.nineSlice,"Background-border requires a nine-slice part");
         if(runtime.rfind("tool.",0)==0) need(p.w<=20 && p.h<=20,"Tool icon must fit 20x20 pixels");
         need(theme.assets.patches.emplace(key,p.patch).second,"Multiple image layers unsupported");
-        p.connected=p.connected||live(runtime);
+        p.connected=p.connected||live(runtime)||runtime.rfind("lua_radio.",0)==0;
         if(runtime=="button" && suffix=="selected") theme.assets.patches["button.pressed"]=p.patch;
       }
     }

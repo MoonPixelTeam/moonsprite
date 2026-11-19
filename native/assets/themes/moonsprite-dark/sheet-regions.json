@@ -2511,5 +2511,41 @@
     "h": 11,
     "source": "legacy/src/renderer/src/components/PixelUtilityIcon.tsx selectionFlipVertical; exact SVG rasterizer conversion",
     "usage": "Free tile instance context menu; editable sheet region"
+  },
+  {
+    "id": "lua_radio.unchecked",
+    "x": 0,
+    "y": 776,
+    "w": 10,
+    "h": 10,
+    "source": "legacy/src/renderer/src/styles.css .lua-script-radio-row > button/i; CSS box conversion via native/scripts/import-legacy-lua-radio.ps1",
+    "usage": "Lua radio button; native theme colors and shared 2px caption gap"
+  },
+  {
+    "id": "lua_radio.checked",
+    "x": 12,
+    "y": 776,
+    "w": 10,
+    "h": 10,
+    "source": "legacy/src/renderer/src/styles.css .lua-script-radio-row > button/i; CSS box conversion via native/scripts/import-legacy-lua-radio.ps1",
+    "usage": "Lua radio button; native theme colors and shared 2px caption gap"
+  },
+  {
+    "id": "lua_radio.normal",
+    "x": 26,
+    "y": 776,
+    "w": 3,
+    "h": 3,
+    "source": "legacy/src/renderer/src/styles.css .lua-script-radio-row > button/i; CSS box conversion via native/scripts/import-legacy-lua-radio.ps1",
+    "usage": "Lua radio button; native theme colors and shared 2px caption gap"
+  },
+  {
+    "id": "lua_radio.hover",
+    "x": 30,
+    "y": 776,
+    "w": 3,
+    "h": 3,
+    "source": "legacy/src/renderer/src/styles.css .lua-script-radio-row > button/i; CSS box conversion via native/scripts/import-legacy-lua-radio.ps1",
+    "usage": "Lua radio button; native theme colors and shared 2px caption gap"
   }
 ]
