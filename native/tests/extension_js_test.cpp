@@ -1,4 +1,5 @@
 #include "extension_js_session.h"
+#include "extension_form_state.h"
 #include <iostream>
 using namespace moon::extension;using namespace winrt::Windows::Data::Json;
 void check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
@@ -27,5 +28,32 @@ int main(){winrt::init_apartment();try{
  {JsEngine engine;engine.evaluate("setInterval(()=>console.log('tick'),0);Promise.resolve().then(()=>console.log('promise'));","jobs.js");engine.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));check(!engine.takeMessages().empty(),"Jobs/timers failed");}
  check(runtimeScripts(R"(<div title="<script>throw 1</script>"></div><style>a{content:'<script>throw 2</script>'}</style><textarea><script>throw 3</script></textarea><script>let a=1</script>)").size()==1,"HTML raw text/quoted attributes executed script");
  check(runtimeScripts("<script>let a=1</script><SCRIPT type='module'>export const b=2</SCRIPT>").size()==2,"Inline/module source extraction");
+ // Execute the actual legacy window bootstrap and documented ui-form example
+ // through authenticated runtime open, not a direct call to the presenter.
+ {
+  struct ViewState {FormState form;JsFormCallbacks callbacks;bool closed=false;};
+  struct View final:JsFormPresentation {std::shared_ptr<ViewState> state;explicit View(std::shared_ptr<ViewState> value):state(std::move(value)){}void receive(const WindowValue& value)override{state->form.receive(value,state->form.generation());}void failure(const std::string& error)override{state->form.loadFailed(winrt::to_hstring(error).c_str());}void pump()override{}void close()override{state->closed=true;state->form.close();}};
+  std::shared_ptr<ViewState> view;int opened=0;
+  auto forms=RuntimeDirectory::parseManifest(JsonObject::Parse(LR"({"schemaVersion":2,"id":"js-form","name":"JS Form","version":"1","apiVersion":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime","windows"],"resources":{"form":"form.html","data":"form-data.bin"}}})"),root,"js-form");
+  std::ofstream(root/"form-data.bin",std::ios::binary)<<"ABC";
+  const std::string formSource=R"HTML(<script>
+let name='Moon';
+const draw=requestId=>moonsprite.window.postMessage({type:'ui-state',nodes:[{id:'name',type:'input',value:name},{id:'save',type:'button',action:{type:'save'}},{id:'close',type:'button',action:{type:'close'}}],...(requestId?{result:{requestId}}:{})});
+moonsprite.window.onMessage(async message=>{if(message.type==='close'){await moonsprite.window.close();return;}if(message.type==='host-ping'){await moonsprite.window.postMessage({type:'pong'});return;}if(message.type==='save'){name=message.values.name;await moonsprite.storage.set('profile',{name,id:moonsprite.window.id,tiny:5e-324});const data=await moonsprite.resources.read('data');if(data.join(',')!=='65,66,67')throw Error('window resource bytes');await moonsprite.window.postMessage({type:'saved'});await draw(message.requestId);}});draw();
+</script>)HTML";
+  std::ofstream(root/"form.html")<<formSource;
+  std::vector<std::string> formLogs;JsSession formSession(host,forms,"en-US",{},{},{},[&](const auto& line){formLogs.push_back(line);},[&](const auto&,const auto&,JsFormCallbacks callbacks){++opened;view=std::make_shared<ViewState>();view->callbacks=std::move(callbacks);return std::make_unique<View>(view);});
+  formSession.start(R"(<script>moonsprite.on('activate',()=>moonsprite.windows.open({windowId:'profile',resourceId:'form',options:{presentation:'dialog',component:'form'}}));moonsprite.on('window-message',event=>{if(event.message.type==='saved')moonsprite.windows.postMessage({windowId:'profile',message:{type:'host-ping'}});if(event.message.type==='pong')console.log('pong');});</script>)",project);
+  auto tick=[&]{for(int i=0;i<30;++i)formSession.pump(std::chrono::steady_clock::now()+std::chrono::milliseconds(20));};tick();
+  check(view&&view->form.loaded()&&view->form.loadError().empty(),"Real window bootstrap initial ui-state failed");
+  check(view->form.edit(L"name",JsonValue::CreateStringValue(L"原生 Moon")),"Native form draft missing");view->callbacks.send(*view->form.click(L"save"));tick();
+  auto profile=storage.get(u"js-form",u"profile").GetObject();check(profile.GetNamedString(L"name")==L"原生 Moon"&&profile.GetNamedString(L"id")==L"profile"&&profile.GetNamedNumber(L"tiny")==5e-324&&!view->form.busy()&&view->form.drafts().Size()==0,"Window JS storage/action/result/draft roundtrip failed");
+  check(std::find(formLogs.begin(),formLogs.end(),"pong")!=formLogs.end(),"Runtime/window message directions not connected");
+  // Retry replaces the window VM; old queued work cannot update its generation.
+  view->form.retry();view->callbacks.restart();tick();check(view->form.loaded()&&view->form.effectiveValue(L"name").GetString()==L"Moon","Window retry did not reset JS model");
+  view->callbacks.send(*view->form.click(L"close"));tick();check(view->closed,"window.close did not retire presenter");
+  formSession.stop();
+  {JsEngine window("quoted\"月");window.evaluate("if(moonsprite.window.id!==\"quoted\\\"月\")throw Error('window identity quoting');","identity.js");}
+ }
  std::cout<<"QuickJS native runtime, actual legacy bootstrap, authenticated session lifecycle passed\n";return 0;
  }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}catch(const winrt::hresult_error& error){std::cerr<<winrt::to_string(error.message())<<'\n';return 1;}}

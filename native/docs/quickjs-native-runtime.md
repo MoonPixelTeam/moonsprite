@@ -14,8 +14,14 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-本阶段不声称HTML设置页、DOM/Canvas/媒体、覆盖层、附属窗口或原生表单已由JS执行器完整接通。现有原生FormWindow/WindowRouter需要继续连接，不能把API方法名可查询当作窗口已能显示。editor-event各类详细订阅、输入事件、色样事件、导出事件、非默认语言变更和文件拖放入口仍需正式接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。editor-event各类详细订阅、输入事件、色样事件、导出事件、非默认语言变更和文件拖放入口仍需正式接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
 真实QuickJS+旧引导脚本+SessionHost夹具已验证Promise/Unicode/极小双精度/安全整数存储、权限拒绝、隔离、预加载与持续命令回调、locale/files事件、定时器、任务以及死循环中断。最终 Release 构建成功；正式主题/指针下 --script-entry-check 实际退出0，覆盖真实发现/activate、菜单命令落盘、停用/重启。文档与源码覆盖不等于全部迁移完成。
+
+## 原生表单窗口接线
+
+直接复用 ExtensionWindow.tsx 的窗口 bootstrap，仅删除隐藏逻辑页不适用的 DOM 主题/指针钩子；保留 window.id、Promise 请求和 onMessage 参数习惯，不能用 runtime 的单对象参数API替代。每个表单另建隔离VM，native presenter复用已有 FormWindow 控件、FormState 全视图/action/values/requestId往返、忙碌、文件/图片/嵌套弹窗及重试。UI动作排队，不在控件回调内执行JS或销毁窗口。资源声明、扩展身份、存储配额和精确 JSON 字符串仍由既有原生模块处理；窗口桥 storage/resources 与 Runtime 权限入口保持旧版区别。
+
+宿主管理尺寸，根窗口按旧版560×600默认值与统一原生缩放实现，复用ModalGeometryPreferences按扩展和窗口ID持久化，嵌套弹窗复用现有记忆。窗口主动ui-state、原生输入与按钮、JS确认后清草稿/解忙碌、Runtime双向消息、重试模型重置、JS关闭和禁用清理均有定向真实VM夹具。assets API暂未接入；非form/overlay明确报未迁移，不显示近似HTML。

@@ -1,5 +1,6 @@
 #include "extension_js_engine.h"
 #include "extension_js_bootstrap.h"
+#include "extension_js_window_bootstrap.h"
 #include "quickjs.h"
 #include <algorithm>
 #include <cctype>
@@ -28,6 +29,12 @@ struct JsEngine::State {
  ~State(){for(auto& item:rejected){JS_FreeValue(context,item.first);JS_FreeValue(context,item.second);}rejected.clear();if(context)JS_FreeContext(context);if(runtime)JS_FreeRuntime(runtime);}
 };
 JsEngine::JsEngine():state_(std::make_unique<State>()){evaluate(jsNativePrelude,"native-runtime.js");evaluate(jsRuntimeBootstrap,"legacy-runtime-bootstrap.js");}
+JsEngine::JsEngine(const std::string& windowId):state_(std::make_unique<State>()){
+ evaluate(jsNativePrelude,"native-window.js");
+ auto id=JS_NewStringLen(state_->context,windowId.data(),windowId.size());auto json=JS_JSONStringify(state_->context,id,JS_UNDEFINED,JS_UNDEFINED);JS_FreeValue(state_->context,id);
+ if(JS_IsException(json))throw std::runtime_error(state_->exception());const char* encoded=JS_ToCString(state_->context,json);if(!encoded){JS_FreeValue(state_->context,json);throw std::runtime_error(state_->exception());}
+ std::string source=jsWindowBootstrap;const auto at=source.find("__MOONSPRITE_WINDOW_ID__");source.replace(at,std::string("__MOONSPRITE_WINDOW_ID__").size(),encoded);JS_FreeCString(state_->context,encoded);JS_FreeValue(state_->context,json);source.replace(source.find("__MOONSPRITE_OVERLAY__"),std::string("__MOONSPRITE_OVERLAY__").size(),"false");evaluate(source,"legacy-window-bootstrap.js");
+}
 JsEngine::~JsEngine()=default;
 void JsEngine::evaluate(const std::string& source,const std::string& filename,bool module){auto& s=*state_;s.deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(100);s.checked(JS_Eval(s.context,source.c_str(),source.size(),filename.c_str(),module?JS_EVAL_TYPE_MODULE:JS_EVAL_TYPE_GLOBAL));}
 void JsEngine::deliver(const std::string& envelope){auto& s=*state_;s.deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(20);auto value=JS_ParseJSON(s.context,envelope.data(),envelope.size(),"host-message.json");if(JS_IsException(value))throw std::runtime_error(s.exception());s.call("__moonReceive",value);}

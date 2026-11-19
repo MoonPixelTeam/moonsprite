@@ -8433,3 +8433,9 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 用户明确选择 QuickJS＋原生界面映射后，固定并校验 MIT 许可的 QuickJS-ng 0.11.0，每扩展独立 VM；直接复用旧版 runtimeBootstrap，接通既有 SessionHost 权限、存储精确 JSON、资源声明、网络、菜单命令、发现与停用生命周期。提供原生消息/定时器队列与执行预算，禁用 libc/OS 模块；不提供虚假 DOM/Canvas。来源、必要适配及剩余边界见 quickjs-native-runtime.md。
 
 唯一正式 Release 最终构建成功（quickjs-final-build.log）。真实 extension-js-tests 退出0，覆盖旧引导脚本、Promise/拒绝、HTML脚本提取、隔离、定时器和中断；正式主题/指针下 --script-entry-check 通过 Start-Process -Wait -PassThru 取得实际退出0，覆盖真实发现、activate、菜单命令、落盘以及停用/重启。原生窗口/表单接线与详细事件仍待后续迁移，整体 INCOMPLETE；未做人工鼠标或图像验收，保留 main.cpp 原有差异及用户文件。
+
+## 2026-11-19 QuickJS 隐藏逻辑页与原生表单完整往返
+
+对照 ExtensionWindow.tsx 窗口bootstrap/嵌入式请求路由、ExtensionDialogForm.tsx 和 ui-form.md，将 runtime windows.open(dialog,component:form) 连接到真实独立窗口VM及既有 FormWindow。保留窗口API参数习惯、完整视图、action/values/requestId、忙碌与确认清草稿、资源/精确JSON存储、Runtime双向消息、命令状态、重试新VM及JS关闭/替换/禁用清理。复用旧版图标、原生文件/图片/嵌套控件及 ModalGeometryPreferences 根窗口记忆；没有恢复WebView2或模拟DOM。assets、普通HTML/覆盖层仍明确未迁移，整体 INCOMPLETE。
+
+最终唯一正式 Release 构建成功（quickjs-form-final-build.log）；extension-js-tests真实退出0，覆盖旧窗口引导脚本、无Runtime storage权限时的原窗口桥语义、资源字节、Unicode/极小双精度、草稿/请求确认、双向消息、重试与关闭。正式主题/指针 --script-entry-check 以 Start-Process -Wait -PassThru 取得实际退出0，覆盖生产菜单打开真实原生输入框/按钮，修改保存落盘、确认清草稿、窗口关闭、重开和禁用清理。首轮GUI用例的字段ID与模型键不同，落盘证据确认传输正确，修正夹具后通过。来源1054文件、架构/编辑器边界和diff检查通过。未做人工鼠标或图像验收，保留main.cpp既有差异及用户文件。

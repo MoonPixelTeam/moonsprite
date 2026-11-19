@@ -10,7 +10,7 @@ class JsEngine final {
  struct State;std::unique_ptr<State> state_;
 public:
  struct Message{std::string json;};
- JsEngine();~JsEngine();JsEngine(const JsEngine&)=delete;JsEngine& operator=(const JsEngine&)=delete;
+ JsEngine();explicit JsEngine(const std::string& windowId);~JsEngine();JsEngine(const JsEngine&)=delete;JsEngine& operator=(const JsEngine&)=delete;
  void evaluate(const std::string&,const std::string& filename,bool module=false);
  void deliver(const std::string& envelope);
  void pump(std::chrono::steady_clock::time_point deadline);
