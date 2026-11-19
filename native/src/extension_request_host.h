@@ -79,7 +79,9 @@ public:
   auto value=params.GetNamedString(L"commandId");if(value.empty()||value.size()>80)throw std::invalid_argument("命令 ID 无效。");auto id=winrt::to_string(value);
   if(std::none_of(commands_.begin(),commands_.end(),[&](const auto& c){return c.id==id;}))return false;
   JsonObject state;if(params.HasKey(L"state")&&params.GetNamedValue(L"state").ValueType()==JsonValueType::Object)state=params.GetNamedObject(L"state");
-  CommandState next;auto field=[&](const wchar_t* key,std::optional<bool>& target){if(!state.HasKey(key))return;if(state.GetNamedValue(key).ValueType()!=JsonValueType::Boolean)throw std::invalid_argument("命令显示状态无效。");target=state.GetNamedBoolean(key);};
+  // Legacy window messages normalize each field independently; malformed
+  // fields are absent patches, so another valid field must still apply.
+  CommandState next;auto field=[&](const wchar_t* key,std::optional<bool>& target){if(state.HasKey(key)&&state.GetNamedValue(key).ValueType()==JsonValueType::Boolean)target=state.GetNamedBoolean(key);};
   field(L"checked",next.checked);field(L"visible",next.visible);menus_.setCommand(id,next);return true;
  }
  void setWorkspaceServices(WorkspaceServices services){workspace_=std::move(services);}

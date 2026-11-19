@@ -8362,3 +8362,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Runtime 空工作区查询迁移
 
 对照 ExtensionRuntimeHost.tsx 的实际 handleRequest：无活动工程时 document.getLayers/document.getFrames 返回空数组，document.undo/document.redo 返回 null 且不调用工程历史；权限和断开服务仍按原规则拒绝。原生 RequestHost 补齐中性结果，并在正式 Editor 空工作区检查中验证四项结果与无副作用。Release request/session 测试目标及正式 Release 构建通过；--extension-workspace-check 使用正式主题和指针实际退出0，来源覆盖1043文件及证据快照、diff检查通过。生产 JavaScript 执行器与 HTML 运行时仍未接入，整体迁移继续 INCOMPLETE；保留 main.cpp 差异和用户文件。
+
+## 2026-11-19 Runtime 命令状态字段归一化迁移
+
+实际对照 ExtensionRuntimeHost.tsx 的窗口 command-state 监听与 extension-command-state.ts 部分更新规则：checked/visible 独立接收布尔值，非布尔字段忽略，有效的同级字段仍生效；非对象 state 等同空补丁，不清空已有状态。保留已声明命令和活动会话身份校验。既有请求测试覆盖混合有效/无效字段、非对象状态、保留值及通知去重，会话测试覆盖真实 token 转发后的归一化与通知次数。仅构建 Release request/session 测试目标成功，两项 CTest 通过（0.17秒）；来源覆盖1043文件与证据快照、diff检查通过。本轮未重建正式GUI程序，未人工或图像验收；生产JavaScript执行器仍缺失，整体迁移INCOMPLETE。保留已有main.cpp差异及用户文件。
