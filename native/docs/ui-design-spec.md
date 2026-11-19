@@ -155,3 +155,6 @@
 状态提示复用 PixelStatusToast：10px 字体、左右6px／上下2px留白，锚点下方2px并在父框内水平夹紧；承接旧版颜色复制的临时状态层。父窗口与相交控件按各自裁切区绘制同一提示，保持指针与焦点透明。紧凑颜色色板沿用16px格子和15px步长，超高时使用共用PixelScrollBar，标题和工具行固定；外扩选择素材与命中统一由共用轮廓helper管理。
 
 颜色控件拖动取色镜头复用 native_global_color_drag 与已有 eyedropper_lens shell、legacy 原始 mask／pointer。此专用覆盖层承接旧版 11×11 采样及 128px 逻辑外壳，按现有全局镜头尺寸偏好缩放；使用指针、焦点和捕获透明的 UILayer，定位在发起 Display 的视口内。镜头不套用带标题弹窗的表单尺寸。全局 contrast／saturate 效果与画布镜头的空间失真分别按旧版对应来源处理；实际验收范围见[拖动取色迁移记录](global-color-drag-migration-20261116.md)。
+
+
+文字工具“系统字体”列表的名称是字体预览内容：按 legacy TextToolDialog renderOption 使用对应系统字体、10px 字号，以14px高的灰度字形区域垂直居中于既有20px控件，单行超宽使用省略号。标题、搜索框及其它界面文案继续使用 Fusion Pixel 10px；预览保留原有按钮素材和状态，不改变名称身份或导入行为。

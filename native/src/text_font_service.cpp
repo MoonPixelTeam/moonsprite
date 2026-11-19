@@ -15,6 +15,7 @@
 #include <cmath>
 #include <dwrite_3.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -42,6 +43,18 @@ sk_sp<SkData> fontData(const std::vector<char>& bytes){
  if(bytes.size()>128*1024*1024)throw std::length_error("Font exceeds memory limit");
  if(bytes.size()>=4&&bytes[0]=='w'&&bytes[1]=='O'&&bytes[2]=='F'&&(bytes[3]=='F'||bytes[3]=='2')){ComPtr<IDWriteFactory5> factory;const auto hr=DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory5),reinterpret_cast<IUnknown**>(factory.GetAddressOf()));if(FAILED(hr))throw std::runtime_error("Windows font unpacker unavailable");ComPtr<IDWriteFontFileStream> stream;if(FAILED(factory->UnpackFontFile(bytes[3]=='2'?DWRITE_CONTAINER_TYPE_WOFF2:DWRITE_CONTAINER_TYPE_WOFF,bytes.data(),UINT32(bytes.size()),&stream)))throw std::runtime_error("Invalid WOFF font");UINT64 size=0;if(FAILED(stream->GetFileSize(&size))||size>128*1024*1024)throw std::runtime_error("Unpacked font exceeds memory limit");const void* fragment=nullptr;void* context=nullptr;if(FAILED(stream->ReadFileFragment(&fragment,0,size,&context)))throw std::runtime_error("Cannot unpack font");auto data=SkData::MakeWithCopy(fragment,std::size_t(size));stream->ReleaseFileFragment(context);return data;}return SkData::MakeWithCopy(bytes.data(),bytes.size());
 }
+// Use DirectWrite layout for font-name shaping, fallback and CSS-style ellipsis.
+class FontNameRenderer final:public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,IDWriteTextRenderer> {
+public:
+ ComPtr<IDWriteBitmapRenderTarget> target;ComPtr<IDWriteRenderingParams> parameters;
+ HRESULT STDMETHODCALLTYPE IsPixelSnappingDisabled(void*,BOOL* value)override{*value=FALSE;return S_OK;}
+ HRESULT STDMETHODCALLTYPE GetCurrentTransform(void*,DWRITE_MATRIX* value)override{return target->GetCurrentTransform(value);}
+ HRESULT STDMETHODCALLTYPE GetPixelsPerDip(void*,FLOAT* value)override{*value=target->GetPixelsPerDip();return S_OK;}
+ HRESULT STDMETHODCALLTYPE DrawGlyphRun(void*,FLOAT x,FLOAT y,DWRITE_MEASURING_MODE mode,const DWRITE_GLYPH_RUN* run,const DWRITE_GLYPH_RUN_DESCRIPTION*,IUnknown*)override{return target->DrawGlyphRun(x,y,mode,run,parameters.Get(),RGB(255,255,255),nullptr);}
+ HRESULT STDMETHODCALLTYPE DrawUnderline(void*,FLOAT,FLOAT,const DWRITE_UNDERLINE*,IUnknown*)override{return S_OK;}
+ HRESULT STDMETHODCALLTYPE DrawStrikethrough(void*,FLOAT,FLOAT,const DWRITE_STRIKETHROUGH*,IUnknown*)override{return S_OK;}
+ HRESULT STDMETHODCALLTYPE DrawInlineObject(void* context,FLOAT x,FLOAT y,IDWriteInlineObject* value,BOOL sideways,BOOL rtl,IUnknown* effect)override{return value->Draw(context,this,x,y,sideways,rtl,effect);}
+};
 const char* builtinFiles[]{"moonsprite-builtin-fusion-pixel-10px-prop-zh-hans.woff2","moonsprite-builtin-silkscreen-regular.ttf","moonsprite-builtin-tiny5-regular.ttf"};
 const char* builtinFamilies[]{defaultTextFontFamily,"Silkscreen","Tiny5"};
 }
@@ -86,4 +99,13 @@ TextGlyphProvider TextFontService::provider()const{return [p=impl_](const std::s
  SkFont font(face,SkScalar(size));font.setEdging(SkFont::Edging::kAntiAlias);SkRect bounds;const auto advance=font.measureText(&code,sizeof(code),SkTextEncoding::kUTF32,&bounds);const int origin=int(std::ceil(size*2+std::max(0.f,-bounds.left()))),baseline=int(std::ceil(size*2+std::max(1.f,-bounds.top())));const int width=std::max(size*4+16,origin+int(std::ceil(bounds.right()))+size*2+8),height=std::max(size*4+16,baseline+int(std::ceil(bounds.bottom()))+size*2+8);if(width<1||height<1||double(width)*height>64.*1024*1024)throw std::length_error("Glyph exceeds memory limit");SkBitmap bitmap;if(!bitmap.tryAllocN32Pixels(width,height))throw std::bad_alloc();bitmap.eraseColor(SK_ColorTRANSPARENT);SkCanvas canvas(bitmap);SkPaint paint;paint.setColor(SK_ColorWHITE);canvas.drawSimpleText(&code,sizeof(code),SkTextEncoding::kUTF32,SkScalar(origin),SkScalar(baseline),font,paint);
  int left=width,top=height,right=-1,bottom=-1;for(int y=0;y<height;++y)for(int x=0;x<width;++x)if(SkColorGetA(bitmap.getColor(x,y))>=threshold){left=std::min(left,x);top=std::min(top,y);right=std::max(right,x);bottom=std::max(bottom,y);}if(right<left)return {};TextGlyph out;out.left=left-origin;out.top=top-baseline;out.width=right-left+1;out.height=bottom-top+1;out.advance=advance;out.alpha.resize(std::size_t(out.width)*out.height);for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){const auto alpha=SkColorGetA(bitmap.getColor(left+x,top+y));out.alpha[std::size_t(y)*out.width+x]=alpha<threshold?0:threshold==192?255:alpha;}return out;
 };}
+// TextToolDialog renderOption uses the system face for its own family name.
+// Preview never imports a face into the user's library or usage preferences.
+TextGlyph TextFontService::systemPreview(const std::string& family,int maximumWidth)const{
+ auto require=[](HRESULT result){if(FAILED(result))throw std::runtime_error("Cannot render system font preview");};TextGlyph out;out.width=std::clamp(maximumWidth,1,2048);out.height=14;out.alpha.resize(std::size_t(out.width)*out.height);auto name=std::filesystem::u8path(family).wstring(),requested=name;requested.erase(std::remove(requested.begin(),requested.end(),L'"'),requested.end());
+ ComPtr<IDWriteFactory> factory;require(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(factory.GetAddressOf())));wchar_t locale[LOCALE_NAME_MAX_LENGTH]{};GetUserDefaultLocaleName(locale,LOCALE_NAME_MAX_LENGTH);ComPtr<IDWriteTextFormat> format;require(factory->CreateTextFormat(requested.c_str(),nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,10,locale,&format));require(format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));ComPtr<IDWriteTextLayout> layout;require(factory->CreateTextLayout(name.data(),UINT32(name.size()),format.Get(),FLOAT(out.width),FLOAT(out.height),&layout));ComPtr<IDWriteInlineObject> ellipsis;require(factory->CreateEllipsisTrimmingSign(format.Get(),&ellipsis));DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};require(layout->SetTrimming(&trimming,ellipsis.Get()));DWRITE_TEXT_METRICS metrics{};require(layout->GetMetrics(&metrics));out.advance=metrics.widthIncludingTrailingWhitespace;
+ ComPtr<IDWriteGdiInterop> interop;require(factory->GetGdiInterop(&interop));auto renderer=Microsoft::WRL::Make<FontNameRenderer>();require(interop->CreateBitmapRenderTarget(nullptr,UINT32(out.width),UINT32(out.height),&renderer->target));require(factory->CreateRenderingParams(&renderer->parameters));ComPtr<IDWriteBitmapRenderTarget1> grayscale;require(renderer->target.As(&grayscale));require(grayscale->SetTextAntialiasMode(DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE));require(renderer->target->SetPixelsPerDip(1));const auto dc=renderer->target->GetMemoryDC();PatBlt(dc,0,0,out.width,out.height,BLACKNESS);require(layout->Draw(nullptr,renderer.Get(),0,std::max(0.f,(out.height-metrics.height)/2)));
+ GdiFlush();DIBSECTION bitmap{};if(GetObjectW(GetCurrentObject(dc,OBJ_BITMAP),sizeof(bitmap),&bitmap)!=sizeof(bitmap)||!bitmap.dsBm.bmBits||bitmap.dsBm.bmBitsPixel!=32)throw std::runtime_error("System font preview bitmap is unavailable");const auto* bytes=static_cast<const unsigned char*>(bitmap.dsBm.bmBits);for(int y=0;y<out.height;++y){const auto* row=bytes+(bitmap.dsBmih.biHeight<0?y:out.height-1-y)*bitmap.dsBm.bmWidthBytes;for(int x=0;x<out.width;++x)out.alpha[std::size_t(y)*out.width+x]=std::max({row[x*4],row[x*4+1],row[x*4+2]});}return out;
+}
+
 }

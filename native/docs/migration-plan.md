@@ -8392,3 +8392,11 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 结果窗口几何迁移
 
 对照 LuaScriptResultDialog.tsx 固定键 lua-script-result、ModalShell fitContent 及 floating-panel 持久化，成功和错误报告共用位置、宽度与显式高度。将现有脚本窗口几何流程复用为宿主内的 ManagedWindow，两类窗口共用显示区域映射、捕获释放后记忆及 FIFO 保存；结果窗保留独立760×680逻辑像素上限，最小尺寸承接现有原生 UI 规范。默认高度根据当前宽度下实际换行及既有正文/页脚布局计算，手动调整后恢复显式高度；关闭先观察最后尺寸再提交快照。真实宿主夹具覆盖移动不固定高度、自动高度立即重开、手动调整后用户关闭重开及布局关系。唯一正式 Release 构建成功（lua-report-geometry-build.log）；正式主题/指针下 --script-entry-check 和 --script-report-check 实际退出均为0，后者沿用成功/错误与500行输出滚动检查。来源1043文件及证据快照、diff检查通过。未人工鼠标、1×或新增图像验收，无性能优化；整体迁移INCOMPLETE。保留main.cpp既有差异与用户文件。
+
+## 2026-11-19 Lua 报告复制与系统字体名称预览
+
+按用户明确确认保留 Lua 结果正文拖选、键盘扩选、右键复制/全选及 Ctrl+A/C；这是经授权的新行为，旧版全局 user-select:none 并未提供正文选择。报告复用共享字素/词导航，保留只读正文、换行来源位置、边缘滚动和捕获清理。实际窗口夹具使用隔离写入器验证复制，不覆盖用户剪贴板。
+
+对照 TextToolDialog.tsx 的系统字体 renderOption 与 ThemedSelect 单行省略规则，字体列表名称用对应字体显示；DirectWrite 承接字形组合、回退和省略，10px 字号、14px 内容区沿用原生20px控件。预览只读系统字体，不导入或写入使用偏好，失败回退既有名称显示。
+
+唯一正式 Release 最终增量构建成功（report-copy-font-preview-final-build.log）；text-font CTest 通过2.39秒，正式主题/指针下 --script-report-check、--script-entry-check、--text-tool-check 实际退出均为0。来源登记及UI规范已更新；未人工物理鼠标、1×或图像验收，无性能优化，整体迁移仍为 INCOMPLETE。保留 main.cpp 既有差异与未跟踪文件，不提交生成物。

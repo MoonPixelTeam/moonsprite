@@ -1,5 +1,6 @@
 #include "text_font_service.h"
 #include <chrono>
+#include <cmath>
 #include <algorithm>
 #include <windows.h>
 #include <iostream>
@@ -29,7 +30,7 @@ int wmain(int argc,wchar_t** argv){try{
   for(const auto& name:names){auto wide=std::filesystem::u8path(name).wstring();auto lower=[&](const wchar_t* locale){int n=LCMapStringEx(locale,LCMAP_LOWERCASE,wide.data(),int(wide.size()),nullptr,0,nullptr,nullptr,0);CHECK(n>0);std::wstring out(n,L'\0');CHECK(LCMapStringEx(locale,LCMAP_LOWERCASE,wide.data(),int(wide.size()),out.data(),n,nullptr,nullptr,0)>0);return out;};const auto key=std::filesystem::path(lower(LOCALE_NAME_INVARIANT)).u8string();CHECK(previous.empty()||previous<=key);previous=key;CHECK(seen.insert(lower(LOCALE_NAME_USER_DEFAULT)).second);}
  }
  // Real system-font imports reuse persistent bytes and collection face.
- const auto systemFamily=fonts.systemFamilies().front();const auto system=restored.importSystem(systemFamily);CHECK(system.imported&&std::filesystem::is_regular_file(system.file));
+ const auto systemFamily=fonts.systemFamilies().front();const auto beforePreview=fonts.catalog();const auto preview=fonts.systemPreview(systemFamily,180);CHECK(preview.width==180&&preview.height==14&&preview.alpha.size()==2520);CHECK(std::any_of(preview.alpha.begin(),preview.alpha.end(),[](auto a){return a>0;}));CHECK(fonts.catalog().size()==beforePreview.size());const auto narrowPreview=fonts.systemPreview(systemFamily,1);CHECK(narrowPreview.width==1&&narrowPreview.alpha.size()==14);const auto mixedPreview=fonts.systemPreview(u8"字体 العربية A very long family name that needs ellipsis",64);CHECK(mixedPreview.alpha.size()==896&&std::any_of(mixedPreview.alpha.begin(),mixedPreview.alpha.end(),[](auto a){return a>0;}));CHECK(std::isfinite(mixedPreview.advance));const auto system=restored.importSystem(systemFamily);CHECK(system.imported&&std::filesystem::is_regular_file(system.file));
  auto fontFileCount=[&]{std::size_t count=0;for(const auto& entry:std::filesystem::directory_iterator(library))if(entry.is_regular_file())++count;return count;};
  const auto fileCount=fontFileCount();const auto repeated=restored.importSystem(systemFamily);CHECK(repeated.id==system.id&&repeated.file==system.file&&repeated.faceIndex==system.faceIndex&&fontFileCount()==fileCount);
  TextFontService reopened(library,bundled,settings);const auto persisted=reopened.importSystem(systemFamily);CHECK(persisted.id==system.id&&persisted.faceIndex==system.faceIndex&&fontFileCount()==fileCount);

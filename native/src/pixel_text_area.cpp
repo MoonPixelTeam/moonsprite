@@ -104,6 +104,7 @@ int textGraphemeStep(const std::u32string& text,int caret,bool left){
  return at==boundaries.end()?int(text.size()):*at;
 }
 }
+int inputGraphemeStep(const std::u32string& text,int caret,bool left){return textGraphemeStep(text,caret,left);}
 int inputWordStep(const std::u32string& text,int caret,bool left,bool deleting){return textWordStep(text,caret,left,deleting);}
 std::pair<int,int> inputWordRange(const std::u32string& text,int index,bool trailingWhitespace){
  if(text.empty())return {0,0};
