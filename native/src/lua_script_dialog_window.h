@@ -57,8 +57,8 @@ class ScriptDialogWindow final:public PixelDialog {
  static std::string colorJson(Pixel p){Object o;int shift=0;for(auto k:{L"r",L"g",L"b",L"a"}){o.Insert(k,Value::CreateNumberValue((p>>shift)&255));shift+=8;}return winrt::to_string(o.Stringify());}
  PixelButton* colorButton(const std::string& key){for(auto& row:rows_)if(id(row.model)==key&&row.model.GetNamedString(L"kind")==L"color"&&row.model.GetNamedBoolean(L"visible")&&row.model.GetNamedBoolean(L"enabled"))return static_cast<PixelButton*>(row.widget);return nullptr;}
  void openColor(const std::string& key,PixelButton* button){
-  if(busy_)return;if(!color_){color_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,colorStorage_);color_->Close.connect([this](ui::CloseEvent&){colorId_.reset();});}
-  colorId_=key;color_->setDisplay(display(),false);color_->open(button->bounds(),display()->bounds(),button->swatch,U"颜色",{},[this,key](Pixel p){if(busy_||resetting_||closing_)return;auto button=colorButton(key);if(!button)return;draft(key,colorJson(p));button->swatch=p;button->invalidate();},{},[this,key](Pixel p){if(closing_||resetting_)return;draft(key,colorJson(p));commit(key,script::DialogState::Commit::Change);});
+  if(busy_)return;if(!color_){color_=std::make_unique<ColorEditorPopup>(font_,skin_,icons_,colorStorage_);color_->Close.connect([this](ui::CloseEvent&){colorId_.reset();});color_->canvasSamplingInput=[this](ui::Message* message){return canvasSamplingInput&&canvasSamplingInput(message);};}
+  colorId_=key;color_->setDisplay(display(),false);color_->open(button->bounds(),display()->bounds(),button->swatch,U"颜色",{},[this,key](Pixel p){if(busy_||resetting_||closing_)return;auto button=colorButton(key);if(!button)return;draft(key,colorJson(p));button->swatch=p;button->invalidate();},samplingChanged?std::function<void(bool)>([this](bool active){samplingChanged(active,color_.get());}):std::function<void(bool)>{},[this,key](Pixel p){if(closing_||resetting_)return;draft(key,colorJson(p));commit(key,script::DialogState::Commit::Change);});
  }
  void layout(){
   const auto r=bounds();layoutHeaderButton(close_);const auto body=uiPhysical({6,DialogLayout::bodyTop,r.w/uiScale-12,std::max(1,r.h/uiScale-DialogLayout::bodyTop-6)}).offset(r.origin());viewport_->setBounds(body);
@@ -85,11 +85,14 @@ class ScriptDialogWindow final:public PixelDialog {
  }
 public:
  std::function<void()> escape;
+ std::function<void(bool,ColorEditorPopup*)> samplingChanged;
+ std::function<bool(ui::Message*)> canvasSamplingInput;
+ ColorEditorPopup* openColorForCheck(const std::string& key){auto button=colorButton(key);if(!button)throw std::runtime_error("Missing enabled Lua color");openColor(key,button);return color_.get();}
  ScriptDialogWindow(const PixelFont& font,const Skin& skin,const Skin& icons,std::string model,std::filesystem::path colorStorage,std::function<void(std::string)> send):PixelDialog(skin,"",ClickBehavior::DoNothingOnClick,EnterBehavior::DoNothingOnEnter),font_(font),skin_(skin),icons_(icons),model_(Object::Parse(winrt::to_hstring(model))),state_(model),colorStorage_(std::move(colorStorage)),send_(std::move(send)){
   setAutoRemap(false);setWantFocus(true);viewport_=new Viewport;addChild(viewport_);bar_=new PixelScrollBar(skin,true);addChild(bar_);bar_->changed=[this](int n){scroll_=n;layout();};close_=new PixelButton(font,skin,U"",[this]{requestClose();});close_->iconSkin=&icons;close_->icon="close";close_->skinStyle="icon_button";addChild(close_);build();
  }
  ~ScriptDialogWindow(){closing_=true;if(color_)color_->closeWindow(nullptr);}
- void closeFromHost(){closing_=true;for(auto& r:rows_){if(r.label)r.label->cancelDrag();if(auto slider=dynamic_cast<ScriptRangeSlider*>(r.widget))slider->cancelInteraction();}closeWindow(nullptr);}
+ void closeFromHost(){closing_=true;if(color_)color_->closeWindow(nullptr);for(auto& r:rows_){if(r.label)r.label->cancelDrag();if(auto slider=dynamic_cast<ScriptRangeSlider*>(r.widget))slider->cancelInteraction();}closeWindow(nullptr);}
  void onBeforeClose(ui::CloseEvent& ev)override{if(!closing_){ev.cancel();requestClose();}}
  void editEntryForCheck(const std::string& key,const std::string& text,bool submit=false){for(auto& r:rows_)if(id(r.model)==key){auto e=dynamic_cast<PixelEntry*>(r.widget);if(!e)throw std::runtime_error("Expected script entry");e->setText(text);e->Change();if(submit)e->accept();return;}throw std::runtime_error("Script entry missing");}
  std::string draftValuesForCheck()const{return state_.valuesJson();}

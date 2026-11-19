@@ -40,6 +40,7 @@ class ScriptWindowHost final {
     const auto model=value.GetObject();const auto id=winrt::to_string(model.GetNamedString(L"id"));present.insert(id);const auto json=winrt::to_string(model.Stringify());
     auto it=windows_.find(id);if(it==windows_.end()){
      auto dialog=std::make_unique<ScriptDialogWindow>(font_,skin_,icons_,json,colorStorage_,[this](std::string action){if(requests_.empty()){requests_.push_back({session_,std::move(action),false});for(auto& [id,w]:windows_)w.dialog->setBusy(true);}});
+     dialog->samplingChanged=samplingChanged;dialog->canvasSamplingInput=canvasSamplingInput;
      dialog->escape=[this]{queueEscape();};place(*dialog,420,dialog->preferredHeight(),index);auto geometry=std::make_unique<ModalGeometryPreferences>(geometryStorage_,"lua-script-"+session_+"-"+id);const auto area=display_->bounds();const auto restored=geometry->restore(dialog->bounds(),area,dialog->minimumDialogSize(dialog->bounds().w),{680*uiScale,720*uiScale});dialog->setBounds(restored);Window window;window.dialog=std::move(dialog);window.geometry=std::move(geometry);window.observed=window.dialog->bounds();window.area=area;auto* raw=window.dialog.get();windows_.emplace(id,std::move(window));raw->openWindow();
     }else {auto& window=it->second;pumpGeometry(window);window.dialog->replace(json);fitHeight(window);}++index;
    }
@@ -52,6 +53,8 @@ class ScriptWindowHost final {
   if(!report_.dialog){report_.dialog=std::make_unique<ScriptReportDialog>(font_,skin_,icons_,client_.report(),client_.error());report_.dialog->Close.connect([this](ui::CloseEvent&){if(!closing_)reportClosed_=true;});report_.maximum={760*uiScale,680*uiScale};place(*report_.dialog,500,260);report_.geometry=std::make_unique<ModalGeometryPreferences>(geometryStorage_,"lua-script-result");report_.area=display_->bounds();setDialogBounds(report_,report_.geometry->restore(report_.dialog->bounds(),report_.area,report_.dialog->minimumDialogSize(report_.dialog->bounds().w),report_.maximum));fitHeight(report_);report_.dialog->openWindow();}pumpGeometry(report_);
  }
 public:
+ std::function<void(bool,ColorEditorPopup*)> samplingChanged;
+ std::function<bool(ui::Message*)> canvasSamplingInput;
  ScriptWindowHost(script::Client& client,const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,std::filesystem::path storage,std::function<std::string(const Document&)> snapshot,std::function<void(Document&&)> adopt={})
  :client_(client),font_(font),skin_(skin),icons_(icons),display_(display),colorStorage_(storage),geometryStorage_(storage.parent_path()/"lua-script-geometry.json"),snapshot_(std::move(snapshot)),adopt_(std::move(adopt)){if(!display_||!snapshot_)throw std::invalid_argument("Script host needs display and real snapshot provider");}
  ~ScriptWindowHost(){clearReport();clearWindows();}

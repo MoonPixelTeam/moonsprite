@@ -278,6 +278,7 @@ public:
     return DialogLayout::bodyTop+textControlHeight+2+rows*rowHeight+(rows-1)*2+6;
   }
   void open(gfx::Rect trigger,gfx::Rect viewport,std::uint32_t color,std::u32string role,const std::vector<std::uint32_t>& palette,std::function<void(std::uint32_t)> changed,std::function<void(bool)> samplingChanged,std::function<void(std::uint32_t)> committed={}){
+    finishSampling();
     setEditingEnabled(true);committedColor_=color;committed_=std::move(committed);previous_=current_=color;role_=std::move(role);changed_=std::move(changed);samplingChanged_=std::move(samplingChanged);sample_->setEnabled(bool(samplingChanged_));resident_=sampling_=false;setClickBehavior(ClickBehavior::CloseOnClickInOtherWindow);
     paletteScroll_=0;if(paletteProvider_)updatePalette(paletteProvider_());else replacePalette(palette);
     int w=320,h=preferredHeight();std::ifstream in(storage_);in>>w>>h;w=std::clamp(w,1,640);h=std::clamp(h,1,500);const auto floor=minimumDialogSize(w*uiScale);w=std::max(floor.w,std::min(w*uiScale,viewport.w));h=std::max(floor.h,std::min(h*uiScale,viewport.h));

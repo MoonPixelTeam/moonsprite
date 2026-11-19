@@ -292,7 +292,7 @@ private:
 
   std::unique_ptr<ColorEditorPopup> colorEditorPopup_;
 
-  bool colorEditorSecondary_=false,colorEditorSampling_=false;std::array<bool,9> colorEditorReturnTools_{};
+  bool colorEditorSecondary_=false,colorEditorSampling_=false;std::array<bool,16> colorEditorReturnTools_{};
   ColorEditorPopup* colorEditorSamplingTarget_=nullptr;std::uint64_t colorEditorSamplingIdentity_=0;
   ui::Widget *gradientStopsFocusOwner_=nullptr,*gradientStopsColorFocusOwner_=nullptr;
 

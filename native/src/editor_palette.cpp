@@ -337,13 +337,17 @@ void Editor::commitPaletteHex() {
   }
 
 void Editor::setColorEditorSampling(bool active,ColorEditorPopup* target){
+    if(active&&!target)target=colorEditorPopup_.get();
+    if(active&&colorEditorSampling_&&target&&target!=colorEditorSamplingTarget_)colorEditorSamplingTarget_->finishSampling();
+    if(!active&&target&&target!=colorEditorSamplingTarget_)return;
     if(active==colorEditorSampling_)return;
     if(active){
       colorEditorSamplingTarget_=target?target:colorEditorPopup_.get();
       colorEditorSamplingIdentity_=currentDocument().identity();
-      colorEditorReturnTools_={currentTools().selectionTool,currentTools().shapeTool,currentTools().gradientTool,currentTools().fillTool,currentTools().handTool,currentTools().eraser,currentTools().eyedropperTool,eyedropperHeld_,currentTools().zoomTool};
+      colorEditorReturnTools_={currentTools().selectionTool,currentTools().shapeTool,currentTools().gradientTool,currentTools().fillTool,currentTools().handTool,currentTools().eraser,currentTools().eyedropperTool,eyedropperHeld_,currentTools().zoomTool,currentTools().moveTool,currentTools().textTool,currentTools().rotateTool,currentTools().smoothTool,currentTools().airbrushTool,currentTools().liquifyTool,currentTools().magicEraserTool};
       if(!gradientPending_&&!currentDocument().freeTileSourcePropertiesActive())cancelStroke();
       currentTools().selectionTool=currentTools().shapeTool=currentTools().gradientTool=currentTools().fillTool=currentTools().handTool=currentTools().eraser=eyedropperHeld_=currentTools().zoomTool=false;
+      currentTools().moveTool=currentTools().textTool=currentTools().rotateTool=currentTools().smoothTool=currentTools().airbrushTool=currentTools().liquifyTool=currentTools().magicEraserTool=false;
       currentTools().eyedropperTool=true;currentPlayback().playing=false;
     }else{
         endNativeCanvasColorSampling(*this);
@@ -352,7 +356,7 @@ void Editor::setColorEditorSampling(bool active,ColorEditorPopup* target){
       if(colorEditorSamplingTarget_&&colorEditorSamplingTarget_->hasCapture())colorEditorSamplingTarget_->releaseMouse();
       if(hasCapture())releaseMouse();
       if(currentTools().eyedropperTool&&colorEditorSamplingIdentity_==currentDocument().identity()){
-        currentTools().selectionTool=colorEditorReturnTools_[0];currentTools().shapeTool=colorEditorReturnTools_[1];currentTools().gradientTool=colorEditorReturnTools_[2];currentTools().fillTool=colorEditorReturnTools_[3];currentTools().handTool=colorEditorReturnTools_[4];currentTools().eraser=colorEditorReturnTools_[5];currentTools().eyedropperTool=colorEditorReturnTools_[6];eyedropperHeld_=colorEditorReturnTools_[7];currentTools().zoomTool=colorEditorReturnTools_[8];
+        currentTools().selectionTool=colorEditorReturnTools_[0];currentTools().shapeTool=colorEditorReturnTools_[1];currentTools().gradientTool=colorEditorReturnTools_[2];currentTools().fillTool=colorEditorReturnTools_[3];currentTools().handTool=colorEditorReturnTools_[4];currentTools().eraser=colorEditorReturnTools_[5];currentTools().eyedropperTool=colorEditorReturnTools_[6];eyedropperHeld_=colorEditorReturnTools_[7];currentTools().zoomTool=colorEditorReturnTools_[8];currentTools().moveTool=colorEditorReturnTools_[9];currentTools().textTool=colorEditorReturnTools_[10];currentTools().rotateTool=colorEditorReturnTools_[11];currentTools().smoothTool=colorEditorReturnTools_[12];currentTools().airbrushTool=colorEditorReturnTools_[13];currentTools().liquifyTool=colorEditorReturnTools_[14];currentTools().magicEraserTool=colorEditorReturnTools_[15];
       }
       colorEditorSamplingTarget_=nullptr;colorEditorSamplingIdentity_=0;
     }

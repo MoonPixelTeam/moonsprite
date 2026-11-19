@@ -1088,7 +1088,7 @@ void Editor::showGradientStopsMenu(bool verify){
       const auto pixel=transformCanvasPoint(*samplePoint);const auto expected=sampleEyedropper(currentDocument(),int(std::floor(pixel.x)),int(std::floor(pixel.y)),currentTools().eyedropperSource);
       if(!sampleMouse(ui::kMouseDownMessage)||currentTools().gradientStops[gradientStop_].color!=expected)throw std::runtime_error("Gradient stop samples canvas RGBA");
       sampleMouse(ui::kMouseMoveMessage);sampleMouse(ui::kMouseUpMessage);
-      if(colorEditorSampling_||colorEditorSamplingTarget_||eyedropperGesture_.active()||currentTools().gradientTool!=gradientToolBefore||gradientPending_!=pendingBefore||currentDocument().palette().primary!=primaryBefore||currentDocument().palette().secondary!=secondaryBefore||currentDocument().historySize()!=beforeHistory||currentDocument().pixels()!=beforePixels)throw std::runtime_error("Gradient sample release restores tool without role/history/pixel changes");
+      if(colorEditorSampling_||colorEditorSamplingTarget_||eyedropperGesture_.active()||currentTools().gradientTool!=gradientToolBefore||gradientPending_!=pendingBefore||currentDocument().palette().primary!=expected||currentDocument().palette().secondary!=secondaryBefore||currentDocument().historySize()!=beforeHistory||currentDocument().pixels()!=beforePixels)throw std::runtime_error("Gradient sample release restores tool and publishes foreground without history/pixel changes");
       stopColorEditor->testSampling();ui::KeyMessage escape(ui::kKeyDownMessage,ui::kKeyEsc,ui::kKeyNoneModifier,0,0);stopColorEditor->onProcessMessage(&escape);
       if(colorEditorSampling_||colorEditorSamplingTarget_||!stopColorEditor->isVisible()||gradientPending_!=pendingBefore)throw std::runtime_error("Gradient sampling Escape ends only sample");
       stopColorEditor->sampled(beforeColor);stopColorEditor->closeWindow(nullptr);
@@ -1878,8 +1878,10 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   const auto mouse=dynamic_cast<ui::MouseMessage*>(msg);if(!mouse)return false;
   if(eyedropperGesture_.active()&&msg->type()==ui::kMouseMoveMessage&&mouse->display()&&routeNativeCanvasColorSampling(mouse->screenPosition()))return true;
   const auto point=mouse->positionForDisplay(display());
-  if(target->bounds().contains(mouse->positionForDisplay(target->display())))return false;
   const bool active=eyedropperGesture_.active();
+  // A captured drag can finish over its source popup or outside the canvas.
+  if(active&&msg->type()==ui::kMouseUpMessage){if(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone){finishEyedropper();return true;}return true;}
+  if(target->bounds().contains(mouse->positionForDisplay(target->display())))return false;
   if(!active&&!canvasViewport().contains(point))return false;
   try{
     if(msg->type()==ui::kMouseDownMessage){
@@ -1893,6 +1895,9 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
       const auto p=transformCanvasPoint(point);const Point at{int(std::floor(p.x)),int(std::floor(p.y))};
       const auto color=CanvasReferenceController::sample(*this,point).value_or(sampleEyedropper(currentDocument(),at.x,at.y,currentTools().eyedropperSource));
       updateEyedropperLens(point,color);sampleEyedropperAt(at,point);
+      // Lua onCommit can synchronously disable the picker and end sampling.
+      // The already sampled press must still be consumed after tool restore.
+      return true;
     }
     return eyedropperGesture_.active();
   }catch(const std::exception& e){finish();status_=U"渐变色标采色失败："+unicodeText(e.what());invalidate();return true;}
@@ -1903,8 +1908,8 @@ void Editor::beginCrossCanvasSampling(){
   beginNativeCanvasColorSampling(*this,[this,identity](Pixel color,gfx::Point screen){
     if(identity!=currentDocument().identity()||!eyedropperGesture_.active())return;
     eyedropperGesture_.sample(color);
+    setSharedColor(color,eyedropperGesture_.secondary());
     if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);
-    else setSharedColor(color,eyedropperGesture_.secondary());
     if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);
     // Legacy cross-stage callback passes target color and client position to
     // the source document magnifier; it does not replace the lens reader.
@@ -1914,6 +1919,7 @@ void Editor::beginCrossCanvasSampling(){
 }
 
 void Editor::syncCrossCanvasIntent(){
+  if(colorEditorSampling_&&colorEditorSamplingTarget_&&(!documentOpen_||homeOpen_||currentDocument().identity()!=colorEditorSamplingIdentity_||!currentTools().eyedropperTool))colorEditorSamplingTarget_->finishSampling();
   const bool enabled=documentOpen_&&!homeOpen_&&currentTools().eyedropperTool;
   const auto identity=currentDocument().identity();
   syncNativeCanvasColorIntent(*this,enabled,[this,identity](Pixel color,gfx::Point,bool secondary){
@@ -1938,7 +1944,7 @@ void Editor::sampleEyedropperAt(Point p,std::optional<gfx::Point> displayPoint){
   const auto reference=displayPoint?CanvasReferenceController::sample(*this,*displayPoint):std::optional<Pixel>{};
   if(!reference&&tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat!=repeat::Mode::Off){const auto mapped=repeat::map({double(p.x),double(p.y)},currentDocument().width(),currentDocument().height(),currentView().tileRepeat);if(!mapped)return;p={int(mapped->local.x),int(mapped->local.y)};}
   const auto color=reference?*reference:sampleEyedropper(currentDocument(),p.x,p.y,currentTools().eyedropperSource);
-  eyedropperGesture_.sample(color);if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);else setSharedColor(color,eyedropperGesture_.secondary());
+  eyedropperGesture_.sample(color);setSharedColor(color,eyedropperGesture_.secondary());if(colorEditorSampling_&&colorEditorSamplingTarget_)colorEditorSamplingTarget_->sampled(color);
   if(replaceSampling_>=0)changeReplaceColor(replaceSampling_,color,true);refresh();
  }catch(const std::exception& e){status_=U"采色失败："+unicodeText(e.what());invalidate();}
 }

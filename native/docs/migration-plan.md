@@ -8418,3 +8418,12 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 颜色编辑器预览与确认迁移
 
 对照 ColorValueControl.tsx 的 updateValue、commitEditorColor、confirmWorkingColor 及滑块/数字输入事件：工作色预览与已确认色分离；当前色板复制读取已确认色；键盘调整在失焦时确认，键盘释放不确认；滚轮立即确认；指针释放确认最后预览、不按释放位置重新计算并释放焦点。共享 PixelSlider 仅对颜色编辑器启用该模式，其他 RangeField 调用保持原有提交语义。正式脚本窗口夹具增加键盘 Shift/keyup、确认色复制与提示、滚轮确认、失焦提交、指针释放位置和修饰键、捕获/焦点清理及去重检查。正式 Release 构建成功，正式主题和指针下 --color-editor-check、--script-report-check 实际退出均为0；来源1044文件覆盖及 diff 检查通过。未人工鼠标或图像验收，颜色编辑器完整采样与其他高级功能仍属迁移缺口，整体迁移仍 INCOMPLETE。保留 main.cpp 既有差异和未跟踪用户文件，不提交生成物。
+
+
+## 2026-11-19 Lua 颜色画布采样完整接入
+
+对照 ColorValueControl.tsx beginSampling/finishSampling、禁用与工作区订阅、LuaScriptDialog.tsx 颜色草稿/提交，以及 canvas-sampling-start.ts 和 useCanvasColorSampling.ts 完整事件控制流：将 ScriptWindowHost 和真实 Lua 弹窗接入既有 Editor 画布采样器，复用采样源、参考图、重复视图、跨画布、放大镜和手势。共用采样先更新对应前景/背景色再提交弹窗颜色，纠正此前局部采样只更新弹窗而跨画布意图更新角色色的不一致；此前相关“不修改角色色”说明由本次完整旧版证据取代。
+
+完整记忆并临时禁用全部工具标记，包括移动/文字/旋转/平滑/喷枪/液化/魔术橡皮；只在原工程仍活动且吸管仍选中时恢复。新采样所有者终止旧所有者，陈旧结束通知不影响新所有者。共用刷新在工程/首页/工具变化时取消；忙碌、关闭父窗口、关闭或重开颜色弹窗清理捕获及过滤器。拖动释放先于弹窗范围拒绝处理；Lua 回调可同步结束采样，但已处理按下事件仍被消耗，防止落到恢复后的绘图工具。
+
+真实 Lua 正式入口夹具覆盖工具恢复、Escape、实际画布RGBA、单次change回调、返回模型保留弹窗、重复色采样、弹窗上释放、工程切换、重开、忙碌及父子关闭，检查作品像素/历史不变与角色色发布。唯一正式 Release 最终构建成功（lua-canvas-sampling-fixture-build.log）；带正式主题/指针的 --script-entry-check、--color-editor-check、--gradient-shape-check 均以 Start-Process -Wait -PassThru 获取实际退出码0。首轮Lua检查因窗口遮挡没有可采样点而失败，仅调整夹具窗口到同一角落后通过。来源1044文件覆盖及证据快照、diff检查通过。未做人工物理鼠标或图像验收。内部复用许可已核对 legacy/LICENSE，无新素材或布局。整体迁移仍 INCOMPLETE。
