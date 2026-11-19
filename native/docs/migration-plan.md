@@ -8346,3 +8346,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 数字步进生命周期验收迁移
 
 补齐 NumberInput 失焦与失捕获取消规则：鼠标离开、释放、焦点离开、控件隐藏/禁用或只读时停止定时器并释放捕获。新增生产定时器驱动的脚本窗口夹具，验证立即步进、300ms 初始延迟、重复回调、方向反转、释放后不再重复、鼠标离开、失捕获和禁用取消。正式 Release 构建成功（number-stepper-lifecycle-build.log），--script-report-check 与 --color-editor-check 实际退出均为0；来源登记和 diff 检查通过。未进行人工物理鼠标和图像验收，整体迁移仍为 INCOMPLETE。保留 main.cpp 既有差异。
+
+## 2026-11-19 Lua 数值标签拖动迁移
+
+对照 FormField.tsx、NumberInput.tsx 和 NumberInput.test.tsx，将扩展表单已有标签拖动提取为共享 ScriptNumberLabel，Lua number 行复用。按逻辑像素差乘有效步长及 Shift10，从已接受值调整并限制范围；保留焦点，释放不触发 blur 提交。复用现有指针路由，不修改 main.cpp；重建、host关闭和busy取消捕获。实际脚本窗口夹具覆盖小数步长、未提交草稿隔离、Shift、释放无提交和只读保护。正式Release构建成功（lua-number-label-final-build.log），--script-report-check、--extension-form-check实际退出均为0；来源覆盖1043文件及证据快照通过，diff检查通过。未人工鼠标或图像验收，整体迁移INCOMPLETE。保留已有main.cpp差异和未跟踪用户文件。
