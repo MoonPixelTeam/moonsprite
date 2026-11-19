@@ -2,6 +2,8 @@
 #include "native_widgets.h"
 #include "ui/message.h"
 #include <cmath>
+#include <charconv>
+#include <cstdint>
 #include <sstream>
 namespace moon {
 // NumberInput: configurable live drafts, expressions committed
@@ -37,6 +39,23 @@ public:
 class ScriptRangeSlider final:public PixelSlider {
  double low_,high_,step_,current_;bool dragging_=false;
  double clamp(double v)const{return std::max(low_,std::min(high_,v));}
+ // useSliderWheel.ts: Number(candidate.toFixed(10)), without multiplying
+ // the binary value by 1e10 (which can overflow or round a second time).
+ static double wheelDecimal(double candidate){
+  const double magnitude=std::abs(candidate);
+  if(!std::isfinite(candidate)||magnitude>=1e21)return candidate;
+  if(candidate==0)return 0;
+  char digits[64];const auto formatted=std::to_chars(digits,digits+sizeof(digits),magnitude,std::chars_format::fixed,10);
+  if(formatted.ec!=std::errc{})throw std::runtime_error("Slider decimal formatting failed");
+  // to_chars uses ties-to-even; ECMAScript toFixed rounds an exact tie
+  // away from zero. Strip binary factors to detect a tenth-decimal tie.
+  int exponent=0;auto significand=std::uint64_t(std::ldexp(std::frexp(magnitude,&exponent),53));exponent-=53;
+  while((significand&1)==0){significand>>=1;++exponent;}
+  if(exponent==-11&&(significand&3)==1)++formatted.ptr[-1];
+  double rounded=0;const auto parsed=std::from_chars(digits,formatted.ptr,rounded,std::chars_format::fixed);
+  if(parsed.ec!=std::errc{}||parsed.ptr!=formatted.ptr)throw std::runtime_error("Slider decimal parsing failed");
+  return std::signbit(candidate)?-rounded:rounded;
+ }
  void set(double v,bool shift,bool quantize){
   if(quantize&&step_>0)v=low_+std::floor((v-low_)/step_+.5)*step_;
   v=clamp(v);if(shift&&v!=low_&&v!=high_){const auto stride=std::max(step_,5.);v=clamp(std::floor(v/stride+.5)*stride);}
@@ -59,7 +78,7 @@ public:
    const auto r=bounds();const double t=std::clamp(double(m->position().x-r.x-uiScale)/std::max(1,r.w-2*uiScale-1),0.,1.);set(low_+t*(high_-low_),m->shiftPressed(),true);
    return true;
   }}
-  if(msg->type()==ui::kMouseWheelMessage){auto m=static_cast<ui::MouseMessage*>(msg);const int dy=m->wheelDelta().y;if(dy){const double stride=m->shiftPressed()?std::max(step_,5.):step_;const auto v=current_+(dy<0?stride:-stride);set(std::round(v*1e10)/1e10,false,false);}return true;}
+  if(msg->type()==ui::kMouseWheelMessage){auto m=static_cast<ui::MouseMessage*>(msg);const int dy=m->wheelDelta().y;if(dy){const double stride=m->shiftPressed()?std::max(step_,5.):step_;const auto v=current_+(dy<0?stride:-stride);set(wheelDecimal(v),false,false);}return true;}
   if(msg->type()==ui::kKeyDownMessage){auto k=static_cast<ui::KeyMessage*>(msg);const auto code=k->scancode();double next=current_;switch(code){case ui::kKeyLeft:case ui::kKeyDown:next-=step_;break;case ui::kKeyRight:case ui::kKeyUp:next+=step_;break;case ui::kKeyHome:next=low_;break;case ui::kKeyEnd:next=high_;break;case ui::kKeyPageUp:next+=(high_-low_)/10;break;case ui::kKeyPageDown:next-=(high_-low_)/10;break;default:return PixelSlider::onProcessMessage(msg);}set(next,k->shiftPressed(),true);return true;}
   if(msg->type()==ui::kKeyUpMessage)return ui::Widget::onProcessMessage(msg);
   if(msg->type()==ui::kFocusLeaveMessage){cancelInteraction();if(released)released();return true;}

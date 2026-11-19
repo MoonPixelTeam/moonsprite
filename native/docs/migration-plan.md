@@ -8410,3 +8410,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 实时数值解析与溢出归一化迁移
 
 对照 NumberInput.tsx 的 updateDraft/commit/normalize/adjust、numeric-expression.ts 和 FormField.tsx 标签拖动，实时数字草稿与提交复用同一十进制表达式及 ECMAScript 空白解析；保持表达式延迟提交和原始草稿。步进及标签拖动出现非有限结果时保留已接受值，有限值再按范围夹取。提取 PixelEntry 只读求值接口，保留提交通知与异常保护，不改变布局或性能方案。实际脚本窗口夹具覆盖尾部空白、NBSP/全角空白、小数/指数、无效和非有限草稿、表达式提交、只读调整、正负溢出、最大有限值及标签捕获释放。唯一正式 Release 构建及最终增量构建均成功；正式主题和指针下 --script-report-check、--color-editor-check 实际退出均为0。来源1044文件覆盖及证据快照通过；未人工鼠标或图像验收，整体迁移仍为 INCOMPLETE。保留 main.cpp 既有差异及未跟踪文件，不提交生成物。
+
+## 2026-11-19 Lua 滑块滚轮数值迁移
+
+完整核对 useSliderWheel.ts::sliderWheelValue、既有滚轮测试及 RangeField.tsx，保留仅按滚轮方向步进、Shift 最小5或既有更大步长、范围夹取、禁用以及仅更新草稿的回调时机。修正原生乘除1e10造成的溢出和二次舍入：用不依赖locale的十位定点格式/解析适配 Number(candidate.toFixed(10))，按二进制有效数识别精确中点并将 ties-to-even 修正为 ECMAScript 远离零；绝对值至少1e21及非有限值沿旧版直接保留再夹取。既有真实脚本窗口夹具增加13组小数步长、两端边界、正负中点、邻近小数边界、极大有限值、滚轮幅度/零、Shift、禁用和无提前release检查。唯一正式Release构建退出0，正式主题及指针下 --script-report-check 实际退出0；来源1044文件覆盖及证据快照、diff检查通过。未人工鼠标或图像验收，无性能优化，整体迁移仍 INCOMPLETE。保留 main.cpp 既有差异和未跟踪用户文件，不提交生成物。
