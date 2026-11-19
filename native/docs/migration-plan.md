@@ -8361,8 +8361,12 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 
 ## 2026-11-19 Runtime 空工作区查询迁移
 
-对照 ExtensionRuntimeHost.tsx 的实际 handleRequest：无活动工程时 document.getLayers/document.getFrames 返回空数组，document.undo/document.redo 返回 null 且不调用工程历史；权限和断开服务仍按原规则拒绝。原生 RequestHost 补齐中性结果，并在正式 Editor 空工作区检查中验证四项结果与无副作用。Release request/session 测试目标及正式 Release 构建通过；--extension-workspace-check 使用正式主题和指针实际退出0，来源覆盖1043文件及证据快照、diff检查通过。生产 JavaScript 执行器与 HTML 运行时仍未接入，整体迁移继续 INCOMPLETE；保留 main.cpp 差异和用户文件。
+此阶段的旧版语义结论已撤销：此前只读到各分支的回退值，遗漏其前方 !active && method.startsWith(document.) 的错误守卫。旧版无活动工程时，仅 document.getSummary 返回 null；getLayers/getFrames/undo/redo 均失败并提示“当前没有打开的工程。”。原阶段构建与测试仅证明错误断言被实现，不证明旧版等价；后续空工作区守卫纠正阶段恢复实际旧版行为。生产 JavaScript 执行器与 HTML 运行时仍未接入，整体迁移继续 INCOMPLETE。
 
 ## 2026-11-19 Runtime 命令状态字段归一化迁移
 
 实际对照 ExtensionRuntimeHost.tsx 的窗口 command-state 监听与 extension-command-state.ts 部分更新规则：checked/visible 独立接收布尔值，非布尔字段忽略，有效的同级字段仍生效；非对象 state 等同空补丁，不清空已有状态。保留已声明命令和活动会话身份校验。既有请求测试覆盖混合有效/无效字段、非对象状态、保留值及通知去重，会话测试覆盖真实 token 转发后的归一化与通知次数。仅构建 Release request/session 测试目标成功，两项 CTest 通过（0.17秒）；来源覆盖1043文件与证据快照、diff检查通过。本轮未重建正式GUI程序，未人工或图像验收；生产JavaScript执行器仍缺失，整体迁移INCOMPLETE。保留已有main.cpp差异及用户文件。
+
+## 2026-11-19 Runtime 空工作区前置守卫纠正
+
+完整核对 ExtensionRuntimeHost.tsx::handleRequest 控制流，纠正前阶段遗漏的无活动工程守卫：document.getSummary 仍返回 null，document.getLayers/getFrames/undo/redo 均返回 ok=false 与“当前没有打开的工程。”，不含 result 且不执行查询或历史回调。同步修正请求夹具、真实 Editor 工作区夹具和此前错误的来源/迁移说明，保留权限优先与服务断开错误。Release request/session 和唯一正式程序构建成功；两项 CTest 通过0.18秒，正式 --extension-workspace-check 带正式主题/指针实际退出0，来源1043文件覆盖及证据快照、diff检查通过。未人工或图像验收，生产JS执行器仍未接入，整体INCOMPLETE；保留既有main.cpp和用户数据。
