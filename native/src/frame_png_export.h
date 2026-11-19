@@ -9,6 +9,7 @@ enum class ExportConflictChoice {Cancel,Overwrite,Rename,OverwriteAll,RenameAll}
 using ExportConflictResolver=std::function<ExportConflictChoice(const std::filesystem::path&,const std::filesystem::path&)>;
 std::vector<std::string> framePngExportFrameIds(const timeline::State&,const FramePngExportOptions&);
 std::u32string framePngExportStem(std::u32string name,std::u32string fallback=U"MoonSprite-export");
+std::u32string withExportExtension(std::u32string name,const std::u32string& extension);
 std::optional<std::vector<std::filesystem::path>> resolveExportDestinations(std::vector<std::filesystem::path>,const ExportConflictResolver&);
 std::optional<std::vector<std::filesystem::path>> planFramePngPaths(const std::filesystem::path&,std::u32string,std::size_t,const ExportConflictResolver&,bool bmp=false);
 std::optional<std::vector<std::filesystem::path>> planFrameSequencePaths(const std::filesystem::path&,std::u32string,std::size_t,const ExportConflictResolver&,FrameSequenceFormat);

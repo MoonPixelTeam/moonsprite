@@ -6039,6 +6039,7 @@ void Editor::smokeExportFormatPreference(){
 
     auto require=[](bool v,const char* message){if(!v)throw std::runtime_error(message);};runtimePreferences_.set("files.exportFormat.Select","1");
 
+    for(const auto& name:{"art.v2","art.v2.PNG"," art.v2.png "}){openStaticExport();exportFilename_->setText(name);switchStaticExportFormat(1);require(exportFilename_->text()=="art.v2.bmp"&&exportFormPath().filename()==L"art.v2.bmp","Export preserves dotted name");switchAnimatedExportFormat(true);require(exportFilename_->text()=="art.v2.webp","Dotted export format roundtrip");resolve(false);}
     PixelDropdown* format=nullptr;for(std::size_t i=0;i<preferences::catalog().size();++i)if(std::string(preferences::catalog()[i].id)=="files.exportFormat.Select")format=dynamic_cast<PixelDropdown*>(preferenceRows_[i]);require(format,"Export format preference missing");
 
     showPreferences();preferenceTabs_[8]->Click();require(preferenceRowEnabled(preferences::RuntimeSettings::item("files.exportFormat.Select")),"Export preference unavailable");for(int i=0;i<9;++i)require(format->optionEnabled(i)==supportedExportPreference(i),"Export unsupported format gate");format->setSelectedIndex(6,true);require(runtimePreferences_.index("files.exportFormat.Select")==1,"Export preference draft applied early");resolve(false);require(runtimePreferences_.index("files.exportFormat.Select")==1,"Export preference cancel");

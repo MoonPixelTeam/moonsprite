@@ -395,7 +395,7 @@ PixelDropdown* Editor::exportDropdown(PixelButton*& previous) {
 
 std::wstring Editor::exportExtension()const {if(pending_==Pending::StaticExport&&exportProjectFormat_)return exportProjectFormat_==7?L".psd":exportProjectFormat_==8?L".ase":exportProjectFormat_==9?L".aseprite":L".moonsprite";return pending_==Pending::GifExport?(framePngMode_?(frameJpeg_?L".jpg":frameSvg_?L".svg":frameIco_?L".ico":frameBmp_?L".bmp":L".png"):(gifWebp_?L".webp":L".gif")):(staticJpeg_?L".jpg":staticSvg_?L".svg":staticIco_?L".ico":staticBmp_?L".bmp":L".png");}
 
-std::filesystem::path Editor::exportFormPath()const {auto name=std::filesystem::u8path(exportFilename_->text()).filename();if(name.empty())throw std::runtime_error("请输入导出文件名");name.replace_extension(exportExtension());return exportDirectory_/name;}
+std::filesystem::path Editor::exportFormPath()const {auto name=std::filesystem::u8path(exportFilename_->text()).filename();if(name.empty())throw std::runtime_error("请输入导出文件名");name=std::filesystem::path(withExportExtension(name.u32string(),std::filesystem::path(exportExtension()).u32string()));return exportDirectory_/name;}
 
 bool Editor::chooseFormExportFile(OPENFILENAMEW* dialog){
 
@@ -537,11 +537,11 @@ void Editor::layoutExportForm(const gfx::Rect& modal) {
 
     static_cast<PixelDropdown*>(exportFormatButton_)->setSelectedIndex(exportProjectFormat_?(exportProjectFormat_==10?10:exportProjectFormat_==8?11:exportProjectFormat_==7?8:9):(animated?framePngMode_&&frameJpeg_:staticJpeg_)?6:animated&&!framePngMode_?(gifWebp_?7:2):(animated?frameSvg_:staticSvg_)?5:(animated?frameIco_:staticIco_)?4:(animated?frameBmp_:staticBmp_)?3:(animated?framePngAutomatic_:exportOptions_.automatic)?1:0);
 
-    auto defaultName=(exportOptions_.layerId.empty()||animated?std::filesystem::path(currentDocument().name()).stem():std::filesystem::path(staticLayerExportStem(currentDocument(),exportOptions_.layerId)));if((!animated&&staticJpeg_)||(animated&&framePngMode_&&frameJpeg_))defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),animated?std::string{}:exportOptions_.layerId)+U".jpg");else if(exportAllLayers_)defaultName=std::filesystem::path(framePngExportStem(currentDocument().name())+std::filesystem::path(exportExtension()).u32string());else if(animated&&!framePngMode_&&gifWebp_)defaultName=std::filesystem::path(staticLayerExportStem(currentDocument(),{})+U".webp");else defaultName.replace_extension(exportExtension());
+    auto defaultName=std::filesystem::path(withExportExtension(currentDocument().name(),std::filesystem::path(exportExtension()).u32string()));
 
     if(exportFilename_->text().empty() || exportFilename_->text()==exportDefaultName_)exportFilename_->setText(defaultName.u8string());
 
-    else {auto name=std::filesystem::u8path(exportFilename_->text());name.replace_extension(exportExtension());if(name.u8string()!=exportFilename_->text())exportFilename_->setText(name.u8string());}
+    else {auto name=std::filesystem::path(withExportExtension(unicodeText(exportFilename_->text()),std::filesystem::path(exportExtension()).u32string()));if(name.u8string()!=exportFilename_->text())exportFilename_->setText(name.u8string());}
 
     exportDefaultName_=defaultName.u8string();
 

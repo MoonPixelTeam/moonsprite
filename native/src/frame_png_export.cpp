@@ -2,6 +2,10 @@
 #include "layer_compositor.h"
 #include <cwctype>
 namespace moon {
+std::u32string withExportExtension(std::u32string name,const std::u32string& extension){
+ auto trim=[](std::u32string& value){auto white=[](char32_t c){return(c>=9&&c<=13)||c==32||c==0xa0||c==0x1680||(c>=0x2000&&c<=0x200a)||c==0x2028||c==0x2029||c==0x202f||c==0x205f||c==0x3000||c==0xfeff;};auto first=std::find_if_not(value.begin(),value.end(),white),last=std::find_if_not(value.rbegin(),value.rend(),white).base();value=first>=last?std::u32string{}:std::u32string(first,last);};
+ trim(name);auto dot=name.find_last_of(U'.');if(dot!=std::u32string::npos){auto suffix=name.substr(dot+1);for(auto& c:suffix)if(c>=U'A'&&c<=U'Z')c+=32;for(auto known:{U"moonsprite",U"aseprite",U"ase",U"png",U"jpg",U"jpeg",U"webp",U"bmp",U"svg",U"gif",U"ico",U"psd"})if(suffix==known){name.resize(dot);break;}}trim(name);if(name.empty())name=U"MoonSprite-export";return name+extension;
+}
 std::vector<std::string> framePngExportFrameIds(const timeline::State& state,const FramePngExportOptions& options){
  if(state.frames.empty())throw std::invalid_argument("No frames to export");const auto& o=options.frames;
  for(const auto& section:state.loopSections)if(section.id==o.loopSectionId){auto r=timeline::loopRange(state,section);if(r.start>=0&&r.end>=0)return gifExportFrameIds(state,o);}

@@ -8354,3 +8354,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 滑块释放与中断迁移
 
 对照 LuaScriptDialog.tsx 的 pointerup 包装及 RangeField.tsx，释放只发送 release，不能用释放位置或 Shift 再计算预览。ScriptRangeSlider 保留最后预览值并释放捕获；禁用、失捕获、忙碌及宿主关闭清理拖动状态。实际弹窗夹具验证不同释放位置和修饰键不改预览、仅一次 release、禁用后无捕获且恢复后不继续旧拖动。正式 Release 构建成功（lua-slider-release-build.log），--script-report-check 与 --extension-form-check 实际退出均为0；来源覆盖1043文件及证据快照、diff检查通过。未人工鼠标或图像验收，整体迁移INCOMPLETE；保留已有main.cpp差异和用户文件。
+
+## 2026-11-19 导出多点名称迁移
+
+对照 export-settings.ts::withExportFileExtension 和 ExportDialogHost.tsx，统一导出默认名、格式切换与最终路径的已知扩展名替换规则：保留 art.v2 等未知后缀，忽略已知扩展名大小写，先后裁剪 ECMAScript 空白，空名称使用 MoonSprite-export。表单默认名承接工程名称，图层后缀继续由实际导出规划生成。既有正式导出偏好检查增加多点名称、大小写、空白及 BMP/WebP 往返断言。唯一正式 Release 构建退出0（export-dotted-name-build.log），--export-format-preference-check 带正式主题和指针实际退出0；来源1043文件覆盖及快照、diff检查通过。未人工或图像验收，整体迁移INCOMPLETE；保留已有main.cpp及用户文件。
