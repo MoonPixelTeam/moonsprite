@@ -28,3 +28,8 @@ WebM 构建工具固定为 NASM 2.16.03（BSD 2-Clause）和 GNU Make 4.4.1（GP
 2026-11-03：PSD 导入将旧版实际依赖 ag-psd 31.0.2 的 psdReader.ts、helpers.ts、additionalInfo.ts 中相关读取算法适配为有界 C++，应用不运行 JavaScript。MIT 版权与许可原文保留在 assets/licenses/ag-psd-LICENSE.txt，并随正式程序复制到 licenses。文档语义来自 legacy/core/psd.ts；未编译或链接 Aseprite 的 PSD 库。
 
 2026-11-03：PSD导出继续适配同一MIT ag-psd的 psdWriter.ts、descriptor.ts、helpers.ts，涉及文件结构、五类效果的action descriptor及PackBits RLE。许可沿用 assets/licenses/ag-psd-LICENSE.txt，应用不运行脚本。
+
+
+## QuickJS-ng 0.11.0
+
+Native JavaScript execution approved by the user on 2026-11-19; MIT license. Source: https://github.com/quickjs-ng/quickjs at commit `6a9fe9af5ca0bf7c49ae697edef44864272317d1`; pinned source archive SHA-256 `bae12d2c4daae37afeb7eab563b9cfaa8bfc4b6cda70a1cf2d494116f634814d`. Full notice: `assets/licenses/quickjs-ng-LICENSE.txt`. Only the core engine is linked; quickjs-libc, CLI, native module loading and OS APIs are not enabled. The existing MoonSprite source-available license governs reused legacy Runtime bootstrap code, separately from QuickJS MIT.

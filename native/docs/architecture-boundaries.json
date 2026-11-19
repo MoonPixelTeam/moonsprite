@@ -152,7 +152,8 @@
     "moon-recovery": "codec",
     "moon-timelapse-io": "codec",
     "moon-atomic-file": "platform",
-    "moon-screen-color": "platform"
+    "moon-screen-color": "platform",
+    "moon-extension-js": "extension"
   },
   "testTargets": [
     "*-tests"
@@ -280,6 +281,12 @@
         "dwmapi"
       ],
       "module": "platform"
+    },
+    {
+      "patterns": [
+        "qjs"
+      ],
+      "module": "extension"
     }
   ],
   "headers": [
@@ -412,6 +419,12 @@
         "include/effects/*"
       ],
       "module": "codec"
+    },
+    {
+      "patterns": [
+        "quickjs.h"
+      ],
+      "module": "extension"
     }
   ]
 }

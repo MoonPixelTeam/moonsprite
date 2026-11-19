@@ -24,6 +24,8 @@
 #include "lua_script_window_host.h"
 #include "lua_mse_snapshot.h"
 #include "extension_menu_adapter.h"
+#include "extension_js_host.h"
+#include "extension_native_services.h"
 
 namespace moon::editor {
 namespace {
@@ -739,7 +741,7 @@ for(const auto& e:menus::catalog())if(!*e.parent){if(std::string(e.id)=="help"){
   }
 
 struct Editor::ScriptState {
- script::Runtime runtime;script::Client client;std::unique_ptr<ExtensionMenuAdapter> menus;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
+ script::Runtime runtime;script::Client client;std::unique_ptr<ExtensionMenuAdapter> menus;std::unique_ptr<extension::JsRuntimeHost> extensions;std::unique_ptr<ScriptWindowHost> host;ui::Timer timer;std::future<PatternBrushListing> brushes;std::vector<StoredPatternBrush> localBrushes;std::vector<std::u32string> notifications;std::string queued;std::uint64_t queuedIdentity=0;std::string queuedLayer,queuedFrame;std::uint64_t menuRevision=0;bool pumping=false,publishingMenu=false;
  ScriptState(Editor& editor,const std::filesystem::path& root):runtime(root),client(runtime),timer(30,&editor){}
 };
 void Editor::initializeScripts(const std::filesystem::path& root){
@@ -808,10 +810,11 @@ void Editor::initializeScripts(const std::filesystem::path& root){
   });
   state->host->setPlaybackHost([this](Document& d,const script::PlaybackRequest& request){applyScriptPlayback(d,request);});
   state->menus=std::make_unique<ExtensionMenuAdapter>(font_,skin_,toolIcons_,this,menuBar_,palettePreferencePath().parent_path()/"extension-storage.json",[this]{return pending_==Pending::None;},[this]{return documentOpen_&&!homeOpen_;},[this]{return !scripts_||scripts_->client.busy()||!scripts_->queued.empty();},[this](const std::string& id){runScript(id);},[this]{refresh();},[this](const std::u32string& error){status_=error;invalidate();});
+  state->extensions=std::make_unique<extension::JsRuntimeHost>((root.empty()?script::executableDirectory():root)/"extensions",smoke_?root/"extension-runtime-storage.json":palettePreferencePath().parent_path()/"extension-storage.json",extensionWorkspaceServices(),extension::nativeHostServices([this](const winrt::hstring& message){status_=unicodeText(winrt::to_string(message));invalidate();}),[this](const std::string& id){auto status=[this](const winrt::hstring& message){status_=unicodeText(winrt::to_string(message));invalidate();};return diagnostics_?extension::nativeDiagnosticServices(diagnostics_,id,status):extension::DiagnosticServices{{},status,{}};},[weak=std::weak_ptr<ScriptState>(state)](auto host,const auto& token){if(auto live=weak.lock();live&&live->menus)live->menus->bindRuntime(std::move(host),token.extensionId,token.generation);},[weak=std::weak_ptr<ScriptState>(state)](const std::string& id){if(auto live=weak.lock();live&&live->menus)live->menus->unbindRuntime(id);},[this](const std::string& error){status_=U"扩展 Runtime："+unicodeText(error);invalidate();},[this]{return homeOpen_;});
   state->timer.Tick.connect([this]{pumpScripts();});state->timer.start();updateScriptsMenu();
  }catch(const std::exception& e){stopScripts();status_=U"脚本初始化失败："+unicodeText(e.what());invalidate();}
 }
-void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->host.reset();scripts_.reset();}
+void Editor::stopScripts(){if(!scripts_)return;scripts_->timer.stop();scripts_->extensions.reset();scripts_->host.reset();scripts_.reset();}
 void Editor::runScript(const std::string& id){if(!scripts_||scripts_->client.busy()||!scripts_->queued.empty()||pending_!=Pending::None||!documentOpen_||homeOpen_)return;cancelStroke();if(!scripts_->brushes.valid())scripts_->brushes=std::async(std::launch::async,[path=fillBrushLibraryDirectory()]{return PatternBrushLibrary(path).list();});scripts_->queued=id;scripts_->queuedIdentity=currentDocument().identity();scripts_->queuedLayer=currentDocument().layer().id;scripts_->queuedFrame=currentDocument().frame().id;}
 bool Editor::escapeScript(){if(!scripts_||(!scripts_->client.session()&&!scripts_->host->hasReport()))return false;scripts_->host->queueEscape();return true;}
 void Editor::pumpScripts(){
@@ -819,6 +822,7 @@ void Editor::pumpScripts(){
  if(state->brushes.valid()&&state->brushes.wait_for(std::chrono::seconds(0))==std::future_status::ready){try{state->localBrushes=state->brushes.get().brushes;}catch(const std::exception& e){state->queued.clear();state->client.failRequest(e.what());}}
  if(pending_!=Pending::None)return;
  if(state->menus)state->menus->pump();
+ if(state->extensions)state->extensions->pump();
  auto* active=documentOpen_&&!homeOpen_?&currentDocument():nullptr;
  const auto identity=currentDocument().identity(),content=currentDocument().contentRevision(),history=currentDocument().historyRevision(),overlay=currentDocument().floatingOverlayRevision();const auto frame=currentDocument().frame().id,layer=currentDocument().layer().id;
  if(!state->queued.empty()&&!state->brushes.valid()){auto id=std::move(state->queued);state->queued.clear();if(active&&state->queuedIdentity==currentDocument().identity()&&state->queuedLayer==currentDocument().layer().id&&state->queuedFrame==currentDocument().frame().id)state->host->run(active,std::move(id));}
@@ -832,6 +836,7 @@ void Editor::pumpScripts(){
 void Editor::updateScriptsMenu(){
  if(!scriptsMenu_||!scripts_)return;auto& client=scripts_->client;if(!scripts_->publishingMenu)client.refresh();scripts_->menuRevision=client.listingRevision();auto folderItem=menuItems_.at("openScriptFolder");auto children=scriptsMenu_->children();for(auto child:children){scriptsMenu_->removeChild(child);if(child!=folderItem)delete child;}
  if(scripts_->menus)scripts_->menus->request(client.extensionsJson());
+ if(scripts_->extensions)scripts_->extensions->reconcile(client.extensionsJson());
  using namespace winrt::Windows::Data::Json;JsonArray list;for(auto value:JsonArray::Parse(winrt::to_hstring(client.scriptsJson())))if(!scripts_->menus||!scripts_->menus->placed(winrt::to_string(value.GetObject().GetNamedString(L"id"))))list.Append(value);
  if(client.loadFailed()||!list.Size()){auto empty=new PixelMenuItem(font_,skin_,client.loading()?U"正在加载脚本…":client.loadFailed()?U"脚本列表读取失败":U"没有可用脚本");empty->setEnabled(false);scriptsMenu_->addChild(empty);}
  else for(const auto& value:list){auto entry=value.GetObject();const auto id=winrt::to_string(entry.GetNamedString(L"id"));auto row=new PixelMenuItem(font_,skin_,unicodeText(winrt::to_string(entry.GetNamedString(L"name"))));row->available=[this]{return scripts_&&!scripts_->client.busy()&&scripts_->queued.empty()&&documentOpen_&&!homeOpen_&&pending_==Pending::None;};row->setId(id.c_str());row->Click.connect([this,id]{runScript(id);});scriptsMenu_->addChild(row);}
@@ -1132,6 +1137,14 @@ void Editor::smokeScriptEntry(){
   auto action=find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint");if(!action)throw std::runtime_error("Formal builtin contribution missing");action->Click();manager()->dispatchMessages();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();std::this_thread::yield();}while((!scripts_->queued.empty()||scripts_->client.running())&&std::chrono::steady_clock::now()<until);if(currentDocument().pixels()[1]!=0xff765432)throw std::runtime_error("Formal contributed Lua did not execute");
   extension::RuntimeDirectory::setEnabled(root/"extensions","menu-entry",false);publish(false);if(find(menuBar_->getMenu(),"menu-entry:menu-item:edit:paint"))throw std::runtime_error("Disabled formal contribution retained builtin command");refresh();std::ofstream(root/"menu-contributions-passed.txt")<<"production discovery, placement, More, Lua execution and disable passed";
  };checkContributions();
+ auto checkJsRuntime=[&]() __declspec(noinline) {
+  const auto package=root/"extensions"/"native-js";std::filesystem::create_directories(package);const auto key="formal-"+std::to_string(GetTickCount64());
+  std::ofstream(package/"manifest.json")<<R"({"schemaVersion":2,"id":"native-js","name":"Native JS","version":"1","apiVersion":"1.0.0","commands":[{"id":"go","name":"Native runtime command","runtimeEvent":"formal"}],"menuItems":[{"id":"edit","menu":"edit","commands":["go"]}],"runtime":{"entry":"runtime.html","permissions":["runtime","commands","storage","ui"]}})";
+  std::ofstream(package/"runtime.html")<<"<script>moonsprite.on('activate',async()=>{await moonsprite.storage.set({key:'"<<key<<"',value:'ready'});await moonsprite.ui.notify({message:'JS formal ready'});});moonsprite.on('command',async event=>{await moonsprite.storage.set({key:'"<<key<<"',value:event.event});await moonsprite.ui.notify({message:'JS formal command'});});</script>";
+  std::function<PixelMenuItem*(ui::Menu*)> find=[&](ui::Menu* menu)->PixelMenuItem*{for(auto child:menu->children())if(auto row=dynamic_cast<PixelMenuItem*>(child)){if(row->id()=="native-js:menu-item:edit:go")return row;if(row->getSubmenu())if(auto found=find(row->getSubmenu()))return found;}return nullptr;};
+  auto publish=[&](bool enabled){extension::RuntimeDirectory::setEnabled(root/"extensions","native-js",enabled);updateScriptsMenu();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(15);do{pumpScripts();manager()->dispatchMessages();std::this_thread::yield();}while((scripts_->client.loading()||bool(find(menuBar_->getMenu()))!=enabled||(enabled&&status_!=U"JS formal ready"))&&std::chrono::steady_clock::now()<until);if(scripts_->client.loading()||bool(find(menuBar_->getMenu()))!=enabled||(enabled&&status_!=U"JS formal ready"))throw std::runtime_error("Formal QuickJS discovery/start failed: "+utf8Text(status_));};
+  publish(true);auto command=find(menuBar_->getMenu());command->Click();manager()->dispatchMessages();const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(10);do{pumpScripts();manager()->dispatchMessages();std::this_thread::yield();}while(status_!=U"JS formal command"&&std::chrono::steady_clock::now()<until);if(status_!=U"JS formal command")throw std::runtime_error("Formal native menu did not execute QuickJS");extension::Storage saved(root/"extension-runtime-storage.json");if(saved.get(u"native-js",std::u16string(key.begin(),key.end())).GetString()!=L"formal")throw std::runtime_error("Formal QuickJS command storage missing");publish(false);publish(true);publish(false);
+ };checkJsRuntime();
  stopScripts();replaceDocumentForSmoke(std::move(*std::make_unique<Document>()));refresh();
 }
 

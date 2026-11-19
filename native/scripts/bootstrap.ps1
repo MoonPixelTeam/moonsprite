@@ -38,4 +38,5 @@ if (!(Test-Path -LiteralPath $zlib)) {
   Move-Item -LiteralPath $source -Destination $target
 }
 & (Join-Path $PSScriptRoot 'bootstrap-video.ps1')
+& (Join-Path $PSScriptRoot 'bootstrap-quickjs.ps1')
 Write-Host 'Pinned dependencies ready. Only MIT src/ui is compiled from the Aseprite checkout.'

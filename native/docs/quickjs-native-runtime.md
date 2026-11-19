@@ -1,0 +1,21 @@
+# QuickJS 原生扩展执行
+
+2026-11-19 用户明确决定“采用 QuickJS＋原生界面映射”，解除此前执行器路线待决定项。仍遵循禁止 WebView2、功能必须有实际承接证据的规则。
+
+## 本阶段范围
+
+固定 QuickJS-ng 0.11.0，MIT 许可及归档SHA-256见 THIRD_PARTY.md，依赖由 bootstrap-quickjs.ps1 校验。每个扩展独立runtime/context，核心不加载libc/OS模块。直接复用 ExtensionRuntimeHost.tsx runtimeBootstrap，不重写API/Promise协议；保留256请求/300秒超时。原生队列传递请求/响应/事件，storage.set保留执行器JSON.stringify的精确字符串，继续由SessionHost执行身份、权限、存储配额、资源声明和代次检查。异步network响应沿用现有worker与取消。
+
+原生兼容层提供window自身、Event/CustomEvent、事件监听、parent消息、函数定时器和console；Promise/microtask/JSON/Map/Set/TypedArray由真实QuickJS执行。没有伪造DOM、Canvas或媒体实现。提取自包含HTML的内联classic/module脚本，跳过CSP禁止的src脚本和非JS数据脚本；注释、带引号属性及raw-text元素不执行内嵌伪script。模块不能导入外部/本地模块。
+
+正式编辑器使用现有发现快照启动/替换/停用VM，绑定现有菜单/设置会话，实际runtime命令可调用原生工作区/颜色/存储/资源/剪贴板/通知/网络/日志服务。原有30ms脚本pump消费任务；空闲不扫描目录。每次新发现核对入口mtime，禁用/删除清理session；相同签名失败不盲重试。已有project/clock订阅复用。
+
+## 必要适配与限制
+
+浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
+
+本阶段不声称HTML设置页、DOM/Canvas/媒体、覆盖层、附属窗口或原生表单已由JS执行器完整接通。现有原生FormWindow/WindowRouter需要继续连接，不能把API方法名可查询当作窗口已能显示。editor-event各类详细订阅、输入事件、色样事件、导出事件、非默认语言变更和文件拖放入口仍需正式接线；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+
+## 验收
+
+真实QuickJS+旧引导脚本+SessionHost夹具已验证Promise/Unicode/极小双精度/安全整数存储、权限拒绝、隔离、预加载与持续命令回调、locale/files事件、定时器、任务以及死循环中断。最终 Release 构建成功；正式主题/指针下 --script-entry-check 实际退出0，覆盖真实发现/activate、菜单命令落盘、停用/重启。文档与源码覆盖不等于全部迁移完成。

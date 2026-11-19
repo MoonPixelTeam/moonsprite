@@ -8427,3 +8427,9 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 完整记忆并临时禁用全部工具标记，包括移动/文字/旋转/平滑/喷枪/液化/魔术橡皮；只在原工程仍活动且吸管仍选中时恢复。新采样所有者终止旧所有者，陈旧结束通知不影响新所有者。共用刷新在工程/首页/工具变化时取消；忙碌、关闭父窗口、关闭或重开颜色弹窗清理捕获及过滤器。拖动释放先于弹窗范围拒绝处理；Lua 回调可同步结束采样，但已处理按下事件仍被消耗，防止落到恢复后的绘图工具。
 
 真实 Lua 正式入口夹具覆盖工具恢复、Escape、实际画布RGBA、单次change回调、返回模型保留弹窗、重复色采样、弹窗上释放、工程切换、重开、忙碌及父子关闭，检查作品像素/历史不变与角色色发布。唯一正式 Release 最终构建成功（lua-canvas-sampling-fixture-build.log）；带正式主题/指针的 --script-entry-check、--color-editor-check、--gradient-shape-check 均以 Start-Process -Wait -PassThru 获取实际退出码0。首轮Lua检查因窗口遮挡没有可采样点而失败，仅调整夹具窗口到同一角落后通过。来源1044文件覆盖及证据快照、diff检查通过。未做人工物理鼠标或图像验收。内部复用许可已核对 legacy/LICENSE，无新素材或布局。整体迁移仍 INCOMPLETE。
+
+## 2026-11-19 QuickJS 真实执行器与正式扩展入口
+
+用户明确选择 QuickJS＋原生界面映射后，固定并校验 MIT 许可的 QuickJS-ng 0.11.0，每扩展独立 VM；直接复用旧版 runtimeBootstrap，接通既有 SessionHost 权限、存储精确 JSON、资源声明、网络、菜单命令、发现与停用生命周期。提供原生消息/定时器队列与执行预算，禁用 libc/OS 模块；不提供虚假 DOM/Canvas。来源、必要适配及剩余边界见 quickjs-native-runtime.md。
+
+唯一正式 Release 最终构建成功（quickjs-final-build.log）。真实 extension-js-tests 退出0，覆盖旧引导脚本、Promise/拒绝、HTML脚本提取、隔离、定时器和中断；正式主题/指针下 --script-entry-check 通过 Start-Process -Wait -PassThru 取得实际退出0，覆盖真实发现、activate、菜单命令、落盘以及停用/重启。原生窗口/表单接线与详细事件仍待后续迁移，整体 INCOMPLETE；未做人工鼠标或图像验收，保留 main.cpp 原有差异及用户文件。
