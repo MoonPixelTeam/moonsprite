@@ -9,7 +9,7 @@ namespace moon {
 // edit history, clipboard, caret, scrub and keyboard numeric interactions.
 class ScriptNumberEntry final:public PixelEntry {
  double value_=0;bool updating_=false,live_=true;
- void normalize(){if(updating_)return;try{std::size_t used=0;const auto v=std::stod(text(),&used);if(used==text().size()&&std::isfinite(v)){const auto next=std::clamp(v,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}if(next!=v)displayValue();}}catch(...){}}
+ void normalize(){if(updating_)return;try{struct NumericLocale{_locale_t value=_create_locale(LC_NUMERIC,"C");~NumericLocale(){if(value)_free_locale(value);}};static NumericLocale locale;if(!locale.value)return;const auto source=text();char* end=nullptr;const auto v=_strtod_l(source.c_str(),&end,locale.value);if(end!=source.c_str()&&end==source.c_str()+source.size()&&std::isfinite(v)){const auto next=std::clamp(v,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}if(next!=v)displayValue();}}catch(...){}}
  void displayValue(){std::ostringstream out;out.precision(17);out<<value_;updating_=true;setText(out.str());updating_=false;}
 public:
  std::function<void(double)> changed;std::function<void()> committed;

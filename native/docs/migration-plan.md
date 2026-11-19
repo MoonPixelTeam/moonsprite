@@ -8378,3 +8378,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Runtime 资源声明准入迁移
 
 对照 ExtensionRuntimeHost.tsx::handleRequest resources.read 的完整控制流，宿主先按 stringParam 校验资源ID，再精确匹配当前 Runtime 声明，最后调用平台读取。RequestHost 与 SessionHost 将读取器和声明ID一并绑定到活动代次，未声明/大小写不同/空ID在读取前拒绝，错误参数使用原字段提示；不再仅依赖读取回调自己限制范围。既有资源夹具验证原始字节、空资源、缺失文件、错误字段、无读取副作用、权限、替换代次声明和读取器隔离及关闭；已有catalog磁盘校验保留。能力查询源码核对无新增差异，既有权限排列与旧版方法/事件对照测试复用。Release资源/会话/能力三个目标构建成功，对应CTest全部通过0.26秒，来源1043文件及证据快照、diff检查通过。本批未重建正式GUI、未人工或图像验收；生产JS执行器和会话创建仍缺失，整体INCOMPLETE。保留main.cpp和用户文件，不提交生成物。
+
+## 2026-11-19 Lua 数字提交双精度迁移
+
+对照 NumberInput.tsx commit/normalize 和 numeric-expression.ts，修正原生表达式提交先格式化为12位有效数字导致Lua接收值丢失精度的问题。仅启用numericExpressionFilter的字段改用17位往返格式，其他输入保留原精度；ScriptNumberEntry以C locale strtod接受有限次正规数和下溢零，避免stod把有效极小值作为异常忽略。实际脚本窗口夹具精确验证1/3、17位十进制、最大安全整数、最小非零双精度、下溢零及无效草稿保留已接受值。唯一正式Release构建成功，正式主题/指针下--script-report-check、--color-editor-check实际退出均为0；既有四项extension-form检查通过4.26秒，但在最终链接前执行，不作为新程序验收。来源1043文件及证据快照、diff检查通过，无人工或图像验收，无性能优化，整体迁移INCOMPLETE。文件拖入已有实现/旧版对照核对未发现新增差异，本阶段未修改该链路。保留main.cpp及用户文件。

@@ -498,7 +498,7 @@ int PixelEntry::stepperAt(gfx::Point point)const{
 }
 void PixelEntry::restoreNumericDraft() {
   if(numericMixed&&numericMixed()){setText("");return;}
-  if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}
+  if(numericValue){std::ostringstream out;out.precision(numericExpressionFilter?17:12);out<<numericValue();setText(out.str());}
 }
 bool PixelEntry::commitExpression() {
   if(!(numeric || wheel) || !isEnabled() || isReadOnly())return false;
@@ -530,15 +530,15 @@ bool PixelEntry::commitExpression() {
   };
   product=[&]{double value=primary();space();while(at<source.size() && (source[at]=='*' || source[at]=='/')){const char op=source[at++];const double rhs=primary();if(op=='/' && rhs==0)throw std::runtime_error("Division zero");value=op=='*'?value*rhs:value/rhs;if(numericExpressionFilter&&!std::isfinite(value))throw std::runtime_error("Nonfinite product");space();}return value;};
   sum=[&]{double value=product();space();while(at<source.size() && (source[at]=='+' || source[at]=='-')){const char op=source[at++];const double rhs=product();value=op=='+'?value+rhs:value-rhs;if(numericExpressionFilter&&!std::isfinite(value))throw std::runtime_error("Nonfinite sum");space();}return value;};
-  try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue)restoreNumericDraft();return true;}catch(...){if(deferredNumeric&&numericValue)restoreNumericDraft();return false;}
+  try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(numericExpressionFilter?17:12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue)restoreNumericDraft();return true;}catch(...){if(deferredNumeric&&numericValue)restoreNumericDraft();return false;}
 }
 void PixelEntry::adjustNumber(int delta) {
   if(!isEnabled() || isReadOnly() || !delta)return;
   if(wheel){wheel(delta);return;}
   if(!numeric)return;
-  try{if(deferredNumeric&&numericValue){const double next=std::clamp(numericValue()+delta*numericStep,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<next;setText(out.str());Change();invalidate();return;}std::size_t used=0;const double value=text().empty()?0:std::stod(text(),&used);
+  try{if(deferredNumeric&&numericValue){const double next=std::clamp(numericValue()+delta*numericStep,numericMinimum,numericMaximum);std::ostringstream out;out.precision(numericExpressionFilter?17:12);out<<next;setText(out.str());Change();invalidate();return;}std::size_t used=0;const double value=text().empty()?0:std::stod(text(),&used);
     if(used!=text().size() || !std::isfinite(value))return;
-    std::ostringstream out;out.precision(12);out<<value+delta*numericStep;
+    std::ostringstream out;out.precision(numericExpressionFilter?17:12);out<<value+delta*numericStep;
     setText(out.str());Change();invalidate();
   }catch(...){ }
 }
