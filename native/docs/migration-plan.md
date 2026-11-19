@@ -8414,3 +8414,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 滑块滚轮数值迁移
 
 完整核对 useSliderWheel.ts::sliderWheelValue、既有滚轮测试及 RangeField.tsx，保留仅按滚轮方向步进、Shift 最小5或既有更大步长、范围夹取、禁用以及仅更新草稿的回调时机。修正原生乘除1e10造成的溢出和二次舍入：用不依赖locale的十位定点格式/解析适配 Number(candidate.toFixed(10))，按二进制有效数识别精确中点并将 ties-to-even 修正为 ECMAScript 远离零；绝对值至少1e21及非有限值沿旧版直接保留再夹取。既有真实脚本窗口夹具增加13组小数步长、两端边界、正负中点、邻近小数边界、极大有限值、滚轮幅度/零、Shift、禁用和无提前release检查。唯一正式Release构建退出0，正式主题及指针下 --script-report-check 实际退出0；来源1044文件覆盖及证据快照、diff检查通过。未人工鼠标或图像验收，无性能优化，整体迁移仍 INCOMPLETE。保留 main.cpp 既有差异和未跟踪用户文件，不提交生成物。
+
+## 2026-11-19 Lua 颜色编辑器预览与确认迁移
+
+对照 ColorValueControl.tsx 的 updateValue、commitEditorColor、confirmWorkingColor 及滑块/数字输入事件：工作色预览与已确认色分离；当前色板复制读取已确认色；键盘调整在失焦时确认，键盘释放不确认；滚轮立即确认；指针释放确认最后预览、不按释放位置重新计算并释放焦点。共享 PixelSlider 仅对颜色编辑器启用该模式，其他 RangeField 调用保持原有提交语义。正式脚本窗口夹具增加键盘 Shift/keyup、确认色复制与提示、滚轮确认、失焦提交、指针释放位置和修饰键、捕获/焦点清理及去重检查。正式 Release 构建成功，正式主题和指针下 --color-editor-check、--script-report-check 实际退出均为0；来源1044文件覆盖及 diff 检查通过。未人工鼠标或图像验收，颜色编辑器完整采样与其他高级功能仍属迁移缺口，整体迁移仍 INCOMPLETE。保留 main.cpp 既有差异和未跟踪用户文件，不提交生成物。

@@ -993,6 +993,7 @@ bool PixelSlider::onProcessMessage(ui::Message* msg) {
     const auto mouse=static_cast<ui::MouseMessage*>(msg);
     if(msg->type()==ui::kMouseDownMessage && mouse->left()) {requestFocus();captureMouse();begin();}
     if(hasCapture()) {
+      if(colorEditorInteraction && msg->type()==ui::kMouseUpMessage && mouse->left()) {releaseMouse();finish();releaseFocus();return true;}
       const auto rc=bounds();const int left=rc.x+uiScale,width=std::max(1,rc.w-2*uiScale-1);
       const double progress=std::clamp(double(mouse->position().x-left)/width,0.0,1.0);
       change(int(std::floor(minimum+progress*(maximum-minimum)+0.5)),mouse->shiftPressed());
@@ -1005,7 +1006,7 @@ bool PixelSlider::onProcessMessage(ui::Message* msg) {
     if(!delta) return true;
     const int stride=mouse->shiftPressed()?(percentage?10:5):1;
     const int next=std::clamp(value+(delta<0?stride:-stride),minimum,maximum);
-    if(next!=value) {const bool discrete=!active_;begin();change(next,false);if(discrete) finish();}return true;
+    if(next!=value) {const bool discrete=colorEditorInteraction||!active_;begin();change(next,false);if(discrete) finish();}return true;
   }
   if(msg->type()==ui::kKeyDownMessage || msg->type()==ui::kKeyUpMessage) {
     const auto key=static_cast<ui::KeyMessage*>(msg);int next=value;
@@ -1017,7 +1018,7 @@ bool PixelSlider::onProcessMessage(ui::Message* msg) {
       case ui::kKeyPageDown:next=value-std::max(1,(maximum-minimum)/10);break;
       default:return ui::Widget::onProcessMessage(msg);
     }
-    if(msg->type()==ui::kKeyDownMessage) {begin();change(next,key->shiftPressed());}else if(!hasCapture()) finish();return true;
+    if(msg->type()==ui::kKeyDownMessage) {begin();change(next,colorEditorInteraction?false:key->shiftPressed());}else if(!hasCapture()&&!colorEditorInteraction) finish();return true;
   }
   return ui::Widget::onProcessMessage(msg);
 }

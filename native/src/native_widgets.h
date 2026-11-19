@@ -313,6 +313,9 @@ class PixelSlider : public ui::Widget {
 public:
   int minimum=0,maximum=100,value=100;
   bool percentage=true;
+    // ColorValueControl: keyboard drafts commit on blur, wheel immediately,
+    // pointer release confirms the last preview and removes input focus.
+    bool colorEditorInteraction=false;
   std::u32string numberSuffix=U"px";
   std::function<std::u32string(int)> valueLabel; // Categorical RangeField values (e.g. layer density).
   std::function<void(int)> changed;

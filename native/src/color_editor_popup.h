@@ -116,14 +116,14 @@ class ColorEditorPopup final : public PixelDialog {
   inline static constexpr ColorValueMode modes_[]{ColorValueMode::Hsv,ColorValueMode::Rgb,ColorValueMode::Lab,ColorValueMode::Gray,ColorValueMode::Palette,ColorValueMode::Hsl,ColorValueMode::Cmyk};
   PixelButton* button(std::u32string text,std::function<void()> action){auto b=new StatusToastControl<PixelButton>(copyToast_,font_,skin_,std::move(text),std::move(action));addChild(b);return b;}
   void refreshCopyFeedback(){
-    copyToast_.text=copiedSwatch_?U"已复制 "+unicodeText(colorValueHex(copiedSwatch_==1?previous_:current_)):U"";
+    copyToast_.text=copiedSwatch_?U"已复制 "+unicodeText(colorValueHex(copiedSwatch_==1?previous_:committedColor_)):U"";
     previousButton_->active=copiedSwatch_==1;currentButton_->active=copiedSwatch_==2;
     previousButton_->invalidate();currentButton_->invalidate();
     if(!bounds().isEmpty())copyToast_.place(currentButton_->bounds(),bounds());
     invalidate();
   }
   void copySwatch(bool previous){
-    clipboard_(colorValueHex(previous?previous_:current_));
+    clipboard_(colorValueHex(previous?previous_:committedColor_));
     copiedSwatch_=previous?1:2;copyFeedback_.stop();copyFeedback_.start();refreshCopyFeedback();
   }
   void paletteFilters(bool enabled){
@@ -180,9 +180,9 @@ class ColorEditorPopup final : public PixelDialog {
     for(int i=0;i<7;++i){tabs_[i]->setVisible(color_editor::enabled(sharedModes_,i));tabs_[i]->active=mode_==modes_[i];tabs_[i]->invalidate();}
     for(auto b:paletteButtons_){b->active=b->swatch==current_;b->invalidate();}
     if(!hex_->hasFocus())hex_->setText(colorValueHex(current_));
-    previousButton_->swatch=previous_;currentButton_->swatch=current_;updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();refreshCopyFeedback();
+    previousButton_->swatch=previous_;currentButton_->swatch=committedColor_;updating_=false;if(!bounds().isEmpty())setBounds(bounds());layout();refreshCopyFeedback();
   }
-  void commitColor(){if(current_==committedColor_)return;committedColor_=current_;if(committed_)committed_(current_);}
+  void commitColor(){if(current_==committedColor_)return;committedColor_=current_;currentButton_->swatch=committedColor_;refreshCopyFeedback();if(committed_)committed_(current_);}
   void apply(std::uint32_t color,bool derive=true){if(!editingEnabled_)return;current_=color;sync(derive);if(changed_)changed_(color);}
   void updateField(int i,double value){const auto fields=colorValueFields(mode_);if(i>=int(fields.size())||!std::isfinite(value))return;values_[i]=std::clamp(value,double(fields[i].minimum),double(fields[i].maximum));apply(colorFromValues(mode_,values_,current_),false);}
   void commitHex(){if(updating_||!editingEnabled_)return;std::uint32_t next;if(pickerParseRgbaHex(unicodeText(hex_->text()),next,int(current_>>24))&&next!=current_)apply(next);hex_->setText(colorValueHex(current_));commitColor();}
@@ -247,7 +247,7 @@ public:
     sample_=button(U"",[this]{setSampling(!sampling_);});sample_->iconSkin=&icons_;sample_->icon="tool-eyedropper-normal";
     paletteBar_=new StatusToastControl<PixelScrollBar>(copyToast_,skin_,true);addChild(paletteBar_);paletteBar_->wheelStep=15*uiScale;paletteBar_->changed=[this](int value){paletteScroll_=value;layout();invalidate();};
     copyFeedback_.Tick.connect([this]{copyFeedback_.stop();copiedSwatch_=0;refreshCopyFeedback();});
-    for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};slider->interactionCommit=[this]{commitColor();};
+    for(int i=0;i<5;++i){auto slider=new StatusToastControl<PixelSlider>(copyToast_,font_,skin_);addChild(slider);sliders_[i]=slider;slider->colorEditorInteraction=true;slider->numberSuffix=U"";slider->changed=[this,i](int v){updateField(i,v);};slider->interactionCommit=[this]{commitColor();};
       slider->colorGradient=[this,i](double t){auto next=values_;const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return current_;next[i]=fields[i].minimum+t*(fields[i].maximum-fields[i].minimum);return colorFromValues(mode_,next,current_);};
       auto entry=new StatusToastControl<PixelEntry>(copyToast_,font_,skin_);addChild(entry);entries_[i]=entry;entry->numeric=true;entry->numericSteppers=true;entry->numericExpressionFilter=true;entry->deferredNumeric=true;entry->numericValue=[this,i]{return std::floor(values_[i]+.5);};entry->deferredCommit=[this,i,entry]{if(updating_)return;try{std::size_t used=0;const double v=std::stod(entry->text(),&used);if(used==entry->text().size()&&std::isfinite(v)&&v!=std::floor(values_[i]+.5)){updateField(i,v);commitColor();}}catch(...){}};entry->wheel=[this,i,entry](int delta){const auto fields=colorValueFields(mode_);if(i>=int(fields.size()))return;const auto next=std::clamp(std::floor(values_[i]+.5)+delta,double(fields[i].minimum),double(fields[i].maximum));if(next!=std::floor(values_[i]+.5)){updateField(i,next);commitColor();}entry->restoreNumericDraft();};entry->blur=[this]{sync(false);};entry->accept=[entry]{entry->releaseFocus();};entry->cancel=[this]{commitHex();closeWindow(nullptr);};}
     Close.connect([this](ui::CloseEvent&){static_cast<HexEntry*>(hex_)->cancelContextGesture();commitHex();if(sampling_)setSampling(false);paletteFilters(false);changed_={};committed_={};samplingChanged_={};try{std::filesystem::create_directories(storage_.parent_path());std::ofstream out(storage_);out<<bounds().w/uiScale<<' '<<bounds().h/uiScale;}catch(const std::exception&){ /* A read-only preference directory must not prevent closing. */ }});
@@ -392,6 +392,18 @@ public:
     changed_=savedChanged;clipboard_=savedClipboard;
   }
   void smoke(){
+    {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedClipboard=clipboard_;const auto savedColor=current_,savedAccepted=committedColor_,savedPrevious=previous_;const auto savedMode=mode_;
+      auto slider=sliders_[0];mode_=ColorValueMode::Rgb;current_=committedColor_=0xff332210;sync(true);slider->requestFocus();manager()->dispatchMessages();if(!slider->hasFocus())throw std::runtime_error("Color slider focus fixture");
+      int commits=0,drafts=0;std::string copied;changed_=[&](auto){++drafts;};committed_=[&](auto){++commits;};clipboard_=[&](auto text){copied=text;};const auto initial=current_;
+      auto key=[&](ui::MessageType type){ui::KeyMessage message(type,ui::kKeyRight,ui::kKeyShiftModifier,0,0);slider->onProcessMessage(&message);};
+      key(ui::kKeyDownMessage);key(ui::kKeyUpMessage);if((current_&255)!=17||commits||drafts!=1||currentButton_->swatch!=initial)throw std::runtime_error("Color keyboard preview must await blur and ignore keyboard Shift");
+      currentButton_->Click();if(copied!=colorValueHex(initial)||copyToast_.text!=U"已复制 "+unicodeText(copied)||commits)throw std::runtime_error("Comparison copy must use confirmed color");
+      ui::MouseMessage wheel(ui::kMouseWheelMessage,os::PointerType::Mouse,ui::kButtonNone,ui::kKeyNoneModifier,slider->bounds().center(),{0,-1});slider->onProcessMessage(&wheel);if((current_&255)!=18||commits!=1||currentButton_->swatch!=current_)throw std::runtime_error("Color wheel must confirm pending keyboard draft immediately");
+      key(ui::kKeyDownMessage);key(ui::kKeyUpMessage);if(commits!=1)throw std::runtime_error("Color key release confirmed early");slider->releaseFocus();manager()->dispatchMessages();if(commits!=2||currentButton_->swatch!=current_)throw std::runtime_error("Color keyboard blur confirmation missing");
+      auto pointer=[&](ui::MessageType type,int numerator,bool shift=false){const auto r=slider->bounds();ui::MouseMessage message(type,os::PointerType::Mouse,ui::kButtonLeft,shift?ui::kKeyShiftModifier:ui::kKeyNoneModifier,{r.x+r.w*numerator/4,r.center().y});slider->onProcessMessage(&message);};
+      pointer(ui::kMouseDownMessage,1);manager()->dispatchMessages();pointer(ui::kMouseMoveMessage,2);const auto preview=current_;if(commits!=2||currentButton_->swatch==preview||!slider->hasCapture())throw std::runtime_error("Color pointer preview confirmed early");pointer(ui::kMouseUpMessage,4,true);manager()->dispatchMessages();if(current_!=preview||commits!=3||slider->hasCapture()||slider->hasFocus()||currentButton_->swatch!=preview)throw std::runtime_error("Color pointer release must retain preview, confirm and blur");
+      copyFeedback_.stop();copiedSwatch_=0;mode_=savedMode;current_=savedColor;committedColor_=savedAccepted;previous_=savedPrevious;changed_=savedChanged;committed_=savedCommitted;clipboard_=savedClipboard;sync(true);
+    }
     {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedColor=current_,savedAccepted=committedColor_;int drafts=0,commits=0;changed_=[&](auto){++drafts;};committed_=[&](auto){++commits;};committedColor_=current_;apply(current_^1u);if(drafts!=1||commits)throw std::runtime_error("Color draft committed early");commitColor();commitColor();if(commits!=1)throw std::runtime_error("Color duplicate commit");hex_->setText(colorValueHex(current_^2u));commitHex();if(commits!=2||drafts!=2)throw std::runtime_error("Color HEX commit missing");current_=savedColor;committedColor_=savedAccepted;changed_=savedChanged;committed_=savedCommitted;sync(true);}
     {const auto savedChanged=changed_,savedCommitted=committed_;const auto savedColor=current_,savedAccepted=committedColor_;const auto savedMode=mode_;mode_=ColorValueMode::Rgb;sync(true);int commits=0;changed_=[](auto){};committed_=[&](auto){++commits;};committedColor_=current_;const auto next=((current_&255)+1)%256;entries_[0]->setText(std::to_string(next));entries_[0]->Change();if(current_!=savedColor||commits)throw std::runtime_error("Channel draft published early");entries_[0]->commitExpression();if((current_&255)!=next||commits!=1)throw std::runtime_error("Channel accept missing");entries_[0]->setText("2+3");entries_[0]->commitExpression();if((current_&255)!=5)throw std::runtime_error("Channel expression missing");const auto beforeSample=commits;sampled(current_^256u);sampled(current_);if(commits!=beforeSample+1)throw std::runtime_error("Sample commit deduplication missing");mode_=savedMode;current_=savedColor;committedColor_=savedAccepted;changed_=savedChanged;committed_=savedCommitted;sync(true);}
     {const auto initial=current_;setEditingEnabled(false);if(hex_->isEnabled()||entries_[0]->isEnabled()||sliders_[0]->isEnabled()||tabs_[0]->isEnabled()||!close_->isEnabled()||!previousButton_->isEnabled()||!currentButton_->isEnabled())throw std::runtime_error("Busy color control availability");sampled(initial^1u);if(current_!=initial)throw std::runtime_error("Disabled color accepted sample");setEditingEnabled(true);if(!hex_->isEnabled()||!entries_[0]->isEnabled()||!sliders_[0]->isEnabled())throw std::runtime_error("Color controls did not resume");}
