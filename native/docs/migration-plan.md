@@ -8328,3 +8328,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 返回模型保留颜色编辑窗口迁移
 
 实际对照 LuaScriptDialog.tsx 按 control.id 保留 ScriptControl，以及 ColorValueControl.tsx 的颜色属性同步与 disabled/preserveEditorOnDisable 效果。原生返回模型重建行控件时保留同一可见且启用颜色目标的弹窗及窗口几何；外部颜色变化更新编辑值，目标缺失、隐藏、禁用或改变类型则关闭。预览回调按 ID 查找当前按钮，避免访问已删除控件。既有真实弹窗 verify 覆盖忙碌模型返回保留、重建按钮收到回调及显式禁用关闭，其余关闭条件为源码核对。唯一正式 Release 构建成功（color-model-retention-build.log），带正式主题/指针的 --color-editor-check、--script-report-check、--script-window-host-check 等待实际退出均为0。来源覆盖1043文件及证据快照、diff检查通过；未人工交互或图像验收，整体迁移INCOMPLETE。保留既有main.cpp及用户文件，不提交生成物。
+
+## 2026-11-19 数字输入字符过滤迁移
+
+对照 NumberInput.tsx 的 filterNumericExpression/updateDraft，共享 PixelEntry 增加默认关闭的过滤选项，仅 Lua 数字字段和颜色通道启用。保留数字、算式运算符、小数点、ECMAScript 空白；科学计数法 e/E 仅在合法十进制尾数后保留。过滤在原有输入事务内执行，重映射光标和选择锚点；实时值发布与延迟提交规则沿用原有控件。实际脚本弹窗检查覆盖科学计数法草稿过滤、延迟值隔离和过滤后普通数值提交。正式 Release 构建成功（number-expression-filter-build.log），--script-report-check 与 --color-editor-check 实际退出均为0；来源覆盖1043文件、证据快照及diff检查通过。代码已推送010b8e57。未人工键入、粘贴或图像验收，不据此宣称完整NumberInput迁移；步进按钮及Unicode表达式解析仍有缺口，整体INCOMPLETE。保留已有main.cpp和用户数据。
