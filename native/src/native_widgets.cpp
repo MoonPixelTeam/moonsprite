@@ -3,6 +3,7 @@
 #include <sstream>
 #include <cmath>
 #include <chrono>
+#include <locale.h>
 #include "native_widgets.h"
 #include "native_global_color_drag.h"
 #include "native_text_clipboard.h"
@@ -473,7 +474,9 @@ void PixelEntry::restoreNumericDraft() {
 }
 bool PixelEntry::commitExpression() {
   if(!(numeric || wheel) || !isEnabled() || isReadOnly())return false;
-  const auto source=text();std::size_t at=0;int depth=0;
+  auto source=text();
+  if(numericExpressionFilter){auto units=unicodeText(source);for(auto& c:units)if(javascriptWhitespace(c))c=U' ';source=utf8Text(units);}
+  std::size_t at=0;int depth=0;
   auto space=[&]{while(at<source.size() && std::isspace(static_cast<unsigned char>(source[at])))++at;};
   std::function<double()> primary,product,sum;
   primary=[&]() -> double {
@@ -482,11 +485,23 @@ bool PixelEntry::commitExpression() {
     double value;
     if(source[at]=='+' || source[at]=='-'){const bool negative=source[at++]=='-';value=primary();if(negative)value=-value;}
     else if(source[at]=='('){++at;value=sum();space();if(at>=source.size() || source[at++]!=')')throw std::runtime_error("Missing parenthesis");}
-    else{if(!(std::isdigit(static_cast<unsigned char>(source[at])) || source[at]=='.'))throw std::runtime_error("Invalid operand");std::size_t used=0;value=std::stod(source.substr(at),&used);at+=used;}
+    else{
+      if(numericExpressionFilter){
+        // numeric-expression.ts admits decimal tokens, never CRT hex floats.
+        const auto start=at;auto digit=[](char c){return c>='0'&&c<='9';};std::size_t digits=0;
+        while(at<source.size()&&digit(source[at])){++at;++digits;}
+        if(at<source.size()&&source[at]=='.'){++at;while(at<source.size()&&digit(source[at])){++at;++digits;}}
+        if(!digits)throw std::runtime_error("Invalid operand");
+        if(at<source.size()&&(source[at]=='e'||source[at]=='E')){++at;if(at<source.size()&&(source[at]=='+'||source[at]=='-'))++at;const auto exponent=at;while(at<source.size()&&digit(source[at]))++at;if(at==exponent)throw std::runtime_error("Missing exponent");}
+        struct NumericLocale{_locale_t value=_create_locale(LC_NUMERIC,"C");~NumericLocale(){if(value)_free_locale(value);}};static NumericLocale locale;
+        if(!locale.value)throw std::runtime_error("Numeric locale unavailable");
+        value=_strtod_l(source.substr(start,at-start).c_str(),nullptr,locale.value);
+      }else{if(!(std::isdigit(static_cast<unsigned char>(source[at])) || source[at]=='.'))throw std::runtime_error("Invalid operand");std::size_t used=0;value=std::stod(source.substr(at),&used);at+=used;}
+    }
     --depth;if(!std::isfinite(value))throw std::runtime_error("Nonfinite operand");return value;
   };
-  product=[&]{double value=primary();space();while(at<source.size() && (source[at]=='*' || source[at]=='/')){const char op=source[at++];const double rhs=primary();if(op=='/' && rhs==0)throw std::runtime_error("Division zero");value=op=='*'?value*rhs:value/rhs;space();}return value;};
-  sum=[&]{double value=product();space();while(at<source.size() && (source[at]=='+' || source[at]=='-')){const char op=source[at++];const double rhs=product();value=op=='+'?value+rhs:value-rhs;space();}return value;};
+  product=[&]{double value=primary();space();while(at<source.size() && (source[at]=='*' || source[at]=='/')){const char op=source[at++];const double rhs=primary();if(op=='/' && rhs==0)throw std::runtime_error("Division zero");value=op=='*'?value*rhs:value/rhs;if(numericExpressionFilter&&!std::isfinite(value))throw std::runtime_error("Nonfinite product");space();}return value;};
+  sum=[&]{double value=product();space();while(at<source.size() && (source[at]=='+' || source[at]=='-')){const char op=source[at++];const double rhs=product();value=op=='+'?value+rhs:value-rhs;if(numericExpressionFilter&&!std::isfinite(value))throw std::runtime_error("Nonfinite sum");space();}return value;};
   try{double value=sum();space();if(at!=source.size() || !std::isfinite(value))throw std::runtime_error("Invalid expression");if(deferredNumeric)value=std::clamp(value,numericMinimum,numericMaximum);std::ostringstream out;out.precision(12);out<<value;setText(out.str());if(deferredNumeric&&deferredCommit)deferredCommit();else if(!deferredNumeric||!numericValue||value!=numericValue())Change();if(deferredNumeric&&numericValue)restoreNumericDraft();return true;}catch(...){if(deferredNumeric&&numericValue)restoreNumericDraft();return false;}
 }
 void PixelEntry::adjustNumber(int delta) {

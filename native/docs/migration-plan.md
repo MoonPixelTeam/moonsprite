@@ -8332,3 +8332,9 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 数字输入字符过滤迁移
 
 对照 NumberInput.tsx 的 filterNumericExpression/updateDraft，共享 PixelEntry 增加默认关闭的过滤选项，仅 Lua 数字字段和颜色通道启用。保留数字、算式运算符、小数点、ECMAScript 空白；科学计数法 e/E 仅在合法十进制尾数后保留。过滤在原有输入事务内执行，重映射光标和选择锚点；实时值发布与延迟提交规则沿用原有控件。实际脚本弹窗检查覆盖科学计数法草稿过滤、延迟值隔离和过滤后普通数值提交。正式 Release 构建成功（number-expression-filter-build.log），--script-report-check 与 --color-editor-check 实际退出均为0；来源覆盖1043文件、证据快照及diff检查通过。代码已推送010b8e57。未人工键入、粘贴或图像验收，不据此宣称完整NumberInput迁移；步进按钮及Unicode表达式解析仍有缺口，整体INCOMPLETE。保留已有main.cpp和用户数据。
+
+## 2026-11-19 数字表达式语法迁移
+
+对照 legacy/src/renderer/src/core/numeric-expression.ts，数字字段提交现在按十进制 token 解析，支持带符号指数、ECMAScript 空白、有限下溢和一元/括号表达式，拒绝十六进制浮点、缺失指数、除零及非有限中间结果。仅启用过滤的 Lua 数字字段与颜色通道使用该语法；其他输入保持既有行为。实际脚本弹窗检查覆盖 NBSP/全角空白、科学计数法、下溢、嵌套一元、非法 token 和溢出。正式 Release 构建成功（number-expression-grammar-build.log），来源登记和 diff 检查通过；未做人工输入或图像验收，完整 NumberInput 迁移仍未完成。
+
+最终验证：首轮脚本检查发现夹具只计算而未调用延迟字段的接受步骤，已修正夹具；同时补齐每次乘除与加减后的非有限值拒绝。正式重建成功（number-expression-grammar-recheck-build.log），--script-report-check、--color-editor-check实际退出均为0；无人工交互验收。
