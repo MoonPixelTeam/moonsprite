@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_extension_bridge.h"
 #include "pixel_text_area.h"
 #include "dialog_background.h"
 #include "ui_frame_capture.h"
@@ -45,8 +46,10 @@ void Editor::applyHistoryAction(const workspace::HistoryRequest& request){
  const auto target=request.action==workspace::HistoryAction::Jump?request.position:action==workspace::HistoryAction::Undo?currentDocument().historyPosition()-1:currentDocument().historyPosition()+1;
  if(!currentDocument().canvasReferenceHistoryRange(target)){cancelStroke();currentPlayback().loop={};}
  else if(action==workspace::HistoryAction::Undo&&!currentDocument().floating()){currentPlayback().playing=false;currentPlayback().loop={};}
+ const auto before=currentDocument().historyPosition();
  if(request.action==workspace::HistoryAction::Jump)currentDocument().setHistoryPosition(request.position);
  else if(action==workspace::HistoryAction::Undo)currentDocument().undo();else currentDocument().redo();
+ const auto after=currentDocument().historyPosition();for(auto step=std::min(before,after);step<std::max(before,after);++step)publishNativeOperation(*this,after<before?"history.undo":"history.redo",currentDocument().identity());
  refresh();
 }
 void Editor::requestHistoryPosition(std::size_t target){requestHistoryAction(workspace::HistoryAction::Jump,target);}

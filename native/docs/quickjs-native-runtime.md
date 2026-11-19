@@ -14,7 +14,7 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill/history/save等显式操作通知、色样完成、导出事件仍待正式入口接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill等显式操作通知、色样完成、导出事件仍待正式入口接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
@@ -45,3 +45,9 @@ UI message filter承接全窗口pointerdown/move/wheel和keydown捕获，在原�
 使用既有 FormFileReadTask 后台队列逐项读取，每64 KiB检查取消与12 MiB上限，读取后用原注册对象身份再次核验。扩展停用/重注册使旧读取不再投递。Editor保存/其他弹窗期间扩展存储、网络和文件读取泵仍运行；正常文档入口继续由原有忙碌守卫管理。UI widget property持有会话回调，停止时失效，陈旧异步回流不访问已销毁Editor。
 
 files-dropped入站保持原始二进制，按每次泵的时间预算直接向QuickJS构造普通number[]，完成前不向JS发布，保留旧 Array.from(Uint8Array) 与 structured clone 可观察数据类型、属性和字节；不经WinRT逐字节JSON数组和大字符串解析。支持真实12 MiB边界；收到文件时此VM堆上限调整至512 MiB以容纳普通JS数组，待构造二进制队列64 MiB。异步读取在之前二进制事件未发布完毕时等待，合法连续投递不会因该队列上限被丢弃。上限与延后构造是禁止浏览器后必要的原生适配，未暴露任意路径读取API。
+
+## 历史与保存操作通知
+
+正式 requestHistoryAction/applyHistoryAction 在真实历史位置变化后发送 history.undo/history.redo，空历史、原位置跳转和局部预览/浮动取消不发送。历史面板跳转继续使用已有setHistoryPosition回放，再按经过条目数发送对应事件，承接旧版setHistoryPosition逐次undo/redo的通知计数；不替换历史或性能实现。
+
+前台/后台保存统一 completeSaveJob 在文件写入结果被接受后发送 document.saved editor-event，projectId使用保存所属工程身份，detail.fullySaved使用既有exact版本校验结果。较旧快照已写入但当前又有修改时发送false，失败/取消/只点击保存而无写入完成不发送。这与既有dirty转clean触发的document-saved事件是旧版两种独立协议。验收使用正式异步磁盘保存及实际写入后接收的旧快照分支。

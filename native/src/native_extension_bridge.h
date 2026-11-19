@@ -8,6 +8,7 @@
 #endif
 #include <set>
 #include "extension_runtime.h"
+#include "extension_editor_events.h"
 #include "pattern_brush_library.h"
 #include "ui/property.h"
 #include "ui/widget.h"
@@ -34,6 +35,8 @@ struct NativeExtensionBridge final:ui::Property {
 };
 inline std::shared_ptr<NativeExtensionBridge> nativeExtensionBridge(const ui::Widget& widget){return std::dynamic_pointer_cast<NativeExtensionBridge>(widget.getProperty(NativeExtensionBridge::name));}
 inline void publishNativeExtensionEvent(const ui::Widget& widget,const extension::RuntimeEvent& event){if(auto services=nativeExtensionBridge(widget);services&&services->publish)services->publish(event);}
+inline void publishNativeOperation(const ui::Widget& widget,const char* name,std::uint64_t identity,std::map<std::string,extension::RuntimeEvent::DetailValue> detail={}){publishNativeExtensionEvent(widget,extension::editorEvent(name,std::to_string(identity),std::move(detail)));}
+
 // Native OLE uses Manager::drag/drop directly, bypassing message filters.
 // Capture registered files before hit-testing detached native popup windows.
 inline bool routeNativeExtensionDrop(ui::Widget& editor,os::DragEvent& event,ui::MessageType type){

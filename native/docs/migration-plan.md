@@ -8461,3 +8461,9 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 复用现有后台文件读取队列逐项读取，64KiB块检查取消和12MiB上限；完成时再核验注册对象身份，停用/同后缀重注册使旧读取失效。后续合法读取在前次二进制事件构造期间等待，不因原生队列限制丢弃。真实QuickJS普通number[]按时间预算直接构造，保持Array.from语义和事件顺序，避免WinRT逐字节对象与巨型JSON解析。文件入站VM允许512MiB，二进制待投递上限及适配差异已登记。
 
 extension-js-tests最终退出0，包含真实异步读取、失败/超限、等价重注册失效、背压、完整12MiB普通数组及原VM/表单/素材/状态链路。一次失败来自旧观察夹具复用存储，改为逐次独立目录后通过。唯一正式Release最终构建成功（quickjs-file-drop-native-final-build.log）；正式主题/指针 --script-entry-check 以Start-Process -Wait -PassThru取得真实退出0，直接nativeWindow notifyDrop覆盖重复/未注册文件过滤、实际JS字节落盘、混合PNG打开、原工程content/history不变及弹窗表面OLE投递、停用注册清理。来源1058文件、架构/编辑器边界及diff通过，无物理鼠标/新增图像验收。显式操作完成通知及普通HTML/覆盖层仍待迁移，整体INCOMPLETE，保留main.cpp原差异和用户文件。
+
+## 2026-11-20 历史与保存成功通知
+
+按 workspace-commands-history.ts 的undo/redo和setHistoryPosition、workspace-commands-document-io.ts保存完成入口，接入history.undo/history.redo与document.saved editor-event。历史命令只有真实位置变化才发送；跳转沿用已有优化回放，按经过条目发送，空历史/原位置/局部预览及浮动取消不发完成。前台/后台统一保存结果被接受后发送实际owner身份和detail.fullySaved，旧版本已保存但当前有新修改时为false；取消/失败没有接受结果不发送。既有dirty转clean的document-saved是另一旧版协议，保持独立。
+
+唯一正式Release最终构建成功（quickjs-history-save-final-build.log）；正式主题/指针 --script-entry-check以Start-Process -Wait -PassThru取得真实退出0，覆盖真实撤销/重做、两步跳转各两次、空重做/原位置跳转不发，真实异步磁盘保存fullySaved=true、实际落盘旧快照接受fullySaved=false，以及原有JS/表单/素材/状态/拖入链路。首轮在后续拖入断言失败，原因是夹具读取上轮formal-drop残留；JS activate清理夹具自身两键并等待本次count/name后通过，不清理用户数据。源码来源1058文件、架构637源码/283目标、编辑器边界与diff通过；本阶段未重复无关核心测试，未人工鼠标/图像验收。绘制/填充/导出/色样完成通知仍待接线，整体INCOMPLETE，保留main.cpp既有修改。

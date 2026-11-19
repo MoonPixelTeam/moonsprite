@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_extension_bridge.h"
 #include "editor_canvas_references.h"
 #include "native_canvas_color_sampling.h"
 #include "selection_pattern_brush.h"
@@ -1044,6 +1045,7 @@ bool Editor::completeSaveJob(const SaveJob& job,project::EncodedProject result,b
  // must not skip recovery cleanup or masquerade as an encoding/write failure.
  try{recordHomeRecent(job.path);usageStatistics_.recordEvent("save");}catch(const std::exception& error){status_+=U"；保存后记录失败："+unicodeText(error.what());}
  if(!smoke_)try{auto bytes=job.path.parent_path().u8string();if(!bytes.empty())writeExportBytesAtomic(palettePreferencePath().parent_path()/"last-save-directory.txt",{bytes.begin(),bytes.end()});}catch(const std::exception& e){status_+=U"；保存位置偏好记录失败："+unicodeText(e.what());}
+ publishNativeOperation(*this,"document.saved",job.version.identity,{{"fullySaved",exact}});
  return exact;
 }
 
