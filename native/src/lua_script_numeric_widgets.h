@@ -47,18 +47,21 @@ public:
  ScriptRangeSlider(const PixelFont& font,const Skin& skin,double value,double minimum,double maximum,double step):PixelSlider(font,skin),low_(minimum),high_(maximum),step_(std::isfinite(step)&&step>0?step:1),current_(value){
   this->minimum=0;this->maximum=10000;percentage=false;numberSuffix=U"";valueLabel=[this](int){std::ostringstream out;out.precision(15);out<<current_;return unicodeText(out.str());};syncPaint();
  }
+ void cancelInteraction(){dragging_=false;if(hasCapture())releaseMouse();invalidate();}
  double domainValue()const{return current_;}
  void sync(double value){current_=value;syncPaint();}
  bool onProcessMessage(ui::Message* msg)override{
-  if(!isEnabled())return ui::Widget::onProcessMessage(msg);
+  if(!isEnabled()){cancelInteraction();return ui::Widget::onProcessMessage(msg);}
+  if(dragging_&&!hasCapture())dragging_=false;
   if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage){auto m=static_cast<ui::MouseMessage*>(msg);if(msg->type()==ui::kMouseDownMessage&&m->left()){requestFocus();captureMouse();dragging_=true;}if(dragging_&&hasCapture()){
+   if(msg->type()==ui::kMouseUpMessage){if(m->left()){cancelInteraction();if(released)released();}return true;}
    const auto r=bounds();const double t=std::clamp(double(m->position().x-r.x-uiScale)/std::max(1,r.w-2*uiScale-1),0.,1.);set(low_+t*(high_-low_),m->shiftPressed(),true);
-   if(msg->type()==ui::kMouseUpMessage&&m->left()){dragging_=false;releaseMouse();if(released)released();}return true;
+   return true;
   }}
   if(msg->type()==ui::kMouseWheelMessage){auto m=static_cast<ui::MouseMessage*>(msg);const int dy=m->wheelDelta().y;if(dy){const double stride=m->shiftPressed()?std::max(step_,5.):step_;const auto v=current_+(dy<0?stride:-stride);set(std::round(v*1e10)/1e10,false,false);}return true;}
   if(msg->type()==ui::kKeyDownMessage){auto k=static_cast<ui::KeyMessage*>(msg);const auto code=k->scancode();double next=current_;switch(code){case ui::kKeyLeft:case ui::kKeyDown:next-=step_;break;case ui::kKeyRight:case ui::kKeyUp:next+=step_;break;case ui::kKeyHome:next=low_;break;case ui::kKeyEnd:next=high_;break;case ui::kKeyPageUp:next+=(high_-low_)/10;break;case ui::kKeyPageDown:next-=(high_-low_)/10;break;default:return PixelSlider::onProcessMessage(msg);}set(next,k->shiftPressed(),true);return true;}
   if(msg->type()==ui::kKeyUpMessage)return ui::Widget::onProcessMessage(msg);
-  if(msg->type()==ui::kFocusLeaveMessage){dragging_=false;if(hasCapture())releaseMouse();if(released)released();invalidate();return true;}
+  if(msg->type()==ui::kFocusLeaveMessage){cancelInteraction();if(released)released();return true;}
   // Hover/focus painting retains the common material and selection hit rules.
   return PixelSlider::onProcessMessage(msg);
  }

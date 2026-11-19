@@ -8350,3 +8350,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 数值标签拖动迁移
 
 对照 FormField.tsx、NumberInput.tsx 和 NumberInput.test.tsx，将扩展表单已有标签拖动提取为共享 ScriptNumberLabel，Lua number 行复用。按逻辑像素差乘有效步长及 Shift10，从已接受值调整并限制范围；保留焦点，释放不触发 blur 提交。复用现有指针路由，不修改 main.cpp；重建、host关闭和busy取消捕获。实际脚本窗口夹具覆盖小数步长、未提交草稿隔离、Shift、释放无提交和只读保护。正式Release构建成功（lua-number-label-final-build.log），--script-report-check、--extension-form-check实际退出均为0；来源覆盖1043文件及证据快照通过，diff检查通过。未人工鼠标或图像验收，整体迁移INCOMPLETE。保留已有main.cpp差异和未跟踪用户文件。
+
+## 2026-11-19 Lua 滑块释放与中断迁移
+
+对照 LuaScriptDialog.tsx 的 pointerup 包装及 RangeField.tsx，释放只发送 release，不能用释放位置或 Shift 再计算预览。ScriptRangeSlider 保留最后预览值并释放捕获；禁用、失捕获、忙碌及宿主关闭清理拖动状态。实际弹窗夹具验证不同释放位置和修饰键不改预览、仅一次 release、禁用后无捕获且恢复后不继续旧拖动。正式 Release 构建成功（lua-slider-release-build.log），--script-report-check 与 --extension-form-check 实际退出均为0；来源覆盖1043文件及证据快照、diff检查通过。未人工鼠标或图像验收，整体迁移INCOMPLETE；保留已有main.cpp差异和用户文件。
