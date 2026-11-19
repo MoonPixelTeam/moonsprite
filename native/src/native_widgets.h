@@ -262,6 +262,7 @@ public:
   bool numeric=false;
   // Opt-in legacy NumberInput live=false: editor commands change draft only.
   bool deferredNumeric=false;
+  bool numericExpressionFilter=false;
   double numericMinimum=0,numericMaximum=100;
   std::function<double()> numericValue;
   // Legacy NumberInput permits an empty controlled value for mixed selections.
@@ -269,7 +270,7 @@ public:
   void restoreNumericDraft();
   std::function<void()> deferredCommit;
   std::function<bool()> numericMounted;
-  void onChange() override {if(!deferredNumeric)ui::Entry::onChange();}
+  void onChange() override;
   double numericStep=1;
   void adjustNumber(int delta);
   bool commitExpression();

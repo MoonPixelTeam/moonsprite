@@ -14,7 +14,7 @@ class ScriptNumberEntry final:public PixelEntry {
 public:
  std::function<void(double)> changed;std::function<void()> committed;
  ScriptNumberEntry(const PixelFont& font,const Skin& skin,double value,double minimum,double maximum,double step,bool live=true):PixelEntry(font,skin),live_(live){
-  numeric=true;numericMinimum=minimum;numericMaximum=maximum;numericStep=std::isfinite(step)&&step!=0?std::abs(step):1;
+  numeric=true;numericExpressionFilter=true;numericMinimum=minimum;numericMaximum=maximum;numericStep=std::isfinite(step)&&step!=0?std::abs(step):1;
   numericValue=[this]{return value_;};
   if(!live_)wheel=[this](int delta){const auto next=std::clamp(value_+delta*numericStep,numericMinimum,numericMaximum);if(next!=value_){value_=next;if(changed)changed(value_);}displayValue();};
   Change.connect([this]{if(updating_||!live_)return;const auto s=text();if(s.size()>1&&s.find_first_of("+-*/()",1)!=std::string::npos)return;normalize();});

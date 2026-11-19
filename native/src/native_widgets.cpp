@@ -8,6 +8,7 @@
 #include "native_text_clipboard.h"
 #include "pixel_input_menu.h"
 #include "entry_edit_history.h"
+#include "javascript_text.h"
 #include "text_edit_navigation.h"
 #include "os/system.h"
 #include "color_value_ui.h"
@@ -438,6 +439,33 @@ bool PixelScrollBar::onProcessMessage(ui::Message* msg) {
     const int steps=vertical_?delta.y:(delta.x?delta.x:delta.y);
     if(steps){const int next=int(std::clamp<long long>(value_+1LL*steps*wheelStep,0,std::max(0,total_-page_)));setViewScroll({next,next});}return true;}
   return ui::ScrollBar::onProcessMessage(msg);
+}
+// NumberInput.tsx filterNumericExpression: keep operators/space and admit e/E
+// only after a decimal mantissa. Run inside the existing input transaction so
+// typing, paste and Undo share one filtered edit and retain caret direction.
+void PixelEntry::onChange() {
+  if(numericExpressionFilter){
+    const auto source=unicodeText(text());std::u32string filtered;
+    std::vector<int> positions(source.size()+1);bool digit=false,dot=false,valid=true;
+    for(std::size_t i=0;i<source.size();++i){
+      const auto c=source[i];const bool number=c>=U'0'&&c<=U'9';
+      const bool separator=javascriptWhitespace(c)||c==U'+'||c==U'-'||c==U'*'||c==U'/'||c==U'('||c==U')';
+      if(number||c==U'.'||separator){
+        filtered+=c;
+        if(separator){digit=dot=false;valid=true;}
+        else if(number)digit=true;
+        else if(dot)valid=false;
+        else dot=true;
+      }else if((c==U'e'||c==U'E')&&digit&&valid){filtered+=c;valid=false;}
+      positions[i+1]=int(filtered.size());
+    }
+    if(filtered!=source){
+      const auto before=EntryEditHistory::state(*this);EntryEditHistory::Active edit(*this);
+      setText(utf8Text(filtered));
+      selectText(positions[std::clamp(before.anchor,0,int(source.size()))],positions[std::clamp(before.caret,0,int(source.size()))]);
+    }
+  }
+  if(!deferredNumeric)ui::Entry::onChange();
 }
 void PixelEntry::restoreNumericDraft() {
   if(numericMixed&&numericMixed()){setText("");return;}
