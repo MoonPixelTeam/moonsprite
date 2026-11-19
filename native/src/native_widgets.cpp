@@ -468,6 +468,34 @@ void PixelEntry::onChange() {
   }
   if(!deferredNumeric)ui::Entry::onChange();
 }
+// NumberInput.tsx: immediate step, 300ms delay, then accelerating repeat.
+static std::int64_t numberStepperClock(){return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();}
+void PixelEntry::initializeStepper(){
+  stepperTimer_.Tick.connect([this]{
+    if(!numericSteppers||!isEnabled()||isReadOnly()||!isVisible()||!hasCapture()||!stepperDirection_){stopStepper();if(stepperHeld_&&hasCapture())releaseMouse();stepperHeld_=false;return;}
+    if(stepperDelay_)stepperDelay_=false;
+    else if(!stepperAdjust(stepperDirection_)){stopStepper();return;}
+    const double elapsed=double(numberStepperClock()-stepperStarted_);
+    stepperTimer_.setInterval(int(24+156*std::exp(-elapsed/900.)));
+  });
+}
+void PixelEntry::stopStepper(){stepperTimer_.stop();stepperDirection_=0;stepperDelay_=false;invalidate();}
+bool PixelEntry::stepperAdjust(int direction){
+  if(!isEnabled()||isReadOnly())return false;
+  const auto before=numericValue?numericValue():0.;adjustNumber(direction);
+  const auto after=numericValue?numericValue():before;
+  return isEnabled()&&!isReadOnly()&&before!=after&&(direction>0?after<numericMaximum:after>numericMinimum);
+}
+void PixelEntry::startStepper(int direction){
+  stopStepper();stepperDirection_=direction;stepperStarted_=numberStepperClock();
+  if(!stepperAdjust(direction)){stopStepper();return;}
+  stepperDelay_=true;stepperTimer_.setInterval(300);stepperTimer_.start();invalidate();
+}
+int PixelEntry::stepperAt(gfx::Point point)const{
+  if(!numericSteppers||bounds().w<20*uiScale)return 0;
+  const auto r=bounds();const gfx::Rect column(r.x2()-18*uiScale,r.y+uiScale,17*uiScale,r.h-2*uiScale);
+  if(!column.contains(point))return 0;return point.y<r.y+r.h/2?1:-1;
+}
 void PixelEntry::restoreNumericDraft() {
   if(numericMixed&&numericMixed()){setText("");return;}
   if(numericValue){std::ostringstream out;out.precision(12);out<<numericValue();setText(out.str());}
@@ -622,6 +650,18 @@ struct EntryPointerKey final {
 };
 }
 bool PixelEntry::onProcessMessage(ui::Message* msg) {
+  if(numericSteppers){
+    if(stepperHeld_&&(!hasCapture()||!isEnabled()||isReadOnly()||!isVisible()||msg->type()==ui::kFocusLeaveMessage)){stopStepper();if(hasCapture())releaseMouse();stepperHeld_=false;}
+    if(msg->type()==ui::kMouseDownMessage||msg->type()==ui::kMouseMoveMessage||msg->type()==ui::kMouseUpMessage||msg->type()==ui::kMouseLeaveMessage){
+      const auto mouse=static_cast<ui::MouseMessage*>(msg);const int hover=msg->type()==ui::kMouseLeaveMessage?0:stepperAt(mouse->position());
+      if(hover!=stepperHover_){stepperHover_=hover;invalidate();}
+      if(isEnabled()&&!isReadOnly()&&msg->type()==ui::kMouseDownMessage&&mouse->left()&&hover){captureMouse();stepperHeld_=true;startStepper(hover);return true;}
+      if(hasCapture()&&stepperHeld_){
+        if(msg->type()==ui::kMouseUpMessage&&mouse->left()){stopStepper();stepperHeld_=false;releaseMouse();return true;}
+        if(msg->type()==ui::kMouseMoveMessage){if(!hover||!mouse->left()){stopStepper();stepperHeld_=false;releaseMouse();}else if(stepperDirection_&&hover!=stepperDirection_)startStepper(hover);return true;}
+      }
+    }
+  }
   // Legacy text/decimal inputs retain selection across blur and programmatic
   // refocus. Keep explicit form focus callbacks free to select their own range.
   setPersistSelection(true);
@@ -868,25 +908,33 @@ int PixelEntry::contentWidth() const {
   return currentContentWidth();
 }
 int PixelEntry::widthForValue(const std::u32string& value) const {
-  return 9+font_.measure(value)+(suffix.empty()?0:font_.measure(suffix)+uiGap);
+  return (numericSteppers?18:0)+9+font_.measure(value)+(suffix.empty()?0:font_.measure(suffix)+uiGap);
 }
 int PixelEntry::currentContentWidth() const {
   const int visible=font_.measure(unicodeText(text()));
   const int editing=int(std::ceil(getCharBoxBounds(lastCaretPos()).x*scale().x/uiScale));
-  return 6+std::max({font_.measure(U"0"),visible,editing})+3+
+  return (numericSteppers?18:0)+6+std::max({font_.measure(U"0"),visible,editing})+3+
     (suffix.empty()?0:font_.measure(suffix)+uiGap);
 }
 gfx::Rect PixelEntry::onGetEntryTextBounds() const {
   auto rc=clientBounds();
   // Normal frame and text padding share the same layout origin.
   const int padding=3*uiScale;
-  rc.x+=padding;rc.w=std::max(0,rc.w-2*padding-(suffix.empty()?0:(font_.measure(suffix)+uiGap)*uiScale));
+  rc.x+=padding;rc.w=std::max(0,rc.w-2*padding-(numericSteppers?18*uiScale:0)-(suffix.empty()?0:(font_.measure(suffix)+uiGap)*uiScale));
   rc.y+=(rc.h-10*uiScale)/2;rc.h=10*uiScale;
   return rc;
 }
 void PixelEntry::onPaint(ui::PaintEvent& ev) {
   auto& g=*ev.graphics();PhysicalViewportClip viewportClip(g,paletteViewport?std::optional<gfx::Rect>(paletteViewport().offset(-bounds().origin())):std::nullopt);UiPaintScale scale(g);const auto rc=uiLogical(clientBounds());
   drawInputFrame(g,skin_,uiPhysical(rc),isEnabled() && frameHover_);
+  if(numericSteppers&&rc.w>=20){
+    const int left=rc.x2()-19;g.fillRect(skin_["border"],{left,rc.y+1,1,rc.h-2});
+    for(int direction:{1,-1}){const int top=direction>0?rc.y+1:rc.y+rc.h/2;const int height=direction>0?rc.h/2-1:rc.h-rc.h/2-1;
+      const gfx::Rect cell(left+1,top,17,height);g.fillRect(skin_[isEnabled()&&!isReadOnly()&&stepperHover_==direction?"accent":"button"],cell);
+      skin_.draw(g,std::string(direction>0?"icon.up":"icon.down")+(isEnabled()&&!isReadOnly()?"":"-disabled"),{cell.x+(cell.w-5)/2,cell.y+(cell.h-5)/2,5,5},true);
+    }
+    g.fillRect(skin_["border"],{left+1,rc.y+rc.h/2,17,1});
+  }
   int scroll=0,caret=0,state=0;Range selection;getEntryThemeInfo(&scroll,&caret,&state,&selection);
   const auto value=unicodeText(text());const int start=std::clamp(scroll,0,int(value.size()));
   const auto textBounds=uiLogical(getEntryTextBounds());
@@ -900,7 +948,7 @@ void PixelEntry::onPaint(ui::PaintEvent& ev) {
   }
   if(hasFocus() && state && caret==int(value.size())) g.fillRect(skin_["text"],gfx::Rect(x,y,1,10));
   g.restoreClip();
-  if(!suffix.empty()) font_.draw(g,suffix,std::min(x+uiGap,rc.x2()-3-suffixWidth),y,skin_["muted"]);
+  if(!suffix.empty()) font_.draw(g,suffix,std::min(x+uiGap,rc.x2()-3-suffixWidth-(numericSteppers?18:0)),y,skin_["muted"]);
 
 }
 void PixelSlider::begin() {if(!active_) {active_=true;if(interactionBegin) interactionBegin();}}

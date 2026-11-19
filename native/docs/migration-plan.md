@@ -8338,3 +8338,7 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 对照 legacy/src/renderer/src/core/numeric-expression.ts，数字字段提交现在按十进制 token 解析，支持带符号指数、ECMAScript 空白、有限下溢和一元/括号表达式，拒绝十六进制浮点、缺失指数、除零及非有限中间结果。仅启用过滤的 Lua 数字字段与颜色通道使用该语法；其他输入保持既有行为。实际脚本弹窗检查覆盖 NBSP/全角空白、科学计数法、下溢、嵌套一元、非法 token 和溢出。正式 Release 构建成功（number-expression-grammar-build.log），来源登记和 diff 检查通过；未做人工输入或图像验收，完整 NumberInput 迁移仍未完成。
 
 最终验证：首轮脚本检查发现夹具只计算而未调用延迟字段的接受步骤，已修正夹具；同时补齐每次乘除与加减后的非有限值拒绝。正式重建成功（number-expression-grammar-recheck-build.log），--script-report-check、--color-editor-check实际退出均为0；无人工交互验收。
+
+## 2026-11-19 数字输入步进按钮迁移
+
+对照 NumberInput.tsx 的 begin/start/schedule/switch/stopStepperRepeat 及 NumberInput.test.tsx 的反向、草稿和边界规则，共享 PixelEntry 增加默认关闭的上下步进区，Lua 数字字段和颜色通道启用。复用主题中来自 PixelUtilityIcon.tsx 的5px上下箭头，17px按钮列及1px分隔，保持20px控件行高。按下从已接受值立即调整，300ms后启动指数加速重复，跨上下按钮反向调整；释放、离开、失捕获、隐藏、禁用及只读阻止继续重复，边界停止，鼠标释放不再追加调整。ScriptNumberEntry实时和延迟字段均从已接受值步进。正式Release构建成功（number-stepper-build.log）；实际脚本窗口夹具覆盖未提交草稿隔离、跨按钮反向、释放捕获、上限和只读，--script-report-check与--color-editor-check实际退出均为0。来源覆盖1043文件及证据快照、diff检查通过。长按定时重复、物理鼠标及图像验收未执行，不能据此声明所有NumberInput交互完整等价；整体迁移INCOMPLETE。保留既有main.cpp差异及用户文件。

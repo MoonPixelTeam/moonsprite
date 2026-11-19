@@ -263,6 +263,7 @@ public:
   // Opt-in legacy NumberInput live=false: editor commands change draft only.
   bool deferredNumeric=false;
   bool numericExpressionFilter=false;
+  bool numericSteppers=false;
   double numericMinimum=0,numericMaximum=100;
   std::function<double()> numericValue;
   // Legacy NumberInput permits an empty controlled value for mixed selections.
@@ -287,10 +288,15 @@ public:
     ui::Entry::onSizeHint(ev);
     ev.setSizeHint(ev.sizeHint().w,textControlHeight*uiScale);
   }
-  PixelEntry(const PixelFont& font,const Skin& skin):ui::Entry((std::numeric_limits<int>::max)(),""),font_(font),skin_(skin) {setScale(gfx::PointF(2,2));setTransparent(true);}
+  PixelEntry(const PixelFont& font,const Skin& skin):ui::Entry((std::numeric_limits<int>::max)(),""),font_(font),skin_(skin) {setScale(gfx::PointF(2,2));setTransparent(true);initializeStepper();}
   void onPaint(ui::PaintEvent& ev) override;
   gfx::Rect onGetEntryTextBounds() const override;
 private:
+  ui::Timer stepperTimer_{300,this};
+  int stepperDirection_=0,stepperHover_=0;bool stepperDelay_=false,stepperHeld_=false;
+  std::int64_t stepperStarted_=0;
+  void initializeStepper();void stopStepper();void startStepper(int);
+  bool stepperAdjust(int);int stepperAt(gfx::Point)const;
   int fixedContentWidth_=0;
   bool editMenuOpen_=false,editMenuRefocus_=false,rightSelecting_=false;
   bool editClipboard(Cmd command);
