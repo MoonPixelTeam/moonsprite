@@ -11,24 +11,25 @@ namespace moon {
 // Call pump from the UI loop, never from a control callback. Client/Display and
 // the supplied skin/font assets must outlive this host.
 class ScriptWindowHost final {
- struct Window {std::unique_ptr<ScriptDialogWindow> dialog;std::unique_ptr<ModalGeometryPreferences> geometry;gfx::Rect observed,area;bool applying=false;};
+ template<class Dialog> struct ManagedWindow {std::unique_ptr<Dialog> dialog;std::unique_ptr<ModalGeometryPreferences> geometry;gfx::Rect observed,area;gfx::Size maximum{680*uiScale,720*uiScale};bool applying=false;};
+ using Window=ManagedWindow<ScriptDialogWindow>;
  struct Request {std::string session,action;bool escape=false;};
  script::Client& client_;const PixelFont& font_;const Skin &skin_,&icons_;
  ui::Display* display_;std::filesystem::path colorStorage_,geometryStorage_;
  std::function<std::string(const Document&)> snapshot_;
  std::function<void(Document&&)> adopt_;
  std::map<std::string,Window> windows_;std::deque<Request> requests_;
- std::unique_ptr<ScriptReportDialog> report_;
+ ManagedWindow<ScriptReportDialog> report_;
  std::string session_;std::uint64_t revision_=0,reportRevision_=0;
  bool reportClosed_=false,closing_=false,pumping_=false;
  void clearWindows(){for(auto& [id,w]:windows_){if(w.geometry){if(display_)w.geometry->remember(w.dialog->bounds(),display_->bounds());w.geometry->flush();}w.dialog->closeFromHost();}windows_.clear();}
- void clearReport(){if(report_){closing_=true;report_->closeWindow(nullptr);report_.reset();closing_=false;}reportClosed_=false;}
+ void clearReport(){if(report_.dialog){pumpGeometry(report_);report_.geometry->remember(report_.dialog->bounds(),display_->bounds());report_.geometry->flush();closing_=true;report_.dialog->closeWindow(nullptr);report_={};closing_=false;}reportClosed_=false;}
  gfx::Rect initialBounds(int width,int height,int index=0)const{const auto r=display_->bounds();const int w=std::min(width*uiScale,r.w),h=std::min(height*uiScale,r.h);return {r.x+std::clamp((r.w-w)/2+index*12*uiScale,0,std::max(0,r.w-w)),r.y+std::clamp((r.h-h)/2+index*12*uiScale,0,std::max(0,r.h-h)),w,h};}
  void place(ui::Window& window,int width,int height,int index=0){window.setDisplay(display_,false);window.setBounds(initialBounds(width,height,index));}
- void setDialogBounds(Window& window,gfx::Rect bounds){window.applying=true;window.dialog->setBounds(bounds);window.observed=window.dialog->bounds();window.applying=false;}
- void fitHeight(Window& window){if(!window.geometry||window.geometry->explicitHeight())return;auto box=window.dialog->bounds();const auto area=display_->bounds();box.h=std::min({window.dialog->preferredHeight()*uiScale,720*uiScale,std::max(1,area.h-24*uiScale)});box.y=std::clamp(box.y,area.y,std::max(area.y,area.y2()-box.h));if(box!=window.dialog->bounds())setDialogBounds(window,box);}
- void pumpGeometry(Window& window){if(!window.geometry||!display_)return;auto bounds=window.dialog->bounds();if(bounds.size()!=window.observed.size()&&!window.applying)window.geometry->resized();window.observed=bounds;const auto area=display_->bounds();if(area!=window.area){auto remapped=panels::resizeFloatingPosition({bounds.x,bounds.y,bounds.w,bounds.h},{window.area.x,window.area.y,window.area.w,window.area.h},{area.x,area.y,area.w,area.h});window.area=area;setDialogBounds(window,{remapped.x,remapped.y,std::min(remapped.w,std::max(1,area.w-24*uiScale)),std::min(remapped.h,std::max(1,area.h-24*uiScale))});fitHeight(window);}
-  if(!ui::Manager::getDefault()->getCapture()){bounds=window.dialog->bounds();bounds.w=std::min(bounds.w,std::min(680*uiScale,std::max(1,area.w-24*uiScale)));bounds.h=std::min(bounds.h,std::min(720*uiScale,std::max(1,area.h-24*uiScale)));bounds.x=std::clamp(bounds.x,area.x,std::max(area.x,area.x2()-bounds.w));bounds.y=std::clamp(bounds.y,area.y,std::max(area.y,area.y2()-bounds.h));if(bounds!=window.dialog->bounds())setDialogBounds(window,bounds);window.geometry->remember(window.dialog->bounds(),area);}window.geometry->pump();}
+ template<class Dialog> void setDialogBounds(ManagedWindow<Dialog>& window,gfx::Rect bounds){window.applying=true;window.dialog->setBounds(bounds);window.observed=window.dialog->bounds();window.applying=false;}
+ template<class Dialog> void fitHeight(ManagedWindow<Dialog>& window){if(!window.geometry||window.geometry->explicitHeight())return;auto box=window.dialog->bounds();const auto area=display_->bounds();box.h=std::min({window.dialog->preferredHeight()*uiScale,window.maximum.h,std::max(1,area.h-24*uiScale)});box.y=std::clamp(box.y,area.y,std::max(area.y,area.y2()-box.h));if(box!=window.dialog->bounds())setDialogBounds(window,box);}
+ template<class Dialog> void pumpGeometry(ManagedWindow<Dialog>& window){if(!window.geometry||!display_)return;auto bounds=window.dialog->bounds();if(bounds.size()!=window.observed.size()&&!window.applying)window.geometry->resized();window.observed=bounds;const auto area=display_->bounds();if(area!=window.area){auto remapped=panels::resizeFloatingPosition({bounds.x,bounds.y,bounds.w,bounds.h},{window.area.x,window.area.y,window.area.w,window.area.h},{area.x,area.y,area.w,area.h});window.area=area;setDialogBounds(window,{remapped.x,remapped.y,std::min(remapped.w,std::max(1,area.w-24*uiScale)),std::min(remapped.h,std::max(1,area.h-24*uiScale))});fitHeight(window);}
+  if(!ui::Manager::getDefault()->getCapture()){bounds=window.dialog->bounds();bounds.w=std::min(bounds.w,std::min(window.maximum.w,std::max(1,area.w-24*uiScale)));bounds.h=std::min(bounds.h,std::min(window.maximum.h,std::max(1,area.h-24*uiScale)));bounds.x=std::clamp(bounds.x,area.x,std::max(area.x,area.x2()-bounds.w));bounds.y=std::clamp(bounds.y,area.y,std::max(area.y,area.y2()-bounds.h));if(bounds!=window.dialog->bounds())setDialogBounds(window,bounds);window.geometry->remember(window.dialog->bounds(),area);}window.geometry->pump();}
  void reconcile(){
   const auto& current=client_.session();const auto session=current?current->sessionId:std::string{};
   if(session!=session_){clearWindows();requests_.clear();session_=session;revision_=0;}
@@ -48,7 +49,7 @@ class ScriptWindowHost final {
   const bool busy=client_.running()||!requests_.empty();for(auto& [id,w]:windows_){w.dialog->setBusy(busy);pumpGeometry(w);}
   if(reportRevision_!=client_.reportRevision()){clearReport();reportRevision_=client_.reportRevision();}
   if(!client_.report()&&client_.error().empty()){clearReport();return;}
-  if(!report_){report_=std::make_unique<ScriptReportDialog>(font_,skin_,icons_,client_.report(),client_.error());report_->Close.connect([this](ui::CloseEvent&){if(!closing_)reportClosed_=true;});place(*report_,500,260);report_->openWindow();}
+  if(!report_.dialog){report_.dialog=std::make_unique<ScriptReportDialog>(font_,skin_,icons_,client_.report(),client_.error());report_.dialog->Close.connect([this](ui::CloseEvent&){if(!closing_)reportClosed_=true;});report_.maximum={760*uiScale,680*uiScale};place(*report_.dialog,500,260);report_.geometry=std::make_unique<ModalGeometryPreferences>(geometryStorage_,"lua-script-result");report_.area=display_->bounds();setDialogBounds(report_,report_.geometry->restore(report_.dialog->bounds(),report_.area,report_.dialog->minimumDialogSize(report_.dialog->bounds().w),report_.maximum));fitHeight(report_);report_.dialog->openWindow();}pumpGeometry(report_);
  }
 public:
  ScriptWindowHost(script::Client& client,const PixelFont& font,const Skin& skin,const Skin& icons,ui::Display* display,std::filesystem::path storage,std::function<std::string(const Document&)> snapshot,std::function<void(Document&&)> adopt={})
@@ -80,12 +81,16 @@ public:
  }
  std::size_t windowCount()const{return windows_.size();}
  ScriptDialogWindow* window(const std::string& id)const{auto it=windows_.find(id);return it==windows_.end()?nullptr:it->second.dialog.get();}
- bool hasReport()const{return bool(report_);}
- void setGeometryStorageForCheck(std::filesystem::path path){if(!windows_.empty())throw std::runtime_error("Configure geometry before running script");geometryStorage_=std::move(path);}
+ bool hasReport()const{return bool(report_.dialog);}
+ void setGeometryStorageForCheck(std::filesystem::path path){if(!windows_.empty()||report_.dialog)throw std::runtime_error("Configure geometry before running script");geometryStorage_=std::move(path);}
  gfx::Rect windowBoundsForCheck(const std::string& id)const{auto* value=window(id);if(!value)throw std::runtime_error("Script dialog missing");return value->bounds();}
  void resizeWindowForCheck(const std::string& id,gfx::Rect bounds){auto found=windows_.find(id);if(found==windows_.end())throw std::runtime_error("Script dialog missing");found->second.geometry->resized();setDialogBounds(found->second,bounds);}
  bool automaticHeightForCheck(const std::string& id)const{auto found=windows_.find(id);return found!=windows_.end()&&found->second.geometry&&!found->second.geometry->explicitHeight();}
  void flushGeometryForCheck(){for(auto& [id,window]:windows_)if(window.geometry){if(display_)window.geometry->remember(window.dialog->bounds(),display_->bounds());window.geometry->flush();}}
+ void verifyReportGeometryForCheck(){
+  auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};require(bool(report_.dialog),"Script report missing");require(!report_.geometry->explicitHeight(),"New script report lost automatic height");const auto area=display_->bounds();auto moved=report_.dialog->bounds();moved.x=area.x+16*uiScale;moved.y=area.y+20*uiScale;report_.dialog->setBounds(moved);pumpGeometry(report_);require(!report_.geometry->explicitHeight(),"Report move marked height explicit");clearReport();reconcile();require(report_.dialog->bounds()==moved&&!report_.geometry->explicitHeight(),"Automatic report geometry not restored");
+  auto manual=moved;manual.w=400*uiScale;manual.h=240*uiScale;report_.dialog->setBounds(manual);pumpGeometry(report_);require(report_.geometry->explicitHeight(),"Report resize lost explicit height");report_.dialog->verifyClose();clearReport();reconcile();require(report_.dialog->bounds()==manual&&report_.geometry->explicitHeight(),"Closed report geometry not restored");report_.dialog->verifyLayout();
+ }
  void verifyGeometryForCheck(const std::string& id,const std::string& json){
   using namespace winrt::Windows::Data::Json;auto& window=windows_.at(id);auto require=[](bool value,const char* message){if(!value)throw std::runtime_error(message);};
   const auto original=window.dialog->bounds();require(automaticHeightForCheck(id),"New Lua window lost automatic height");auto model=JsonObject::Parse(winrt::to_hstring(json));auto controls=model.GetNamedArray(L"controls");const auto source=controls.GetObjectAt(0).Stringify();for(int i=0;i<12;++i){auto control=JsonObject::Parse(source);control.Insert(L"id",JsonValue::CreateStringValue(winrt::to_hstring("geometry-"+std::to_string(i))));control.Insert(L"dataKey",JsonValue::CreateNullValue());controls.Append(control);}

@@ -8387,3 +8387,8 @@ Release lua-script-invocation-tests 构建成功，CTest lua-script-invocation �
 ## 2026-11-19 Lua 窗口几何记忆迁移
 
 对照 LuaScriptDialog.tsx 的 lua-script-${sessionId}-${dialog.id}、ModalShell fitContent 和 floating-panel 持久化，将 Lua 窗口接入既有 ModalGeometryPreferences。窗口按会话和对话框独立保存显示区域相对位置与宽度，未手动调整时模型返回可自动增减高度，手动调整后保留显式高度；显示区域变化沿用已有浮窗映射，关闭时提交最终快照。同一路径的存活几何管理器共享 WinRT JsonObject，避免多个窗口各自保存时覆盖其他键；沿用 FIFO 写入与待写快照恢复。原生内容尺寸继续遵循现有 UI 规范。唯一正式 Release 构建成功（lua-window-geometry-final-build.log）；正式主题和指针下 --script-entry-check 实际退出0，覆盖内容增减、手动调整保留、立即重开恢复和双窗口键落盘。来源1043文件及证据快照、diff检查通过。未人工鼠标或图像验收，无性能优化；整体迁移 INCOMPLETE。未清理或提交用户文件。
+
+
+## 2026-11-19 Lua 结果窗口几何迁移
+
+对照 LuaScriptResultDialog.tsx 固定键 lua-script-result、ModalShell fitContent 及 floating-panel 持久化，成功和错误报告共用位置、宽度与显式高度。将现有脚本窗口几何流程复用为宿主内的 ManagedWindow，两类窗口共用显示区域映射、捕获释放后记忆及 FIFO 保存；结果窗保留独立760×680逻辑像素上限，最小尺寸承接现有原生 UI 规范。默认高度根据当前宽度下实际换行及既有正文/页脚布局计算，手动调整后恢复显式高度；关闭先观察最后尺寸再提交快照。真实宿主夹具覆盖移动不固定高度、自动高度立即重开、手动调整后用户关闭重开及布局关系。唯一正式 Release 构建成功（lua-report-geometry-build.log）；正式主题/指针下 --script-entry-check 和 --script-report-check 实际退出均为0，后者沿用成功/错误与500行输出滚动检查。来源1043文件及证据快照、diff检查通过。未人工鼠标、1×或新增图像验收，无性能优化；整体迁移INCOMPLETE。保留main.cpp既有差异与用户文件。
