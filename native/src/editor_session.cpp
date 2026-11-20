@@ -1333,7 +1333,7 @@ void Editor::runScriptExport(const std::string& optionsJson){
   if((target=="layer"||target=="slices")?!layers:!paths){status_=U"已取消导出";return;}
   if(native&&!flushTimelapse())return;
   framePngProgress_=workspace::ExportProgress(layers?layers->paths.size():paths->size());auto job=framePngProgress_;
-  const auto selection=currentDocument().selection();const auto reader=currentDocument().recordingSession()?currentDocument().recordingSession()->reader():timelapse::Reader{};
+  const auto exportIdentity=currentDocument().identity();const auto selection=currentDocument().selection();const auto reader=currentDocument().recordingSession()?currentDocument().recordingSession()->reader():timelapse::Reader{};
   DocumentSnapshot snapshot(currentDocument());scriptExporting_=true;refresh();ui::MessageLoop loop(ui::Manager::getDefault());
   while(!snapshot.advance(currentDocument(),std::chrono::steady_clock::now()+std::chrono::milliseconds(2))){loop.pumpMessages();if(job.cancelled()){status_=U"已取消导出";return;}}
   auto work=std::async(std::launch::async,[snapshot=std::move(snapshot),selection,reader,job,native,project,animated,format,scale,image,animation,frames,layers,paths,target]()mutable{
@@ -1356,7 +1356,7 @@ void Editor::runScriptExport(const std::string& optionsJson){
   // waits so progress, cancellation and deferred close remain responsive.
   while(work.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){loop.pumpMessages();work.wait_for(std::chrono::milliseconds(4));}
   const auto written=work.get();if(job.cancelled()){status_=U"已取消导出，保留已写入的文件";return;}
-  if(written){const auto lastPath=layers?layers->paths.back():paths->back();rememberSuccessfulExport(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);playExportSuccessSound();status_=U"导出完成";}
+  if(written){const auto lastPath=layers?layers->paths.back():paths->back();rememberSuccessfulExport(requested);recordRecentExportPath(lastPath);usageStatistics_.recordExport(format);publishNativeExport(*this,exportIdentity,format);playExportSuccessSound();status_=U"导出完成";}
  }catch(const std::exception& e){status_=U"导出失败："+unicodeText(e.what());}catch(const winrt::hresult_error& e){status_=U"导出失败："+unicodeText(winrt::to_string(e.message()));}
 }
 

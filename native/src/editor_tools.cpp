@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_extension_bridge.h"
 #include "editor_canvas_references.h"
 #include "native_global_color_drag.h"
 #include "native_canvas_color_sampling.h"
@@ -1880,7 +1881,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
   const auto point=mouse->positionForDisplay(display());
   const bool active=eyedropperGesture_.active();
   // A captured drag can finish over its source popup or outside the canvas.
-  if(active&&msg->type()==ui::kMouseUpMessage){if(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone){finishEyedropper();return true;}return true;}
+  if(active&&msg->type()==ui::kMouseUpMessage){if(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone){publishNativeOperation(*this,"color.sampled",currentDocument().identity());finishEyedropper();return true;}return true;}
   if(target->bounds().contains(mouse->positionForDisplay(target->display())))return false;
   if(!active&&!canvasViewport().contains(point))return false;
   try{
@@ -1888,7 +1889,7 @@ bool Editor::processColorEditorCanvasSampling(ui::Message* msg){
       if(!mouse->left()&&!mouse->right())return false;
       if(!active){strokeButton_=mouse->button();eyedropperGesture_.begin(mouse->right(),false);target->captureMouse();beginCrossCanvasSampling();}
     }else if(msg->type()==ui::kMouseUpMessage){
-      if(active&&(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone)){finishEyedropper();return true;}
+      if(active&&(mouse->button()==strokeButton_||mouse->button()==ui::kButtonNone)){publishNativeOperation(*this,"color.sampled",currentDocument().identity());finishEyedropper();return true;}
       return active;
     }else if(msg->type()!=ui::kMouseMoveMessage)return false;
     if(eyedropperGesture_.active()&&canvasViewport().contains(point)){
@@ -1927,6 +1928,7 @@ void Editor::syncCrossCanvasIntent(){
     // Intent clicks publish color/completion without starting a captured drag
     // or switching the source document/tool (useCanvasColorSampling).
     setSharedColor(color,secondary);
+    publishNativeOperation(*this,"color.sampled",currentDocument().identity());
     if(colorEditorSampling_&&colorEditorSamplingTarget_){colorEditorSamplingTarget_->sampled(color);colorEditorSamplingTarget_->finishSampling();}
     if(replaceSampling_>=0){changeReplaceColor(replaceSampling_,color,true);finishReplaceSampling();}
     refresh();

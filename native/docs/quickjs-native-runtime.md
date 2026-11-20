@@ -14,7 +14,7 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill等显式操作通知、色样完成、导出事件仍待正式入口接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill、画布采样结束和导出成功通知已接入实际完成分支；其他面板采样完成通知仍待接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
@@ -51,3 +51,13 @@ files-dropped入站保持原始二进制，按每次泵的时间预算直接向Q
 正式 requestHistoryAction/applyHistoryAction 在真实历史位置变化后发送 history.undo/history.redo，空历史、原位置跳转和局部预览/浮动取消不发送。历史面板跳转继续使用已有setHistoryPosition回放，再按经过条目数发送对应事件，承接旧版setHistoryPosition逐次undo/redo的通知计数；不替换历史或性能实现。
 
 前台/后台保存统一 completeSaveJob 在文件写入结果被接受后发送 document.saved editor-event，projectId使用保存所属工程身份，detail.fullySaved使用既有exact版本校验结果。较旧快照已写入但当前又有修改时发送false，失败/取消/只点击保存而无写入完成不发送。这与既有dirty转clean触发的document-saved事件是旧版两种独立协议。验收使用正式异步磁盘保存及实际写入后接收的旧快照分支。
+
+## 绘制、填充、画布采样和导出通知（2026-11-20）
+
+继续上次中断的接线。复用 workspace-recording.ts 的 stroke 成功分支，普通笔画、Shift 连线、自由瓦片源连线、喷枪、平滑和液化在真实提交后发送 drawing.completed，并保留工具类别 detail.tool。桶填充及前景/背景填充命令沿用旧版独立 fill.completed 分支；未修改和取消不发送。普通形状和渐变不据工具名称额外推断 stroke。
+
+ExtensionRuntimeHost.tsx 监听的是采样 completed，而非每次 sampled。原生画布采样释放发送一次 color.sampled，跨画布 intent 点击直接完成；重复 finish、Escape 和失焦取消不发送，颜色更新继续复用已有逻辑。参考图、颜色/调色板面板的其他采样完成入口尚未覆盖，不将这批画布接线标记为全部采样迁移完成。
+
+export-complete 沿用成功写入分支，覆盖静态图、动画、帧序列、图层/切片批量、精灵表文件、ASE/PSD 与脚本导出；取消和失败不发送。批量在捕获开始时记住源工程身份，脚本及 ASE/PSD 使用原有导出源身份；format 保留 png-auto/png-rgba/png-sprite-sheet 等旧版协议值。验收：正式 Release 构建成功；--script-entry-check --operation-events-only 和完整 --script-entry-check 均实际退出 0，覆盖真实 QuickJS 表单、事件落盘、普通笔画成功/无变化/取消、桶填充及前景填充、画布采样释放/重复结束/Escape、帧序列导出成功与取消、扩展停用及关闭生命周期。Ctest 的 extension-event-lifecycle、extension-runtime、extension-js、batch-export-task 四项通过。来源覆盖与架构边界检查另行通过；未逐一运行所有工具、导出格式或其他面板采样，不将接线覆盖解释为全功能迁移或完整界面图像验收。
+
+关闭生命周期核对：通知定向用例保留吸管意图到真实编辑器关闭，暴露 LegacyCursors 先于 Desktop/Editor 析构、采样注销又刷新光标的失效引用。Editor 析构入口先解除 refreshCursor_，再按旧顺序清理采样与窗口；不改变运行中的采样/命中行为。

@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_extension_bridge.h"
 namespace moon::editor {
 std::filesystem::path Editor::liquifyPreferencePath()const{return liquifyPreferenceOverride_.empty()?palettePreferencePath().parent_path()/"liquify-options.txt":liquifyPreferenceOverride_;}
 void Editor::loadLiquifyPreferences(){std::ifstream in(liquifyPreferencePath());std::string version;int mode,radius,strength,smoothing,smoothStrength;if(in>>version>>mode>>radius>>strength>>smoothing>>smoothStrength&&version=="liquify-v1"&&mode>=0&&mode<5){currentTools().liquifyOptions=liquify::normalize({liquify::Mode(mode),radius,strength,smoothing!=0,smoothStrength});}}
@@ -34,7 +35,7 @@ bool Editor::layoutLiquifyOptions(){
  liquifyResetButton_->setEnabled(usable&&liquifyResetPosition_&&liquifyResetIdentity_==currentDocument().identity()&&currentDocument().historyPosition()>*liquifyResetPosition_);syncParameterRange();return true;
 }
 void Editor::finishLiquifyGesture(bool cancel){
- if(!liquifyDragging_)return;liquifyDragging_=false;bool changed=false;if(cancel)currentDocument().cancelLiquify();else changed=currentDocument().commitLiquify();if(hasCapture())releaseMouse();if(changed){liquifyResetRevision_=currentDocument().historyRevision();usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));}usageStrokeStarted_=0;refresh();
+ if(!liquifyDragging_)return;liquifyDragging_=false;bool changed=false;if(cancel)currentDocument().cancelLiquify();else changed=currentDocument().commitLiquify();if(hasCapture())releaseMouse();if(changed){publishNativeStroke(*this,currentDocument().identity(),activeRailTool());liquifyResetRevision_=currentDocument().historyRevision();usageStatistics_.recordDrawing(true,std::max<usage::Milliseconds>(1,usage::now()-usageStrokeStarted_));}usageStrokeStarted_=0;refresh();
 }
 void Editor::liquifyTick(){
  if(!liquifyDragging_)return;if(!currentDocument().liquifyActive()||currentDocument().identity()!=liquifyGestureIdentity_||!hasCapture()){finishLiquifyGesture(true);return;}if(liquifyGestureMode_==liquify::Mode::Push)return;

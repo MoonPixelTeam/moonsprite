@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "native_extension_bridge.h"
 #include "image_resize_task.h"
 #include "ui_frame_capture.h"
 #include "quick_command_metadata.h"
@@ -78,7 +79,7 @@ bool Editor::quickCommandEnabled(const std::string& id)const{
 }
 void Editor::runQuickCommand(const std::string& id,bool right){
  if(pending_!=Pending::None)return;
- if(right){if(id=="fillForeground"){if(quickCommandEnabled(id)){currentDocument().fillSelectionOrCanvas(currentDocument().palette().secondary);refresh();}}else if(id=="customGrid")showCustomGridSettings();else if(id=="pixelGrid"||id=="relativeLuminance"){preferenceSection_=2;showPreferences();}return;}
+ if(right){if(id=="fillForeground"){if(quickCommandEnabled(id)){if(currentDocument().fillSelectionOrCanvas(currentDocument().palette().secondary))publishNativeOperation(*this,"fill.completed",currentDocument().identity());refresh();}}else if(id=="customGrid")showCustomGridSettings();else if(id=="pixelGrid"||id=="relativeLuminance"){preferenceSection_=2;showPreferences();}return;}
  paletteFocused_=false;if(!quickCommandEnabled(id))return;
  if(id=="detectImageScale"){try{quickResize_=resizeDetecting_=true;imageResizeTask_=std::make_shared<ImageResizeTask>(currentDocument(),currentDocument().width(),currentDocument().height(),ImageInterpolation::Nearest,imageResizeExecutor_,true);imageResizeTimer_.start();status_=U"正在识别像素倍率…";}catch(const std::exception& e){quickResize_=resizeDetecting_=false;status_=unicodeText(e.what());}}
  else if(id=="tileRepeatX"||id=="tileRepeatY"||id=="tileRepeatBoth"){const auto mode=id=="tileRepeatX"?repeat::Mode::X:id=="tileRepeatY"?repeat::Mode::Y:repeat::Mode::Both;setTileRepeat(tileRepeatIdentity_==currentDocument().identity()&&currentView().tileRepeat==mode?repeat::Mode::Off:mode);}
