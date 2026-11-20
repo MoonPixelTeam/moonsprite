@@ -4,6 +4,8 @@
 
 本页为规范候选，适用公共规则 [CO-001](core.md#co-001) 和[验收协议](../acceptance.md)。证据状态不代表本轮运行测试通过。所有未列出的参数默认值不得由实现者猜测，须进入[参数与冲突台账](../compatibility.md)。
 
+2026-11-20 用户明确：扩展界面按 Aseprite 式宿主 API 复用软件原生组件。旧 HTML 只作为功能证据，不要求通用 HTML/DOM/浏览器兼容，具体承接与边界见[范围决定](../../scope-decisions-20261120.md)。
+
 <a id="ex-001"></a>
 ## EX-001 安装、启停、卸载与贡献
 
@@ -59,7 +61,7 @@
 - **预览、确认、取消与历史**：退出/禁用取消订阅与任务；文档写入仍统一撤销；外部 IO 不可撤销需明确。
 - **保存重开**：存储按扩展 ID 隔离；主题不携带行为代码。
 - **失败与边界**：资源/网络/窗口权限分别验证；未知方法显式错误；不为兼容引入隐藏 WebView2。
-- **验收 AC-EX-004**：双扩展隔离读写；撤销事件载荷正确；禁用关闭所属窗口；HTML 例子逐个迁移验收。再按验收协议检查适用的取消、失败、撤销、重做和保存重开维度。
+- **验收 AC-EX-004**：双扩展隔离读写；撤销事件载荷正确；禁用关闭所属窗口；旧扩展实际功能逐个映射为宿主控件/API后验收。再按验收协议检查适用的取消、失败、撤销、重做和保存重开维度。
 - **新版承接**：保留功能语义；命令和原生 UI 入口重新设计；不沿用旧模块作为架构边界。
 - **证据状态**：文档提取；领域实现和测试入口已定位，逐项分支与参数仍需核验。
 - **证据与复核入口**：[docs/extensions/README.md](../../../../legacy/docs/extensions/README.md)；[docs/scripting/compatibility-api.md](../../../../legacy/docs/scripting/compatibility-api.md)；[src-tauri/src/platform_scripts/lua_api.rs](../../../../legacy/src-tauri/src/platform_scripts/lua_api.rs)；[src/renderer/src/store/lua-script-service.test.ts](../../../../legacy/src/renderer/src/store/lua-script-service.test.ts)。领域级定位不等于该测试覆盖本条全部内容。

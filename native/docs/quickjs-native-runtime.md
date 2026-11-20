@@ -2,6 +2,8 @@
 
 2026-11-19 用户明确决定“采用 QuickJS＋原生界面映射”，解除此前执行器路线待决定项。仍遵循禁止 WebView2、功能必须有实际承接证据的规则。
 
+2026-11-20 用户进一步明确：界面以 Aseprite 式宿主 API 复用软件原生组件；旧 HTML 仅作功能与脚本来源，不建设通用 HTML/DOM/Canvas/媒体浏览器环境。设置字段、窗口动作或绘制需求按实际功能映射为原生控件/API，见[范围决定](scope-decisions-20261120.md)。
+
 ## 本阶段范围
 
 固定 QuickJS-ng 0.11.0，MIT 许可及归档SHA-256见 THIRD_PARTY.md，依赖由 bootstrap-quickjs.ps1 校验。每个扩展独立runtime/context，核心不加载libc/OS模块。直接复用 ExtensionRuntimeHost.tsx runtimeBootstrap，不重写API/Promise协议；保留256请求/300秒超时。原生队列传递请求/响应/事件，storage.set保留执行器JSON.stringify的精确字符串，继续由SessionHost执行身份、权限、存储配额、资源声明和代次检查。异步network响应沿用现有worker与取消。
@@ -14,7 +16,7 @@
 
 浏览器原先运行在独立iframe；原生每VM64MiB堆/512KiB栈，每次入口100ms、事件20ms中断，任务泵使用调用方时间预算，超时停止会话并清理宿主。不是旧版无期限脚本的时序等价保证。队列最大512项/出站20MiB、定时器最多4096，防止UI线程无界积压；消息大JSON解析/序列化仍同步。定时器仅接受函数，不执行字符串代码。
 
-原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。HTML设置页、DOM/Canvas/媒体、覆盖层和非form附属窗口仍未迁移，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill、画布采样结束和导出成功通知已接入实际完成分支；其他面板采样完成通知仍待接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
+原生 `dialog + component:form` 已接通独立 QuickJS 逻辑页与既有 FormWindow/WindowRouter，见下节。旧设置页的实际配置功能、覆盖层和非form窗口需按具体原生控件/API需求继续核对；通用HTML/DOM/浏览器环境不是迁移目标，不能把API方法名可查询当作窗口已能显示。状态差分 editor-event、输入捕获、30秒时钟和语言变更已接通。drawing/fill、画布采样结束和导出成功通知已接入实际完成分支；其他面板采样完成通知仍待接线；文件拖入已接通下面的原生入口；核心会话已有对应协议。入口文件读取与初始64MiB内存准入仍在UI启动阶段，不作全链路无阻塞声明。
 
 ## 验收
 
@@ -24,7 +26,7 @@
 
 直接复用 ExtensionWindow.tsx 的窗口 bootstrap，仅删除隐藏逻辑页不适用的 DOM 主题/指针钩子；保留 window.id、Promise 请求和 onMessage 参数习惯，不能用 runtime 的单对象参数API替代。每个表单另建隔离VM，native presenter复用已有 FormWindow 控件、FormState 全视图/action/values/requestId往返、忙碌、文件/图片/嵌套弹窗及重试。UI动作排队，不在控件回调内执行JS或销毁窗口。资源声明、扩展身份、存储配额和精确 JSON 字符串仍由既有原生模块处理；窗口桥 storage/resources 与 Runtime 权限入口保持旧版区别。
 
-宿主管理尺寸，根窗口按旧版560×600默认值与统一原生缩放实现，复用ModalGeometryPreferences按扩展和窗口ID持久化，嵌套弹窗复用现有记忆。窗口主动ui-state、原生输入与按钮、JS确认后清草稿/解忙碌、Runtime双向消息、重试模型重置、JS关闭和禁用清理均有定向真实VM夹具。assets API已接入下面的独立持久化事务；非form/overlay明确报未迁移，不显示近似HTML。
+宿主管理尺寸，根窗口按旧版560×600默认值与统一原生缩放实现，复用ModalGeometryPreferences按扩展和窗口ID持久化，嵌套弹窗复用现有记忆。窗口主动ui-state、原生输入与按钮、JS确认后清草稿/解忙碌、Runtime双向消息、重试模型重置、JS关闭和禁用清理均有定向真实VM夹具。assets API已接入下面的独立持久化事务；现有非form/overlay入口仍明确报未迁移，后续仅按实际功能补宿主原生能力，不显示近似HTML。
 
 ## 窗口素材持久化
 

@@ -58,7 +58,7 @@
 | AC-CO-002 | [CO-002](requirements/core.md#co-002) | 冷态及2小时/8小时固定序列测输入延迟与内存；不重启/重载；记录硬件和工程 | 待运行 |
 | AC-NX-001 | [NX-001](requirements/product.md#nx-001) | 独立原生程序无需旧前端运行；中文/压感/DPI 验证先通过 | 待运行 |
 | AC-NX-002 | [NX-002](requirements/product.md#nx-002) | 九种语言样张、中文输入/候选定位、长标签、整数倍及系统125/150%DPI | 待运行 |
-| AC-NX-003 | [NX-003](requirements/product.md#nx-003) | 编辑按钮五种状态并切换主题；损坏图集/缺字检测；布局和作品保持不变 | 待运行 |
+| AC-NX-003 | [NX-003](requirements/product.md#nx-003) | 内置及显式 --theme 加载、损坏主题校验；作品和布局语义不变 | 运行时主题按实际用例验收；皮肤编辑器用例已取消（2026-11-20） |
 | AC-NX-004 | [NX-004](requirements/product.md#nx-004) | 所有入口有需求或分类；所有正式需求有验收；关键缺口关闭才替换旧版 | 待运行 |
 | AC-LA-006 | [LA-006](requirements/layers.md#la-006) | 新建带蒙版调整层，修改参数后复制，独立修改副本；撤销新建同时移除蒙版；普通样式命令不污染目标 | 待运行 |
 | AC-UI-007 | [UI-007](requirements/workspace.md#ui-007) | 粘贴2×1半透明参考并保存重开；确认画面和历史不变；切工程等待旧剪贴板结果，两个库均不新增错误引用 | 待运行 |
